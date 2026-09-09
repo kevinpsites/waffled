@@ -1,0 +1,284 @@
+/* Weekly Planning · step 1 "Loose ends" (LooseEndsStep.tsx).
+
+   Same vocabulary as planning.css — every colour is a repo token. Never hardcode a hex.
+
+   A DECK is the content, and the shell already owns the title, the question, the progress hair
+   and the primary button, so this body adds no second chrome. `.wp-le-stack::before/::after` are
+   the offset cards behind the top one, so the stack costs no DOM and no state. */
+
+.wp-le { display: flex; flex-direction: column; gap: 12px; min-height: 0; flex: 1; }
+
+.wp-le-bar, .wp-le-note, .wp-le-err, .wp-le-trail, .wp-le-capture, .wp-le-list, .wp-le-deck {
+  max-width: 620px; width: 100%; margin-left: auto; margin-right: auto;
+}
+
+/* ── The switch and the escape hatch ────────────────────────────────────────── */
+.wp-le-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; flex: none; }
+.wp-le-switch {
+  display: inline-flex; align-items: center; gap: 2px; flex: none;
+  background: var(--panel); border-radius: 999px; padding: 3px;
+}
+.wp-le-tab {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 0; border-radius: 999px; padding: 7px 14px; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 700; letter-spacing: -0.01em;
+  background: transparent; color: var(--ink-2);
+}
+.wp-le-tab:hover { color: var(--ink); }
+.wp-le-tab.on { background: var(--card); color: var(--ink); box-shadow: var(--sh-2); }
+.wp-le-n {
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
+  display: inline-grid; place-items: center;
+  font-size: 11px; font-weight: 800; background: var(--hair); color: var(--ink-2);
+}
+.wp-le-tab.on .wp-le-n { background: var(--primary); color: var(--on-accent); }
+
+/* See-all has no switch, so the bar needs a left-hand label, sized to sit level with it. */
+.wp-le-all-t {
+  display: inline-flex; align-items: center; flex: none; padding: 7px 2px;
+  font-size: 13px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink);
+}
+
+.wp-le-seeall {
+  margin-left: auto; background: none; border: 0; padding: 6px 2px; cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 700; color: var(--ink-3); white-space: nowrap;
+}
+.wp-le-seeall:hover { color: var(--ink); }
+
+/* No `margin-left: auto`: "See all" already claims that, and a second would push this off. */
+/* `.chore-ava` is the Tasks board's own avatar wash, reused so a face reads the same here. */
+.wp-le-owner {
+  display: inline-flex; align-items: center; gap: 5px; margin-left: 8px;
+  font-size: 12px; font-weight: 700; color: var(--ink-2); white-space: nowrap;
+}
+
+.wp-le-owner .chore-ava { width: 18px; height: 18px; font-size: 11px; }
+
+/* The see-all meta line. `<s>` is this file's sub-line element, never a strikethrough. */
+.wp-le-row-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+
+.wp-le-row-kind {
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.wp-le-kind { display: flex; align-items: center; }
+
+.wp-le-lists-open {
+  background: none; border: 0; padding: 6px 2px; cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 700; color: var(--ink-3); white-space: nowrap;
+}
+
+.wp-le-lists-open:hover { color: var(--ink); }
+
+/* `.modal-overlay` + `.modal-card` are the shared vocabulary (there is no `.modal` class). */
+.wp-le-lists { max-width: 460px; padding: 22px 22px 18px; }
+
+.wp-le-lists-t { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+
+.wp-le-lists-s {
+  margin-top: 6px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); line-height: 1.55;
+}
+
+.wp-le-lists-row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  margin-top: 2px; padding: 12px 0; background: none; border: 0; border-bottom: 1px solid var(--hair-2);
+  cursor: pointer; font: inherit; text-align: left;
+}
+
+.wp-le-lists-row:first-of-type { margin-top: 12px; }
+
+.wp-le-lists-row:disabled { opacity: 0.6; cursor: default; }
+
+.wp-le-lists-n { flex: 1; min-width: 0; font-size: 15px; font-weight: 650; color: var(--ink); }
+
+.wp-le-lists-done { width: 100%; justify-content: center; margin-top: 16px; }
+
+.wp-le-note { flex: none; font-size: 12.5px; font-weight: 600; color: var(--ink-3); line-height: 1.5; }
+
+/* ── The deck ───────────────────────────────────────────────────────────────── */
+.wp-le-deck { margin-top: auto; margin-bottom: auto; flex: none; }
+.wp-le-pos {
+  text-align: center; padding-bottom: 10px;
+  font-size: 12px; font-weight: 750; letter-spacing: 0.02em; color: var(--ink-3);
+}
+
+/* The stack: the real card, plus two layers peeking out BELOW it. Both edges shift down
+   together (`top: 10px; bottom: -10px`) so each layer emerges past the card's bottom edge —
+   pinning `bottom: 0` hides them and leaves two faint rectangles behind the top corners.
+   The wrapper's `padding-bottom` reserves the overhang so they never reach the trail. */
+.wp-le-stack { position: relative; padding-bottom: 22px; }
+.wp-le-stack::before,
+.wp-le-stack::after {
+  content: ''; position: absolute; left: 14px; right: 14px; top: 10px; bottom: -10px;
+  border-radius: var(--r-xl); background: var(--card); box-shadow: var(--sh-2);
+  z-index: 0;
+}
+.wp-le-stack::after { left: 28px; right: 28px; top: 20px; bottom: -20px; opacity: 0.55; }
+
+.wp-le-card {
+  position: relative; z-index: 1;
+  background: var(--card); border-radius: var(--r-xl); box-shadow: var(--sh-2);
+  padding: 24px 26px 18px; text-align: center;
+}
+.wp-le-kind {
+  font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--gold-d);
+}
+.wp-le-t {
+  margin-top: 8px; font-size: 23px; font-weight: 650; letter-spacing: -0.02em;
+  line-height: 1.25; color: var(--ink);
+  display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;
+}
+.wp-le-emoji { font-size: 1em; line-height: 1; flex: none; }
+.wp-le-d { margin-top: 6px; font-size: 13px; font-weight: 650; color: var(--ink-2); }
+
+/* ── The choices ────────────────────────────────────────────────────────────── */
+/* Tiles with the reason under the name. Two columns, because four in a row become slivers. */
+.wp-le-choices {
+  margin-top: 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
+}
+.wp-le-choice {
+  display: block; text-align: left; cursor: pointer;
+  border: 1px solid var(--hair); border-radius: var(--r-lg); padding: 11px 14px;
+  background: var(--card-2); font: inherit; color: var(--ink);
+}
+.wp-le-choice:hover:not(:disabled) { border-color: var(--ink-3); }
+.wp-le-choice:disabled { opacity: 0.5; cursor: default; }
+.wp-le-choice b { display: block; font-size: 14.5px; font-weight: 750; }
+/* <s> for the reason, matching .wp-record-main — struck-through is never wanted. */
+.wp-le-choice s { display: block; margin-top: 2px; font-size: 12px; font-weight: 600; color: var(--ink-2); text-decoration: none; line-height: 1.35; }
+.wp-le-choice.primary {
+  background: var(--primary); border-color: var(--primary); color: var(--on-accent);
+}
+.wp-le-choice.primary s { color: var(--on-accent); opacity: 0.8; }
+.wp-le-choice.primary:hover:not(:disabled) { border-color: var(--primary); filter: brightness(1.05); }
+.wp-le-choice.settle { background: var(--panel); border-color: transparent; }
+.wp-le-choice.quiet { background: transparent; border-style: dashed; }
+
+.wp-le-quiet { margin-top: 12px; display: flex; justify-content: center; gap: 4px; flex-wrap: wrap; }
+.wp-le-quiet-b {
+  background: none; border: 0; padding: 6px 10px; cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 700; color: var(--ink-3);
+}
+.wp-le-quiet-b:hover:not(:disabled) { color: var(--ink); }
+.wp-le-quiet-b:disabled { opacity: 0.5; cursor: default; }
+
+/* ── The trail ──────────────────────────────────────────────────────────────── */
+/* A deck that swallows a card with no receipt is how people stop trusting the fast path. */
+.wp-le-trail {
+  flex: none; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding-top: 4px; font-size: 12.5px; font-weight: 600; color: var(--ink-3);
+}
+.wp-le-trail-h {
+  flex-basis: 100%; font-size: 11px; font-weight: 800; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ink-3); opacity: 0.85;
+}
+.wp-le-trail-i { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.wp-le-trail-i b { font-weight: 750; color: var(--ink-2); }
+.wp-le-trail-i.last b { color: var(--ink); }
+.wp-le-undo {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 750; color: var(--primary);
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.wp-le-undo:disabled { opacity: 0.5; cursor: default; text-decoration: none; }
+
+/* ── The capture bar (group B only) ─────────────────────────────────────────── */
+.wp-le-capture {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  background: var(--card); border: 1px solid var(--hair); border-radius: 999px;
+  padding: 4px 4px 4px 14px;
+}
+.wp-le-capture-p { flex: none; font-size: 14px; font-weight: 800; color: var(--ink-3); }
+.wp-le-capture-in {
+  flex: 1; min-width: 0; border: 0; background: none; outline: none;
+  font: inherit; font-size: 14px; font-weight: 600; color: var(--ink); padding: 9px 0;
+}
+.wp-le-capture-in::placeholder { color: var(--ink-3); font-weight: 600; }
+.wp-le-capture-go { flex: none; padding: 9px 18px; font-size: 13.5px; }
+.wp-le-capture-go:disabled { opacity: 0.5; cursor: default; }
+/* In see-all the same bar sits INSIDE the Parked section, so what it adds to is never in question. */
+.wp-le-sec .wp-le-capture { max-width: none; margin-top: 12px; }
+
+/* ── The cleared state ──────────────────────────────────────────────────────── */
+.wp-le-clear {
+  max-width: 480px; margin: auto; text-align: center; flex: none;
+}
+.wp-le-check {
+  width: 56px; height: 56px; margin: 0 auto 14px; border-radius: 999px;
+  display: grid; place-items: center;
+  background: var(--success); color: var(--on-accent);
+  font-size: 28px; font-weight: 800; line-height: 1;
+}
+.wp-le-clear-t { font-size: 25px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); }
+.wp-le-clear-s { margin-top: 7px; font-size: 13.5px; font-weight: 600; color: var(--ink-2); line-height: 1.55; }
+.wp-le-clear-go { margin-top: 18px; justify-content: center; }
+
+/* ── See all ────────────────────────────────────────────────────────────────── */
+/* Rows are left-aligned with their destinations on the end, because the card's centred layout
+   would read as a stack of headlines here. */
+.wp-le-list { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
+.wp-le-disclaimer {
+  border-radius: var(--r-lg); padding: 10px 14px; background: var(--card-2);
+  font-size: 12.5px; font-weight: 650; color: var(--ink-2); line-height: 1.45;
+}
+.wp-le-sec-h {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 6px;
+  font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--gold-d);
+}
+.wp-le-sec-cap {
+  font-weight: 700; letter-spacing: 0.04em; color: var(--ink-3);
+  text-transform: none; font-size: 11px;
+}
+.wp-le-rows { list-style: none; margin: 0; padding: 0; }
+.wp-le-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 0; border-bottom: 1px solid var(--hair-2);
+}
+.wp-le-row:last-child { border-bottom: 0; }
+.wp-le-row-main { min-width: 0; flex: 1; }
+.wp-le-row-main b { display: block; font-size: 15px; font-weight: 650; color: var(--ink); }
+.wp-le-row-main s { display: block; margin-top: 1px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); text-decoration: none; }
+.wp-le-row-acts { display: flex; gap: 6px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+.wp-le-pill {
+  border: 1px solid var(--hair); border-radius: 999px; padding: 6px 12px; cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 700;
+  background: var(--card-2); color: var(--ink); white-space: nowrap;
+}
+.wp-le-pill:hover:not(:disabled) { border-color: var(--ink-3); }
+.wp-le-pill:disabled { opacity: 0.5; cursor: default; }
+.wp-le-pill.primary { background: var(--primary); border-color: var(--primary); color: var(--on-accent); }
+.wp-le-pill.quiet { background: transparent; border-color: transparent; color: var(--ink-3); }
+
+/* ── Empty + error ──────────────────────────────────────────────────────────── */
+.wp-le-empty {
+  max-width: 560px; margin: auto; text-align: center;
+  font-size: 14px; font-weight: 600; color: var(--ink-3); line-height: 1.55;
+}
+.wp-le-empty-sm { margin: 4px 0; text-align: left; font-size: 13px; }
+.wp-le-err {
+  flex: none; border-radius: var(--r-lg); padding: 10px 14px;
+  background: var(--card-2); border: 1px solid var(--danger);
+  font-size: 13px; font-weight: 650; color: var(--ink);
+}
+
+/* ── Narrow (phone) ─────────────────────────────────────────────────────────── */
+/* Only the type scale and padding come down, and the choice tiles go to one column. */
+@media (max-width: 720px) {
+  .wp-le-bar { gap: 8px; }
+  .wp-le-tab { padding: 7px 11px; font-size: 12.5px; }
+  .wp-le-sec-cap { display: none; }
+  .wp-le-card { padding: 20px 16px 16px; border-radius: var(--r-lg); }
+  .wp-le-stack::before, .wp-le-stack::after { border-radius: var(--r-lg); }
+  .wp-le-t { font-size: 20px; }
+  .wp-le-choices { grid-template-columns: minmax(0, 1fr); }
+  .wp-le-row { flex-wrap: wrap; }
+  .wp-le-row-acts { width: 100%; justify-content: flex-start; padding-left: 30px; }
+  .wp-le-capture { border-radius: var(--r-lg); flex-wrap: wrap; padding: 8px; }
+  .wp-le-capture-in { padding-left: 6px; }
+  .wp-le-capture-go { width: 100%; }
+  .wp-le-check { width: 48px; height: 48px; font-size: 24px; }
+  .wp-le-clear-t { font-size: 22px; }
+}

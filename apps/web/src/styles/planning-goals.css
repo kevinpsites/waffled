@@ -1,0 +1,136 @@
+/* Weekly Planning · step 6 — Goals (planning/steps/GoalsStep.tsx).
+
+   Built from the shared vocabulary plus this step's own chrome, on the same tokens as
+   planning.css so dark mode comes for free. NEVER hardcode a hex here. Member avatars
+   reuse the global .avstack / .av.sm design-system classes. */
+
+.wpg { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.wpg-note { color: var(--ink-3); font-weight: 600; max-width: 58ch; line-height: 1.55; margin: auto 0; }
+
+.wpg-tabs {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding-bottom: 14px; border-bottom: 1px solid var(--hair);
+}
+.wpg-tab {
+  display: inline-flex; align-items: center; gap: 7px;
+  font: inherit; font-size: 13.5px; font-weight: 700; letter-spacing: -0.01em;
+  color: var(--ink-2); background: var(--panel);
+  border: 1px solid transparent; border-radius: 999px; padding: 8px 14px; cursor: pointer;
+}
+.wpg-tab:hover { color: var(--ink); }
+.wpg-tab.on { color: var(--ink); background: var(--card); border-color: var(--line); box-shadow: var(--sh-1); }
+.wpg-tab-e { font-size: 15px; line-height: 1; }
+.wpg-tab-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 16ch; }
+.wpg-tab-lock { font-size: 11px; line-height: 1; opacity: 0.75; }
+/* The ★ lets the room read what's left without opening every group. */
+.wpg-tab-star { color: var(--gold); font-size: 12px; line-height: 1; }
+.wpg-tab.settled { color: var(--ink); }
+.wpg-tally { margin-left: auto; font-size: 12.5px; font-weight: 650; color: var(--ink-2); }
+
+.wpg-card { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+.wpg-card-h { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.wpg-card-tile {
+  flex: none; width: 46px; height: 46px; border-radius: var(--r-sm);
+  display: grid; place-items: center; font-size: 24px;
+  background: var(--panel);
+}
+.wpg-card-id { flex: 1; min-width: 0; }
+.wpg-card-n {
+  display: flex; align-items: center; gap: 7px;
+  font-family: var(--serif); font-size: 21px; font-weight: 600; letter-spacing: -0.02em;
+  min-width: 0;
+}
+.wpg-card-lock { font-size: 12px; opacity: 0.7; }
+.wpg-card-s { margin-top: 2px; font-size: 12.5px; font-weight: 650; color: var(--ink-2); }
+.wpg-card-h .avstack { flex: none; }
+
+.wpg-opts { display: flex; flex-direction: column; gap: 10px; }
+
+.wpg-opt {
+  display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
+  font: inherit; color: var(--ink);
+  background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-md);
+  padding: 13px 16px; cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.wpg-opt:hover:not(:disabled) { border-color: var(--line); }
+.wpg-opt:disabled { opacity: 0.55; cursor: default; }
+/* Chosen = the week's focus. Coral is the app's one primary accent. */
+.wpg-opt.on { border-color: var(--primary); background: var(--primary-t); }
+/* `:hover:not(:disabled)` outscores `.on` — see the horizon tags. */
+.wpg-opt.on:hover:not(:disabled) { border-color: var(--primary); }
+
+.wpg-opt-e { font-size: 22px; line-height: 1; flex: none; }
+.wpg-opt-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.wpg-opt-t { font-size: 15.5px; font-weight: 700; letter-spacing: -0.012em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wpg-opt-s { font-size: 12.5px; font-weight: 600; color: var(--ink-2); line-height: 1.4; }
+
+.wpg-opt-bar { display: block; height: 5px; border-radius: 999px; background: var(--panel); overflow: hidden; }
+.wpg-opt-bar > span { display: block; height: 100%; border-radius: 999px; }
+
+/* The number is on the goal's OWN axis — see goalDisplayProgress in lib/api. */
+.wpg-opt-num { flex: none; display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 44%; }
+.wpg-opt-n { font-size: 19px; font-weight: 750; letter-spacing: -0.02em; }
+.wpg-opt-d { font-size: 12.5px; font-weight: 650; color: var(--ink-2); }
+.wpg-opt-w { flex-basis: 100%; text-align: right; font-size: 11.5px; font-weight: 650; color: var(--ink-3); }
+
+.wpg-opt-tick { flex: none; width: 14px; text-align: center; color: var(--gold); font-size: 14px; }
+
+/* The pace sentence's three tones, all from tokens: --person-3-tx is the readable green
+   the category palette uses for "physical" text. */
+.wpg-pace { font-weight: 700; }
+.wpg-pace.ok { color: var(--person-3-tx); }
+.wpg-pace.flat { color: var(--ink-2); }
+.wpg-pace.behind { color: var(--danger); }
+
+.wpg-none { background: var(--card-2); }
+.wpg-none.on { background: var(--primary-t); }
+
+/* Quiet when nothing is picked: that is reassurance, not a warning. */
+.wpg-verdict {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 14px; font-weight: 700; color: var(--ink-2); letter-spacing: -0.01em;
+  padding-top: 12px; border-top: 1px solid var(--hair-2);
+}
+.wpg-verdict.has { color: var(--ink); }
+.wpg-verdict-s { color: var(--gold); }
+
+.wpg-new { align-self: flex-start; }
+
+@media (max-width: 720px) {
+  .wpg-tally { margin-left: 0; flex-basis: 100%; }
+  .wpg-opt-num { max-width: none; }
+}
+
+/* ── the new-goal modal ───────────────────────────────────────────────────────
+   The card hands the app's real goal editor a fixed box and gets out of the way:
+   `.goal-create` is a two-pane grid whose panes scroll themselves, so a scrolling card
+   would give the form two scrollbars. Scoped under .wpg-modal, so /goals/new is
+   untouched. */
+.wpg-modal-card {
+  max-width: min(1180px, 94vw);
+  max-height: none;
+  overflow: hidden;
+  padding: 20px 0 0;
+}
+.wpg-modal .ge-embed {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: min(74vh, 720px);
+}
+/* The bar is the modal's header; the × sits at its right, so leave it room. */
+.wpg-modal .ge-topbar { padding: 0 62px 14px 30px; border-bottom: 1px solid var(--hair-2); }
+.wpg-modal .ge-title { font-size: 24px; }
+.wpg-modal .goal-create { min-height: 0; }
+/* The editor's page padding is generous for a full screen and wasteful in a card. */
+.wpg-modal .ge-col { padding: 8px 30px 40px; }
+/* The group is stated, not offered — flat, unclickable, and clearly the answer. */
+.ge-who-locked { cursor: default; }
+
+@media (max-width: 900px) {
+  /* Too narrow for the preview pane; the form is the part you need. */
+  .wpg-modal .goal-create { grid-template-columns: minmax(0, 1fr); }
+  .wpg-modal .ge-pvpane { display: none; }
+}

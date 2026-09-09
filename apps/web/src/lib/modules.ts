@@ -3,7 +3,7 @@
 // docs/product/extensibility.md.
 import type { Household } from './api'
 
-export type ModuleKey = 'pantry' | 'chores' | 'goals' | 'meals' | 'lists' | 'familyNight' | 'quotes' | 'waffledBites' | 'rhythms'
+export type ModuleKey = 'pantry' | 'chores' | 'goals' | 'meals' | 'lists' | 'familyNight' | 'quotes' | 'waffledBites' | 'rhythms' | 'weeklyPlanning'
 
 export interface ModuleDef {
   key: ModuleKey
@@ -93,6 +93,15 @@ export const MODULES: ModuleDef[] = [
     description: 'The things that should keep happening — the air filter, trash night, a quarterly self-care day — with a place to confirm each one is actually handled.',
     status: 'available',
     defaultOn: false,
+  },
+  {
+    key: 'weeklyPlanning',
+    name: 'Weekly Planning',
+    icon: '🗓️',
+    description: 'A guided session that walks the family through deciding the week ahead — loose ends, the calendar, meals, tasks and goals — reading from the modules you already use.',
+    status: 'available',
+    defaultOn: false,
+    hasSettings: true,
   },
 ]
 

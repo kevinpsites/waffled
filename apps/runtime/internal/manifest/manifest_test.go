@@ -321,3 +321,84 @@ func writeManifest(t *testing.T, root string, m *Manifest) {
 		t.Fatal(err)
 	}
 }
+
+// Containment. Set equality cannot catch an escaping symlink on its own: a link that
+// pointed outside the tree when the bundle was built is recorded faithfully, so disk and
+// manifest agree and every other rule passes. It would resolve to something real on the
+// machine that built it and to something else — or nothing — on the machine that
+// downloads the app, which is precisely the class of difference the manifest exists to
+// refuse. So containment is a rule of its own, and these tests fix the two edges where
+// the Go and JS verifiers could drift apart: a target resolving to the root itself is
+// legitimate, an absolute target never is.
+func remanifest(t *testing.T, root string) {
+	t.Helper()
+	m, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, symlinks, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Files, m.Symlinks = files, symlinks
+	m.FileCount, m.SymlinkCount = len(files), len(symlinks)
+	raw, err := json.MarshalIndent(m, "", " ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, FileName), append(raw, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVerifyRefusesASymlinkClimbingOutOfTheBundle(t *testing.T) {
+	root := fixture(t)
+	link := filepath.Join(root, "bin", "postgres", "lib", "escape.dylib")
+	if err := os.Symlink("../../../../etc/passwd", link); err != nil {
+		t.Fatal(err)
+	}
+	remanifest(t, root) // the manifest now lists it: only containment can refuse it
+
+	_, err := Verify(root)
+	if err == nil {
+		t.Fatal("a symlink climbing above the bundle root must be refused")
+	}
+	if !strings.Contains(err.Error(), "bin/postgres/lib/escape.dylib") {
+		t.Errorf("the refusal must name the offending link, got: %v", err)
+	}
+}
+
+func TestVerifyRefusesAnAbsoluteSymlink(t *testing.T) {
+	root := fixture(t)
+	if err := os.Symlink("/usr/lib/libSystem.B.dylib", filepath.Join(root, "bin", "abs.dylib")); err != nil {
+		t.Fatal(err)
+	}
+	remanifest(t, root)
+
+	_, err := Verify(root)
+	if err == nil {
+		t.Fatal("an absolute symlink target must be refused — it resolves off the bundle")
+	}
+	if !strings.Contains(err.Error(), "bin/abs.dylib") {
+		t.Errorf("the refusal must name the offending link, got: %v", err)
+	}
+}
+
+// The links the real bundle is made of: relative, and climbing is fine as long as the
+// result stays inside. api/dist/node → ../../bin/node walks up two levels and lands in
+// the tree; bin/self → .. resolves to the root itself, which is still inside it — the
+// case manifest.mjs allows explicitly, so this one keeps the twins honest.
+func TestVerifyAcceptsRelativeSymlinksThatStayInside(t *testing.T) {
+	root := fixture(t)
+	if err := os.Symlink("../../bin/node", filepath.Join(root, "api", "dist", "node")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("..", filepath.Join(root, "bin", "self")); err != nil {
+		t.Fatal(err)
+	}
+	remanifest(t, root)
+
+	if _, err := Verify(root); err != nil {
+		t.Fatalf("relative links that stay inside the bundle must verify: %v", err)
+	}
+}

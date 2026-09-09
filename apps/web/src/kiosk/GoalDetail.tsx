@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { AvatarStack, PersonAv } from './components/Avatar'
 import { useNavigate, useParams, useLocation } from 'react-router'
 import { LogModal } from './components/LogModal'
 import { EntryModal } from './components/EntryModal'
@@ -285,13 +286,9 @@ export function GoalDetail() {
               >
                 <div className="lwhen">{fmtDay(r.loggedAt)}</div>
                 {r.participants.length > 0 ? (
-                  <div className="avstack">
-                    {r.participants.map((p) => (
-                      <div key={p.personId ?? p.name} className="av sm" style={{ background: `${p.colorHex ?? '#A6A29B'}22` }}>{p.avatarEmoji ?? '🙂'}</div>
-                    ))}
-                  </div>
+                  <AvatarStack members={r.participants} />
                 ) : (
-                  <div className="av sm" style={{ background: '#A6A29B22' }}>🙂</div>
+                  <PersonAv person={{}} />
                 )}
                 <div className="lwhat">{r.note || 'Logged progress'}</div>
                 <div className="lamt">

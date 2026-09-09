@@ -393,10 +393,13 @@ Shipped (migration **0069_countdowns**: `events.is_countdown` + a `countdowns` t
 
 ### Tech debt — route auth as middleware — ✅ DONE 2026-06-25
 Almost every API route opened with `const tenant = await requireTenant(req)` (+ an inline
-`requireAdmin`/`requireCapability` for writes), copied across ~20 files. lambda-api has no
-path-scoped middleware (only the one global auth gate), so instead of true middleware we added
+`requireAdmin`/`requireCapability` for writes), copied across ~20 files. Rather than lambda-api
+middleware (which does support `api.use(path, mw)` and `api.get(path, mw, handler)` — a claim to
+the contrary stood in these docs until 2026-09-08 and was wrong), we added
 **composable per-route guard wrappers** (`platform/route-guards.ts`): `tenantRoute(h)`,
-`adminRoute(h)`, `capRoute(cap, h)` — handlers now receive the resolved `tenant` first and thrown
+`adminRoute(h)`, `capRoute(cap, h)` — a wrapper passes the resolved `Tenant` as a typed first
+argument, so no call site needs a cast. That was a preference, not a constraint: middleware
+stashing the tenant on `req` would have worked too. Thrown
 `AuthError`s flow to the existing error handler unchanged. ~135 routes converted (net −160 lines);
 conditional carve-outs (chores POST/assign, goals POST/PATCH/DELETE/log) keep `tenantRoute` + an
 inline `requireCapability`; exceptions stay manual (public, device-token kiosk, dual self-or-admin,

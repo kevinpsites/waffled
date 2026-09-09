@@ -93,7 +93,8 @@ Two new pieces, both small:
    Terminal and run `waffled-runtime status`". The menu-bar app shells out to it; nothing the
    GUI does is unavailable from the CLI.
 2. **Menu-bar app** (`apps/mac/`, SwiftUI `MenuBarExtra`, `LSUIElement=true` so there is no
-   Dock icon, macOS 13+). Bundles the runtime and the four service binaries inside
+   Dock icon, macOS 14+ — `MenuBarExtra` needs 13, `@Observable` needs 14). Bundles the
+   runtime and the four service binaries inside
    `Waffled.app/Contents/Resources/runtime/`. Responsibilities: start the runtime on launch,
    poll `status`, render the icon + menu, open the browser, register itself as a login item
    via `SMAppService`, and drive updates with Sparkle.
@@ -353,15 +354,41 @@ Throwaway bash under `infra/native/spike/`. Purpose: **learn**, not build.
 
 ### Phase 3 — Menu-bar app
 
-Next. Nothing here has started; the notarization spike (item 5) was deliberately deferred
-by the user.
+In progress. The app exists, carries its own runtime and drives a real server from it;
+CI assembles the `.app` and boots it on every change. What is left is the polish and the
+paperwork: the first-run sheet (item 3), and Developer ID signing, notarization and Sparkle
+(items 5 and 6), which the user deliberately deferred — so the app is ad-hoc signed and
+Gatekeeper refuses it on any Mac but the one that built it.
 
 1. `apps/mac/` SwiftUI `MenuBarExtra`, XcodeGen project like iOS, bundles the runtime and
-   binaries under `Resources/runtime/`.
+   binaries under `Resources/runtime/`. *(done — PR #195 the app, PR #196 the embedding)* →
+   The XcodeGen project, the `status --json` client and the app landed first; the
+   **embedding** followed: `waffled-runtime` is now built into the bundle (and into its
+   manifest) by `infra/native/bundle/build.sh`, `apps/mac/Scripts/build-app.sh` assembles a
+   671 MB `Waffled.app` with that bundle cloned into `Contents/Resources/runtime`, and CI
+   boot-tests the assembled app with **no dev-mode environment variables** — it finds the
+   runtime it carries, verifies it against its manifest and brings a real server up from an
+   empty data directory. Signing is not a prerequisite for embedding after all: it is a
+   later pass over the same tree (item 5), which is why the manifest is written last.
 2. Icon states (stopped / starting / running / error), the menu from §2, "Open Waffled".
+   *(done — PR #195; the first-run sheet is item 3)* → The Waffled mark itself — the closed
+   waffle iron from the logo, drawn in CoreGraphics as a template image (a menu-bar image is
+   monochrome, so state cannot be colour): outlined stopped, its six holes cooking one at a
+   time while `starting`, solid running, slashed when it needs a person. The §2 menu is
+   there including the address-copy, backup, `Start Waffled` and the quit-stops-the-server
+   confirmation. On launch it starts a stopped server **once** — the first poll that answers
+   spends the attempt, so a server stopped from Terminal later is left alone — and opens the
+   web app in the browser exactly once, for a start *it* began, so a relaunch re-opens the
+   existing server without stealing the screen. A `stop` that refuses during quit keeps the
+   app alive to say so rather than exiting on a server that is still running.
 3. First-run sheet (welcome → starting → "your server is ready, opening…") and the MacBook
    warning.
-4. Login item via `SMAppService`.
+4. Login item via `SMAppService`. *(done — PR #195)* → Wired to `SMAppService.mainApp`, and
+   it works in an **unsigned** build: measured on macOS 15.7, an ad-hoc-signed `LSUIElement`
+   app registers from a `DerivedData` path, contrary to the common assumption. The status is
+   re-read on every poll, since System Settings can change it behind the app's back; a failed
+   attempt annotates the label and leaves the toggle usable, and only `requiresApproval`
+   (which becomes a button that opens Login Items) and `notFound` stop being a toggle.
 5. Signing + notarization pipeline (every embedded binary), DMG build, Sparkle appcast.
 6. Updater: the Sparkle appcast, swapping `Waffled.app` and relaunching. The **data** half —
    snapshot → migrate → health gate → restore on failure, plus the downgrade guard — is done

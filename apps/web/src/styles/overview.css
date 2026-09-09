@@ -12,9 +12,7 @@
 .pp-left, .pp-right { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 .pp-card { padding: 18px 20px; }
 
-/* ===== Waffled-Bite device control panel — stacked sections, not the
-   .pp-left/.pp-right two-column split above (that's the sibling person
-   overview page's layout; this screen groups by topic instead). ===== */
+/* ===== Waffled-Bite device control panel — stacked sections, not the overview grid ===== */
 .wb-page { flex: 1; display: flex; flex-direction: column; gap: 18px; padding: 4px 30px 28px; min-height: 0; overflow-y: auto; }
 .wb-row { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
 .wb-section-label { font-size: 12px; font-weight: 700; color: var(--ink-3); margin: 6px 2px 0; }
@@ -80,8 +78,7 @@
   font: inherit; font-size: 13px; font-weight: 700; color: var(--ai-d);
   background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline;
 }
-/* Same idea, but for viewers who can't create a goal for this person: the
-   suggestion stays a gentle nudge, just not a clickable shortcut. */
+/* Same, but for viewers who can't create a goal for this person: a nudge, not a shortcut. */
 .pp-suggest-text { font: inherit; font-size: 13px; font-weight: 700; color: var(--ai-d); }
 
 /* goal rows */
@@ -203,6 +200,22 @@
   border-radius: 10px; border: 1px solid var(--hair); background: var(--card-2); color: var(--ink); cursor: pointer; }
 
 /* Streak card */
+/* ── This week's one thing (Weekly Planning → Kids) ──────────────────────────── */
+/* A statement, not a stat: what a child said they were focusing on. Rendered only when there
+   IS one — see FocusCard's presence gate. */
+.pp-focus-lab { font-size: 11px; font-weight: 800; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ink-3); margin-bottom: 10px; }
+.pp-focus-main { display: flex; align-items: center; gap: 12px; }
+.pp-focus-emo { flex: none; font-size: 26px; line-height: 1; }
+.pp-focus-body { min-width: 0; }
+/* Sized like a headline, because on the Kids step it was the answer to the one question that
+   screen asks. */
+.pp-focus-title { font-size: 17px; font-weight: 750; letter-spacing: -0.015em;
+  line-height: 1.25; color: var(--ink); }
+.pp-focus-sub { margin-top: 2px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.pp-focus-from { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--hair-2);
+  font-size: 11.5px; font-weight: 650; color: var(--ink-3); }
+
 .pp-streak-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
 .pp-streak-days { font-weight: 800; font-size: 17px; }
 .pp-streak-cheer { font-size: 12px; font-weight: 700; color: var(--person-3); margin-left: auto; }

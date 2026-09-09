@@ -2,10 +2,7 @@ import SwiftUI
 import Observation
 import UIKit
 
-/// Goals — the membership model from the web kiosk, folded onto one phone screen:
-/// a horizontal list-picker (Family / each person) up top, an All/Shared/Each
-/// filter, the featured "hero" goal, then a stack of "more" goal cards. Tapping a
-/// hero/card opens the Log sheet. Online-only (goals aren't a synced table).
+/// Goals — the web kiosk's membership model on one phone screen. Online-only.
 @MainActor
 @Observable
 final class GoalsModel {
@@ -23,15 +20,13 @@ final class GoalsModel {
     var selectedList: WaffledAPI.GoalList? { lists.first { $0.id == selectedListId } ?? lists.first }
     var isIndividual: Bool { (selectedList?.members.count ?? 0) == 1 }
 
-    /// Goals after the All/Shared/Each filter (the filter only applies to shared lists).
     var visibleGoals: [WaffledAPI.Goal] {
         goals.filter { g in
             isIndividual || filter == .all
                 || (filter == .shared ? g.trackingMode == "shared_total" : g.trackingMode == "each_tracks")
         }
     }
-    // Three tiers (mirrors web): the one Spotlight hero, the Pinned band, then everything else
-    // A–Z (the API already sorts A–Z). `isFeatured` is the internal flag behind "Pinned".
+    // Three tiers (mirrors web): Spotlight hero, Pinned band, then the rest A–Z.
     var spotlight: WaffledAPI.Goal? { visibleGoals.first { $0.isSpotlight ?? false } }
     var pinned: [WaffledAPI.Goal] { visibleGoals.filter { $0.isFeatured && !($0.isSpotlight ?? false) } }
     var more: [WaffledAPI.Goal] { visibleGoals.filter { !($0.isSpotlight ?? false) && !$0.isFeatured } }
@@ -62,7 +57,6 @@ final class GoalsModel {
         catch { self.error = true }
     }
 
-    /// Quick pin/unpin: toggle the Pinned tier (isFeatured) straight from a card.
     func togglePin(_ g: WaffledAPI.Goal) async {
         do { try await api.updateGoal(id: g.id, ["isFeatured": .bool(!g.isFeatured)]); await loadGoals() }
         catch { self.error = true }
@@ -75,10 +69,8 @@ final class GoalsModel {
         } catch { self.error = true }
     }
 
-    /// Push today's Apple Health total for **every** health-linked goal in the household —
-    /// not just the visible list, so a linked goal in another list fills too — then refresh
-    /// the current list. iPhone-only; a no-op when HealthKit is unavailable or nothing is
-    /// linked. Best-effort; the server upsert is idempotent, so re-running is safe.
+    /// Push today's Apple Health total for EVERY health-linked goal, not just the visible
+    /// list. iPhone-only, best-effort; the server upsert is idempotent.
     func syncHealth() async {
         guard HealthKitBridge.shared.isAvailable else { return }
         let all = (try? await api.goalsIn(listId: nil)) ?? []
@@ -87,9 +79,8 @@ final class GoalsModel {
         }
         guard !linked.isEmpty else { return }
         try? await HealthKitBridge.shared.requestReadAuthorization()
-        // Catch up only the days since each goal's synced-through mark (a two-week absence
-        // fills all fourteen days on the next open), floored at the goal's start so a brand-new
-        // goal never pulls pre-creation steps. Then advance the mark to today.
+        // Catch up only the days since each goal's synced-through mark, floored at the goal's
+        // start so a brand-new goal never pulls pre-creation steps. Then advance the mark.
         let today = Date()
         var didSync = false
         for l in linked {
@@ -102,7 +93,6 @@ final class GoalsModel {
         if didSync { await loadGoals() }
     }
 
-    /// Create a goal, then reselect its list so it shows up. Returns success.
     func create(_ body: [String: JSONValue], listId: String?) async -> Bool {
         do {
             try await api.createGoal(body)
@@ -142,21 +132,16 @@ enum GoalStyle {
 
 func goalFirstName(_ name: String) -> String { name.split(separator: " ").first.map(String.init) ?? name }
 
-/// Whole numbers without a decimal, otherwise rounded to at most 2 decimals with
-/// trailing zeros dropped (3 → "3", 1.5 → "1.5", 2.5833… → "2.58", 6.16667 → "6.17");
-/// nil → em dash. Amounts are stored exact (an hours+minutes log is 1h5m = 1.0833… h),
-/// so every display goes through here to avoid showing the raw repeating decimal.
+/// At most 2 decimals, trailing zeros dropped; nil → em dash. Amounts are stored exact
+/// (1h5m = 1.0833… h), so every display goes through here.
 func goalFmt(_ n: Double?) -> String {
     guard let n else { return "—" }
     let r = (n * 100).rounded() / 100
     return r == r.rounded() ? String(Int(r)) : String(format: "%g", r)
 }
 
-/// Compact, rounded formatting for the tight goal ring: values under 1,000 round to a
-/// whole number (295.99 → "296") and larger ones abbreviate (10,000 → "10K",
-/// 1,234,567 → "1.2M"), so the big number stays short and readable at any magnitude
-/// instead of shrinking to nothing. Ring-only — `goalFmt` still feeds the exact figures
-/// elsewhere (subtitles, milestones, cards).
+/// Compact formatting for the tight ring (10,000 → "10K"). Ring-only: `goalFmt` still feeds
+/// the exact figures elsewhere.
 func ringFmt(_ n: Double?) -> String {
     guard let n else { return "—" }
     if abs(n) >= 1000 {
@@ -165,7 +150,6 @@ func ringFmt(_ n: Double?) -> String {
     return String(Int(n.rounded()))
 }
 
-/// "Count · in books", "Habit · 5× a week", "Count · each logs visits".
 func goalDescriptor(_ g: WaffledAPI.Goal) -> String {
     let label = ["count": "Count", "total": "Total", "habit": "Habit", "checklist": "Milestones"][g.goalType] ?? g.goalType
     let q: String
@@ -176,7 +160,6 @@ func goalDescriptor(_ g: WaffledAPI.Goal) -> String {
     return "\(label) · \(q)"
 }
 
-/// A circular progress ring with arbitrary center content.
 struct GoalRing<Center: View>: View {
     let value: Double
     let size: CGFloat
@@ -186,15 +169,12 @@ struct GoalRing<Center: View>: View {
     @ViewBuilder var center: () -> Center
     var body: some View {
         ZStack {
-            // Inset by half the line width so the stroke stays inside the frame
-            // (a plain .stroke is centered on the path and would clip at the edges).
+            // Inset by half the line width: a plain .stroke centers on the path and clips.
             Circle().inset(by: lineWidth / 2).stroke(track, lineWidth: lineWidth)
             Circle().inset(by: lineWidth / 2).trim(from: 0, to: max(0, min(value, 1)))
                 .stroke(stroke, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-            // Keep the centered label inside the ring: cap it to (just under) the inner
-            // diameter so a long value (e.g. "295.99") shrinks to fit instead of spilling
-            // past the stroke. Paired with `.minimumScaleFactor` on the value text.
+            // Cap the label to just under the inner diameter so a long value shrinks to fit.
             center()
                 .frame(width: max(0, size - lineWidth * 2 - 10))
                 .multilineTextAlignment(.center)
@@ -203,7 +183,6 @@ struct GoalRing<Center: View>: View {
     }
 }
 
-/// Overlapping member avatars (up to 4) for a goal list.
 struct AvatarStack: View {
     let members: [WaffledAPI.GoalList.Member]
     var size: CGFloat = 24
@@ -230,9 +209,7 @@ struct GoalsView: View {
     private static let heroOrange = LinearGradient(colors: [Color(hex: 0xF3A93B), Color(hex: 0xE08A1C)],
                                                    startPoint: .topLeading, endPoint: .bottomTrailing)
 
-    /// iPad lays the "More goals" out as a multi-column grid (vs. the phone's column).
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
-    /// Verification one-shot (WAFFLED_OPEN_GOAL): open the featured goal once.
     private static var didOpenGoal = false
 
     var body: some View {
@@ -298,17 +275,13 @@ struct GoalsView: View {
         .task {
             if model.lists.isEmpty { await model.loadLists() }
             await model.syncHealth()
-            // path.isEmpty: skip when something already deep-linked a goal (e.g. the
-            // Today card's openGoal hook landed here with the detail pushed).
+            // Skip when something already deep-linked a goal (the Today card's openGoal hook).
             if DemoHooks.openGoal, !Self.didOpenGoal, path.isEmpty, let f = model.spotlight ?? model.visibleGoals.first {
                 Self.didOpenGoal = true; path.append(.goal(f))
             }
             if DemoHooks.newGoal, !Self.didOpenGoal { Self.didOpenGoal = true; creating = true }
         }
-        // GoalDetailView owns a SEPARATE model, so deletes / logged progress / step
-        // ticks / entry edits there don't touch this list's model. When the user pops
-        // back (path shrinks), reload the selected list so those changes show without a
-        // manual pull-to-refresh. Only fires on return — pushing in grows the path.
+        // GoalDetailView owns a SEPARATE model, so reload on return (path shrinks).
         .onChange(of: path) { oldPath, newPath in
             if newPath.count < oldPath.count { Task { await model.loadGoals() } }
         }
@@ -463,9 +436,8 @@ struct GoalsView: View {
                 Text("TOGETHER").font(.system(size: 10, weight: .heavy)).tracking(0.6).foregroundStyle(.white.opacity(0.8))
                 Spacer()
                 // Deliberately the POOLED lifetime pair, matching the web's EachHero: the
-                // server's period count has no `person_id` filter (it counts days ANYONE
-                // logged), so pairing it with a per-person cadence would mix scopes and
-                // could read "6/5". Each person's own axis lives in the rows below.
+                // server's period count has no `person_id` filter, so a per-person cadence
+                // beside it could read "6/5".
                 Text("\(goalFmt(g.totalProgress))/\(goalFmt(summedTarget))")
                     .font(.system(size: 15, weight: .heavy)).foregroundStyle(.white)
             }
@@ -578,8 +550,7 @@ struct GoalsView: View {
         .buttonStyle(.plain)
     }
 
-    /// A quick pin/unpin toggle on a card. Nested in the card button — SwiftUI routes the tap
-    /// to this inner button, so it doesn't open the goal.
+    /// A quick pin/unpin nested in the card button — SwiftUI routes the tap here, not to the goal.
     private func pinToggle(_ g: WaffledAPI.Goal) -> some View {
         Button { Task { await model.togglePin(g) } } label: {
             Image(systemName: g.isFeatured ? "pin.fill" : "pin")
@@ -597,27 +568,21 @@ struct GoalsView: View {
     }
 }
 
-/// Log progress — quick-amount chips, multi-select "Who", optional note. One log is
-/// written per selected person (so per-person sums roll up to the pool). WF-styled.
+/// Log progress. One log per selected person, so per-person sums roll up to the pool.
 struct GoalLogSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(SyncManager.self) private var sync
     let goal: WaffledAPI.Goal
-    /// (amount, hours, minutes, who, note, backdate). For a time goal, `hours`/`minutes`
-    /// carry the entry and the server converts; otherwise they're nil and `amount` is used.
-    /// Backdate is a YYYY-MM-DD string, or nil for today.
+    /// For a time goal `hours`/`minutes` carry the entry and the server converts; backdate is
+    /// YYYY-MM-DD, or nil for today.
     let onSave: (Double, Int?, Int?, [String], String, String?) -> Void
-    /// Called after a checklist step is ticked (the parent reloads to reflect it).
     var onChanged: (() -> Void)? = nil
 
     private let api = WaffledAPI()
     @State private var amount: Double
     @State private var amountText: String
-    /// Time goals are logged as hours + minutes; the server folds them into decimal hours.
-    /// The raw text is the single source of truth so a cleared field stays empty while
-    /// editing (value 0) instead of snapping back to the old number — it's only normalized
-    /// (via DurationEntry) when the field loses focus. The logged Ints are derived, never
-    /// stored, so text and value can't drift apart.
+    /// Time goals are logged as hours + minutes. The raw TEXT is the source of truth so a
+    /// cleared field stays empty while editing; the Ints are derived, normalized on focus loss.
     @State private var hoursText: String
     @State private var minutesText: String
     private var hours: Int { DurationEntry.value(of: hoursText) }
@@ -626,30 +591,20 @@ struct GoalLogSheet: View {
     @FocusState private var hmFocus: HMField?
     @State private var who: Set<String>
     @State private var note = ""
-    /// A checklist goal's steps (fetched on appear; ticking is the "log" for checklists).
     @State private var steps: [WaffledAPI.GoalDetail.Step] = []
     @State private var stepsLoaded = false
-    /// The day this entry counts for — defaults to today, backdate to catch up a streak.
     @State private var loggedOn = Date()
-    /// Tier-0 Apple Health read-&-suggest: today's total for a metric this goal's unit
-    /// matches, offered as a one-tap pre-fill. iPhone-only; nil = nothing to suggest.
+    /// Tier-0 Apple Health read-&-suggest, as a one-tap pre-fill. nil = nothing to suggest.
     @State private var healthSuggestion: (metric: HealthKitBridge.Metric, value: Double)?
-    /// This goal's own most-used notes (optionally scoped to the focus person), fetched on
-    /// appear and whenever the focus person changes. Blended ahead of the defaults below.
     @State private var noteSuggestions: [String] = []
 
     private static let hourUnits: Set<String> = ["hour", "hours", "hr", "hrs"]
-    /// Cold-start note chips — shown until this goal has enough of its own logged notes.
     private static let activityChips = ["Bike ride", "Park", "Sports", "Outside play", "Reading", "Art"]
-    /// How many note chips the row shows: suggestions fill it first, defaults top up the rest.
     private static let noteChipTarget = 6
 
-    /// Whose note history steers the suggestions: the single participant currently tapped,
-    /// else the logger themselves — mirroring the web log sheet.
+    /// Whose note history steers the suggestions: the participant tapped, else the logger.
     private var focusPerson: String? { who.count == 1 ? who.first : sync.currentPersonId }
 
-    /// The note chips actually rendered: this goal's own notes first, then the hardcoded
-    /// defaults topping up any remaining slots, de-duped case-insensitively.
     private var noteChips: [String] {
         var out: [String] = []
         var seen = Set<String>()
@@ -668,28 +623,20 @@ struct GoalLogSheet: View {
     private var isChecklist: Bool { goal.goalType == "checklist" }
     private var isHabit: Bool { goal.goalType == "habit" }
     private var isCount: Bool { goal.goalType == "count" }
-    /// A log must be credited to someone: when the goal has participants, at least one
-    /// must be picked (single-participant goals pre-select that person). A habit's "done"
-    /// still needs a who; count/total the same.
+    /// A log must be credited to someone: with participants, at least one must be picked.
     private var whoMissing: Bool { !goal.participants.isEmpty && who.isEmpty }
     private var isHours: Bool { goal.unit.map { Self.hourUnits.contains($0.lowercased()) } ?? false }
-    /// A total goal measured in hours — logged as hours + minutes.
     private var isTime: Bool { !isHabit && !isCount && isHours }
-    /// The amount actually logged: habit = 1 (one completion), count = whole units,
-    /// time = hours + minutes folded to decimal hours, total = entered.
     private var logAmount: Double { isHabit ? 1 : isCount ? max(1, amount.rounded()) : isTime ? (Double(hours) + Double(minutes) / 60) : amount }
-    /// "2h 10m" / "45m" / "1h" for time goals.
     private var durationLabel: String {
         hours > 0 && minutes > 0 ? "\(hours)h \(minutes)m" : hours > 0 ? "\(hours)h" : "\(minutes)m"
     }
     private var unitSuffix: String { goal.unit.map { " \($0)" } ?? "" }
-    // "Who" copy adapts to the goal's participant type (mirrors web LogModal).
     private var eachAdds: Bool { goal.trackingMode == "each_tracks" }
     private var isSplit: Bool { goal.trackingMode == "shared_total" && (goal.participantMode ?? "count_once") == "split" }
     private var whoLabel: String { eachAdds ? "Who took part?" : isSplit ? "Split between" : "Who was there?" }
-    /// Everyone picked has already ticked this habit off today, and the entry is dated
-    /// today — the server would silently drop it. Blocks the save, but only for TODAY:
-    /// backdating to catch up a missed day stays open (matching the web Log modal).
+    /// Everyone picked has already ticked this habit off today and the entry is dated today, so
+    /// the server would drop it. Blocks TODAY only — backdating a missed day stays open.
     private var blockedToday: Bool {
         GoalDisplay.doneToday(goal, who: who) && Cal.current.isDateInToday(loggedOn)
     }
@@ -704,24 +651,20 @@ struct GoalLogSheet: View {
         self.onSave = onSave
         self.onChanged = onChanged
         let isHours = goal.unit.map { GoalLogSheet.hourUnits.contains($0.lowercased()) } ?? false
-        // Habit/count start at 1 (one completion / one whole thing); an hours total at 1,
-        // any other total at 2.
+        // Habit/count start at 1; an hours total at 1, any other total at 2.
         let initial: Double = (goal.goalType == "habit" || goal.goalType == "count") ? 1 : (isHours ? 1 : 2)
         _amount = State(initialValue: initial)
         _amountText = State(initialValue: goalFmt(initial))
-        // A time goal (total measured in hours) starts at 1h 0m and is entered as hours + minutes.
         _hoursText = State(initialValue: (goal.goalType != "habit" && goal.goalType != "count" && isHours) ? "1" : "0")
         _minutesText = State(initialValue: "0")
         _who = State(initialValue: goal.participants.count == 1 ? [goal.participants[0].personId] : [])
     }
 
-    /// Tier-0 read-&-suggest: if HealthKit is available and this goal's unit maps to a
-    /// metric, pre-fetch today's total once. Denied/empty reads just leave it nil.
+    /// Pre-fetch today's total once when the unit maps to a metric; denied reads leave nil.
     private func loadHealthSuggestion() async {
         let hk = HealthKitBridge.shared
-        // The goal's stored link decides the metric; the unit heuristic is only the
-        // fallback for unlinked goals. (A cycling-distance goal's unit is "mi" too —
-        // matching(unit:) alone would suggest walk+run miles for it.)
+        // The goal's stored link decides the metric; the unit heuristic is only the fallback
+        // for unlinked goals (a cycling-distance goal's unit is "mi" too).
         guard hk.isAvailable,
               let metric = HealthKitBridge.Metric(key: goal.healthMetric)
                 ?? HealthKitBridge.Metric.matching(unit: goal.unit) else { return }
@@ -731,8 +674,6 @@ struct GoalLogSheet: View {
         }
     }
 
-    /// Load this goal's own note history for the chip row. A failed/empty fetch just leaves
-    /// the defaults in place. Skipped for checklists (they have no note field).
     private func loadNoteSuggestions() async {
         guard !isChecklist else { return }
         if let s = try? await api.goalNoteSuggestions(goalId: goal.id, personId: focusPerson) {
@@ -740,7 +681,6 @@ struct GoalLogSheet: View {
         }
     }
 
-    /// One-tap pre-fill from Apple Health — sets the amount; the user still credits + logs.
     private func healthSuggestionCard(_ s: (metric: HealthKitBridge.Metric, value: Double)) -> some View {
         Button {
             amount = s.value
@@ -800,8 +740,6 @@ struct GoalLogSheet: View {
             }
             .background(WF.canvas)
             .task { if isChecklist { await loadSteps() } else { await loadHealthSuggestion() } }
-            // Reload note suggestions whenever the focus person changes (a different
-            // participant tapped) so the box reflects whose history it's learning from.
             .task(id: focusPerson) { await loadNoteSuggestions() }
             .navigationTitle(isChecklist ? "Checklist" : "Log progress")
             .navigationBarTitleDisplayMode(.inline)
@@ -823,8 +761,7 @@ struct GoalLogSheet: View {
         .modifier(KioskSheetPresentation(kiosk: isKiosk))
     }
 
-    // Amount input adapts to the goal type: habit = one-tap, count = whole-unit stepper,
-    // total = quick chips + free entry.
+    // Amount input adapts to the goal type: habit = one-tap, count = stepper, total = chips.
     @ViewBuilder private var amountSection: some View {
         if isHabit {
             VStack(alignment: .leading, spacing: 9) {
@@ -837,8 +774,7 @@ struct GoalLogSheet: View {
                          : "One tap logs today’s completion — keep the streak going.")
                         .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
                     Spacer(minLength: 0)
-                    // Where the cadence stands right now, matching the web log modal:
-                    // this period's count, not the all-time one.
+                    // Where the cadence stands right now: THIS period's count, not all-time.
                     if let t = GoalDisplay.target(goal) {
                         Text("\(goalFmt(GoalDisplay.progress(goal)))/\(goalFmt(t))")
                             .font(.system(size: 14, weight: .heavy)).foregroundStyle(WF.primary)
@@ -863,8 +799,7 @@ struct GoalLogSheet: View {
                 }
             }
         } else if isTime {
-            // Time goal: quick chips + separate hours/minutes entry (server converts to
-            // decimal hours), so "10 min" never has to become 0.1666… here.
+            // Time goal: chips plus separate h/m entry, so "10 min" never becomes 0.1666…
             VStack(alignment: .leading, spacing: 9) {
                 SectionLabel(text: "How long?")
                 timeChipRow
@@ -892,9 +827,8 @@ struct GoalLogSheet: View {
                         .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                         .frame(width: 110)
-                        // Locale-aware ("2,5" on a comma-decimal pad); empty/unparsable = 0
-                        // (Log disables) — never the stale previous amount, which would
-                        // silently log a number the field no longer shows.
+                        // Locale-aware ("2,5" on a comma pad); empty/unparsable = 0 (Log
+                        // disables) — never the stale amount the field no longer shows.
                         .onChange(of: amountText) { _, new in amount = AmountEntry.value(of: new) }
                     if let u = goal.unit { Text(u).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3) }
                 }
@@ -902,12 +836,9 @@ struct GoalLogSheet: View {
         }
     }
 
-    /// A compact whole-number field for hours or minutes. Text-backed (not an Int
-    /// `format:` binding) so a cleared field stays empty while editing — the old Int
-    /// binding re-materialized the previous value the moment focus moved. The logged
-    /// Ints are *derived* from the text (see `hours`/`minutes`, empty = 0, minutes
-    /// capped at 59); the visible text is only normalized on focus loss (see the
-    /// `.onChange(of: hmFocus)`).
+    /// A compact whole-number field for hours or minutes. TEXT-backed, not an Int `format:`
+    /// binding, so a cleared field stays empty while editing; the Ints are derived and the
+    /// text is normalized only on focus loss.
     private func hmField(_ text: Binding<String>, unit: String, field: HMField) -> some View {
         HStack(spacing: 6) {
             TextField("0", text: text)
@@ -923,7 +854,6 @@ struct GoalLogSheet: View {
         }
     }
 
-    /// Quick-duration chips (30m / 1 hr / …) that set the hours + minutes fields.
     private var timeChipRow: some View {
         HStack(spacing: 8) {
             ForEach(chips, id: \.label) { c in
@@ -1048,8 +978,6 @@ struct GoalLogSheet: View {
         }
     }
 
-    /// Quick Today/Yesterday chips plus a compact picker for any earlier day — so a
-    /// missed log can be backdated without breaking the streak. Future days disabled.
     private var whenRow: some View {
         let cal = Cal.current
         let today = Date()
@@ -1088,8 +1016,8 @@ struct GoalLogSheet: View {
                             Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 24)
                             Text(goalFirstName(p.name)).font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(on ? WF.ink : WF.ink2)
-                            // Always render the checkmark and toggle visibility so the chip
-                            // width stays fixed on select (inserting it shifted neighbours).
+                            // Always render the checkmark and toggle visibility, so the chip
+                            // width stays fixed on select.
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 14)).foregroundStyle(WF.primary)
                                 .opacity(on ? 1 : 0)
@@ -1105,13 +1033,8 @@ struct GoalLogSheet: View {
     }
 }
 
-/// **Tier 2 — "track from Apple Health" picker.** The metric list is grouped by the goal
-/// type's shape (mock design): total/count get an "adds up automatically" grouping
-/// (Everyday / Distance / Workouts / …) while a habit gets a "counts qualifying days" one
-/// (rings first, then logged-each-day and workout days). Searchable; each row carries the
-/// user's *current* value (read live on appear) so they pick a goal around something real
-/// instead of guessing a number. Tapping one hands the metric back to the editor, which
-/// configures type/unit/target. iPhone-only.
+/// Tier 2 — "track from Apple Health" picker, grouped by the goal type's shape. Each row
+/// carries the user's CURRENT value, read live on appear, so the target is a real number.
 private struct HealthDataPickerSheet: View {
     let goalType: String
     var selected: HealthKitBridge.Metric? = nil
@@ -1122,7 +1045,6 @@ private struct HealthDataPickerSheet: View {
 
     private var isHabit: Bool { goalType == "habit" }
 
-    /// The goal-type sections, filtered down by the search text (on the visible names).
     private var sections: [(title: String, metrics: [HealthKitBridge.Metric])] {
         let base = HealthKitBridge.Metric.sections(forGoalType: goalType)
         let q = search.trimmingCharacters(in: .whitespaces).lowercased()
@@ -1137,7 +1059,6 @@ private struct HealthDataPickerSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                // The mock's under-title caption: what picking here *means* per goal shape.
                 Section {} footer: {
                     Text(isHabit ? "Counts qualifying days — pick one habit." : "Adds up automatically — pick one metric.")
                         .font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink2)
@@ -1148,8 +1069,6 @@ private struct HealthDataPickerSheet: View {
                     } header: {
                         Text(section.title)
                     } footer: {
-                        // Discoverability: on a total, workouts can only sum minutes — point
-                        // at the Count goal type, where the same activities count sessions.
                         if section.title == "Workouts" && goalType == "total" {
                             Text("Counting workouts instead? Make the goal a **Count** and these track sessions — “swim 12 times this month”.")
                         }
@@ -1166,7 +1085,7 @@ private struct HealthDataPickerSheet: View {
 
     private func row(_ m: HealthKitBridge.Metric) -> some View {
         // A habit lists the sessions measure, but the goal may be linked to the minutes
-        // sibling ("at least 45 min of yoga") — the activity's row is still "its" row.
+        // sibling — the activity's row is still "its" row.
         let on = m == selected || (selected != nil && m.workoutSibling == selected)
         return Button { onPick(m) } label: {
             HStack(spacing: 12) {
@@ -1174,8 +1093,6 @@ private struct HealthDataPickerSheet: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(m.chipLabel).font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(on ? WF.ai : WF.ink)
-                    // "Fills in miles" until THIS row's live read lands (reads fan out
-                    // and publish per-metric), then "3.2 mi today".
                     Text(values[m.key].map { m.formatCurrent($0) } ?? "Fills in \(isHabit ? "days" : m.label)")
                         .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
                 }
@@ -1189,9 +1106,8 @@ private struct HealthDataPickerSheet: View {
     private func load() async {
         _ = try? await HealthKitBridge.shared.requestReadAuthorization()
         let metrics = HealthKitBridge.Metric.sections(forGoalType: goalType).flatMap(\.metrics)
-        // Fan the reads out (rows appear as each lands — total wait is the slowest
-        // query, not the sum) and fetch the day's workouts ONCE: every workout row is
-        // derived from that single list in pure code instead of its own HKSampleQuery.
+        // Fan the reads out (rows appear as each lands) and fetch the day's workouts ONCE:
+        // every workout row is derived from that single list in pure code.
         async let workoutDay = HealthKitBridge.shared.workoutsOfDay(Date())
         await withTaskGroup(of: (String, Double?).self) { group in
             for m in metrics where !m.isWorkout {
@@ -1206,20 +1122,21 @@ private struct HealthDataPickerSheet: View {
     }
 }
 
-/// New goal — title, who-it's-for (goal list), shared/each, type + measure,
-/// category, feature + rewards toggles with an inline milestone editor. Mirrors the
-/// web GoalCreate, folded into one scrollable sheet. WF-styled.
+/// New goal — mirrors the web GoalCreate in one scrollable sheet.
 struct GoalCreateSheet: View {
     @Environment(\.dismiss) private var dismiss
     let lists: [WaffledAPI.GoalList]
     let defaultListId: String?
     let members: [SyncedMember]
-    /// When set, the sheet prefills from this goal and reads as "Edit goal".
     var editGoal: WaffledAPI.GoalDetail? = nil
+    /// When set, the goal's list is FIXED and the picker is not offered — for a host whose own
+    /// question is already per-group, so nobody answers a different group's by accident.
+    var lockedListId: String? = nil
+    /// Start on the Pinned tier: the planning step reads a list's lone pin as its focus.
+    var startFeatured: Bool = false
     let onSubmit: ([String: JSONValue], String?) -> Void
 
     @State private var didPrefill = false
-    /// A local copy of the lists so a just-created group shows up immediately.
     @State private var localLists: [WaffledAPI.GoalList] = []
     @State private var creatingList = false
 
@@ -1239,11 +1156,8 @@ struct GoalCreateSheet: View {
 
     struct Milestone: Identifiable { let id = UUID(); var emoji: String; var threshold: String; var reward: String }
 
-    /// Auto-derived starter milestones. Per product note: split the goal's *number*
-    /// into sensible checkpoints and leave the reward text BLANK — goals stay about
-    /// growth, so the family fills in a reward only if they want one. Amount goals get
-    /// three nice-rounded thirds of the target (last node = the target itself); streak
-    /// and percent types get their own natural checkpoints.
+    /// Auto-derived starter milestones: split the goal's NUMBER into checkpoints, reward text
+    /// BLANK. Amount goals get three nice-rounded thirds (last = the target).
     static func derivedMilestones(type: String, target: Int) -> [Milestone] {
         switch type {
         case "habit": // threshold = 🔥 streak days
@@ -1257,8 +1171,7 @@ struct GoalCreateSheet: View {
         }
     }
 
-    /// Three ascending checkpoints for a numeric target: two nice-rounded thirds plus
-    /// the target itself. 300 → 100/200/300, 750 → 250/500/750, 1000 → 250/500/1000.
+    /// Three ascending checkpoints: two nice-rounded thirds plus the target (300 → 100/200/300).
     static func niceThirds(_ target: Int) -> [Int] {
         guard target > 1 else { return [max(target, 1)] }
         var out: [Int] = []
@@ -1270,8 +1183,7 @@ struct GoalCreateSheet: View {
         return out
     }
 
-    /// Round to a "nice" number — the leading digit snapped to 1 / 2 / 2.5 / 5 / 10.
-    /// (Hand-rolled base extraction so we don't lean on `pow`/`log10`.)
+    /// Round to a "nice" number — leading digit snapped to 1/2/2.5/5/10, without `pow`/`log10`.
     static func niceRound(_ v: Double) -> Int {
         guard v > 0 else { return 0 }
         var n = v, base = 1.0
@@ -1281,20 +1193,16 @@ struct GoalCreateSheet: View {
         return Int((nice * base).rounded())
     }
 
-    /// Stable signature of a milestone set — lets us tell whether the user has
-    /// hand-edited the auto-derived milestones (if so we stop re-deriving them).
+    /// Stable signature of a milestone set — tells whether the user hand-edited the derived one.
     static func signature(_ ms: [Milestone]) -> String {
         ms.map { "\($0.emoji)|\($0.threshold)|\($0.reward)" }.joined(separator: ";")
     }
-    /// A checklist step. `existingId` is the server id when editing (so steps are
-    /// updated, not recreated); nil for newly added rows.
+    /// A checklist step. `existingId` is the server id when editing, so steps are updated.
     struct Step: Identifiable { let id = UUID(); var existingId: String?; var label: String }
 
     @State private var title = ""
     @State private var goalListId: String?
-    // Counting model (mirrors web). Default "each tracks their own" (per-person basis),
-    // matching the design mock; users flip to "One shared total" + a measure-aware
-    // counting choice below the measure picker.
+    // Counting model (mirrors web), defaulting to "each tracks their own".
     @State private var trackingMode = "each_tracks"
     @State private var participantMode = "count_once"
     @State private var targetBasis = "per_person"
@@ -1306,20 +1214,16 @@ struct GoalCreateSheet: View {
     @State private var category = "physical"
     @State private var hasDeadline = false
     @State private var deadline = Date()
-    // Tier defaults to Normal — elevating to Pinned/Spotlight is an intentional choice.
     @State private var isFeatured = false
     @State private var isSpotlight = false
-    /// The selected list's current spotlight (a different goal), so picking Spotlight can name it.
     @State private var listSpotlightTitle: String?
     private let tierApi = WaffledAPI()
     @State private var hasRewards = false
-    // Calendar auto-count defaults ON (product decision): most goals benefit from
-    // matching events adding progress, and it's still one tap to turn off.
+    // Calendar auto-count defaults ON (product decision); it is still one tap to turn off.
     @State private var autoFromCalendar = true
     @State private var milestones: [Milestone] = GoalCreateSheet.derivedMilestones(type: "total", target: 1000)
-    // Signature of the last auto-derived milestone set. While `milestones` still
-    // matches it, changing the target/type re-derives them; once the user hand-edits
-    // a milestone the signature diverges and auto-derivation stops.
+    // Signature of the last auto-derived set: while `milestones` matches, a target/type
+    // change re-derives; once hand-edited it diverges and auto-derivation stops.
     @State private var lastDerivedSig = GoalCreateSheet.signature(GoalCreateSheet.derivedMilestones(type: "total", target: 1000))
     @State private var steps: [Step] = [
         .init(existingId: nil, label: ""), .init(existingId: nil, label: ""), .init(existingId: nil, label: ""),
@@ -1332,14 +1236,12 @@ struct GoalCreateSheet: View {
     // ── counting model (mirrors web) ───────────────────────────────────────────
     private var selectedList: WaffledAPI.GoalList? { localLists.first { $0.id == goalListId } }
     private var participantCount: Int { selectedList?.members.count ?? editGoal?.participants.count ?? 0 }
-    /// Shared-vs-each derived from the backend fields. "Each tracks their own" is the
-    /// per-person basis for total/count, or plain each_tracks for habit/checklist.
+    /// Shared-vs-each from the backend fields: the per-person basis, or plain each_tracks.
     private var shared: Bool {
         (goalType == "total" || goalType == "count")
             ? !(trackingMode == "each_tracks" && targetBasis == "per_person")
             : trackingMode != "each_tracks"
     }
-    /// The measure-aware count sub-choice: total → full|split, count → each|once.
     private var countChoice: String {
         goalType == "total" ? (trackingMode == "each_tracks" ? "full" : "split")
             : (trackingMode == "each_tracks" ? "each" : "once")
@@ -1364,8 +1266,7 @@ struct GoalCreateSheet: View {
             trackingMode = "shared_total"; targetBasis = "family"; participantMode = "count_once"
         }
     }
-    /// Switch measure; fit the unit (Count shouldn't inherit the Total "hours" default)
-    /// and re-normalize the counting fields for the new measure.
+    /// Switch measure; fit the unit (Count shouldn't inherit Total's "hours") and re-normalize.
     private func selectMeasure(_ key: String) {
         if key == "count", unit == "hours" || unit.isEmpty { unit = "" }
         else if key == "total", unit.isEmpty { unit = "hours" }
@@ -1374,30 +1275,22 @@ struct GoalCreateSheet: View {
         if wasShared { setSharedMode() } else { setEachMode() }
     }
 
-    /// Apple Health metric this goal auto-tracks (Tier 1 discoverable picker). Picking one
-    /// sets the unit + a suggested target — no typing — and, since the unit then matches,
-    /// the Log sheet's read-&-suggest card lights up. iPhone-only (HealthKit is absent on
-    /// iPad); `nil` = "Manual". The link is carried by the unit today; a persisted
-    /// health_metric column + auto-sync are the next slice (see docs/design/healthkit-goals.md).
+    /// Apple Health metric this goal auto-tracks: picking one sets the unit and a suggested
+    /// target, which is also what lights up the Log sheet's read-&-suggest. iPhone-only.
     @State private var healthMetric: HealthKitBridge.Metric?
     @State private var autoFromHealth = false
-    /// Daily threshold for a health-linked *habit* ("2,000 steps a day"). Unused by
-    /// total/count goals, which accumulate toward `target` instead.
+    /// Daily threshold for a health-linked HABIT; total/count accumulate toward `target`.
     @State private var healthDailyTarget = ""
-    /// Presents the "set a goal from your Health data" discovery picker (Piece 1).
     @State private var showHealthPicker = false
     private var healthAvailable: Bool { HealthKitBridge.shared.isAvailable }
-    /// The selected metric only when it actually fits this goal type — the gate the link +
-    /// daily target are sent under, so a stranded pick (ring on a total goal) never posts.
+    /// The metric only when it fits this goal type — the gate the link is sent under, so a
+    /// stranded pick never posts.
     private var activeHealthMetric: HealthKitBridge.Metric? {
         guard canAutoFromHealth, autoFromHealth, let m = healthMetric, m.applies(toGoalType: goalType) else { return nil }
         return m
     }
-    /// Health auto-fill applies to numeric goals (accumulate) and habits (daily
-    /// threshold), but not checklists — and only on a device with HealthKit (iPhone).
     private var canAutoFromHealth: Bool { healthAvailable && !isChecklist }
 
-    /// Mirrors the web's per-type validation: a name, plus a valid measure.
     private var canSave: Bool {
         guard !title.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
         switch goalType {
@@ -1417,8 +1310,7 @@ struct GoalCreateSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                // iPad keeps Create in the nav bar; iPhone moves it to the pinned
-                // bottom bar (matching the mobile mock), so no confirmationAction there.
+                // iPad keeps Create in the nav bar; iPhone moves it to the pinned bottom bar.
                 if isKiosk {
                     ToolbarItem(placement: .confirmationAction) {
                         Button(editGoal == nil ? "Create" : "Save") { submit() }.fontWeight(.semibold).disabled(!canSave)
@@ -1426,11 +1318,9 @@ struct GoalCreateSheet: View {
                 }
             }
             .onAppear(perform: prefill)
-            // New goal: land in the name field. (Edits keep the keyboard down.)
             .task { if editGoal == nil { try? await Task.sleep(for: .milliseconds(300)); titleFocused = true } }
             .task(id: goalListId) { await loadListSpotlight() }
-            // Auto-derived milestones track the target/type until the user hand-edits
-            // them (see `reDeriveIfUntouched`). Create only — edits keep the goal's own.
+            // Auto-derived milestones track target/type until hand-edited. Create only.
             .onChange(of: goalType) { _, _ in reDeriveIfUntouched() }
             .onChange(of: target) { _, _ in reDeriveIfUntouched() }
             .onChange(of: hasRewards) { _, on in if on { reDeriveIfUntouched() } }
@@ -1446,8 +1336,6 @@ struct GoalCreateSheet: View {
 
     // MARK: layout — iPhone (single column, sticky preview, pinned CTA) vs iPad (two-pane)
 
-    /// iPhone: a scrolling single column with the compact live preview pinned to the
-    /// top and a full-width "Create goal" button pinned to the bottom (mobile mock).
     private var iPhoneBody: some View {
         ScrollView {
             formColumn(showNameHint: false)
@@ -1462,8 +1350,6 @@ struct GoalCreateSheet: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
     }
 
-    /// iPad: a focused form column on the left, a generous live-preview stage on the
-    /// right (the "web" redesign layout). Create stays in the nav bar.
     private var iPadBody: some View {
         HStack(spacing: 0) {
             ScrollView {
@@ -1492,8 +1378,6 @@ struct GoalCreateSheet: View {
         .overlay(alignment: .leading) { Rectangle().fill(WF.hair).frame(width: 1) }
     }
 
-    /// The shared form sections. `showNameHint` adds the extra name subtitle the iPad
-    /// mock carries; the iPhone mock omits it.
     private func formColumn(showNameHint: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             mockSection("Name your goal", hint: showNameHint ? "A short, motivating title your family will see." : nil, first: true) {
@@ -1505,14 +1389,17 @@ struct GoalCreateSheet: View {
                     .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1.5))
                     .wfShadow1()
             }
-            mockSection("Who’s it for?", hint: "Pick a goal list — the people in it share this goal.") {
-                whoChips
+            mockSection(
+                "Who’s it for?",
+                hint: lockedListId == nil
+                    ? "Pick a goal list — the people in it share this goal."
+                    : "The group you’re planning for — this goal joins it."
+            ) {
+                if lockedListId == nil { whoChips } else { lockedWhoChip }
             }
             mockSection("How do you measure it?", hint: "This shapes how progress is logged and shown.") {
                 measureCards
                 measureRow.padding(.top, 4)
-                // Shared-vs-each lives below the measure — it only matters once a measure
-                // with a per-person dimension is chosen (hidden for a checklist).
                 if participantCount > 1 && !isChecklist { shareSegment.padding(.top, 14) }
                 countReveal
             }
@@ -1521,8 +1408,7 @@ struct GoalCreateSheet: View {
         }
     }
 
-    /// A form section in the redesign style: a hairline top rule (except the first),
-    /// a bold sentence-case title, an optional gray hint, then content.
+    /// A form section: hairline top rule (except the first), bold title, optional hint, content.
     private func mockSection<V: View>(_ title: String, hint: String?, first: Bool = false, @ViewBuilder _ content: () -> V) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if !first { Rectangle().fill(WF.hair2).frame(height: 1).padding(.bottom, 18) }
@@ -1534,8 +1420,6 @@ struct GoalCreateSheet: View {
             content().padding(.top, 12)
         }
         .padding(.top, first ? 8 : 0)
-        // Breathing room before the next section's hairline rule, so fields
-        // (e.g. the deadline picker) don't butt straight up against it.
         .padding(.bottom, 22)
     }
 
@@ -1591,10 +1475,8 @@ struct GoalCreateSheet: View {
         }
     }
 
-    /// The "Counting" card + picker revealed when "Auto-fill from Apple Health" is on
-    /// (Extras). No "Manual" choice — the toggle off = manual. The selected metric shows
-    /// as a tappable row (mock design) that opens the grouped "Track from Apple Health"
-    /// sheet; picking fills the unit + a suggested target automatically.
+    /// The "Counting" card + picker, revealed when Apple Health auto-fill is on. No "Manual"
+    /// choice: the toggle off IS manual.
     private var healthMetricChips: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(isHabit ? "Waffled fills qualifying days in the background — pick what counts a day."
@@ -1608,7 +1490,6 @@ struct GoalCreateSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if isHabit { habitQualification(m) }
             }
-            // "Set a goal from your Health data": the same sheet, framed as discovery.
             Button { showHealthPicker = true } label: {
                 Text("See your Health data →")
                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ai)
@@ -1623,9 +1504,8 @@ struct GoalCreateSheet: View {
             }
             .buttonStyle(.plain)
         }
-        // A goal-type switch can strand the selected metric. A workout pick swaps to its
-        // sibling measure (swim-minutes total → swim-sessions count); anything else falls
-        // back to steps, which fits every numeric/habit goal.
+        // A goal-type switch can strand the metric: a workout pick swaps to its sibling
+        // measure, anything else falls back to steps.
         .onChange(of: goalType) { _, newType in
             if let m = healthMetric, !m.applies(toGoalType: newType) {
                 if let sib = m.workoutSibling, sib.applies(toGoalType: newType) { selectHealthMetric(sib) }
@@ -1637,8 +1517,6 @@ struct GoalCreateSheet: View {
         }
     }
 
-    /// The selected-metric card (mock): emoji tile, COUNTING overline, name, what it
-    /// fills in. Tapping opens the picker.
     private var countingRow: some View {
         let m = healthMetric ?? .steps
         return Button { showHealthPicker = true } label: {
@@ -1659,10 +1537,8 @@ struct GoalCreateSheet: View {
         .buttonStyle(.plain)
     }
 
-    /// How a habit day qualifies. Boolean metrics (rings/mood) are met/not-met — nothing
-    /// to set. A workout picks between its two measures via the sibling keys: any session
-    /// counts the day, or a daily-minutes threshold. Other quantities keep the
-    /// daily-amount field ("2,000 steps a day"), paired with the "N× a week" cadence.
+    /// How a habit day qualifies. Boolean metrics are met/not-met; a workout picks between
+    /// its sibling measures; other quantities keep the daily-amount field.
     @ViewBuilder private func habitQualification(_ m: HealthKitBridge.Metric) -> some View {
         if m.isWorkout {
             HStack(spacing: 8) {
@@ -1701,14 +1577,11 @@ struct GoalCreateSheet: View {
         .buttonStyle(.plain)
     }
 
-    /// Picking a metric fills a sensible default (a habit's daily threshold, or a numeric
-    /// goal's unit + target) and requests read access now (so consent happens at opt-in).
-    /// Boolean metrics (rings/mood) carry an implicit threshold of 1 (met/not).
+    /// Picking a metric fills a default and requests read access now, so consent is at opt-in.
     private func selectHealthMetric(_ m: HealthKitBridge.Metric) {
         let changed = healthMetric != m
-        // A measure flip on the SAME activity (the habit qualification pills, or tapping
-        // the goal's own activity in the picker) must not wipe a hand-set minutes bar.
-        // Compared against the OUTGOING metric, so it must precede the assignment.
+        // A measure flip on the SAME activity must not wipe a hand-set minutes bar. Compared
+        // against the OUTGOING metric, so it must precede the assignment.
         let sameWorkoutActivity = changed && m.workout != nil
             && m.workout?.activity == healthMetric?.workout?.activity
         healthMetric = m
@@ -1716,19 +1589,16 @@ struct GoalCreateSheet: View {
             if m.isBoolean {
                 healthDailyTarget = "1"
             } else if sameWorkoutActivity {
-                // Sessions ignore the field (any workout qualifies; the payload sends 1),
-                // so only top up a missing/degenerate value when flipping TO minutes.
+                // Sessions ignore the field (the payload sends 1), so top up only for minutes.
                 if m.workoutMeasure == .minutes, (Int(healthDailyTarget) ?? 0) <= 1 {
                     healthDailyTarget = String(m.suggestedDailyTarget)
                 }
             } else if changed || healthDailyTarget.trimmingCharacters(in: .whitespaces).isEmpty {
-                // Daily bar, not the goal target: a workout-sessions habit is "any workout
-                // that day" (1); a workout-minutes habit a modest daily 30.
+                // Daily bar, not the goal target: a sessions habit is "any workout that day".
                 healthDailyTarget = String(m.suggestedDailyTarget)
             }
         } else if m.isBoolean {
-            // A boolean on a *count* goal accumulates met-days ("close the ring 15×"):
-            // the unit is days and the target is a count, not the per-day met-value of 1.
+            // A boolean on a COUNT goal accumulates met-days: unit days, target a count.
             unit = "days"
             if changed || target.trimmingCharacters(in: .whitespaces).isEmpty { target = "20" }
         } else {
@@ -1738,15 +1608,11 @@ struct GoalCreateSheet: View {
         Task { try? await HealthKitBridge.shared.requestReadAuthorization() }
     }
 
-    /// Chosen from the "See your Health data" picker: configure the goal around the metric —
-    /// turn auto-fill on, seed a title, and select it. If the current goal type can't take
-    /// the metric (e.g. a ring on a total), fall to habit; a boolean already on a count goal
-    /// stays a count ("close the ring 15×").
+    /// Chosen from the "See your Health data" picker. If the goal type can't take the metric,
+    /// fall to habit; a boolean on a count goal stays.
     private func pickFromHealth(_ m: HealthKitBridge.Metric) {
-        // The picker lists one row per activity (a habit shows the sessions sibling of a
-        // minutes-configured goal), so tapping the already-linked metric — or its
-        // sibling — is a confirmation, not a measure reset that would wipe the
-        // minutes bar back to a default.
+        // The picker lists one row per activity, so tapping the linked metric is a
+        // confirmation, not a measure reset that would wipe the minutes bar.
         if m == healthMetric || (m.workoutSibling != nil && m.workoutSibling == healthMetric) {
             showHealthPicker = false
             return
@@ -1758,7 +1624,6 @@ struct GoalCreateSheet: View {
         showHealthPicker = false
     }
 
-    /// Named checklist steps (matches the web): numbered rows you edit + add to.
     private var stepsEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(steps.enumerated()), id: \.element.id) { idx, _ in
@@ -1832,6 +1697,18 @@ struct GoalCreateSheet: View {
         }
     }
 
+    /// The group, stated: shown in place of the picker when the host fixed the list.
+    private var lockedWhoChip: some View {
+        HStack(spacing: 7) {
+            AvatarStack(members: selectedList?.members ?? [], size: 20)
+            Text(selectedList?.name ?? "This group").font(.system(size: 13, weight: .semibold))
+        }
+        .foregroundStyle(WF.ink)
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .wfChip(selected: true)
+        .accessibilityLabel("This goal joins \(selectedList?.name ?? "this group")")
+    }
+
     private var shareSegment: some View {
         HStack(spacing: 4) {
             segButton(isHabit ? "One shared streak" : "One shared total", selected: shared) { setSharedMode() }
@@ -1896,7 +1773,6 @@ struct GoalCreateSheet: View {
         }
         .buttonStyle(.plain)
     }
-    /// Per-row example with the arithmetic delta highlighted (mirrors web `.rex b`).
     private func countExample(_ k: String) -> Text {
         let u = unitOrDefault
         let pre: String, bold: String, post: String
@@ -1972,7 +1848,6 @@ struct GoalCreateSheet: View {
         }
     }
 
-    /// Measure type cards — a single column on iPhone, a 2-up grid on iPad.
     @ViewBuilder private var measureCards: some View {
         if isKiosk {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], alignment: .leading, spacing: 10) {
@@ -1999,7 +1874,6 @@ struct GoalCreateSheet: View {
         case .normal:    return "Lives in the goals list with everything else."
         }
     }
-    /// Look up the list's current spotlight (a different goal) so the picker can name it.
     private func loadListSpotlight() async {
         guard let lid = goalListId else { listSpotlightTitle = nil; return }
         let gs = (try? await tierApi.goalsIn(listId: lid)) ?? []
@@ -2039,16 +1913,12 @@ struct GoalCreateSheet: View {
             Divider().overlay(WF.hair)
             extraRow("🏆", "Milestones & rewards", "Bonus stars at thresholds you set", $hasRewards)
             if hasRewards { milestoneEditor.padding(.top, 4).padding(.bottom, 10) }
-            // Auto-count is offered for total/count/habit only — a checklist's progress
-            // comes from ticking steps, not from calendar events.
+            // total/count/habit only — a checklist's progress comes from ticking steps.
             if !isChecklist {
                 extraRow("📅", "Auto-count from calendar", "Matching events add progress automatically", $autoFromCalendar)
             }
-            // Apple Health auto-fill — an opt-in enhancement alongside calendar auto-count.
-            // Off = you log manually; on = pick a metric and progress fills from Health.
-            // iPhone-only + numeric goals only. The custom binding runs the pick/clear only
-            // on a real user toggle (prefill sets the @State directly, so it can't clobber
-            // a saved target).
+            // Apple Health auto-fill: iPhone-only, numeric goals only. The custom binding runs
+            // the pick/clear only on a real user toggle, so a prefill can't clobber a target.
             if canAutoFromHealth {
                 extraRow("⌚", "Auto-fill from Apple Health", "Progress fills from your iPhone & Apple Watch",
                          Binding(get: { autoFromHealth }, set: { on in
@@ -2057,8 +1927,7 @@ struct GoalCreateSheet: View {
                          }))
                 if autoFromHealth { healthMetricChips.padding(.top, 4).padding(.bottom, 10) }
             }
-            // NOTE: the mock's "🔔 Weekly check-in" toggle is intentionally omitted —
-            // there's no backend for it yet (tracked in docs/product/roadmap.md).
+            // The mock's "🔔 Weekly check-in" toggle is omitted: no backend for it yet.
             Text("Rewards are off by default — goals stay about growth, not points. Turn them on per goal when a little extra motivation helps.")
                 .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
                 .fixedSize(horizontal: false, vertical: true)
@@ -2082,8 +1951,6 @@ struct GoalCreateSheet: View {
         }
     }
 
-    /// Re-derive the starter milestones from the current target/type — but only while
-    /// the user hasn't hand-edited them (signature still matches the last derived set).
     private func reDeriveIfUntouched() {
         guard editGoal == nil else { return }
         guard Self.signature(milestones) == lastDerivedSig else { return }
@@ -2123,7 +1990,6 @@ struct GoalCreateSheet: View {
         }
     }
 
-    /// The pinned compact preview at the top of the iPhone form.
     private var compactPreview: some View {
         let shared = trackingMode == "shared_total"
         let feat = tier != .normal // Spotlight or Pinned both get the elevated coral preview
@@ -2162,8 +2028,6 @@ struct GoalCreateSheet: View {
             .overlay(alignment: .top) { Rectangle().fill(WF.hair).frame(height: 1) }
     }
 
-    /// The generous iPad preview: hero (featured) or plain card, an optional milestone
-    /// track, and a "where it lives" caption.
     private var generousPreview: some View {
         let shared = trackingMode == "shared_total"
         return VStack(alignment: .leading, spacing: 16) {
@@ -2267,7 +2131,6 @@ struct GoalCreateSheet: View {
         .wfShadow1()
     }
 
-    /// What a milestone's "number" means for the current goal type (mirrors the web).
     private var milestoneHint: String {
         switch goalType {
         case "habit":
@@ -2316,13 +2179,14 @@ struct GoalCreateSheet: View {
         }
     }
 
-    /// One-shot prefill: defaults for create, the existing goal's values for edit.
     private func prefill() {
         guard !didPrefill else { return }
         didPrefill = true
         if localLists.isEmpty { localLists = lists }
         guard let g = editGoal else {
-            if goalListId == nil { goalListId = defaultListId ?? lists.first?.id }
+            if goalListId == nil { goalListId = lockedListId ?? defaultListId ?? lists.first?.id }
+            // Set here rather than as a `@State` default, so the tier picker shows Pinned.
+            if startFeatured { isFeatured = true }
             return
         }
         title = g.title
@@ -2349,20 +2213,15 @@ struct GoalCreateSheet: View {
         if !g.steps.isEmpty {
             steps = g.steps.map { .init(existingId: $0.id, label: $0.label) }
         }
-        // Restore the health auto-fill selection from the persisted link (falling back to
-        // unit-matching for goals created before health_metric existed). Set the @State
-        // directly (not via the toggle's binding) so the saved target isn't overwritten.
+        // Restore the health selection from the persisted link. Set the @State directly, so
+        // the saved target isn't overwritten.
         healthMetric = HealthKitBridge.Metric(key: g.healthMetric) ?? HealthKitBridge.Metric.matching(unit: unit)
         autoFromHealth = healthMetric != nil
         if let t = g.healthDailyTarget { healthDailyTarget = goalFmt(t) }
     }
 
-    /// A deadline is a bare calendar day, and the DatePicker that shows it renders in
-    /// the DEVICE's zone — so it is read in that zone too. Read as UTC it became an
-    /// instant, and behind UTC that instant is the previous day: a goal due Sep 30
-    /// opened the sheet showing Sep 29, and "correcting" it back to Sep 30 saved Oct 1.
-    /// Optional-returning on purpose: `deadline` is optional on the wire, and a
-    /// malformed one should leave the field unset rather than blow up.
+    /// A deadline is a bare calendar day and the DatePicker renders in the DEVICE's zone, so
+    /// it is read in that zone too — read as UTC, behind UTC, it becomes the previous day.
     private static func parseDay(_ iso: String) -> Date? {
         DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", .current)
     }
@@ -2384,13 +2243,9 @@ struct GoalCreateSheet: View {
             // Checklist progress comes from steps, never from the calendar.
             "autoFromCalendar": .bool(isChecklist ? false : autoFromCalendar),
             "unit": (isHabit || isChecklist) ? .null : (unit.trimmingCharacters(in: .whitespaces).isEmpty ? .null : .string(unit.trimmingCharacters(in: .whitespaces))),
-            // Apple Health link. Null when off/manual or stranded — including on edit, so
-            // turning the toggle off (or switching to an incompatible type) clears it server-side.
+            // Apple Health link. Null when off/manual or stranded, including on edit.
             "healthMetric": activeHealthMetric.map { .string($0.key) } ?? .null,
-            // Daily threshold only for a health-linked habit; null everywhere else.
-            // A sessions habit qualifies with ANY workout that day (threshold 1); the
-            // text field keeps holding the user's minutes bar so a measure flip
-            // round-trips without losing it.
+            // Daily threshold only for a health-linked habit; a sessions habit sends 1.
             "healthDailyTarget": (activeHealthMetric != nil && isHabit)
                 ? (activeHealthMetric?.workoutMeasure == .sessions
                     ? .double(1)
@@ -2430,25 +2285,20 @@ struct GoalCreateSheet: View {
         dismiss()
     }
 
-    /// Formatted in the same zone the picker showed the day in — see `parseDay`.
     private func isoDay(_ d: Date) -> String { DateFmt.string(d, "yyyy-MM-dd", .current) }
 }
 
 // MARK: - Goal detail
 
-/// Edit or delete a single logged entry — amount, who took part, note, and date.
-/// Mirrors the web EntryModal. (A checklist tick isn't editable here — it's a step.)
+/// Edit or delete a single logged entry. A checklist tick isn't editable here; it is a step.
 struct GoalEntryEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     let entry: WaffledAPI.GoalDetail.LogEntry
     let participants: [WaffledAPI.Goal.Participant]
     let goalType: String
     let unit: String?
-    /// (amount?, personIds?, note, loggedOn as YYYY-MM-DD) — returns the server's reason
-    /// when it refuses, or nil on success. The sheet stays open on a refusal so the note
-    /// you typed is still there to retry with, the way the web modal has always behaved;
-    /// dismissing first and raising an alert behind the sheet raced its own dismissal
-    /// animation, which is how a refusal came to show nothing at all.
+    /// Returns the server's reason when it refuses, nil on success. The sheet STAYS OPEN on a
+    /// refusal so the typed note is there to retry with; dismissing first raced the animation.
     let onSave: @MainActor (Double?, [String]?, String, String) async -> String?
     let onDelete: @MainActor () async -> String?
 
@@ -2463,8 +2313,7 @@ struct GoalEntryEditSheet: View {
 
     private var isCount: Bool { goalType == "count" }
     /// An entry the server owns (checklist tick, calendar confirm, Health sync) keeps its
-    /// amount, day and people — the thing that wrote it is the source of truth, and other
-    /// rows point at it. The note is still the user's own text, so that's all we show.
+    /// amount, day and people; only the note is the user's own text.
     private var locked: Bool { entry.editable == false }
     private var numeric: Bool { !locked && (goalType == "total" || goalType == "count") }
     private var showWho: Bool { !locked && participants.count > 1 }
@@ -2482,18 +2331,9 @@ struct GoalEntryEditSheet: View {
         _amountText = State(initialValue: goalFmt(entry.amount))
         _who = State(initialValue: Set(entry.participants.compactMap { $0.personId }))
         _note = State(initialValue: entry.note ?? "")
-        // The day this entry belongs to is `dateKey` — the household's own day, the one
-        // the day cells and the activity views bucket by. Re-parsing `loggedAt` (a UTC
-        // instant) put an evening log on tomorrow's date, and since a save always sends
-        // `loggedOn`, editing just the note moved the entry off the day you were looking
-        // at. No `loggedAt` fallback here on purpose: `dateKey` is non-optional on a
-        // strictly-decoded DTO, so a server too old to send it fails to decode the whole
-        // payload long before this — a fallback would only ever be dead code.
-        //
-        // Parsed in the DEVICE's calendar, via the same `GoalDateKey` the heatmaps use,
-        // because that is the zone the DatePicker below renders in. Reading the key as a
-        // UTC instant made the picker show the day BEFORE for every household behind UTC
-        // — the same off-by-a-day this fix is about, just at the other end.
+        // The day this entry belongs to is `dateKey` — the household's own day, the one the day
+        // cells bucket by. Re-parsing `loggedAt` (a UTC instant) puts an evening log on tomorrow,
+        // and a save always sends `loggedOn`. Parsed via `GoalDateKey`, the DatePicker's zone.
         _loggedOn = State(initialValue: GoalDateKey.parse(String(entry.dateKey.prefix(10))))
     }
 
@@ -2519,8 +2359,7 @@ struct GoalEntryEditSheet: View {
                                         .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                                         .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                                         .frame(width: 120)
-                                        // Locale-aware ("2,5"); empty/unparsable = 0 (Save disables)
-                                        // — never the stale previous amount the field no longer shows.
+                                        // Locale-aware; empty/unparsable = 0 (Save disables), never the stale amount.
                                         .onChange(of: amountText) { _, new in amount = AmountEntry.value(of: new) }
                                     if let u = unit { Text(u).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3) }
                                 }
@@ -2538,7 +2377,6 @@ struct GoalEntryEditSheet: View {
                                             HStack(spacing: 7) {
                                                 Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 24)
                                                 Text(goalFirstName(p.name)).font(.system(size: 14, weight: .semibold)).foregroundStyle(on ? WF.ink : WF.ink2)
-                                                // Always render + fade the checkmark so the chip width stays fixed on select.
                                                 Image(systemName: "checkmark.circle.fill").font(.system(size: 14)).foregroundStyle(WF.primary).opacity(on ? 1 : 0)
                                             }
                                             .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6).wfChip(selected: on)
@@ -2603,10 +2441,8 @@ struct GoalEntryEditSheet: View {
         let refusal = await onSave(numeric ? logAmount : nil,
                                    showWho ? Array(who) : nil,
                                    note.trimmingCharacters(in: .whitespacesAndNewlines),
-                                   // Formatted in the same zone the picker showed it in, or
-                                   // the day the user picked is sent back off by one. A locked
-                                   // entry has no picker: send its own key back untouched, so a
-                                   // note edit can never read as "move this to another day".
+                                   // Formatted in the zone the picker showed it in, or the day
+                                   // picked comes back off by one. A locked entry has no picker.
                                    locked ? String(entry.dateKey.prefix(10)) : GoalDateKey.toKey(loggedOn))
         if let refusal { error = refusal; saving = false } else { dismiss() }
     }
@@ -2652,8 +2488,6 @@ final class GoalDetailModel {
         loading = false
     }
 
-    /// Sync this goal's linked Health metric when the detail is viewed/refreshed, so its
-    /// progress fills from the detail too — not only from the goals list. No-op if unlinked.
     func syncHealth() async {
         guard HealthKitBridge.shared.isAvailable,
               let m = HealthKitBridge.Metric(key: detail?.healthMetric ?? goal.healthMetric) else { return }
@@ -2690,8 +2524,7 @@ final class GoalDetailModel {
         catch { self.error = true }
     }
 
-    // Both return the server's own sentence when it refuses, so the sheet can keep itself
-    // open and show it (iOS used to swallow it into a generic flag), and nil on success.
+    // Both return the server's own sentence when it refuses, so the sheet can stay open.
     func editEntry(_ logId: String, amount: Double?, personIds: [String]?, note: String?, loggedOn: String?) async -> String? {
         do {
             try await api.editGoalLog(goalId: goal.id, logId: logId, amount: amount, personIds: personIds, note: note, loggedOn: loggedOn)
@@ -2706,9 +2539,7 @@ final class GoalDetailModel {
     }
 }
 
-/// One goal's detail: hero (ring + started/streak/this-week), the milestone ladder,
-/// progress by person, and the recent-activity log. Log from the toolbar; delete
-/// (tap-twice) pops back. Mirrors the web GoalDetail.
+/// One goal's detail. Log from the toolbar; delete (tap-twice) pops back.
 struct GoalDetailView: View {
     let goal: WaffledAPI.Goal
     @Binding var path: [HubRoute]
@@ -2718,7 +2549,6 @@ struct GoalDetailView: View {
     @State private var editing = false
     @State private var scheduling = false
     @State private var confirmDelete = false
-    /// The recent-activity entry being edited (amount / who / note / date / delete).
     @State private var editEntry: WaffledAPI.GoalDetail.LogEntry?
 
     private var isChecklist: Bool { (model.detail?.goalType ?? goal.goalType) == "checklist" }
@@ -2740,20 +2570,17 @@ struct GoalDetailView: View {
         _model = State(initialValue: GoalDetailModel(goal: goal))
     }
 
-    // Prefer the freshly-loaded detail, fall back to the goal we were handed.
     private var unit: String? { model.detail?.unit ?? goal.unit }
     private var target: Double? { model.detail?.target ?? goal.target }
     private var progress: Double { model.detail?.totalProgress ?? goal.totalProgress }
     private var participants: [WaffledAPI.Goal.Participant] { model.detail?.participants ?? goal.participants }
-    /// What every measured line on this screen reads off — the hero ring, the percentage
-    /// and the milestone ladder, each on the goal's own axis. `progress` above stays the
-    /// raw LIFETIME figure, handed to the Log sheet as-is.
+    /// What every measured line reads off, on the goal's own axis. `progress` above stays the
+    /// raw LIFETIME figure for the Log sheet.
     private var displayed: GoalDisplayable { model.detail.map { $0 as GoalDisplayable } ?? goal }
     private var pct: Int { Int(GoalDisplay.fraction(displayed) * 100) }
 
-    /// The goal handed to the Log sheet — participants/unit come from the loaded
-    /// detail, so the "Who?" picker shows even when we arrived via a lightweight
-    /// goal (e.g. the person spotlight, which has no participant list).
+    /// Participants/unit come from the loaded detail, so "Who?" shows even when we arrived
+    /// via a lightweight goal.
     private var logGoal: WaffledAPI.Goal {
         WaffledAPI.Goal(id: goal.id, goalListId: goal.goalListId, title: goal.title, emoji: goal.emoji,
                      category: goal.category, goalType: goal.goalType, unit: unit,
@@ -2768,8 +2595,8 @@ struct GoalDetailView: View {
                      stepTotal: model.detail?.stepTotal ?? goal.stepTotal,
                      stepDone: model.detail?.stepDone ?? goal.stepDone,
                      streakDays: goal.streakDays,
-                     // Prefer the freshly-loaded detail: it knows who has ticked this
-                     // habit off today, which is what greys out "Mark done for today".
+                     // Prefer the freshly-loaded detail: it knows who has ticked this habit
+                     // off today, which greys out "Mark done for today".
                      loggedTodayBy: model.detail?.loggedTodayBy ?? goal.loggedTodayBy,
                      autoFromCalendar: goal.autoFromCalendar, healthMetric: goal.healthMetric,
                      createdAt: goal.createdAt, participants: participants)
@@ -2876,12 +2703,9 @@ struct GoalDetailView: View {
         }
     }
 
-    /// Whether this goal opted into calendar counting (drives "Plan time").
     private var autoFromCalendar: Bool { model.detail?.autoFromCalendar ?? goal.autoFromCalendar }
 
-    /// The primary actions under the hero. A prominent green **Log progress** button
-    /// (so logging is discoverable without hunting the top-right toolbar), beside the
-    /// purple Schedule CTA on iPad, stacked on iPhone.
+    /// The primary actions under the hero, so logging doesn't need the toolbar.
     @ViewBuilder private var actionRow: some View {
         if isKiosk {
             HStack(spacing: 12) {
@@ -2894,10 +2718,8 @@ struct GoalDetailView: View {
         }
     }
 
-    /// Every person on this habit has already ticked it off today, so the button says so
-    /// rather than promising a completion the server would drop. The web makes its
-    /// version non-clickable; this one still opens, deliberately — the sheet is where you
-    /// backdate a *missed* day, and dead-ending that is the worse trade.
+    /// Everyone has ticked it off today, so the button says so. Still opens, deliberately:
+    /// the sheet backdates a MISSED day.
     private var habitDoneToday: Bool {
         let ids = participants.map(\.personId)
         guard !ids.isEmpty else { return false }
@@ -2920,8 +2742,6 @@ struct GoalDetailView: View {
         .buttonStyle(.plain)
     }
 
-    /// "Plan time" (hour goals) / "Schedule" — opens the event editor pre-linked to
-    /// this goal, so the new event later shows up on Today to confirm.
     private var planButton: some View {
         let hourly = ["hour", "hours", "hr", "hrs", "minute", "minutes"].contains((unit ?? "").lowercased())
         return Button { scheduling = true } label: {
@@ -2977,13 +2797,11 @@ struct GoalDetailView: View {
     private var heroSub: String {
         var parts: [String] = []
         if let c = model.detail?.createdAt { parts.append("Started \(monthDay(c))") }
-        // A habit's percentage is of THIS period's cadence, so say which window — "40%
-        // this week" next to a streak, not a bare "40% complete" that reads lifetime.
+        // A habit's percentage is of THIS period's cadence, so say which window.
         parts.append(GoalDisplay.periodLabel(displayed).map { "\(pct)% \($0)" } ?? "\(pct)% complete")
         let streak = model.detail?.streakDays ?? goal.streakDays
         if streak > 0 { parts.append("🔥 \(streak)-day streak") }
         if let d = model.detail?.deadline ?? goal.deadline { parts.append("by \(monthDay(d))") }
-        // Tier 2, Piece 3 — surface that this goal fills itself from Apple Health.
         if let hm = HealthKitBridge.Metric(key: model.detail?.healthMetric ?? goal.healthMetric) {
             parts.append("⌚ Auto from \(hm.chipLabel)")
         }
@@ -3038,8 +2856,7 @@ struct GoalDetailView: View {
                                 if log.participants.isEmpty {
                                     Avatar(colorHex: nil, emoji: "🙂", size: 24)
                                 } else {
-                                    // Split-pool logs collapse to one row; show everyone credited
-                                    // as an overlapping avatar cluster (matches AvatarStack).
+                                    // Split-pool logs collapse to one row; show everyone credited as an avatar cluster.
                                     HStack(spacing: -24 * 0.34) {
                                         ForEach(log.participants.prefix(4)) { p in
                                             Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 24)
@@ -3099,9 +2916,8 @@ struct GoalDetailView: View {
     private func fmtDate(_ iso: String, _ fmt: String) -> String {
         let date = Self.isoFracDF.date(from: iso) ?? Self.isoDF.date(from: iso)
         guard let date else {
-            // Fall back to a plain yyyy-MM-dd date string. Read in the same zone it is
-            // formatted in below — parsing a bare day as UTC and then rendering it
-            // locally is how a day string comes out as the day before behind UTC.
+            // Fall back to a plain yyyy-MM-dd string, read in the zone it is formatted in
+            // below — as UTC it loses a day behind UTC.
             guard let parsed = DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", .current) else { return "" }
             return DateFmt.string(parsed, fmt, .current)
         }
@@ -3109,9 +2925,7 @@ struct GoalDetailView: View {
     }
 }
 
-/// New goal list (membership group) — name, optional emoji, member multi-select,
-/// and a private toggle. Creates it server-side and hands the new list back so the
-/// caller can select it. Mirrors the web ListModal.
+/// New goal list (membership group). Creates it and hands the new list back.
 struct GoalListCreateSheet: View {
     @Environment(\.dismiss) private var dismiss
     let members: [SyncedMember]
@@ -3221,11 +3035,10 @@ struct GoalListCreateSheet: View {
     }
 }
 
-private extension View {
-    /// Presents the goal editor: full-screen on iPad (web-like, so the two-pane
-    /// form + live-preview layout has room), a large sheet on iPhone. The iPad used
-    /// to get `.presentationSizing(.page)`, which floated a cramped modal the two
-    /// columns couldn't fit — full screen matches the web experience.
+// Internal rather than `private`: the Weekly Planning Goals step presents this same editor,
+// and it must behave the way the goals module's editor behaves everywhere else.
+extension View {
+    /// Full-screen on iPad, so the two-pane form + live preview has room; a sheet on iPhone.
     @ViewBuilder
     func goalEditor<C: View>(isPresented: Binding<Bool>, @ViewBuilder content: @escaping () -> C) -> some View {
         if DeviceExperience.current == .kiosk {

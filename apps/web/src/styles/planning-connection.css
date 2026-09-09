@@ -1,0 +1,191 @@
+/* Weekly Planning · step 5 — Connection (ConnectionStep.tsx).
+
+   Pairing rows, then "Make a pairing" at full width under them: the rows are a PROMPT,
+   not the list, so the composer is the widest thing on screen.
+
+   Faces borrow the Tasks step's `.wpt-face` shape rather than inventing a second person
+   chip. Every colour is a token so dark mode comes for free — never hardcode a hex; the
+   ONE exception is the per-person tint (`colorHex` applied inline at 13%, `…22`). */
+
+.wpn {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 28px 26px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.wpn-empty {
+  padding: 40px 28px;
+  color: var(--ink-3);
+  font-size: 14.5px;
+  text-align: center;
+}
+
+/* ── A pairing row ───────────────────────────────────────────────────────────── */
+.wpn-row {
+  display: flex;
+  /* Wraps only when the "Link a time" list is open — the one child that claims a full row. */
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
+}
+
+.wpn-faces { display: flex; flex: none; }
+.wpn-faces > * + * { margin-left: -10px; }
+
+.wpn-face {
+  width: 34px; height: 34px; flex: none;
+  border: 1px solid var(--hair-2); border-radius: 999px;
+  display: inline-grid; place-items: center;
+  font-size: 17px; line-height: 1;
+  background: var(--card-2);
+}
+
+.wpn-main { flex: 1 1 auto; min-width: 0; }
+.wpn-who {
+  font-family: var(--serif);
+  font-size: 17px; font-weight: 600;
+  color: var(--ink);
+}
+.wpn-stat {
+  margin: 3px 0 0;
+  font-size: 13.5px; line-height: 1.45;
+  color: var(--ink-2);
+}
+
+/* ── The chips ───────────────────────────────────────────────────────────────── */
+.wpn-slots {
+  display: flex; flex-wrap: wrap; gap: 7px;
+  flex: none; max-width: 46%;
+  justify-content: flex-end;
+}
+.wpn-slots-left { justify-content: flex-start; max-width: none; }
+
+.wpn-slot {
+  font: inherit; font-family: var(--sans);
+  font-size: 13px; font-weight: 650;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--hair-2);
+  background: var(--card-2);
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color .12s ease, color .12s ease, background .12s ease, transform .12s ease;
+}
+.wpn-slot:hover:not(:disabled) { border-color: var(--person-3); color: var(--person-3); transform: translateY(-1px); }
+.wpn-slot:disabled { cursor: default; opacity: 0.5; }
+
+/* An opener, not a decision — dashed, like the Tasks step's add tile. */
+.wpn-add {
+  border-style: dashed;
+  background: transparent;
+  color: var(--ink-3);
+}
+
+/* Muted on purpose: not one more thing to schedule, but the row admitting the week
+   already answers this. Pressed, it reads as claimed. */
+.wpn-counts {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink-3);
+  font-weight: 600;
+}
+.wpn-counts:hover:not(:disabled) { border-color: var(--hair-2); color: var(--ink-2); }
+
+/* Picking a shared event records which one answers the pairing; it writes no calendar. */
+.wpn-link { font-weight: 700; }
+.wpn-link.on { background: var(--success-t); border-color: var(--success); color: var(--success); }
+/* Same specificity trap as the horizon tags: `.wpn-slot:hover` sets a colour and it
+   outscores every `.on` below it. A chosen chip holds its green under the cursor. */
+.wpn-slot.on:hover:not(:disabled) { border-color: var(--success); color: var(--success); background: var(--success-t); }
+/* Its own line under the row: `.wpn-row` is a flex row, so the list must claim the full
+   width or it would sit in among the chips it was opened from. */
+.wpn-link-list {
+  flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--hair);
+}
+.wpn-link-opt {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  font: inherit; text-align: left; cursor: pointer;
+  padding: 8px 14px; border-radius: var(--r-md);
+  border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-2);
+}
+.wpn-link-opt b { font-size: 13.5px; font-weight: 750; color: var(--ink); }
+.wpn-link-opt span { font-size: 11.5px; font-weight: 650; }
+.wpn-link-opt:hover:not(:disabled) { border-color: var(--person-3); }
+.wpn-link-opt:disabled { cursor: default; opacity: 0.5; }
+.wpn-link-opt.on { background: var(--success-t); border-color: var(--success); }
+.wpn-link-opt.on b, .wpn-link-opt.on span { color: var(--success); }
+.wpn-counts.on {
+  background: var(--success-t);
+  border-color: var(--success);
+  color: var(--success);
+}
+
+/* ── Make a pairing ──────────────────────────────────────────────────────────── */
+/* Full width and dashed: the first-class action, not an afterthought in a corner. */
+.wpn-make-open {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  width: 100%;
+  padding: 16px;
+  font: inherit; font-family: var(--sans);
+  font-size: 14.5px; font-weight: 700;
+  color: var(--ink-2);
+  background: transparent;
+  border: 2px dashed var(--hair);
+  border-radius: var(--r-lg);
+  cursor: pointer;
+  transition: border-color .14s, color .14s, background .14s;
+}
+.wpn-make-open:hover:not(:disabled) { border-color: var(--person-3); color: var(--person-3); background: var(--person-3-t); }
+.wpn-make-open:disabled { cursor: default; opacity: 0.6; }
+.wpn-make-lead { text-align: left; }
+
+.wpn-make {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 16px;
+  background: var(--card);
+  border: 1px solid var(--person-3);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-2);
+}
+.wpn-make-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.wpn-lab {
+  width: 52px; flex: none;
+  font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+.wpn-picks { display: flex; gap: 8px; flex-wrap: wrap; }
+/* A face that IS a control here — choosing who is the input to the slot query. */
+.wpn-pick { cursor: pointer; border-width: 1.5px; }
+.wpn-pick:hover:not(:disabled) { transform: translateY(-2px); }
+.wpn-pick.on { border-width: 1.5px; box-shadow: var(--sh-1); }
+.wpn-pick:not(.on) { opacity: 0.55; }
+.wpn-pick:disabled { cursor: default; opacity: 0.4; }
+
+.wpn-picked, .wpn-hint {
+  font-size: 13.5px; font-weight: 650;
+  color: var(--ink-2);
+}
+.wpn-hint { font-weight: 500; color: var(--ink-3); }
+
+.wpn-note {
+  margin: 4px 0 0;
+  font-size: 12.5px; line-height: 1.5;
+  color: var(--ink-3);
+}
+
+/* ── Narrow / phone ──────────────────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .wpn { padding: 4px 16px 20px; }
+  .wpn-row { flex-wrap: wrap; }
+  .wpn-slots { max-width: none; width: 100%; justify-content: flex-start; }
+  .wpn-lab { width: 100%; }
+}

@@ -1,20 +1,15 @@
-// Per-user API keys (Immich-style). A key is a long random secret shown once on
-// creation and stored only as a sha256 hash. Callers present it in the `x-api-key`
-// header instead of a Bearer JWT; the key resolves to its owner person (so the
-// owner's real role + capabilities still apply at the route level), and the key's
-// SCOPES bound which resource families it may touch.
-//
-// Two layers of gating, kept deliberately separate:
-//   1. Scope  — does the key hold `<resource>:<read|write>` for this path? Enforced
-//      centrally in the auth gate (app.ts), because lambda-api has no per-route
-//      middleware and we don't want to thread scope checks through ~135 handlers.
-//   2. Capability — can the owner person actually do this? Unchanged: the in-route
-//      requireCapability/requireAdmin still run against the real person, so a teen's
+// Per-user API keys (Immich-style). A key is a long random secret shown once on creation
+// and stored only as a sha256 hash. Callers present it in the `x-api-key` header instead
+// of a Bearer JWT; the key resolves to its owner person, and its SCOPES bound which
+// resource families it may touch. Two layers of gating, kept deliberately separate:
+//   1. Scope — does the key hold `<resource>:<read|write>` for this path? Enforced
+//      centrally in the auth gate (app.ts) against a path-PREFIX catalog. Declaring the
+//      scope at the route is the intended direction — see
+//      docs/product/api-key-scopes-plan.md, which covers why the naive move is fail-OPEN.
+//   2. Capability — the in-route requireCapability/requireAdmin still run, so a teen's
 //      key can never exceed the teen's rights even with a broad scope.
-//
-// Only paths mapped in API_SCOPES are reachable by a key at all — auth, kiosk,
-// permissions, key management itself, PowerSync, etc. are simply not in the catalog
-// and so always 403 for key-authenticated requests (keys can't mint keys).
+// Only paths mapped in API_SCOPES are reachable by a key at all, so auth, kiosk,
+// permissions, key management and PowerSync always 403 for key-authenticated requests.
 import { createHash, randomBytes } from 'node:crypto'
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
@@ -25,7 +20,6 @@ import type { Tenant } from '../households/households'
 type Api = ReturnType<typeof createAPI>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-// Request carries the resolved key + its owner tenant once api-key auth succeeds.
 declare module 'lambda-api' {
   interface Request {
     apiKey?: { id: string; scopes: string[] }
@@ -33,11 +27,9 @@ declare module 'lambda-api' {
   }
 }
 
-// ── scope catalog ───────────────────────────────────────────────────────────────
-// Each resource maps to one or more path prefixes. `read` covers GET/HEAD; any other
-// method needs `write`. readOnly resources expose no write at all (member/household
-// edits stay session-only). This is the single source of truth — the create UI reads
-// it from GET /api/api-keys/scopes, so the web client never hard-codes the list.
+// Each resource maps to one or more path prefixes. `read` covers GET/HEAD; any other method
+// needs `write`. This is the single source of truth — the create UI reads it from
+// GET /api/api-keys/scopes, so the web client never hard-codes the list.
 export interface ApiScopeDef {
   resource: string
   label: string
@@ -48,9 +40,8 @@ export interface ApiScopeDef {
 
 export const API_SCOPES: ApiScopeDef[] = [
   { resource: 'family', label: 'Family', description: 'Household, members, and overviews', prefixes: ['/api/household', '/api/persons', '/api/family'], readOnly: true },
-  // `pantry-staples` reads like pantry but is a lists route: it's registered in
-  // lists.routes.ts behind moduleRoutes('lists'), so a pantry-scoped key would clear
-  // the scope gate only to 403 at the lists module gate.
+  // `pantry-staples` reads like pantry but is a lists route, registered behind
+  // moduleRoutes('lists') — so a pantry-scoped key would clear the scope gate only to 403.
   { resource: 'lists', label: 'Lists', description: 'Grocery and to-do lists', prefixes: ['/api/lists', '/api/pantry-staples'] },
   { resource: 'pantry', label: 'Pantry', description: 'On-hand inventory', prefixes: ['/api/pantry'] },
   { resource: 'chores', label: 'Chores', description: 'Chores and completions', prefixes: ['/api/chores', '/api/chore-instances', '/api/chore-proofs'] },
@@ -62,7 +53,6 @@ export const API_SCOPES: ApiScopeDef[] = [
   { resource: 'weather', label: 'Weather', description: 'Local weather', prefixes: ['/api/weather'], readOnly: true },
 ]
 
-// All grantable scope strings, e.g. ["family:read","lists:read","lists:write", …].
 export const ALL_SCOPES: string[] = API_SCOPES.flatMap((s) =>
   s.readOnly ? [`${s.resource}:read`] : [`${s.resource}:read`, `${s.resource}:write`]
 )
@@ -76,9 +66,8 @@ function pathMatches(prefix: string, path: string): boolean {
   return path === prefix || path.startsWith(prefix + '/')
 }
 
-// What a key needs to hold to make this request, or null if the path isn't exposed
-// to API keys at all (→ caller gets 403). `denied` flags a write to a read-only
-// resource (the path is known but the action is never allowed via a key).
+// What a key needs to hold, or null if the path isn't exposed to API keys at all (→ 403).
+// `denied` flags a write to a read-only resource.
 export function scopeForRequest(
   method: string,
   path: string
@@ -109,7 +98,6 @@ export function keyHasScope(scopes: string[], required: string): boolean {
   return false
 }
 
-// ── secret helpers ──────────────────────────────────────────────────────────────
 function hashKey(secret: string): string {
   return createHash('sha256').update(secret).digest('hex')
 }
@@ -119,10 +107,8 @@ function mintKey(): { secret: string; hash: string; prefix: string } {
   return { secret, hash: hashKey(secret), prefix: secret.slice(0, 12) }
 }
 
-// ── authentication ──────────────────────────────────────────────────────────────
 // Resolve a presented key to its owner tenant and stash it on the request. Throws
-// AuthError(401) when the key is unknown, revoked, or expired. Called from the auth
-// gate in app.ts when an `x-api-key` header is present.
+// AuthError(401) when the key is unknown, revoked, or expired.
 export async function authenticateApiKey(req: Request, rawKey: string): Promise<void> {
   const { rows } = await query<{
     id: string
@@ -160,9 +146,8 @@ export async function authenticateApiKey(req: Request, rawKey: string): Promise<
   )
 }
 
-// Central scope gate for key-authenticated requests. Throws AuthError(403) when the
-// path isn't exposed to keys, the action is never allowed (write to a read-only
-// resource), or the key lacks the required scope.
+// Central scope gate for key-authenticated requests. Throws AuthError(403) when the path
+// isn't exposed, the action is never allowed, or the key lacks the required scope.
 export function enforceApiKeyScope(req: Request): void {
   const scopes = req.apiKey?.scopes ?? []
   const need = scopeForRequest(req.method, req.path)
@@ -199,7 +184,6 @@ function present(r: ApiKeyRow) {
 }
 
 export function registerApiKeyRoutes(api: Api): void {
-  // The grantable scope catalog, for the create-key UI.
   api.get('/api/api-keys/scopes', tenantRoute(async () => ({ scopes: API_SCOPES })))
 
   // The caller's own keys (metadata only — the secret is never retrievable).
@@ -243,7 +227,6 @@ export function registerApiKeyRoutes(api: Api): void {
     return res.status(201).json({ key: secret, apiKey: present(rows[0]) })
   }))
 
-  // Revoke one of the caller's own keys (soft delete).
   api.delete('/api/api-keys/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'key not found' })

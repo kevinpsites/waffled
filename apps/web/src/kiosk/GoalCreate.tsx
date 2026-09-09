@@ -6,10 +6,7 @@ import { CATEGORIES, CATEGORY_KEYS } from './categories'
 import { ListModal } from './components/ListModal'
 import './../styles/goals.css'
 
-// The measure type is also what tells us divisibility: "Total" accumulates a
-// divisible amount (so it splits evenly across people), "Count" is whole things
-// (no fractions). The copy here makes that distinction obvious so it's chosen on
-// purpose, not by accident.
+// The measure type also tells us divisibility: "Total" splits evenly, "Count" is whole things.
 const TYPES = [
   { key: 'total', emoji: '⏱️', title: 'Total amount', desc: 'Adds up — can split (hours, miles)' },
   { key: 'count', emoji: '🔢', title: 'Count', desc: 'Whole things (books, parks)' },
@@ -17,19 +14,13 @@ const TYPES = [
   { key: 'checklist', emoji: '🪜', title: 'Checklist', desc: 'Named steps you tick off' },
 ] as const
 
-// How a goal is logged is derived entirely from its type — total = enter an
-// amount, count = whole-unit stepper, habit = one tap a day, checklist = tick
-// steps. There's no manual log-method to pick. "Auto-count from calendar" is a
-// separate, independent opt-in (it coexists with manual logging) offered on
-// everything except checklists, which complete by ticking named steps.
+// How a goal is logged is derived from its type. "Auto-count from calendar" is a separate opt-in.
 const CALENDAR_TYPES = new Set(['total', 'count', 'habit'])
 
-// Group counting — the "Counting Below Measure" model. The shared-vs-each toggle lives
-// in the "Who" section; this measure-aware follow-up sits BELOW the measure picker and
-// only shows for a SHARED total/count goal with 2+ people. Each choice maps to the
-// backend (trackingMode, participantMode, targetBasis):
+// Group counting: this measure-aware follow-up sits BELOW the measure picker, only for a SHARED
+// total/count goal with 2+ people. Each choice maps to (trackingMode, participantMode, targetBasis):
 //   Each tracks their own      → each_tracks + per_person  (ring = target × members)
-//   Shared · everyone’s counts → each_tracks + family      (adds up: +2 hrs / +3)
+//   Shared · everyone's counts → each_tracks + family      (adds up: +2 hrs / +3)
 //   Shared · split evenly      → shared_total + split
 //   Shared · count once        → shared_total + count_once
 const COUNT_RULES = {
@@ -43,17 +34,13 @@ const COUNT_RULES = {
   ],
 } as const
 
-// Backend fields for a given (measure, count-choice), and for the two toggle states.
 const eachTracksOwn = { trackingMode: 'each_tracks', targetBasis: 'per_person', participantMode: 'count_once' } as const
 function sharedDefault(goalType: string) {
-  // "One shared total": total/count default to "everyone’s counts fully / for each"
-  // (adds up); habit/checklist have no sub-question, so a plain shared total.
+  // total/count default to "everyone's counts" (adds up); habit/checklist have no sub-question.
   return goalType === 'total' || goalType === 'count'
     ? { trackingMode: 'each_tracks', targetBasis: 'family', participantMode: 'count_once' } as const
     : { trackingMode: 'shared_total', targetBasis: 'family', participantMode: 'count_once' } as const
 }
-// "Each tracks their own" for a given measure (mirrors iOS setEachMode): total/count
-// get the per-person ring; habit/checklist track each_tracks against a flat target.
 function eachDefault(goalType: string) {
   return {
     trackingMode: 'each_tracks',
@@ -61,11 +48,8 @@ function eachDefault(goalType: string) {
     participantMode: 'count_once',
   } as const
 }
-// Re-normalize the counting fields when the MEASURE changes. The split/each sub-choice
-// is measure-specific, so a stale combo (a total's "split" carried onto a count) would
-// submit fractional per-person data on a whole-number goal. Mirrors iOS selectMeasure:
-// keep the shared-vs-each INTENT, reset everything else (incl. participantMode) to the
-// new type's default. Pure + exported for unit tests.
+// Re-normalize the counting fields when the MEASURE changes: the split/each sub-choice is
+// measure-specific, so a stale combo would submit fractional data on a whole-number goal.
 export function measureCountingFields(
   prev: { goalType: string; trackingMode: string; targetBasis: string },
   nextType: string
@@ -91,11 +75,8 @@ function countChoiceFields(goalType: string, k: string) {
 
 type Milestone = { threshold: number; emoji: string; label: string; rewardText: string }
 
-// Sensible auto-milestones DERIVED from the goal's target — for a numeric goal we
-// place three checkpoints at a quarter / half / three-quarters of the way (the goal
-// itself isn't a milestone), so a target of 300 gives 75 / 150 / 225 rather than a
-// fixed 250 / 500 / 1000 that ignores the number. Reward text is left BLANK — the
-// editor shows a faint "add a reward" placeholder; a reward is never auto-filled.
+// Auto-milestones DERIVED from the target: a quarter / half / three-quarters of the way. Reward
+// text is left BLANK — a reward is never auto-filled.
 function defaultMilestones(goalType: string, target: number): Milestone[] {
   const E = ['🌱', '⭐', '🏆']
   const mk = (vals: number[]) => vals.map((v, i) => ({ threshold: v, emoji: E[i] ?? '🎖️', label: String(v), rewardText: '' }))
@@ -108,7 +89,6 @@ function defaultMilestones(goalType: string, target: number): Milestone[] {
 }
 const DEFAULT_MILESTONES: Milestone[] = defaultMilestones('total', 1000)
 
-// iOS-style switch, matching the mock's toggles. Reused for every Extras row.
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
     <div
@@ -122,7 +102,6 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   )
 }
 
-// Serif number field with ▲▼ steppers (the mock's `.num-field`).
 function NumField({ value, step, onChange }: { value: number; step: number; onChange: (v: number) => void }) {
   const set = (v: number) => onChange(Math.max(0, v))
   return (
@@ -140,17 +119,27 @@ const CheckIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round"><path d="M4 12l5 5L20 6" /></svg>
 )
 
-export function GoalCreate() {
+  // Render the editor INSIDE something else — what Weekly Planning's Goals step does. Purely
+  // additive: route behaviour is unchanged when `embed` is absent.
+export interface GoalCreateEmbed {
+  // The group the goal belongs to. Fixed, and shown rather than offered — the host already asked.
+  listId: string
+  // Start on the Pinned tier, the same thing `?featured=1` means on the route.
+  featured?: boolean
+  // Created and saved. No `onCancel` twin: embedded, "cancel" is the host's own control.
+  onCreated: () => void
+}
+
+export function GoalCreate({ embed }: { embed?: GoalCreateEmbed } = {}) {
   const navigate = useNavigate()
   const { id } = useParams()
-  const editing = !!id
+    // Embedded there is no route to read an id from, and the HOST's params must not leak in.
+  const editing = !embed && !!id
   const { lists, refetch: refetchLists } = useGoalLists()
-  const { goal: editGoal } = useGoalDetail(id ?? null)
-  const { person } = useHousehold()
-  // Without goal.manage you can still make a goal that's just yours — so the
-  // "Who's it for?" picker is limited to lists where you're the sole member
-  // (a self-only/unassigned goal). Picking a group = assigning others = needs
-  // goal.manage, which 403s server-side; we hide those lists rather than 403.
+  const { goal: editGoal } = useGoalDetail(editing ? id ?? null : null)
+  const { household, person } = useHousehold()
+  // Without goal.manage you can still make a goal that's just yours, so the picker is limited to
+  // lists where you're the sole member. Picking a group needs goal.manage, which 403s server-side.
   const canAssignOthers = can(person, 'goal.manage')
   const pickableLists = canAssignOthers
     ? lists
@@ -159,14 +148,12 @@ export function GoalCreate() {
   const [searchParams] = useSearchParams()
 
   const [form, setForm] = useState({
-    title: editing ? '' : (searchParams.get('title') ?? ''),
-    // Pre-select the list you came from (?list=) so a goal made while viewing
-    // "Kevin" / "Mom & Dad" starts in that group; falls to the picker otherwise.
-    goalListId: editing ? '' : (searchParams.get('list') ?? ''),
+    // Embedded, the host's URL is not this editor's URL — its params must not leak in.
+    title: editing || embed ? '' : (searchParams.get('title') ?? ''),
+    // Pre-select the list you came from (?list=); falls to the picker otherwise.
+    goalListId: embed ? embed.listId : editing ? '' : (searchParams.get('list') ?? ''),
     category: 'physical',
-    // Default matches the mock: "Each tracks their own" (per-person), so the ring and
-    // the shared/each toggle start consistent. Users flip to "One shared total" + a
-    // measure-aware counting choice as needed.
+    // Default is "Each tracks their own" (per-person), so the ring and the toggle start consistent.
     trackingMode: 'each_tracks' as 'shared_total' | 'each_tracks',
     participantMode: 'count_once' as 'count_once' | 'split',
     targetBasis: 'per_person' as 'family' | 'per_person',
@@ -176,33 +163,26 @@ export function GoalCreate() {
     deadline: '',
     habitPeriod: 'week',
     habitPerPeriod: 5,
-    // Auto-count from the calendar is ON by default — most numeric/habit goals
-    // benefit from matching events adding progress without extra taps.
+    // Auto-count from the calendar is ON by default — most numeric/habit goals benefit.
     autoFromCalendar: true,
-    // Tier defaults to Normal — elevating to Featured/Spotlight is an intentional choice
-    // (auto-featuring everything is exactly what the old single flag got wrong).
-    isFeatured: false,
+    // Tier defaults to Normal. `?featured=1` is that choice made upstream by the Goals step.
+    isFeatured: embed ? !!embed.featured : !editing && searchParams.get('featured') === '1',
     isSpotlight: false,
     hasRewards: false,
     weeklyCheckIn: true,
   })
   const [milestones, setMilestones] = useState<Milestone[]>(DEFAULT_MILESTONES)
   const [steps, setSteps] = useState<Array<{ id?: string; label: string }>>([{ label: '' }, { label: '' }, { label: '' }])
-  // The list's current spotlight (a DIFFERENT goal) — so picking Spotlight can say what it replaces.
   const [listSpotlight, setListSpotlight] = useState<{ id: string; title: string } | null>(null)
   const [dlOpen, setDlOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showListModal, setShowListModal] = useState(false)
   // Once the user hand-edits a milestone we stop regenerating defaults from the target.
   const msTouched = useRef(false)
-  // Once the user types a unit we stop auto-swapping it when the measure changes — so
-  // a Count goal doesn't silently inherit the Total default ("hours") and log "2 hours".
+  // Once the user types a unit we stop auto-swapping it, or a Count goal inherits "hours".
   const unitTouched = useRef(false)
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
-  // Switch measure. Re-normalize the counting fields for the new type (so a stale
-  // split/each combo can't survive — see measureCountingFields) and, unless the user
-  // typed a custom unit, fit the unit to it: Total keeps "hours", Count clears it so
-  // the user names the thing counted (parks, books…).
+  // Switch measure: re-normalize the counting fields (see measureCountingFields) and fit the unit.
   const setMeasure = (key: (typeof TYPES)[number]['key']) =>
     setForm((f) => {
       const counting = measureCountingFields(f, key)
@@ -210,7 +190,6 @@ export function GoalCreate() {
       return { ...f, goalType: key, unit, ...counting }
     })
 
-  // prefill once when editing
   const prefilled = useRef(false)
   useEffect(() => {
     if (!editing || prefilled.current || !editGoal) return
@@ -245,8 +224,7 @@ export function GoalCreate() {
     }
   }, [editing, editGoal])
 
-  // Look up the selected list's current spotlight (a different goal) so the Spotlight
-  // option can tell the user which goal it will replace.
+  // The selected list's current spotlight, so the Spotlight option can say what it replaces.
   useEffect(() => {
     if (!form.goalListId) { setListSpotlight(null); return }
     let live = true
@@ -258,17 +236,14 @@ export function GoalCreate() {
     return () => { live = false }
   }, [form.goalListId, id])
 
-  // Regenerate the default milestones from the current type + target until the
-  // user hand-edits them — so setting a 300-hour target gives 75/150/225.
+  // Regenerate the default milestones from type + target until the user hand-edits them.
   useEffect(() => {
     if (msTouched.current) return
     setMilestones(defaultMilestones(form.goalType, form.target))
   }, [form.goalType, form.target])
 
-  // Editing is gated exactly like GoalDetail: only goal.manage holders, or the
-  // owner of a goal that's solely theirs, may edit. GoalDetail hides its "Edit
-  // goal" button, but /goals/:id/edit is a deep-linkable route — without this a
-  // kid could reach an enabled "Save changes" that 403s. Bounce them back.
+  // Editing is gated exactly like GoalDetail. GoalDetail hides its Edit button, but
+  // /goals/:id/edit is deep-linkable — so without this a kid reaches a "Save changes" that 403s.
   const editBlocked =
     editing && !!editGoal && !canAssignOthers &&
     !(editGoal.participants.length === 1 && editGoal.participants[0].personId === person?.id)
@@ -276,21 +251,21 @@ export function GoalCreate() {
     if (editBlocked) navigate(`/goals/${id}`, { replace: true })
   }, [editBlocked, id, navigate])
 
-  // Creating: without goal.manage you can only target a self-only list. Neutralize
-  // a prefilled ?list=<group> (e.g. arriving from a shared group's "New goal"), or
-  // a multi-member group just made via the modal, so Create never enables on a
-  // target that would 403 — render-if-capable, not show-then-403.
+  // Creating: without goal.manage you can only target a self-only list, so a prefilled
+  // ?list=<group> is neutralized and Create never enables on a target that would 403.
+  //
+  // `!household` is the load-order gate, and it is load-bearing: lists and household are two
+  // independent fetches, so until the household answers a capable viewer looks capability-less.
   useEffect(() => {
-    if (editing || canAssignOthers || !form.goalListId || lists.length === 0) return
+    if (editing || !household || canAssignOthers || !form.goalListId || lists.length === 0) return
     const l = lists.find((x) => x.id === form.goalListId)
     const selfOnly = !!l && l.members.length === 1 && l.members[0].personId === person?.id
     if (!selfOnly) setForm((f) => ({ ...f, goalListId: '' }))
-  }, [editing, canAssignOthers, form.goalListId, lists, person?.id])
+  }, [editing, household, canAssignOthers, form.goalListId, lists, person?.id])
 
   const selectedList = useMemo(() => lists.find((l) => l.id === form.goalListId) ?? null, [lists, form.goalListId])
 
-  // A goal needs a name, at least one person, and the measurement filled in for
-  // its type before it can be saved. The deadline is always optional.
+  // A goal needs a name, a person, and its type's measurement filled in. The deadline is optional.
   const participantCount = selectedList ? selectedList.members.length : editing ? editGoal?.participants.length ?? 0 : 0
   const stepCount = steps.filter((s) => s.label.trim()).length
   const isChecklist = form.goalType === 'checklist'
@@ -300,33 +275,32 @@ export function GoalCreate() {
         : Number(form.target) > 0 && form.unit.trim().length > 0 // total | count
   const canSave = form.title.trim().length > 0 && participantCount >= 1 && typeValid && !saving && !editBlocked
 
-  // Return to the list you came from (cancel/back). After CREATE we return to the
-  // goal's final list instead (see submit) — so changing it to Wally lands on Wally.
+  // Return to the list you came from. After CREATE we return to the goal's final list (see submit).
   const cameFromList = searchParams.get('list') ?? ''
   const backToGoals = editing ? `/goals/${id}` : `/goals${cameFromList ? `?list=${cameFromList}` : ''}`
 
   const submitRef = useRef<() => void>(() => {})
-  // Replace the whole topbar (no date/clock/weather) with the editor's own bar:
-  // a big "New goal" title (sized to match the Today date) + Cancel + Create.
-  useTopbarFull(
-    () => (
-      <div className="ge-topbar">
-        <div className="ge-title">{editing ? 'Edit goal' : 'New goal'}</div>
-        <div className="ge-sp" />
+  // Embedded, the bar is the modal's header and drops Cancel — that route isn't the modal's.
+  const bar = (
+    <div className="ge-topbar">
+      <div className="ge-title">{editing ? 'Edit goal' : 'New goal'}</div>
+      <div className="ge-sp" />
+      {!embed && (
         <button type="button" className="ge-cancel" onClick={() => navigate(backToGoals, { replace: true })}>Cancel</button>
-        <button
-          type="button"
-          className="ge-create"
-          disabled={!canSave}
-          title={canSave ? undefined : 'Add a name, pick who it’s for, and fill in the measurement'}
-          onClick={() => submitRef.current()}
-        >
-          {editing ? 'Save changes' : 'Create goal'}
-        </button>
-      </div>
-    ),
-    [navigate, editing, canSave, backToGoals]
+      )}
+      <button
+        type="button"
+        className="ge-create"
+        disabled={!canSave}
+        title={canSave ? undefined : 'Add a name, pick who it’s for, and fill in the measurement'}
+        onClick={() => submitRef.current()}
+      >
+        {editing ? 'Save changes' : 'Create goal'}
+      </button>
+    </div>
   )
+  // Never when embedded: the host owns its own chrome.
+  useTopbarFull(() => (embed ? null : bar), [navigate, editing, canSave, backToGoals, embed])
 
   async function submit() {
     if (!canSave) return
@@ -344,8 +318,7 @@ export function GoalCreate() {
       trackingMode: form.trackingMode,
       participantMode: form.participantMode,
       targetBasis: form.targetBasis,
-      // Logging style is derived from the type; calendar auto-count is an
-      // independent opt-in (never on checklists, which tick steps).
+      // Logging style is derived from the type; calendar auto-count is an independent opt-in.
       autoFromCalendar: isChecklist ? false : form.autoFromCalendar,
       deadline: form.deadline || null,
       isFeatured: form.isFeatured,
@@ -363,8 +336,9 @@ export function GoalCreate() {
     try {
       if (editing) await api.updateGoal(id!, payload)
       else await api.createGoal(payload)
-      // Land on the goal's final list — if they retargeted it (e.g. Mom & Dad →
-      // Wally), that's where the new goal lives, so that's where we go.
+      // Embedded, going anywhere is the bug: the host owns the page this sits over.
+      if (embed) { embed.onCreated(); return }
+      // Land on the goal's FINAL list — if they retargeted it, that's where the goal now lives.
       navigate(editing ? `/goals/${id}` : `/goals${form.goalListId ? `?list=${form.goalListId}` : ''}`, { replace: true })
     } catch {
       setSaving(false)
@@ -378,16 +352,13 @@ export function GoalCreate() {
   const previewName = form.title.trim() || 'Your goal'
   const unit = (form.unit || '').trim()
 
-  // Shared-vs-each and the measure-aware count sub-choice are DERIVED from the backend
-  // fields (so an edited goal lights up the right rows). "Each tracks their own" is the
-  // per-person basis for total/count, or plain each_tracks for habit/checklist.
+  // DERIVED from the backend fields, so an edited goal lights up the right rows.
   const shareValue: 'shared' | 'each' =
     form.goalType === 'total' || form.goalType === 'count'
       ? (form.trackingMode === 'each_tracks' && form.targetBasis === 'per_person' ? 'each' : 'shared')
       : (form.trackingMode === 'each_tracks' ? 'each' : 'shared')
   const shared = shareValue === 'shared'
 
-  // Tier picker (Spotlight / Featured / Normal) derived from the two booleans.
   const tier: 'spotlight' | 'featured' | 'normal' = form.isSpotlight ? 'spotlight' : form.isFeatured ? 'featured' : 'normal'
   const setTier = (t: 'spotlight' | 'featured' | 'normal') =>
     setForm((f) => ({ ...f, isSpotlight: t === 'spotlight', isFeatured: t === 'featured' }))
@@ -400,8 +371,7 @@ export function GoalCreate() {
       : form.goalType === 'count' ? (form.trackingMode === 'each_tracks' ? 'each' : 'once')
         : null
 
-  // A concrete "worked example" using the real members' first names + unit, mirroring
-  // the mock — the arithmetic delta is what the <b> highlights.
+  // A concrete "worked example" using the real members' first names + unit.
   const memberNames = (selectedList?.members ?? editGoal?.participants ?? [])
     .map((m) => (m.name ?? '').split(' ')[0]).filter(Boolean)
   const twoNames = memberNames.slice(0, 2).join(' + ') || 'Two people'
@@ -438,7 +408,7 @@ export function GoalCreate() {
       : isChecklist ? 'The number is percent complete — 100 = all steps done.'
         : `The number is the amount reached${unit ? ` in ${unit}` : ''}.`
 
-  return (
+  const editor = (
     <div className="goal-create ge">
       {/* LEFT · focused form */}
       <div className="ge-formpane">
@@ -454,20 +424,38 @@ export function GoalCreate() {
           {/* 2 · who */}
           <div className="ge-sec">
             <div className="ge-sec-t">Who’s it for?</div>
-            <div className="ge-sec-h">Pick a goal list — the people in it share this goal.</div>
-            <div className="ge-who">
-              {pickableLists.map((l: GoalList) => (
-                <button key={l.id} type="button" className={`ge-who-chip ${form.goalListId === l.id ? 'on' : ''}`} onClick={() => set('goalListId', l.id)}>
+            <div className="ge-sec-h">
+              {embed
+                ? 'The group you’re planning for — this goal joins it.'
+                : 'Pick a goal list — the people in it share this goal.'}
+            </div>
+            {/* Embedded, the host already asked which group this is about, so it is STATED. */}
+            {embed ? (
+              <div className="ge-who">
+                <span className="ge-who-chip on ge-who-locked" data-testid="ge-who-locked">
                   <span className="ge-avstack">
-                    {l.members.slice(0, 4).map((m) => (
+                    {(selectedList?.members ?? []).slice(0, 4).map((m) => (
                       <span key={m.personId} className="ge-av" style={{ background: `${m.colorHex ?? '#8a857c'}22` }}>{m.avatarEmoji ?? '🙂'}</span>
                     ))}
                   </span>
-                  {l.name}
-                </button>
-              ))}
-              <button type="button" className="ge-who-chip dashed" onClick={() => setShowListModal(true)}>＋ New group</button>
-            </div>
+                  {selectedList?.name ?? 'This group'}
+                </span>
+              </div>
+            ) : (
+              <div className="ge-who">
+                {pickableLists.map((l: GoalList) => (
+                  <button key={l.id} type="button" className={`ge-who-chip ${form.goalListId === l.id ? 'on' : ''}`} onClick={() => set('goalListId', l.id)}>
+                    <span className="ge-avstack">
+                      {l.members.slice(0, 4).map((m) => (
+                        <span key={m.personId} className="ge-av" style={{ background: `${m.colorHex ?? '#8a857c'}22` }}>{m.avatarEmoji ?? '🙂'}</span>
+                      ))}
+                    </span>
+                    {l.name}
+                  </button>
+                ))}
+                <button type="button" className="ge-who-chip dashed" onClick={() => setShowListModal(true)}>＋ New group</button>
+              </div>
+            )}
           </div>
 
           {/* 3 · measure */}
@@ -522,9 +510,8 @@ export function GoalCreate() {
               </>
             )}
 
-            {/* Shared-vs-each lives here, below the measure — it only matters once you've
-                picked a measure with a per-person dimension. Hidden for a checklist (its
-                steps are always shared). Only shown with 2+ people. */}
+            {/* Shared-vs-each only matters once the measure has a per-person dimension, and never
+                for a checklist. Only shown with 2+ people. */}
             {participantCount > 1 && form.goalType !== 'checklist' && (
               <div className="ge-share" style={{ marginTop: 18 }}>
                 <button type="button" className={shared ? 'on' : ''} onClick={() => setForm((f) => ({ ...f, ...sharedDefault(f.goalType) }))}>{form.goalType === 'habit' ? 'One shared streak' : 'One shared total'}</button>
@@ -532,8 +519,7 @@ export function GoalCreate() {
               </div>
             )}
 
-            {/* Group counting — measure-aware, sits below the measure picker ("Counting
-                Below Measure"). Only for a SHARED total/count goal with 2+ people. */}
+            {/* Group counting — measure-aware. Only for a SHARED total/count goal with 2+ people. */}
             {shared && participantCount > 1 && (form.goalType === 'total' || form.goalType === 'count') && (
               <div className="ge-count">
                 <div className="ge-count-q">When a shared activity includes more than one person…</div>
@@ -720,6 +706,15 @@ export function GoalCreate() {
           }}
         />
       )}
+    </div>
+  )
+
+  // On its own route the bar lives in the app topbar; embedded, the two travel together.
+  if (!embed) return editor
+  return (
+    <div className="ge-embed">
+      {bar}
+      {editor}
     </div>
   )
 }

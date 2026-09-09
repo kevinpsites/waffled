@@ -1,11 +1,8 @@
 import SwiftUI
 
-/// The iPad Today page — the web-parity family dashboard (Phase 2 expansion).
-///
-/// Three columns mirroring the web `Today`: the week agenda · tonight's dinner +
-/// this week's dinners · per-person chores + the grocery list. Cards **link to the
-/// right rail page** via `navigate`, and drill-ins (event detail, recipe, cook mode)
-/// open as sheets. See `apps/ios/IPAD_ROADMAP.md`.
+/// The iPad Today page — the web-parity family dashboard. Three columns mirroring the web
+/// `Today`; cards link to the right rail page via `navigate`, and drill-ins open as
+/// sheets. See `apps/ios/IPAD_ROADMAP.md`.
 struct KioskDashboard: View {
     @Environment(SyncManager.self) private var sync
     @Environment(\.scenePhase) private var scenePhase
@@ -14,43 +11,30 @@ struct KioskDashboard: View {
     /// queue behind it — so we dismiss the recipe cover the moment a cook starts.
     @Environment(CookSessionStore.self) private var cook
 
-    /// Switch the shell's nav rail to another page (injected by `KioskShell`).
     var navigate: (KioskNav) -> Void = { _ in }
-    /// Open one goal's detail on the Goals page (injected by `KioskShell`, which owns
-    /// the Goals navigation path) — tapping the Family Goal card body lands on the
-    /// goal itself, not just the Goals index.
     var openGoal: (WaffledAPI.Goal) -> Void = { _ in }
 
     @State private var model = KioskTodayModel()
-    /// The Rhythms card's data lives here rather than inside the card — see the note on
-    /// `RhythmsTodayCard.model`. A card that renders nothing when it has nothing can't be
-    /// trusted to fetch its own contents.
+    /// The Rhythms card's data lives here rather than inside the card: a card that renders
+    /// nothing when it has nothing can't be trusted to fetch its own contents.
     @State private var rhythms = RhythmsModel()
     @State private var recipes = RecipesModel()
     @State private var detailEvent: SyncedEvent?
     @State private var recipeTarget: RecipeTarget?
-    /// A Meal Builder plate opened from tonight's card. Held as a placeholder — the
-    /// detail reloads the real plate by id on appear.
     @State private var mealTarget: WaffledAPI.MealDTO?
     @State private var showCapture = false
     @State private var dictateOnOpen = false
-    /// Pinned alert banners (web/phone parity): the parent approval queue and the
-    /// goal-calendar review queue. Both open their focused screen as a page sheet.
     @State private var approvals = ApprovalsModel()
     @State private var reviewRecap: [WaffledAPI.GoalRecapItem] = []
     @State private var reviewSuggestions: [WaffledAPI.GoalSuggestionItem] = []
     @State private var showApprovals = false
     @State private var showReview = false
-    /// Quick-add on the Today grocery card opens a half-sheet — the OS keeps its field
-    /// above the keyboard natively (no bottom-pinned bar to lift, which fought the iPad
-    /// keyboard and, when we tried to lift it, looped/crashed in portrait).
+    /// Quick-add opens a half-sheet so the OS floats its field above the keyboard; a
+    /// bottom-pinned bar cannot be lifted reliably on iPad.
     @State private var groceryAddSheet = false
-    /// The chosen Today layout (persisted) — see `DashLayout`.
     @AppStorage("waffled.kioskDashLayout") private var layoutRaw = DashLayout.balanced.rawValue
     private var layout: DashLayout { DashLayout(rawValue: layoutRaw) ?? .balanced }
 
-    /// Goal-focused preset: which goal is pinned to the wall (persisted). Empty = auto
-    /// (featured → whole-family → first). A picker on the card lets the family switch it.
     @AppStorage("waffled.kioskGoalId") private var kioskGoalId = ""
 
     init(navigate: @escaping (KioskNav) -> Void = { _ in },
@@ -62,9 +46,8 @@ struct KioskDashboard: View {
         _approvals = State(initialValue: approvals ?? ApprovalsModel())
     }
 
-    /// The card's pick order as a pure function (tested in KioskGoalPickTests): pinned
-    /// if it still exists → Spotlight → Pinned tier (isFeatured) → a whole-family goal
-    /// (multi-member households) → the first goal.
+    /// Pick order (tested in KioskGoalPickTests): pinned if it still exists → Spotlight →
+    /// Pinned tier (isFeatured) → a whole-family goal → the first goal.
     nonisolated static func featuredGoal(_ goals: [WaffledAPI.Goal], pinnedId: String,
                                          memberIds: Set<String>) -> WaffledAPI.Goal? {
         if !pinnedId.isEmpty, let g = goals.first(where: { $0.id == pinnedId }) { return g }
@@ -76,7 +59,6 @@ struct KioskDashboard: View {
         return goals.first
     }
 
-    /// The goal the Goal-focused layout features — see `featuredGoal` for the pick order.
     private var kioskGoal: WaffledAPI.Goal? {
         Self.featuredGoal(model.goals, pinnedId: kioskGoalId, memberIds: Set(sync.members.map(\.id)))
     }
@@ -96,22 +78,16 @@ struct KioskDashboard: View {
             dashColumns
         }
         .padding(.horizontal, 40)
-        // Tight top gap below the header (which already has its own .bottom padding); the
-        // first element — approval bar, review bar, or just the columns — sits right under
-        // it. Generous bottom padding stays for scroll breathing room.
         .padding(.top, 2)
         .padding(.bottom, 30)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(WF.canvas)
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .task { await sync.loadIdentity() }
-        // Per-domain reloads: each fires on appear (initial load) and only when its own
-        // bus bumps — so a grocery toggle no longer reloads chores + meals + weather.
         .task(id: "\(tz.identifier)|\(sync.choresRev)") { await model.loadChores() }
         .task(id: "\(tz.identifier)|\(sync.mealsRev)") { await model.loadMeals(todayKey: todayKey) }
         .task(id: "\(tz.identifier)|\(sync.groceryRev)") { await model.loadGrocery() }
         .task(id: tz.identifier) { await model.loadWeather() }
-        // Lives on the page, which always renders, rather than on the card, which does not.
         .task(id: "\(sync.refreshRev)|\(sync.modulesRev)") {
             guard sync.module(.rhythms) else { return }
             await rhythms.loadAttention()
@@ -122,25 +98,16 @@ struct KioskDashboard: View {
             // WAFFLED_OPEN_GOAL=1, "tap" the Family Goal card once goals are in.
             if DemoHooks.openGoal, DemoHooks.kioskPage == "today", let g = kioskGoal { openGoal(g) }
         }
-        // Open the grocery add sheet for verification (the Today twin of the Lists
-        // page's WAFFLED_FOCUS_ADD hook).
         .task {
             if DemoHooks.focusAdd, DemoHooks.kioskPage == "today" {
                 try? await Task.sleep(for: .seconds(2))
                 groceryAddSheet = true
             }
         }
-        // Day rollover on the always-on display: sleep to just past each
-        // household-tz midnight, then refetch the day-scoped domains so the wall
-        // iPad doesn't keep showing yesterday's dinner and chores.
-        //
-        // This is the wall's *only* unattended refresh, so it has to cover everything a
-        // pull-to-refresh covers on the phone — hence `refreshRestSurfaces`. The page has
-        // no pull gesture and can't have one: it's three side-by-side columns, each
-        // owning its own scroll, so there's no single container for `.refreshable` to
-        // hang off. Without this the self-loading REST cards (countdowns, pantry,
-        // rhythms, family night) held launch-time data until someone restarted the app —
-        // a rhythm completed on a phone in the morning still read as due that evening.
+        // Day rollover on the always-on display: sleep to just past each household-tz
+        // midnight, then refetch. This is the wall's ONLY unattended refresh, so it must
+        // cover everything a phone pull-to-refresh covers (hence `refreshRestSurfaces`) —
+        // three independently scrolling columns leave no container for `.refreshable`.
         .task(id: tz.identifier) {
             while !Task.isCancelled {
                 let wait = Agenda.secondsUntilNextDay(after: Date(), tz: tz)
@@ -152,10 +119,6 @@ struct KioskDashboard: View {
                 _ = await (c, m, r)
             }
         }
-        // A wall iPad does get woken — the screen locks, someone taps it, the app comes
-        // back to active. That's the closest thing to a deliberate refresh anyone can
-        // perform here, so treat it like the phone's: reload the REST cards and the
-        // module flags, not just the day-scoped domains.
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task {
@@ -165,8 +128,6 @@ struct KioskDashboard: View {
                 _ = await (c, m, r)
             }
         }
-        // Pinned-banner queues: approvals refresh on chore/reward actions; the review
-        // queue refreshes whenever a review/goal action bumps the goals bus.
         .task(id: "\(sync.choresRev)|\(sync.rewardsRev)|\(sync.modulesRev)") {
             await approvals.load(
                 scope: sync.restDataScopeKey,
@@ -182,8 +143,7 @@ struct KioskDashboard: View {
             reviewSuggestions = await s ?? []
         }
         .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
-        // The full recipe page, not a cramped iPad page-sheet — open it full-screen with
-        // a Close button (matches the phone, which pushes the same view).
+        // Full-screen with a Close button, not a cramped iPad page-sheet.
         .fullScreenCover(item: $recipeTarget) { t in
             NavigationStack {
                 RecipeDetailView(summary: t.summary, model: recipes, autoCook: t.cook)
@@ -196,8 +156,6 @@ struct KioskDashboard: View {
                     }
             }
         }
-        // The plate's detail, opened full-screen with a Close button — same treatment as
-        // the recipe cover above (the phone pushes the same view instead).
         .fullScreenCover(item: $mealTarget) { m in
             NavigationStack {
                 MealDetailView(summary: m, recipes: recipes)
@@ -210,9 +168,6 @@ struct KioskDashboard: View {
                     }
             }
         }
-        // Starting a cook (Cook button / auto-cook) closes this recipe cover so the
-        // app-root Cook Mode cover presents immediately instead of queueing behind it.
-        // Cook Mode is durable (survives backgrounding); closing it lands back on Today.
         .onChange(of: cook.isActive) { _, active in
             if active { recipeTarget = nil; mealTarget = nil }
         }
@@ -229,12 +184,10 @@ struct KioskDashboard: View {
 
     // MARK: pinned alert banners
 
-    /// Gold "N to approve" + purple "N to review · M to link" — the same alerts the
-    /// phone/web pin atop Today. Each renders only when it has work and opens its
-    /// focused queue as a page sheet. Hidden entirely (no gap) when both are empty.
+    /// The same alerts the phone/web pin atop Today. Each renders only when it has work;
+    /// hidden entirely (no gap) when both are empty.
     @ViewBuilder private var banners: some View {
-        // Gate each bar by its module: approvals with chores, the goal-recap review
-        // bar with goals (calendar itself is never gated).
+        // Gate each bar by its module (calendar itself is never gated).
         let showApprovalsBar = sync.module(.chores) && sync.canApprove && approvals.showsEntryPoint
         let showReviewBar = sync.module(.goals) && (!reviewRecap.isEmpty || !reviewSuggestions.isEmpty)
         if showApprovalsBar || showReviewBar {
@@ -314,54 +267,45 @@ struct KioskDashboard: View {
     // MARK: columns (preset layouts)
 
     // Each column scrolls its own overflow within the fixed dashboard height, so a long
-    // grocery/chore stack stays reachable instead of being clipped off the bottom.
+    // stack stays reachable instead of being clipped off the bottom.
     private var agendaCol: some View {
         VStack(spacing: 22) {
             agendaColumn
             CountdownsCard(kiosk: true)
-            // Pantry (shared card; it hides itself when the household's "show on Today"
-            // toggle is off, matching web).
             if sync.module(.pantry) { PantryTodayCard(kiosk: true) { navigate(.pantry) } }
         }
     }
 
 
-    // Center column: tonight + this week's dinners, then Family Night (the evening
-    // gathering pairs with the meal plan). Scrolls its own overflow.
     private var mealsCol: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 22) {
                 tonightCard
                 weekDinnersCard
                 if sync.module(.familyNight) { FamilyNightCard(kiosk: true) }
+                // This column is a fixed-height `GeometryReader` over an unbounded
+                // `VStack`, so an oversized card is CLIPPED with no scroll to reach it —
+                // hence a card that stays small and hides unless a session is live.
+                if sync.module(.weeklyPlanning) { PlanningTodayCard(kiosk: true) }
             }
             .padding(.bottom, 8)
         }
     }
-    // Chores sized to content; the grocery card fills the rest and scrolls its own
-    // (full) list internally so it stays reachable. Grocery must be the *last* fill
-    // element here — the pantry card lives in the agenda column so it can't crush it.
-    //
-    // Rhythms sits here rather than under pantry, where it first went. The dashboard is a
-    // fixed-height GeometryReader and every column is an unbounded VStack, so a card that
-    // doesn't fit isn't squeezed — it's clipped, off the bottom, with no scroll to reach
-    // it. The agenda column was already three self-sizing cards deep and had no room to
-    // give; this one is built around a fill element that yields, and chores + rhythms are
-    // the same kind of thing anyway: the recurring work of the house.
+    // Chores sized to content; grocery fills the rest and scrolls internally. Grocery must
+    // stay the LAST fill element here — every column is an unbounded VStack inside a
+    // fixed-height GeometryReader, so a card that doesn't fit is clipped, not squeezed.
     private var choreGroceryCol: some View {
         VStack(spacing: 22) {
             choresCard
-            // Renders nothing when the register is quiet, which is most days — same rule
-            // as the web card, so on a normal morning this column is exactly as it was.
+            // Renders nothing when the register is quiet — same rule as the web card.
             if sync.module(.rhythms) { RhythmsTodayCard(kiosk: true, model: rhythms) { navigate(.rhythms) } }
             groceryCard
         }
     }
 
 
-    // Concrete columns per layout (no AnyView — type erasure would stop SwiftUI from
-    // diffing the three columns, forcing all of them to rebuild on every render). The
-    // GeometryReader only supplies the width for the proportional `.frame`s.
+    // Concrete columns per layout, NOT AnyView: type erasure would stop SwiftUI diffing
+    // the three columns and force all of them to rebuild on every render.
     private static let colSpacing: CGFloat = 22
 
     @ViewBuilder private func dashRow(_ avail: CGFloat) -> some View {
@@ -395,16 +339,12 @@ struct KioskDashboard: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 22) {
                 goalCard
-                // Use the column's headroom for tonight's dinner — or the week's dinners
-                // when nothing's planned for tonight.
                 if model.tonight != nil || !model.mealsState.isAuthoritative { tonightCard } else { weekDinnersCard }
             }
             .padding(.bottom, 8)
         }
     }
 
-    /// The featured-goal hero (shared with the iPhone Today card). Picking a goal in its
-    /// switcher pins it to the wall; logging refreshes the goals + bus.
     @ViewBuilder private var goalCard: some View {
         VStack(spacing: 8) {
             RestStateNotice(state: model.goalsState, retry: { Task { await model.loadGoals() } })
@@ -451,7 +391,6 @@ struct KioskDashboard: View {
         .background(WF.canvas)
     }
 
-    /// Date · time · weather on one line, ticking on the minute.
     private var dateLine: some View {
         TimelineView(.periodic(from: .now, by: 30)) { ctx in
             HStack(spacing: 10) {
@@ -471,7 +410,6 @@ struct KioskDashboard: View {
 
     private var dot: some View { Text("·").font(.system(size: 18, weight: .bold)).foregroundStyle(WF.ink3) }
 
-    /// The Today-layout switcher (Balanced / Agenda / Meals).
     private var layoutMenu: some View {
         Menu {
             ForEach(DashLayout.allCases, id: \.self) { l in
@@ -525,7 +463,6 @@ struct KioskDashboard: View {
 
     private func kioskEventRow(_ ev: SyncedEvent) -> some View {
         HStack(spacing: 14) {
-            // The iPad twin of EventRow's bar — family-aware; the avatar keeps the owner's color.
             RoundedRectangle(cornerRadius: 99).fill(sync.eventPalette.color(for: ev)).frame(width: 5, height: 40)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -577,18 +514,13 @@ struct KioskDashboard: View {
                         }
                         Spacer(minLength: 0)
                     }
-                    // Gated on `isCookable` — a recipe OR a plate — for the same reason
-                    // the phone card is; see TodayView.
+                    // Gated on `isCookable` for the same reason the phone card is (TodayView).
                     if meal.isCookable, let summary = meal.recipeSummary {
                         HStack(spacing: 12) {
                             secondaryButton("View recipe") { recipeTarget = .init(summary: summary, cook: false) }
                             primaryButton("👨‍🍳 Cook Mode") { recipeTarget = .init(summary: summary, cook: true) }
                         }
                     } else if meal.isCookable, let mealId = meal.mealId {
-                        // A plate has no single recipe to open, so "View meal" opens the
-                        // plate itself. Kept in step with the iPhone card deliberately —
-                        // these are two separate view bodies, and the iPad shipped with
-                        // only the Cook button when the phone had both.
                         HStack(spacing: 12) {
                             secondaryButton("View meal") {
                                 mealTarget = .placeholder(id: mealId, name: meal.title,
@@ -665,8 +597,6 @@ struct KioskDashboard: View {
                     }
                 } else {
                     VStack(spacing: 16) {
-                        // Each person row opens the Chores page too, not just the header —
-                        // tapping anyone in the card is a natural "show me chores" gesture.
                         ForEach(model.chores) { p in
                             Button { navigate(.tasks) } label: { personChoreRow(p) }
                                 .buttonStyle(.plain)
@@ -723,9 +653,6 @@ struct KioskDashboard: View {
                         }
                     }
                 }
-                // Add opens a half-sheet — the OS floats its text field above the keyboard,
-                // so there's no bottom-pinned bar to lift (which fought the iPad keyboard and
-                // looped/crashed when we tried to lift it).
                 Button { groceryAddSheet = true } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "plus.circle.fill").font(.system(size: 22)).foregroundStyle(WF.primary)
@@ -751,16 +678,12 @@ struct KioskDashboard: View {
             HStack(spacing: 12) {
                 Image(systemName: item.checked ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 22)).foregroundStyle(item.checked ? WF.primary : WF.ink3)
-                // The pantry badge stacks UNDER the name, as it does on the grocery
-                // board itself. This row carries less than the full list row does, but
-                // it's a third of an iPad's width, both texts are `lineLimit(1)`, and
-                // the badge's whole job is to name what the pantry matched — put it in
-                // the trailing run next to the quantity and the two truncate against
-                // each other, which is worse here than on a phone you can lean into.
+                // The pantry badge stacks UNDER the name (as on the grocery board): in the
+                // trailing run it would truncate against the quantity in a third-width
+                // column.
                 VStack(alignment: .leading, spacing: 3) {
                     Text(item.name).font(.system(size: 17)).foregroundStyle(item.checked ? WF.ink3 : WF.ink)
                         .strikethrough(item.checked, color: WF.ink3).lineLimit(1)
-                    // A checked row has been dealt with; let its badge recede with it.
                     if let hit = item.pantry {
                         PantryBadgeChip(rowName: item.name, hit: hit, dimmed: item.checked)
                     }
@@ -777,8 +700,6 @@ struct KioskDashboard: View {
 
     // MARK: building blocks
 
-    /// A card header. When `action` is set, the whole header is a button (with a
-    /// chevron) that links to the relevant rail page.
     @ViewBuilder
     private func cardHeader(_ title: String, trailing: String? = nil, chevron: Bool, action: (() -> Void)? = nil) -> some View {
         let content = HStack(spacing: 8) {
@@ -797,9 +718,6 @@ struct KioskDashboard: View {
 
     private func primaryButton(_ label: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            // One line, shrinking to fit: these sit two-up in a narrow dashboard
-            // column, where a two-word label like "Cook the meal" wrapped mid-phrase
-            // and made the button look broken.
             Text(label).font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
                 .lineLimit(1).minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity).padding(.vertical, 13)
@@ -821,7 +739,6 @@ struct KioskDashboard: View {
     // MARK: date helpers
 
     static func dateFromKey(_ key: String, _ tz: TimeZone) -> Date? {
-        // Called per meal-plan row — route through the cached formatter (POSIX + gregorian).
         DateFmt.date(key, "yyyy-MM-dd", tz)
     }
 
@@ -830,7 +747,6 @@ struct KioskDashboard: View {
         return DateFmt.string(d, "EEE", tz)
     }
 
-    /// Identifies the recipe sheet target (and whether to jump into Cook Mode).
     struct RecipeTarget: Identifiable {
         let summary: WaffledAPI.RecipeSummary
         let cook: Bool
@@ -838,24 +754,19 @@ struct KioskDashboard: View {
     }
 }
 
-/// REST-backed state for the iPad Today page — chores, tonight + this-week dinners,
-/// the named grocery list (with optimistic check-off), and weather. Mirrors what the
-/// web `Today` shows; reuses the same `WaffledAPI` endpoints as the iPhone dashboard.
+/// REST-backed state for the iPad Today page — chores, dinners, the named grocery list
+/// (with optimistic check-off), and weather. Same endpoints as the iPhone dashboard.
 @MainActor
 @Observable
 final class KioskTodayModel {
-    /// Tonight's dinner + the 7-day strip, derived together from one meals fetch so
-    /// a failed refresh keeps (or a successful one replaces) them as a unit.
     struct Meals: Sendable {
         var tonight: TonightMeal?
         var week: [WaffledAPI.WeekEntryDTO] = []
     }
 
-    // Each domain lives in a shared `RestDomain` (same layer as the phone's
-    // DashboardModel): per-domain loaded flags — a fast fetch can't flash the
-    // slower cards' empty states — and keep-prior-values-on-failure, so a network
-    // blip on the always-on display never blanks it to "All bought ✓" /
-    // "No dinner planned" / "No goals yet" while data exists.
+    // Each domain lives in a shared `RestDomain`: per-domain loaded flags (a fast fetch
+    // can't flash the slower cards' empty states) and keep-prior-values-on-failure, so a
+    // network blip on the always-on display never blanks a card that has data.
     private let choresD = RestDomain<[WaffledAPI.PersonChoresDTO]>([], isEmpty: \.isEmpty)
     private let mealsD = RestDomain<Meals>(Meals(), isEmpty: { $0.tonight == nil && $0.week.isEmpty })
     private let groceryD = RestDomain<[WaffledAPI.ListItemDTO]>([], isEmpty: \.isEmpty)
@@ -880,8 +791,6 @@ final class KioskTodayModel {
     var goalsState: RestState { goalsD.state }
     var goalsLoaded: Bool { goalsState.isAuthoritative }
 
-    /// Throwing fetchers preserve network/session failures for state classification.
-    /// Defaults hit `WaffledAPI`; `api` remains for the grocery mutations.
     private let fetchChores: @Sendable () async throws -> [WaffledAPI.PersonChoresDTO]
     private let fetchMeals: @Sendable (String) async throws -> [WaffledAPI.WeekEntryDTO]
     private let fetchGrocery: @Sendable () async throws -> [WaffledAPI.ListItemDTO]
@@ -903,17 +812,12 @@ final class KioskTodayModel {
 
     private let api = WaffledAPI()
 
-    /// Just-checked items linger here ~2s before dropping off, so a tap reads as
-    /// "crossed out, then settles" instead of vanishing instantly (matches the Lists page).
     private var settling: Set<String> = []
 
     var choreDone: Int { chores.reduce(0) { $0 + $1.done } }
     var choreTotal: Int { chores.reduce(0) { $0 + $1.total } }
     var groceryActive: [WaffledAPI.ListItemDTO] { grocery.filter { !$0.checked || settling.contains($0.id) } }
 
-    /// Full initial load — runs each domain in parallel. Per-domain methods below let
-    /// the view refresh just the domain whose `rev` bumped (e.g. a grocery toggle
-    /// reloads only grocery, not chores + meals + weather).
     func load(todayKey: String) async {
         async let a: () = loadChores()
         async let b: () = loadMeals(todayKey: todayKey)
@@ -953,8 +857,6 @@ final class KioskTodayModel {
         if let w = try? await fetchWeather() { weather = w }
     }
 
-    /// Quick-add a grocery item from the Today card, then refresh the list. Uses the
-    /// "grocery" list slug (same one `groceryBoard()` resolves).
     func addGrocery(_ name: String) async {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -962,8 +864,6 @@ final class KioskTodayModel {
         await loadGrocery()
     }
 
-    /// Optimistically toggle a grocery item, reverting on failure. A check-off stays
-    /// visible (crossed out) for ~2s before settling off the list — same as Lists.
     func toggleGrocery(_ id: String) async {
         guard let idx = grocery.firstIndex(where: { $0.id == id }) else { return }
         let target = !grocery[idx].checked
@@ -980,7 +880,6 @@ final class KioskTodayModel {
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(2))
             guard let self else { return }
-            // Only settle if it's still checked (the user may have toggled it back).
             if self.grocery.first(where: { $0.id == id })?.checked == true {
                 withAnimation { _ = self.settling.remove(id) }
             }
@@ -988,8 +887,6 @@ final class KioskTodayModel {
     }
 }
 
-/// The iPad Today preset layouts — same cards, re-weighted columns so each gives its
-/// focus more space (the user picks one in the dashboard header switcher).
 enum DashLayout: String, CaseIterable {
     case balanced, agenda, meals, goal
     var label: String {
@@ -1010,7 +907,6 @@ enum DashLayout: String, CaseIterable {
     }
 }
 
-/// A large, kiosk-scaled card surface (the wall-display twin of `WaffledCard`).
 struct KioskCard<Content: View>: View {
     @ViewBuilder var content: () -> Content
     var body: some View {
@@ -1024,9 +920,6 @@ struct KioskCard<Content: View>: View {
     }
 }
 
-/// Add items to the grocery list from the Today card — a half-sheet whose text field the
-/// OS keeps above the keyboard (so there's no bottom-pinned bar to lift). Return adds the
-/// item and keeps the keyboard up for rapid entry; swipe down or Done to close.
 struct AddGroceryItemSheet: View {
     @Environment(\.dismiss) private var dismiss
     let onAdd: (_ name: String) async -> Void

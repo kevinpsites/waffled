@@ -1,7 +1,6 @@
-// Goals domain — matches the handoff Goals mocks. Goal lists (the SHARED LISTS /
-// INDIVIDUAL membership sidebar), goals (count/total/habit/checklist; shared_total
-// vs each_tracks), append-only logs (SUM = progress), milestones, and a detail
-// read model (hours-by-person, recent activity, streak, this-week).
+// Goals domain: goal lists (the SHARED LISTS / INDIVIDUAL membership sidebar), goals
+// (count/total/habit/checklist; shared_total vs each_tracks), append-only logs (SUM =
+// progress), milestones, and a detail read model.
 import { randomUUID } from 'node:crypto'
 import type { PoolClient, QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
@@ -10,34 +9,29 @@ import type { CreateGoalListInput, UpdateGoalListInput, CreateGoalInput, UpdateG
 
 export const GOAL_TYPES = new Set(['count', 'total', 'habit', 'checklist'])
 export const TRACKING_MODES = new Set(['shared_total', 'each_tracks'])
-// How a SHARED goal counts a log that several people took part in (ignored for
-// each_tracks, which always credits each person and sums to the collective total):
-//   count_once  — one shared event; +amount once, the people are attendance.
-//   split       — the amount is divided evenly across the people.
-// ('credit_each' was retired — see migration 0079.) See migration 0078 + logProgress
-// for the row-writing rules.
+// How a SHARED goal counts a log several people took part in (ignored for each_tracks,
+// which always credits each person):
+//   count_once — one shared event; +amount once, the people are attendance.
+//   split      — the amount is divided evenly across the people.
+// See migration 0078 + logProgress for the row-writing rules.
 export const PARTICIPANT_MODES = new Set(['count_once', 'split'])
-// Whether a goal's target_value is a family total or a per-person target. Only meaningful
-// for each_tracks goals: 'per_person' means the family ring target is target_value × the
-// member count (read 12 EACH → 24 for two); 'family' is a flat shared target (12 total).
+// Whether target_value is a family total or a per-person target. Only meaningful for
+// each_tracks.
 export const TARGET_BASES = new Set(['family', 'per_person'])
-// A habit's period is interpolated into date_trunc() in the progress query, so it must
-// be one of Postgres's field names — an unconstrained value would throw at read time and
-// 500 the whole goals list. Keep this in sync with habit_period usage.
+// Interpolated into date_trunc() in the progress query, so it must be a Postgres field
+// name — an unconstrained value 500s the goals list.
 export const HABIT_PERIODS = new Set(['day', 'week', 'month'])
-// Apple Health metrics a goal can auto-fill from (iPhone). Keep in sync with the iOS
-// HealthKitBridge.Metric keys. Quantity metrics (steps…mindful_minutes) send a raw daily
-// total; the boolean metrics (rings, mood) send 1 when met / 0 when not, so they ride the
-// habit daily-threshold path (threshold 1) — the server stays metric-agnostic either way.
-// walk_run_distance is the first *fractional* quantity (miles/km): the server stores it in
-// the same numeric columns (goal_logs.amount, goals.health_daily_target), so decimals ride
-// through unchanged — no counting rule cares whether the daily total is whole or fractional.
+// Apple Health metrics a goal can auto-fill from. Keep in sync with the iOS
+// HealthKitBridge.Metric keys. Quantity metrics send a raw daily total; boolean metrics
+// (rings, mood) send 1/0 and ride the habit daily-threshold path (threshold 1), so the
+// server stays metric-agnostic. Fractional quantities (walk_run_distance) ride the same
+// numeric columns unchanged — no counting rule cares whether the total is whole.
 export const HEALTH_METRICS = new Set([
   'steps', 'flights', 'exercise_minutes', 'active_energy', 'walk_run_distance',
   'cycling_distance', 'swimming_distance', 'wheelchair_distance',
   'move_ring', 'exercise_ring', 'stand_ring', 'rings_all', 'mindful_minutes', 'mood',
-  // Workout-type metrics: the measure (minutes summed vs sessions counted) is baked
-  // into the key so a synced day-value is unambiguous — no workout logic server-side.
+  // Workout metrics bake the measure (minutes summed vs sessions counted) into the key,
+  // so no workout logic is needed server-side.
   ...['running', 'cycling', 'swimming', 'yoga', 'strength', 'any'].flatMap((a) =>
     [`workout_${a}_minutes`, `workout_${a}_sessions`]),
 ])
@@ -47,10 +41,9 @@ const BOOLEAN_HEALTH_METRICS = new Set(['move_ring', 'exercise_ring', 'stand_rin
 
 /**
  * Whether a health metric can drive a goal of this type — mirrors the iOS
- * `Metric.applies(toGoalType:)` rules the pickers enforce. Without this check a raw
- * API call can store e.g. session counts on a total goal; iOS then computes
- * activeHealthMetric == nil for it and a later unrelated edit silently null-patches
- * the link away.
+ * `Metric.applies(toGoalType:)` rules the pickers enforce. Without it a raw API call can
+ * store e.g. session counts on a total goal, and a later unrelated edit then silently
+ * null-patches the link away.
  */
 export function healthMetricFitsGoalType(metric: string, goalType: string): boolean {
   if (metric.startsWith('workout_')) {
@@ -131,9 +124,8 @@ export async function createGoalList(tenant: Tenant, input: CreateGoalListInput)
   }
 }
 
-// Edit a goal list: any provided field is updated; when `memberIds` is given the
-// membership is replaced wholesale. Existing goals keep their snapshotted
-// participants — changing the group doesn't retroactively rewrite past goals.
+// Edit a goal list; `memberIds` replaces the membership wholesale. Existing goals keep
+// their snapshotted participants.
 export async function updateGoalList(
   tenant: Tenant,
   id: string,
@@ -185,10 +177,9 @@ export async function updateGoalList(
   }
 }
 
-// Deleting a goal group does NOT delete its goals — unlike a throwaway grocery
-// list, goals are long-lived (history, progress, participants). So we detach them
-// (goal_list_id → null) rather than orphan or destroy them, and drop the now-
-// meaningless membership rows. All in one transaction.
+// Deleting a goal group does NOT delete its goals — they are long-lived (history,
+// progress, participants), so they are detached (goal_list_id → null) and the membership
+// rows dropped, in one txn.
 export async function softDeleteGoalList(householdId: string, id: string): Promise<boolean> {
   const client = await getPool().connect()
   try {
@@ -214,9 +205,8 @@ export async function softDeleteGoalList(householdId: string, id: string): Promi
 
 // ---- goals ------------------------------------------------------------------
 
-// A list holds exactly one spotlight (the hero). Clear any OTHER spotlight in the same list,
-// demoting the old one to Featured so it stays elevated — just not the hero. `listId` null
-// groups ungrouped goals. Runs inside the caller's transaction.
+// A list holds exactly one spotlight. Clear any OTHER in the same list, demoting it to
+// Featured. Runs in the caller's txn.
 async function demoteListSpotlight(client: PoolClient, householdId: string, listId: string | null, exceptGoalId: string | null): Promise<void> {
   await client.query(
     `update goals set is_spotlight = false, is_featured = true
@@ -231,8 +221,8 @@ export async function createGoal(tenant: Tenant, input: CreateGoalInput): Promis
   const client = await getPool().connect()
   try {
     await client.query('begin')
-    // Demote the list's current spotlight BEFORE inserting the new one (the partial unique
-    // index forbids two live spotlights in a list).
+    // Demote the list's current spotlight BEFORE inserting — the partial unique index
+    // forbids two live spotlights.
     if (input.isSpotlight) {
       await demoteListSpotlight(client, tenant.householdId, input.goalListId ?? null, null)
     }
@@ -319,26 +309,28 @@ const PARTICIPANTS_SUBQUERY = `coalesce((
 
 // The first day of the goal's CURRENT habit period, as a household-local DATE.
 //
-// A week follows the HOUSEHOLD's `week_start` (sunday | monday) — the same rule as
-// `snapToWeekStart` in lists.service.ts and `Cal.weekStart` on iOS — not Postgres's
-// `date_trunc('week')`, which is always Monday. The default household is a *sunday* one,
-// so Monday-based truncation put Sunday's completion in the week that was ending: log on
-// Sunday and again on Monday and a "5× a week" habit read 2, having reset nothing.
+// A week follows the HOUSEHOLD's `week_start` — the same rule as `snapToWeekStart` and
+// iOS `Cal.weekStart` — not Postgres's `date_trunc('week')`, which is always Monday. The
+// default household is a *sunday* one, so Monday truncation puts Sunday's completion in
+// the week that was ending. `extract(dow)` is 0=Sunday..6=Saturday; subtracting the
+// household's start day (mod 7, kept positive) walks back to it. Day and month fall
+// through to date_trunc.
 //
-// `extract(dow)` is 0=Sunday..6=Saturday; subtracting the household's start day (mod 7,
-// kept positive) walks back to it. Day and month have no such preference and fall through
-// to date_trunc. `h` is the households row every caller already joins.
-const PERIOD_START_SQL = `case
+// EXPORTED, and parameterised on the households alias, so the Weekly Planning goals step
+// measures "last week" on this exact clock instead of spelling the rule again (its query
+// calls the households row `l`). A second spelling is how Monday truncation creeps back.
+export const periodStartSQL = (hh = 'h') => `case
   when g.habit_period = 'week' then
-    (now() at time zone h.timezone)::date
-      - ((extract(dow from (now() at time zone h.timezone))::int
-          - case when h.week_start = 'monday' then 1 else 0 end + 7) % 7)
-  else date_trunc(g.habit_period, (now() at time zone h.timezone))::date
+    (now() at time zone ${hh}.timezone)::date
+      - ((extract(dow from (now() at time zone ${hh}.timezone))::int
+          - case when ${hh}.week_start = 'monday' then 1 else 0 end + 7) % 7)
+  else date_trunc(g.habit_period, (now() at time zone ${hh}.timezone))::date
 end`
 
-// Habit goals are about consistency, not a grand total: how many distinct days
-// have been logged in the CURRENT period (day/week/month, household timezone).
-// 0 for non-habit goals, which display the cumulative total instead.
+const PERIOD_START_SQL = periodStartSQL('h')
+
+// Habits count consistency: distinct days logged in the CURRENT period. 0 for non-habits,
+// which show the cumulative total.
 const PERIOD_DONE_SUBQUERY = `case when g.goal_type = 'habit' then (
   select count(distinct (gl.logged_at at time zone h.timezone)::date)
     from goal_logs gl, households h
@@ -346,9 +338,8 @@ const PERIOD_DONE_SUBQUERY = `case when g.goal_type = 'habit' then (
      and (gl.logged_at at time zone h.timezone)::date >= (${PERIOD_START_SQL})
 ) else 0 end`
 
-// Who has already logged this goal TODAY (household timezone), as an array of
-// person ids — with the sentinel '__family__' for a no-person (shared) log. The
-// client uses it to stop a habit being marked done twice in a day per person.
+// Who logged this TODAY (household tz), '__family__' for a no-person log. Stops a habit
+// being marked done twice a day per person.
 const LOGGED_TODAY_SUBQUERY = `coalesce((
   select json_agg(distinct coalesce(gl.person_id::text, '__family__'))
     from goal_logs gl, households h
@@ -543,8 +534,8 @@ export async function goalExists(householdId: string, id: string): Promise<boole
   return !!rowCount
 }
 
-// The goal's type, or null if it doesn't exist (wrong household / deleted). Lets the
-// /log route 404 an unknown goal and reject a numeric log against a checklist.
+// The goal's type, or null if it doesn't exist — lets /log 404 an unknown goal and reject
+// a numeric log against a checklist.
 export async function goalTypeFor(householdId: string, id: string): Promise<string | null> {
   const { rows } = await query<{ goal_type: string }>(
     `select goal_type from goals where household_id=$1 and id=$2 and deleted_at is null`,
@@ -553,8 +544,8 @@ export async function goalTypeFor(householdId: string, id: string): Promise<stri
   return rows[0]?.goal_type ?? null
 }
 
-// Type + unit in one hit — the /log route needs both to decide whether an
-// hours+minutes entry is allowed (a `total` goal measured in hours).
+// Type + unit in one hit: /log needs both to decide whether an hours+minutes entry is
+// allowed.
 export async function goalMetaFor(
   householdId: string,
   id: string
@@ -567,18 +558,16 @@ export async function goalMetaFor(
   return r ? { goalType: r.goal_type, unit: r.unit } : null
 }
 
-// A goal is "time-measured" purely by its free-text unit — the same recognised
-// hour words the web/iOS log sheets use for their time-flavoured chips. Keep this
-// set in sync with HOURS in apps/web LogModal.tsx and hourUnits in iOS GoalsView.swift.
+// "Time-measured" purely by the free-text unit. Keep in sync with HOURS in web
+// LogModal.tsx and hourUnits in iOS GoalsView.swift.
 const TIME_UNITS = new Set(['hour', 'hours', 'hr', 'hrs'])
 export function isTimeUnit(unit: string | null | undefined): boolean {
   return unit != null && TIME_UNITS.has(unit.trim().toLowerCase())
 }
 
-// The ONE body→log-amount mapping/validation for logging progress on a goal — shared
-// by POST /api/goals/:id/log and the capture commit applier so the two callers can
-// never diverge (e.g. minutes on a count goal, a bare amount on a time goal, or the
-// hours/minutes fold guard). Returns the folded decimal amount, or the 400 message.
+// The ONE body→log-amount mapping/validation, shared by POST /api/goals/:id/log and the
+// capture commit applier so the two can never diverge. Returns the folded amount, or the
+// 400 message.
 export function goalLogAmount(
   meta: { goalType: string; unit: string | null },
   body: { amount?: unknown; hours?: unknown; minutes?: unknown }
@@ -587,9 +576,8 @@ export function goalLogAmount(
   if (meta.goalType === 'checklist') {
     return { error: 'checklist goals are updated by ticking steps, not logging progress' }
   }
-  // Time goals may be logged as hours + minutes; the server folds them into the
-  // decimal-hours `amount` so the client never has to (10m -> 0.1666…). Both fields
-  // are optional and either may stand alone (0h 45m, or 2h with no minutes).
+  // Time goals may be logged as hours + minutes; the server folds them so no client has
+  // to. Either field may stand alone.
   const usesHm = body.hours != null || body.minutes != null
   if (usesHm) {
     if (body.amount != null) {
@@ -600,8 +588,8 @@ export function goalLogAmount(
     }
     const hours = body.hours == null ? 0 : Number(body.hours)
     const minutes = body.minutes == null ? 0 : Number(body.minutes)
-    // Whole hours + a 0–59 minute remainder — the same shape both clients enter, reasserted
-    // here so a non-UI caller can't fold e.g. { minutes: 200 } into 3.33h.
+    // Whole hours + a 0–59 remainder, reasserted so a non-UI caller can't fold { minutes:
+    // 200 } into 3.33h.
     if (!Number.isInteger(hours) || hours < 0 || !Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
       return { error: 'hours must be a whole number ≥ 0 and minutes 0–59' }
     }
@@ -622,8 +610,8 @@ export function goalLogAmount(
   return { amount }
 }
 
-// True only if every id is a live person in this household — so a /log can't attribute
-// progress to a stranger (or someone in another household).
+// True only if every id is a live person in this household — so a /log can't credit a
+// stranger.
 export async function personsInHousehold(householdId: string, ids: string[]): Promise<boolean> {
   if (ids.length === 0) return true
   const unique = [...new Set(ids)]
@@ -634,8 +622,8 @@ export async function personsInHousehold(householdId: string, ids: string[]): Pr
   return Number(rows[0]?.n ?? 0) === unique.length
 }
 
-// The person_ids currently assigned to a goal (live participants only). Powers the
-// goal.manage carve-out: a goal whose sole participant is the caller is "their own".
+// Powers the goal.manage carve-out: a goal whose sole participant is the caller is "their
+// own".
 export async function goalParticipantIds(householdId: string, goalId: string): Promise<string[]> {
   const { rows } = await query<{ person_id: string }>(
     `select pa.person_id
@@ -673,8 +661,8 @@ export async function goalDetail(householdId: string, id: string) {
   const base = mapGoal(rows[0])
   const streakDays = await goalStreak(householdId, id)
 
-  // A milestone's threshold is read against the goal's natural axis: streak days
-  // for habits, percent-complete for checklists, cumulative total otherwise.
+  // A milestone's threshold reads against the goal's natural axis: streak days,
+  // percent-complete, or cumulative total.
   const stepPct = base.stepTotal ? (base.stepDone / base.stepTotal) * 100 : 0
   const milestoneAxis = base.goalType === 'habit' ? streakDays : base.goalType === 'checklist' ? stepPct : base.totalProgress
 
@@ -701,11 +689,9 @@ export async function goalDetail(householdId: string, id: string) {
     )
   ).rows.map((s) => ({ id: s.id, label: s.label, done: s.done_at != null, doneBy: s.done_by }))
 
-  // Audit log. Rows split from one entered amount share a batch_id (set only on the
-  // shared-pool split path); we collapse those siblings into a single entry — summed
-  // amount, earliest timestamp, and the participants as an avatar list. Every unbatched
-  // row groups by its own id, so it stays one entry exactly as before. Grouping (not the
-  // raw rows) is limited to 12 so a split action counts as one line.
+  // Audit log. Rows split from one entered amount share a batch_id and collapse into a
+  // single entry (summed amount, earliest timestamp, avatars). Grouping — not the raw
+  // rows — is capped at 12.
   const recent = (
     await query<{ id: string; source: string; amount: string; loggedAt: string; dateKey: string; note: string | null; participants: Array<{ personId: string | null; name: string | null; avatarEmoji: string | null; colorHex: string | null }> }>(
       `select coalesce(gl.batch_id, gl.id)::text as id,
@@ -732,14 +718,12 @@ export async function goalDetail(householdId: string, id: string) {
         order by min(gl.logged_at) desc limit 12`,
       [id, householdId]
     )
-    // `editable` is what the edit sheets gate on: false means the entry is owned by its
-    // source (a checklist tick, a calendar confirm, a Health sync), so only its note can
-    // be changed and it cannot be deleted here. `source` itself stays server-side.
+    // `editable` false means the entry is owned by its source (checklist tick, calendar
+    // confirm, Health sync): note-only edits.
   ).rows.map(({ source, ...r }) => ({ ...r, amount: Number(r.amount), editable: EDITABLE_LOG_SOURCES.has(source) }))
 
-  // The hero's "THIS WEEK" line. Same week as everything else the household sees: its
-  // own first-day-of-week AND its timezone — this used to truncate in the SERVER's
-  // timezone on a fixed Monday, so it could disagree with the habit count right beside it.
+  // The hero's "THIS WEEK": the household's own first-day-of-week AND timezone, so it
+  // agrees with the habit count beside it.
   const thisWeek = Number(
     (
       await query<{ sum: string }>(
@@ -764,14 +748,11 @@ export interface GoalActivityDay {
   perMember: Record<string, number>
 }
 
-// Day-bucketed log history for the goal-detail data views (Week/Month/Pace/Year/
-// By-person/Year-ring). Buckets by the SAME household-timezone day expression as
-// goalStreak/streaksFor, so the streak/"today" this feeds matches what's shown
-// elsewhere. `total` sums only counts_total rows (matches total_progress/the ring);
-// `perMember` sums EVERY row for that person (including counts_total=false
-// attendance rows from a count_once shared event, which land at amount 0 — present,
-// not credited) so a "who was there" indicator can key on presence, not amount>0.
-// Only days with at least one log appear (sparse) — the caller fills gaps.
+// Day-bucketed log history for the goal-detail data views. Buckets by the SAME
+// household-timezone day expression as goalStreak/streaksFor. `total` sums only
+// counts_total rows (matching the ring); `perMember` sums EVERY row for that person,
+// including amount-0 attendance rows from a count_once event, so a "who was there"
+// indicator can key on presence rather than amount>0. Sparse — the caller fills gaps.
 export async function goalActivity(
   householdId: string,
   goalId: string
@@ -820,18 +801,15 @@ export async function goalActivity(
   return { startDate: g[0].created_at, endDate: g[0].deadline, today: t[0].today, days }
 }
 
-// How many note suggestions the log sheet gets to blend with its hardcoded defaults.
-// Slightly more than the default chip count so the client still has fresh options to
-// show after it de-dupes them against the defaults.
+// Slightly more than the default chip count, so the client still has fresh options after
+// de-duping.
 const NOTE_SUGGESTION_LIMIT = 8
 
-// Smart suggestions for the log sheet's free-text "note" field: the notes this household
-// has actually logged against THIS goal, most-used first (ties broken by most-recent).
-// Case/whitespace variants collapse into one (keeping the most recent spelling). When
-// `personId` is given, we scope to the notes where that person was the CREDITED
-// participant (goal_logs.person_id) — not merely whoever recorded the log — so each
-// family member's box learns their own history. Returns null when the goal doesn't exist
-// (so the route can 404), an empty array when there's nothing logged yet.
+// Notes this household has actually logged against THIS goal, most-used first (ties by
+// most-recent), case/whitespace variants collapsed. With `personId` we scope to notes
+// where that person was the CREDITED participant (goal_logs.person_id) rather than the
+// recorder, so each member's box learns their own history. null when the goal doesn't
+// exist.
 export async function goalNoteSuggestions(
   householdId: string,
   goalId: string,
@@ -852,10 +830,9 @@ export async function goalNoteSuggestions(
   return rows.map((r) => r.note)
 }
 
-// Tick/untick a checklist step. We keep the step's done_at as the source of truth
-// AND mirror it into goal_logs (source 'checklist_item') so the activity feed and
-// streaks treat a ticked step like any other completion. Returns false if the step
-// isn't found (wrong household/goal).
+// Tick/untick a checklist step. `done_at` is the source of truth AND is mirrored into
+// goal_logs (source 'checklist_item') so the activity feed and streaks treat it like any
+// other completion.
 export async function toggleGoalStep(
   tenant: Tenant,
   goalId: string,
@@ -901,17 +878,13 @@ const round2 = (n: number): number => Math.round(n * 100) / 100
 interface PlanRow { personId: string | null; amount: number; countsTotal: boolean }
 
 // Decide which goal_logs rows a single log action writes. `amount` is always what the
-// GOAL gains — the people you tap are who took part, never a multiplier. The FAMILY
-// total sums only `countsTotal` rows; the per-person leaderboard sums every row by
-// person. That split is what lets several people share one event without inflating the
-// family number. See PARTICIPANT_MODES + migration 0078.
+// GOAL gains — the people you tap are who took part, never a multiplier. The FAMILY total
+// sums only `countsTotal` rows; the per-person leaderboard sums every row. That split is
+// what lets several people share one event without inflating the family number.
 //   • habit        → each completion is exactly 1 (one row per person, all count).
-//   • each_tracks  → everyone independently did `amount`; all rows count, summing to
-//                    the collective total (e.g. "read 12 books each" → 48 for four).
-//   • shared_total → the participant mode decides:
-//       - split       amount divided evenly across the people (rows sum to `amount`).
-//       - count_once  one family row (counts once) + an amount-0 ATTENDANCE row per
-//                     person recording who was there.
+//   • each_tracks  → everyone independently did `amount`; all rows count.
+//   • shared_total → split divides `amount` evenly; count_once writes one family row plus
+//                    an amount-0 ATTENDANCE row per person.
 export function planLogRows(
   participantMode: string,
   trackingMode: string,
@@ -934,38 +907,32 @@ export function planLogRows(
       batchId: randomUUID(),
     }
   }
-  // The attendance/multiplier distinction only bites with 2+ people. With a single
-  // person (or none) there is no shared event to divide, so it's just that person (or
-  // the family) doing it — one plain row that counts, credited to whoever's named.
+  // The attendance/multiplier distinction only bites with 2+ people: one plain row that
+  // counts otherwise.
   if (participantMode === 'count_once' && realPeople.length > 1) {
     return {
       rows: [{ personId: null, amount, countsTotal: true }, ...realPeople.map((p) => ({ personId: p, amount: 0, countsTotal: false }))],
       batchId: randomUUID(),
     }
   }
-  // split with a single target, a single-person shared log, or a family-only log
-  // (no people tapped): one plain row that counts toward the total.
+  // split with a single target, a single-person shared log, or a family-only log: one row
+  // that counts.
   return { rows: targets.map((t) => ({ personId: t, amount, countsTotal: true })), batchId: null }
 }
 
 /**
  * SQL for a backdated `logged_at`: noon on the given day, in the household's own
- * timezone. Noon rather than midnight because every read bucket the day back out
- * with `(logged_at at time zone h.timezone)::date` — anchoring at an edge lets a
- * row drift a day under a DST shift, and the day is what the goal calendar, the
- * activity feed and streaks are all built on.
- *
- * `dateParam` is the placeholder number holding a YYYY-MM-DD date; `householdParam`
- * the one holding the household id. Four call sites need this and the trick is easy
- * to mis-copy, so it lives in one place.
+ * timezone. Noon rather than midnight because every read buckets the day back out with
+ * `(logged_at at time zone h.timezone)::date`, and anchoring at an edge lets a row drift
+ * a day under a DST shift. `dateParam`/`householdParam` are the placeholder numbers
+ * holding the YYYY-MM-DD date and the household id.
  */
 export function localNoonSql(dateParam: number, householdParam = 1): string {
   return `($${dateParam}::date + time '12:00') at time zone (select timezone from households where id = $${householdParam})`
 }
 
-// Log progress toward a goal. Resolves the goal's counting rules, plans the rows via
-// planLogRows, then inserts them (batched siblings share a batch_id so the audit log
-// collapses them into one line with participant avatars).
+// Resolve the counting rules, plan the rows via planLogRows, then insert (batched
+// siblings share a batch_id).
 export async function logProgress(
   tenant: Tenant,
   goalId: string,
@@ -977,9 +944,8 @@ export async function logProgress(
   const source = opts?.source ?? 'quick_log'
   const refType = opts?.refType ?? null
   const refId = opts?.refId ?? null
-  // Optional backdate (YYYY-MM-DD, household-local). Lands the entry at noon on
-  // that local day so it falls on the intended date in every timezone — used to
-  // catch up a forgotten log without breaking a streak.
+  // Optional backdate (household-local). Lands at noon on that local day so it falls on
+  // the intended date in every timezone.
   const at = opts?.at ?? null
   const targets = personIds.length ? personIds : [null]
   const logIds: string[] = []
@@ -996,11 +962,10 @@ export async function logProgress(
   const { rows: plan, batchId } = planLogRows(participantMode, trackingMode, goalType, amount, targets)
 
   for (const row of plan) {
-    // A habit can only be logged once per day per person — logging it five times
-    // in an afternoon isn't the point. Skip a same-day duplicate silently.
+    // A habit is once per day per person; a same-day duplicate is skipped silently.
     if (isHabit) {
-      // Dedupe against the day we're logging FOR (the backdated day if given),
-      // not always "today" — so catching up yesterday doesn't collide with today.
+      // Dedupe against the day we're logging FOR, so catching up yesterday doesn't
+      // collide with today.
       const dayExpr = at ? '$4::date' : '(now() at time zone h.timezone)::date'
       const dup = await query(
         `select 1 from goal_logs gl, households h
@@ -1027,14 +992,13 @@ export async function logProgress(
 /**
  * Idempotent per-day Apple Health sync (Tier 1). Keeps at most ONE goal_logs row per
  * (goal, person, metric, day) — tracked in health_goal_logs — so re-syncing never
- * double-counts against the append-only SUM. `value` is the day's total from HealthKit.
+ * double-counts against the append-only SUM. `value` is the day's HealthKit total.
  *
- * The *amount* depends on goal_type (the "what counting" decision):
- *   • total / count → the raw day total, which ACCUMULATES toward target_value
- *     ("1,000,000 steps this year"). Re-sync replaces the day's number in place.
- *   • habit         → ONE completion (amount 1) when the day clears health_daily_target
- *     ("2,000 steps a day, 5 days a week"); below the threshold the day doesn't count,
- *     and a previously-counted day that no longer qualifies is undone.
+ * The amount depends on goal_type:
+ *   • total / count → the raw day total, ACCUMULATING toward target_value; a re-sync
+ *     replaces the day's number in place.
+ *   • habit         → ONE completion (amount 1) when the day clears health_daily_target;
+ *     below it the day doesn't count, and a previously-counted day is undone.
  */
 export async function syncHealthProgress(
   tenant: Tenant,
@@ -1052,8 +1016,8 @@ export async function syncHealthProgress(
     )
     const isHabit = meta.rows[0]?.goal_type === 'habit'
     const threshold = meta.rows[0]?.health_daily_target == null ? null : Number(meta.rows[0].health_daily_target)
-    // Habits only count a day that clears the daily threshold; everything else always
-    // records (the running total). The logged amount is 1 for a habit completion.
+    // Habits only count a day clearing the daily threshold; everything else records the
+    // running total.
     const met = !isHabit || (threshold != null && value >= threshold)
     const amount = isHabit ? 1 : value
 
@@ -1063,8 +1027,8 @@ export async function syncHealthProgress(
       [goalId, tenant.personId, metric, day]
     )
 
-    // A habit day that no longer qualifies (e.g. the threshold was raised): undo the
-    // completion and drop the mapping so a later qualifying sync re-creates it.
+    // A habit day that no longer qualifies: undo the completion and drop the mapping so a
+    // later qualifying sync re-creates it.
     if (!met) {
       if (existing.rowCount) {
         if (existing.rows[0].goal_log_id) {
@@ -1086,8 +1050,8 @@ export async function syncHealthProgress(
         [amount, goalLogId, tenant.householdId]
       )
     } else {
-      // First qualifying sync for this day → insert the progress row (landed at noon local
-      // so it falls on `day` in every timezone), then record the idempotency mapping.
+      // First qualifying sync for this day → insert the progress row (noon local), then
+      // record the idempotency mapping.
       const ins = await client.query<{ id: string }>(
         `insert into goal_logs (household_id, goal_id, person_id, amount, source, ref_type, ref_id, created_by, logged_at)
          values ($1,$2,$3,$4,'auto_healthkit','hk_day',null,$3, ${localNoonSql(5)})
@@ -1140,9 +1104,9 @@ export async function updateGoal(tenant: Tenant, id: string, patch: UpdateGoalIn
   const client = await getPool().connect()
   try {
     await client.query('begin')
-    // Promoting to spotlight demotes the target list's current hero FIRST, before this goal's
-    // flag flips (the partial unique index forbids two live spotlights per list). Target list
-    // = the patched goalListId if present, else the goal's current list.
+    // Promoting to spotlight demotes the target list's hero FIRST, before this goal's
+    // flag flips (the partial unique index forbids two per list). Target = the patched
+    // goalListId if present, else the current one.
     if (patch.isSpotlight === true) {
       const targetList = 'goalListId' in patch
         ? ((patch.goalListId as string | null) ?? null)
@@ -1156,8 +1120,7 @@ export async function updateGoal(tenant: Tenant, id: string, patch: UpdateGoalIn
     // first: sibling workout keys (minutes ↔ sessions) see the same real-world workouts,
     // so surviving old-key logs would double-count every already-qualified day when the
     // new key back-fills. Metric-scoped on purpose — unlinking (null) keeps the progress
-    // that genuinely happened, and re-linking the same metric stays a no-op (the
-    // idempotency rows still map, so re-syncs replace in place).
+    // that genuinely happened.
     if ('healthMetric' in patch && patch.healthMetric != null) {
       await client.query(
         `update goal_logs set deleted_at=now()
@@ -1211,8 +1174,8 @@ export async function updateGoal(tenant: Tenant, id: string, patch: UpdateGoalIn
         )
       }
     }
-    // Reconcile checklist steps WITHOUT wiping completion: update existing steps
-    // (matched by id) in place, insert new ones, soft-delete any dropped.
+    // Reconcile checklist steps WITHOUT wiping completion: update matched ids in place,
+    // insert new, soft-delete dropped.
     if (Array.isArray(patch.steps)) {
       const keepIds = patch.steps.map((s) => s.id).filter(Boolean) as string[]
       await client.query(
@@ -1247,15 +1210,14 @@ export async function updateGoal(tenant: Tenant, id: string, patch: UpdateGoalIn
   }
 }
 
-// Entries the user can hand-edit/delete. Derived logs (a checklist tick, an Apple
-// Health sync, a confirmed calendar event) are owned by their source and must be undone
-// there, not through the log endpoints.
+// Derived logs (checklist tick, Health sync, confirmed calendar event) are owned by their
+// source and must be undone there.
 const EDITABLE_LOG_SOURCES = new Set(['quick_log', 'manual'])
 
 type LogEditResult = 'ok' | 'not_found' | 'not_editable'
 
-// The live rows of one logged entry. `logId` is the grouped id surfaced in a goal's
-// recent activity — a batch_id (split/attributed entry) or a lone row's id.
+// The live rows of one logged entry. `logId` is the grouped id from recent activity — a
+// batch_id, or a lone row's id.
 async function loadLogGroup(
   client: import('pg').PoolClient,
   householdId: string,
@@ -1296,10 +1258,8 @@ export async function deleteGoalLog(tenant: Tenant, goalId: string, logId: strin
   }
 }
 
-// Edit a logged entry's amount / note / date / participants. Re-plans the rows through
-// the goal's current counting rules (so a split/count_once entry stays consistent).
-// Every field is optional — omitted ones keep their current value, including who took
-// part (pass personIds to change "who was there").
+// Edit an entry's amount / note / date / participants, re-planning through the goal's
+// current counting rules.
 export async function editGoalLog(
   tenant: Tenant,
   goalId: string,
@@ -1318,14 +1278,13 @@ export async function editGoalLog(
     const participants = patch.personIds != null ? [...new Set(patch.personIds)] : current
 
     if (!EDITABLE_LOG_SOURCES.has(source)) {
-      // A derived entry (checklist tick, calendar confirm, Health sync) is owned by the
-      // thing that wrote it: its amount, day and participants belong there, and other
-      // tables (event_goal_logs, health_goal_logs) key off these exact row ids. The note
-      // is the user's own text, though, so a note-only change is allowed — applied IN
-      // PLACE, never through the re-plan below, which would soft-delete these rows and
-      // re-insert new ones, orphaning those links. Both edit sheets re-send the entry's
-      // current amount/day/people on every save, so "unchanged" still counts as
-      // note-only; only a real change to a source-owned field is refused.
+      // A derived entry (checklist tick, calendar confirm, Health sync) is owned by
+      // whatever wrote it, and other tables (event_goal_logs, health_goal_logs) key off
+      // these exact row ids. The note is the user's own text, so a note-only change is
+      // allowed — applied IN PLACE, never through the re-plan below, which would
+      // soft-delete these rows and orphan those links. Both edit sheets re-send the
+      // current amount/day/people, so "unchanged" counts as note-only; only a real change
+      // to a source-owned field is refused.
       const movesDay = patch.loggedOn != null && patch.loggedOn !== group[0].day
       const changesAmount = patch.amount != null && Math.abs(patch.amount - enteredAmount) > 1e-9
       const changesWho = patch.personIds != null &&

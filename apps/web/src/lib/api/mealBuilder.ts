@@ -1,27 +1,22 @@
-// Meal Builder — a "plate" is a named, multi-recipe meal ("BBQ Sunday" = BBQ Chicken
-// (main) + Potato Salad + Coleslaw (sides) + Peach Cobbler (dessert)). A plate can be
-// scheduled into a meal-plan slot, or added to the grocery list on its own without
-// ever being scheduled. See docs/product/meal-builder-plan.md.
-//
-// This slice is the shared contract every Meal Builder surface codes against — the
-// builder screen, the meal detail, the unified library and the grocery board.
+// Meal Builder — a "plate" is a named, multi-recipe meal. It can be scheduled into a
+// meal-plan slot, or added to the grocery list without ever being scheduled. This slice is
+// the shared contract every Meal Builder surface codes against.
+// See docs/product/meal-builder-plan.md.
 import { useCallback, useEffect, useState } from 'react'
-import { apiGet, apiSend } from './client'
+import { apiDelete, apiGet, apiSend } from './client'
 import { tap, useRefetchOn } from './bus'
 import type { MealCook } from './meals'
 
-// Pantry-derived, and therefore absent when the pantry module is off. `null` means
-// "we can't say" — render nothing. It is deliberately NOT `{have: 0, total: n}`,
-// which would read as "you have none of these", a different and equally untrue claim.
+// Pantry-derived, so absent when the pantry module is off. `null` means "we can't say" —
+// render nothing. Deliberately NOT `{have: 0, total: n}`, which claims something else.
 export interface OnHandCount {
   have: number
   total: number
 }
 
-// One dish on the plate. `role` is free text ('main' | 'side' | 'dessert' today) —
-// soft scaffolding to help people compose, not a rigid taxonomy, so new roles are a
-// data change rather than a migration. Note it is NOT `mealType`, which already means
-// breakfast/lunch/dinner/snack elsewhere in this codebase.
+// One dish on the plate. `role` is free text ('main' | 'side' | 'dessert' today), so new
+// roles are a data change rather than a migration. NOT `mealType`, which already means
+// breakfast/lunch/dinner/snack elsewhere.
 export interface MealDish {
   recipeId: string
   title: string | null
@@ -33,34 +28,27 @@ export interface MealDish {
   cookTimeMinutes: number | null
   servings: number | null
   imageUrl: string | null
-  // Who cooks THIS dish — a four-dish plate has up to four cooks.
   cook: MealCook | null
   onHand: OnHandCount | null
   toBuy: number
-  // The ingredients behind `toBuy`, so the count can be expanded into the actual
-  // shopping. Always exactly `toBuy` long, pantry on or off.
+  // Always exactly `toBuy` long, pantry on or off.
   toBuyNames: string[]
 }
 
-// The full plate. The builder screen, the meal detail and the library card all read
-// this same shape.
 export interface Meal {
   id: string
   name: string
-  // Stored and displayed only — v1 deliberately does not rescale ingredient
-  // quantities (see decision 4 in the plan).
+  // Stored and displayed only: v1 deliberately does not rescale ingredient quantities.
   servings: number
-  // The "Keep in library" toggle — applied the moment it is flipped, not deferred
-  // until the plate is scheduled. An unsaved plate is a one-off and never appears in
-  // the library; a saved one is a reusable template.
+  // Applied the moment it is flipped, not deferred until the plate is scheduled: an
+  // unsaved plate is a one-off and never appears in the library.
   isSaved: boolean
   createdBy: string | null
   createdAt: string
   recipeCount: number
   emojis: string[]
   totalMinutes: number | null
-  // Plate-level counts dedupe shared ingredients across dishes — two dishes both
-  // wanting mayonnaise is one thing to buy.
+  // Plate-level counts dedupe shared ingredients across dishes.
   onHand: OnHandCount | null
   toBuy: number
   toBuyNames: string[]
@@ -96,8 +84,6 @@ export const mealBuilderApi = {
   create: (input: MealWriteInput & { name: string }) =>
     apiSend<{ meal: Meal }>('POST', '/api/meals', input).then(tap('meals')).then((r) => r.meal),
 
-  // The saved-meal library. `q` matches the plate name OR any dish title, so
-  // searching "chicken" finds "BBQ Sunday".
   list: (q?: string, limit?: number) => {
     const qs = new URLSearchParams()
     if (q) qs.set('q', q)
@@ -108,14 +94,17 @@ export const mealBuilderApi = {
 
   get: (id: string) => apiGet<{ meal: Meal }>(`/api/meals/${id}`).then((r) => r.meal),
 
+  // Soft-delete a plate. The plate is created lazily on the first dish, so without this
+  // a cancelled build leaves a saved, empty plate in the library.
+  remove: (id: string) => apiDelete(`/api/meals/${id}`).then(tap('meals')),
+
   update: (id: string, patch: MealWriteInput) =>
     apiSend<{ meal: Meal }>('PATCH', `/api/meals/${id}`, patch).then(tap('meals')).then((r) => r.meal),
 
   addDish: (id: string, input: AddDishInput) =>
     apiSend<{ meal: Meal }>('POST', `/api/meals/${id}/recipes`, input).then((r) => r.meal),
 
-  // Adding a SAVED plate to the plate under construction flattens it — its dishes
-  // come in as individual, editable rows. Meals never nest (decision 12).
+  // Adding a SAVED plate flattens it into individual rows: meals never nest.
   flattenInto: (id: string, mealId: string) =>
     apiSend<{ meal: Meal }>('POST', `/api/meals/${id}/recipes`, { mealId }).then((r) => r.meal),
 
@@ -128,8 +117,8 @@ export const mealBuilderApi = {
   removeDish: (id: string, recipeId: string) =>
     apiSend<{ meal: Meal }>('DELETE', `/api/meals/${id}/recipes/${recipeId}`).then((r) => r.meal),
 
-  // Scheduling a SAVED plate copies it, so editing the library plate never rewrites
-  // a meal that already happened. Unsaved one-offs are scheduled as themselves.
+  // Scheduling a SAVED plate copies it, so editing the library plate never rewrites a
+  // meal that already happened; unsaved one-offs are scheduled as themselves.
   schedule: (id: string, input: ScheduleMealInput) =>
     apiSend<{ entry: { id: string; date: string; mealType: string; mealId: string | null }; meal: Meal }>(
       'POST',
@@ -137,16 +126,14 @@ export const mealBuilderApi = {
       input,
     ).then(tap('meals')),
 
-  // "Add plate to list" — put the whole plate's shopping on the grocery list without
-  // scheduling it anywhere. Double-gated on the lists module server-side.
   addToList: (id: string, weekStart?: string) =>
     apiSend<{ added: number; weekStart: string }>(
       'POST',
       `/api/meals/${id}/add-to-list${weekStart ? `?weekStart=${weekStart}` : ''}`,
     ).then(tap('grocery')),
 
-  // Undo the add above. Off-plan rows are source='recipe', which the weekly rebuild
-  // never wipes, so this is the ONLY way a plate comes back off the list.
+  // Off-plan rows are source='recipe', which the weekly rebuild never wipes, so this is
+  // the ONLY way a plate comes back off the list.
   removeFromList: (id: string, weekStart?: string) =>
     apiSend<{ removed: number; weekStart: string }>(
       'DELETE',
@@ -161,8 +148,6 @@ export interface SavedMealsState {
   refetch: () => void
 }
 
-// The saved-meal library, optionally filtered by a search query. Debounce `q` at the
-// call site if it's wired straight to a text input.
 export function useSavedMeals(q?: string): SavedMealsState {
   const [state, setState] = useState<Omit<SavedMealsState, 'refetch'>>({ meals: [], loading: true, error: false })
   const [nonce, setNonce] = useState(0)
@@ -187,8 +172,8 @@ export interface MealState {
   loading: boolean
   error: boolean
   refetch: () => void
-  // Optimistic local update — every mutation above returns the whole plate, so a
-  // builder edit can paint immediately with `set(updated)` instead of refetching.
+  // Every mutation above returns the whole plate, so an edit paints with `set(updated)`
+  // instead of refetching.
   set: (meal: Meal) => void
 }
 

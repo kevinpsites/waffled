@@ -1,9 +1,5 @@
-// Meal Builder — compose a named, multi-recipe plate, then schedule it or send it
-// straight to the grocery list. See docs/product/meal-builder-plan.md.
-//
-// Two columns: the plate (role-grouped dishes) on the left, "Add from library" on
-// the right, with a dark stat bar pinned below. Every mutation returns the whole
-// updated plate, so the screen repaints from the response instead of refetching.
+// Meal Builder — compose a named, multi-recipe plate, then schedule it or send it to the grocery
+// list. See docs/product/meal-builder-plan.md. Every mutation returns the whole updated plate.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { mealBuilderApi, useMeal, usePersons, type Meal } from '../lib/api'
@@ -17,16 +13,53 @@ const NEW_NAME = 'New meal'
 
 type Toast = { text: string; link?: { to: string; label: string } }
 
+// The Meal Builder SCREEN: the body below, wired to the router. Everything that knows about URLs
+// lives here, which is what lets the body be embedded with no URL of its own.
 export function MealBuilder() {
   const { id: routeId } = useParams()
   const navigate = useNavigate()
+  return (
+    <MealBuilderBody
+      mealId={routeId ?? null}
+      onIdChange={(mealId) => navigate(`/meals/build/${mealId}`, { replace: true })}
+      onOpenDish={(recipeId) => navigate(`/meals/recipe/${recipeId}`)}
+      onCook={(mealId) => navigate(`/meals/meal/${mealId}/cook`)}
+      onBack={() => navigate('/meals')}
+    />
+  )
+}
 
-  // `/meals/build` starts with no id: the plate is created lazily on the first
-  // dish add or the first rename, then the URL is swapped for /meals/build/:id so
-  // a refresh doesn't lose the work.
+// The builder itself, router-free.
+//
+// Every optional callback here is a RENDER CONTRACT, not a passive hook: each controls whether its
+// affordance exists at all, because each is a place to GO and an embedded builder has nowhere to
+// send you. Supply `onUse` and the two "now what?" actions come off the bar.
+export function MealBuilderBody({
+  mealId: initialId,
+  startSaved,
+  onIdChange,
+  onOpenDish,
+  onCook,
+  onBack,
+  onUse,
+  useLabel,
+}: {
+  mealId?: string | null
+  // Create the plate straight into the library — what "＋ New meal" means. `is_saved` is also what
+  // makes scheduling COPY it, so editing the night later can't rewrite the plate.
+  startSaved?: boolean
+  onIdChange?: (mealId: string) => void
+  onOpenDish?: (recipeId: string) => void
+  onCook?: (mealId: string) => void
+  onBack?: () => void
+  onUse?: (meal: Meal) => void
+  useLabel?: string
+}) {
+  const routeId = initialId
+
+  // `/meals/build` starts with no id: the plate is created lazily, then the URL swaps.
   const [id, setId] = useState<string | null>(routeId ?? null)
-  // Mirrors `id` so an async write can decide whether the URL still needs
-  // swapping without reading stale closure state.
+  // Mirrors `id` so an async write can check it without reading stale closure state.
   const idStateRef = useRef<string | null>(routeId ?? null)
   useEffect(() => {
     idStateRef.current = id
@@ -38,21 +71,13 @@ export function MealBuilder() {
   const { meal, loading, error, set } = useMeal(id)
   const { persons } = usePersons()
 
-  // Locally-owned bits of the plate so typing/stepping paints instantly. Synced
-  // from the server plate whenever a DIFFERENT plate loads (not on every write,
-  // which would fight the optimistic value).
-  // Starts blank so the placeholder invites a name rather than making the user
-  // clear “New meal” first; the lazy create falls back to NEW_NAME.
+  // Locally-owned bits of the plate so typing/stepping paints instantly, synced only when a
+  // DIFFERENT plate loads. Starts blank so the placeholder invites a name.
   const [name, setName] = useState('')
   const [servings, setServings] = useState(4)
-  const [isSaved, setIsSaved] = useState(false)
-  // Adopt a newly-loaded plate's own values DURING render rather than in an effect.
-  // As an effect this landed a paint late: the bar rendered the placeholder 4 first
-  // and only then snapped to the plate's real number. That window is not just
-  // cosmetic — a stepper tap inside it was applied to 4 (giving 5) and then thrown
-  // away when the sync overwrote it, so the tap silently did nothing. Guarded on the
-  // id so it re-syncs only when a *different* plate loads; this is React's documented
-  // way to adjust state when the data it derives from changes.
+  const [isSaved, setIsSaved] = useState(startSaved ?? false)
+  // Adopt a newly-loaded plate's own values DURING render, not in an effect: as an effect it
+  // landed a paint late and a stepper tap inside that window was thrown away. Guarded on the id.
   const syncedRef = useRef<string | null>(null)
   if (meal && syncedRef.current !== meal.id) {
     syncedRef.current = meal.id
@@ -72,22 +97,20 @@ export function MealBuilder() {
   }, [toast])
 
   // ── lazy create ───────────────────────────────────────────────────────────
-  // One create, ever: a fast rename-then-add must not fire two POSTs, so the
-  // in-flight promise is shared.
+  // One create, ever: a fast rename-then-add must not fire two POSTs, so the promise is shared.
   const idRef = useRef<string | null>(routeId ?? null)
   const createRef = useRef<Promise<string> | null>(null)
   const nameRef = useRef(name)
   nameRef.current = name
   const servingsRef = useRef(servings)
   servingsRef.current = servings
-  // Which write is the newest — see run().
   const seqRef = useRef(0)
 
   const ensureId = useCallback(async (): Promise<string> => {
     if (idRef.current) return idRef.current
     if (!createRef.current) {
       createRef.current = mealBuilderApi
-        .create({ name: nameRef.current.trim() || NEW_NAME, servings: servingsRef.current })
+        .create({ name: nameRef.current.trim() || NEW_NAME, servings: servingsRef.current, isSaved: startSaved ?? false })
         .then((m) => {
           idRef.current = m.id
           return m.id
@@ -100,14 +123,9 @@ export function MealBuilder() {
     return createRef.current
   }, [])
 
-  // Run a write against the plate (creating it first if this is a fresh one),
-  // repaint from the response, and only then adopt the new URL — so the refetch
-  // the id change triggers can't hand back a pre-write plate.
-  // `rollback` restores whatever the caller painted BEFORE the request. For the
-  // read-only callers (add/remove/re-role a dish) there's nothing to undo — the plate
-  // is still whatever the server last said — but servings, the library toggle and the
-  // name all update locally first, so without this the screen kept showing a value
-  // the server had rejected, silently, until a reload.
+  // Run a write, repaint from the response, and only then adopt the new URL — so the refetch the
+  // id change triggers can't hand back a pre-write plate. `rollback` restores what the caller
+  // painted BEFORE the request, or the screen keeps showing a value the server rejected.
   const run = useCallback(
     async (fn: (mealId: string) => Promise<Meal>, rollback?: () => void) => {
       const seq = ++seqRef.current
@@ -115,29 +133,25 @@ export function MealBuilder() {
       try {
         const mealId = await ensureId()
         const updated = await fn(mealId)
-        // Every write answers with the WHOLE plate, true as of its own commit. If a
-        // newer write has gone out since, this snapshot predates it — repainting
-        // would drop a dish that was added after it (or resurrect one removed), and
-        // it does not self-heal: useMeal only refetches on an id change, so the
-        // stale paint survives until the next mutation or a reload.
+        // Every write answers with the WHOLE plate as of its own commit. If a newer write has gone
+        // out since, repainting from this snapshot would drop a dish added after it — and it never
+        // self-heals, because useMeal only refetches on an id change.
         if (seq !== seqRef.current) return
         set(updated)
         if (idStateRef.current !== mealId) {
           idStateRef.current = mealId
           setId(mealId)
-          navigate(`/meals/build/${mealId}`, { replace: true })
+          onIdChange?.(mealId)
         }
       } catch {
-        // Deliberately NOT gated on `seq`: a write that failed still failed, and
-        // staying quiet about it because something else went out afterwards is how
-        // finding 3 happened in the first place.
+        // Deliberately NOT gated on `seq`: a write that failed still failed.
         rollback?.()
         setToast({ text: 'Couldn’t save that — check your connection and try again.' })
       } finally {
         if (seq === seqRef.current) setBusy(false)
       }
     },
-    [ensureId, navigate, set],
+    [ensureId, onIdChange, set, startSaved],
   )
 
   // ── name ──────────────────────────────────────────────────────────────────
@@ -147,8 +161,7 @@ export function MealBuilder() {
     const t = setTimeout(() => {
       const next = name.trim()
       if (!next || (meal && meal.name === next)) return
-      // Restoring the name re-runs this effect, but by then `name` matches the
-      // plate's own again, so the guard above returns before firing a second PATCH.
+      // Restoring the name re-runs this effect, but `name` then matches the plate's own.
       const prev = meal?.name ?? ''
       void run(
         (mealId) => mealBuilderApi.update(mealId, { name: next }),
@@ -167,8 +180,7 @@ export function MealBuilder() {
     setAddingRole(null)
     void run((mealId) => mealBuilderApi.addDish(mealId, { recipeId, role }))
   }
-  // A saved meal added here flattens — its dishes come in individually and keep
-  // their own roles. Meals never nest (decision 12).
+  // A saved meal added here FLATTENS: its dishes come in individually. Meals never nest.
   function addMeal(mealId: string) {
     setAddingRole(null)
     void run((plateId) => mealBuilderApi.flattenInto(plateId, mealId))
@@ -184,8 +196,7 @@ export function MealBuilder() {
     if (n === servings) return
     const prev = servings
     setServings(n)
-    // On a plate that doesn't exist yet this just rides along on the lazy create
-    // — no point creating a meal because someone tapped the stepper.
+    // On a plate that doesn't exist yet this rides along on the lazy create.
     if (!idRef.current) return
     void run(
       (mealId) => mealBuilderApi.update(mealId, { servings: n }),
@@ -226,8 +237,7 @@ export function MealBuilder() {
     if (!item) return
     if (item.kind === 'meal') addMeal(item.id)
     else if (item.kind === 'dish') {
-      // Already on the plate: this is a move, so it's an UPDATE. Dropping a dish
-      // back where it started must not round-trip to the server at all.
+      // Already on the plate: a move, so an UPDATE. A drop back where it started must not write.
       if (item.from === role) return
       void run((mealId) => mealBuilderApi.patchDish(mealId, item.id, { role }))
     } else addRecipe(item.id, role)
@@ -239,9 +249,11 @@ export function MealBuilder() {
   return (
     <div className="mb-shell">
       <header className="mb-head">
-        <button type="button" className="pill mb-back" onClick={() => navigate('/meals')}>
-          ‹ Meals
-        </button>
+        {onBack && (
+          <button type="button" className="pill mb-back" onClick={onBack}>
+            ‹ Meals
+          </button>
+        )}
         <div className="mb-head-b">
           <input
             className="mb-name"
@@ -262,7 +274,7 @@ export function MealBuilder() {
           dishes={dishes}
           persons={persons}
           addingRole={addingRole}
-          onOpenDish={(recipeId) => navigate(`/meals/recipe/${recipeId}`)}
+          onOpenDish={onOpenDish}
           onRemoveDish={removeDish}
           onAssignCook={assignCook}
           onPickRole={(role) => setAddingRole(role)}
@@ -294,11 +306,13 @@ export function MealBuilder() {
         busy={busy}
         onServings={changeServings}
         onToggleSaved={toggleSaved}
-        onAddToList={addToList}
-        onSchedule={() => setScheduling(true)}
-        // A plate only has a cook route once it exists server-side; the bar hides
-        // the button on an empty plate, which is the same condition.
-        onCook={() => meal && navigate(`/meals/meal/${meal.id}/cook`)}
+        // Inside a picker the destination is already decided.
+        onAddToList={onUse ? undefined : addToList}
+        onSchedule={onUse ? undefined : () => setScheduling(true)}
+        // A plate only has a cook route once it exists server-side.
+        onCook={onCook && meal ? () => onCook(meal.id) : undefined}
+        onUse={onUse ? () => meal && onUse(meal) : undefined}
+        useLabel={useLabel}
       />
 
       {scheduling && meal ? (

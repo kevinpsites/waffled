@@ -1,23 +1,25 @@
-// Role-based capability model. Replaces the binary is_admin gate for chores and
-// rewards with a configurable per-role matrix stored in households.settings.permissions.
-// Admins always have every capability; the matrix only governs non-admin members
-// (typically the second adult, or teens given a longer leash). The defaults are
-// conservative: only adults manage/approve out of the box.
+// Role-based capability model, replacing the binary is_admin gate for chores and rewards with a
+// per-role matrix in households.settings.permissions. Admins always have every capability; the
+// matrix only governs non-admin members. The defaults are conservative: only adults
+// manage/approve out of the box.
 import { AuthError } from './auth'
 import { query } from './db'
 import type { Tenant } from '../modules/households/households'
 
-export type Capability = 'chore.manage' | 'chore.approve' | 'reward.manage' | 'reward.approve' | 'reward.grant' | 'goal.manage'
-export const CAPABILITIES: Capability[] = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'reward.grant', 'goal.manage']
+// `planning.manage` is the odd one out: it does not gate RUNNING a weekly planning session —
+// anybody in the household can — only the household-wide choices the session offers, currently
+// which of your lists its first step asks about.
+export type Capability = 'chore.manage' | 'chore.approve' | 'reward.manage' | 'reward.approve' | 'reward.grant' | 'goal.manage' | 'planning.manage'
+export const CAPABILITIES: Capability[] = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'reward.grant', 'goal.manage', 'planning.manage']
 
 export type MemberRole = 'adult' | 'teen' | 'kid'
 export const ROLES: MemberRole[] = ['adult', 'teen', 'kid']
 
 // adult = full rights; teen/kid = nothing until an admin grants it.
 export const DEFAULT_PERMISSIONS: Record<MemberRole, Record<Capability, boolean>> = {
-  adult: { 'chore.manage': true, 'chore.approve': true, 'reward.manage': true, 'reward.approve': true, 'reward.grant': true, 'goal.manage': true },
-  teen: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'goal.manage': false },
-  kid: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'goal.manage': false },
+  adult: { 'chore.manage': true, 'chore.approve': true, 'reward.manage': true, 'reward.approve': true, 'reward.grant': true, 'goal.manage': true, 'planning.manage': true },
+  teen: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'goal.manage': false, 'planning.manage': false },
+  kid: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'goal.manage': false, 'planning.manage': false },
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -25,8 +27,8 @@ function isObject(v: unknown): v is Record<string, unknown> {
 }
 
 // Deep-merge stored settings.permissions over the defaults, cell by cell. Unknown
-// roles/capabilities and non-boolean values are ignored — the result is always a
-// complete, well-typed matrix regardless of what junk is on file.
+// roles/capabilities and non-boolean values are ignored, so the result is always a complete,
+// well-typed matrix regardless of what junk is on file.
 export function getPermissions(settings: unknown): Record<MemberRole, Record<Capability, boolean>> {
   const out: Record<MemberRole, Record<Capability, boolean>> = {
     adult: { ...DEFAULT_PERMISSIONS.adult },
@@ -49,8 +51,7 @@ function asRole(memberType: string): MemberRole | null {
   return (ROLES as string[]).includes(memberType) ? (memberType as MemberRole) : null
 }
 
-// Admin ⇒ always allowed. Otherwise look up the role's cell; an unknown/invalid
-// role has no capabilities.
+// Admin ⇒ always allowed. Otherwise look up the role's cell; an unknown role has none.
 export function can(memberType: string, isAdmin: boolean, cap: Capability, settings: unknown): boolean {
   if (isAdmin) return true
   const role = asRole(memberType)
@@ -58,8 +59,8 @@ export function can(memberType: string, isAdmin: boolean, cap: Capability, setti
   return getPermissions(settings)[role][cap]
 }
 
-// The full list of capabilities a person holds (admin ⇒ all). Powers the
-// `capabilities` field on /api/household so clients can gate UI without guessing.
+// The full list of capabilities a person holds (admin ⇒ all). Powers the `capabilities` field on
+// /api/household so clients can gate UI without guessing.
 export function resolveCapabilities(memberType: string, isAdmin: boolean, settings: unknown): Capability[] {
   if (isAdmin) return [...CAPABILITIES]
   const role = asRole(memberType)
@@ -84,8 +85,8 @@ export async function assertSelfOrCapability(
   await requireCapability(tenant, cap)
 }
 
-// Route guard: admins pass immediately; everyone else is checked against the
-// household's stored matrix for their member_type. Throws 403 on a miss.
+// Route guard: admins pass immediately; everyone else is checked against the household's stored
+// matrix for their member_type. Throws 403 on a miss.
 export async function requireCapability(tenant: Tenant, cap: Capability): Promise<void> {
   if (tenant.isAdmin) return
   const { rows } = await query<{ settings: unknown }>(

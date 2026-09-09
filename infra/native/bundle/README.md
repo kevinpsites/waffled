@@ -2,9 +2,10 @@
 
 The self-contained `runtime/` directory that **Waffled for Mac** ships inside
 `Waffled.app/Contents/Resources/runtime/` and that the Go supervisor (`waffled-runtime`,
-Phase 2 of `docs/product/native-mac-plan.md`) drives. It holds the four service binaries
-(Postgres 16, Node 24, Caddy 2, the built PowerSync service), the api and web builds, the
-compose config files, and a `manifest.json` with a sha256 for every file. **Nothing in it
+Phase 2 of `docs/product/native-mac-plan.md`) drives — **including that supervisor**, which
+is built into `bin/` here and is part of the manifest like everything else. It holds the four
+service binaries (Postgres 16, Node 24, Caddy 2, the built PowerSync service), the api and
+web builds, the compose config files, and a `manifest.json` with a sha256 for every file. **Nothing in it
 depends on Homebrew, a system Node, or Docker at run time** — `verify` proves that by
 running every entry point with an empty environment and `PATH=/usr/bin:/bin`.
 
@@ -20,6 +21,8 @@ runtime/
                          arch, builtAt, gitSha, gitDirty (see "Manifest" below)
   bin/node               official nodejs.org binary — one static executable (116 MB)
   bin/caddy              official release binary (45 MB)
+  bin/waffled-runtime    the supervisor itself, `go build` from apps/runtime (7 MB) — its
+                         `--bundle` default is the directory above it, i.e. this tree
   bin/postgres/          PG 16.14, arm64 only
     bin/                 postgres, initdb, pg_ctl (EDB) + pg_dump, pg_restore, pg_isready, psql (theseus)
     lib/                 37 dylibs + 17 relative symlinks (libpq.dylib → libpq.5.dylib …), lib/postgresql/ extensions
@@ -63,6 +66,14 @@ infra/native/bundle/build.sh clean [--all]         # rm ./out (and the cache wit
   pnpm needs to be installed**: `fetch` downloads the bundled Node first and then uses *that*
   Node (and its npm/npx) for everything — symlink hydration, `npx pnpm@11.0.9`, `npm ci`,
   `npm run build` for api and web, and the manifest.
+- **Go is the one exception**, and only for `build`: `bin/waffled-runtime` is compiled from
+  `apps/runtime` (the version in its `go.mod`), so `build` dies with a clear message if `go`
+  is not on `PATH`. `fetch` and `verify` need none. It is not downloaded into the cache like
+  the other toolchains because a Go toolchain is 200 MB to bootstrap a 7 MB binary, every
+  machine that builds this already has one, and CI installs it for the Go job anyway.
+  **Build it here, not by hand.** The binary is in the manifest, so a `go build -o
+  <bundle>/bin/waffled-runtime` of your own *after* the manifest was written is a changed- or
+  extra-file refusal on the next `verify` — which is the manifest doing its job.
 - Env: `WAFFLED_BUNDLE_CACHE` (default `~/Library/Caches/WaffledBundle`),
   `WAFFLED_BUNDLE_SEED` (default `~/Library/Caches/WaffledSpike` — an optional second cache
   dir to copy downloads from, e.g. a previous machine's; unset or missing = no seeding),
@@ -91,12 +102,25 @@ re-download — only bumping a pin does. `WAFFLED_BUNDLE_NPM_CI=1` is set so `bu
 the pinned Node first and every subsequent step (including `npx pnpm@11.0.9`) runs through
 *that* Node with its `bin/` prepended to `PATH`, never the runner's own.
 
-**Phase 3 will extend the same job** (packaging): codesign every Mach-O in the tree with the
-Developer ID (Postgres dylibs and Caddy included — EDB's signature does not survive our
-notarization and Caddy ships ad-hoc signed), embed under `Resources/runtime/`, and notarize.
-Signing changes the bytes, so **the manifest must be written after signing** — CI should
-re-run `node manifest.mjs write` (or `build.sh` grows a
-`sign` step) after codesign and `verify` once more.
+The same job then **builds the Mac app around the bundle it just made**: `brew install
+xcodegen`, `xcodebuild test` for `apps/mac` (56 unit tests), then
+`apps/mac/Scripts/build-app.sh "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/app"`, which clones this
+tree into `Waffled.app/Contents/Resources/runtime` and makes the *embedded* supervisor verify
+the *embedded* bundle. Finally it boots the assembled app with **no dev-mode environment
+variables** — only `WAFFLED_DATA_DIR`, pointed at a temp directory — and waits for
+`bin/waffled-runtime status --json` to say `running` before curling the health URL and
+stopping it again. The 671 MB `.app` is uploaded (zipped with `ditto -c -k`, which keeps the
+1,338 symlinks) only on push to `main`, for three days; PRs skip it.
+
+**Phase 3 item 5 will extend the same job again** (signing): codesign every Mach-O in the tree
+with the Developer ID (Postgres dylibs and Caddy included — EDB's signature does not survive
+our notarization and Caddy ships ad-hoc signed), then notarize. Signing changes the bytes, so
+**the manifest must be written after signing** — CI should re-run `node manifest.mjs write`
+(or `build.sh` grows a `sign` step) after codesign and `verify` once more. Note what this does
+*not* constrain: embedding needs no signature, and a **shallow** re-sign of the app
+(`codesign --force --sign - Waffled.app`) touches only `Contents/MacOS/Waffled` and
+`_CodeSignature/`, neither of which the runtime manifest covers. It is `--deep` that rewrites
+the embedded Mach-O files and invalidates their hashes.
 
 ## Components, sources, sizes (measured build, 2026-09-04, `a506c352`)
 
@@ -106,15 +130,18 @@ re-run `node manifest.mjs write` (or `build.sh` grows a
 | Postgres server | npm `@embedded-postgres/darwin-arm64@16.14.0-beta.17` (EDB's build, Developer ID signed, universal) | 16.14 | **69 MB** (bin 10, lib 54, share 5) | 131 MB unpacked → 69 MB after `lipo -thin arm64` on 112 fat Mach-O files. ICU data alone is 27 MB (was 55). 17 lib symlinks recreated from the package's `pg-symlinks.json`. |
 | Postgres client tools | `https://github.com/theseus-rs/postgresql-binaries/releases/download/16.14.0/postgresql-16.14.0-aarch64-apple-darwin.tar.gz` | 16.14.0 | (in the 69 MB, ~1.5 MB) | `pg_dump`, `pg_restore`, `pg_isready`, `psql` — the npm repack ships none of them, EDB's full zip is ~300 MB. theseus is a complete arm64 build of the *same minor*; its tools link `@loader_path/../lib/libpq.5.dylib` (+ `libcrypto.3.dylib`), which EDB's `lib/` provides, so they drop into the same `bin/`. Ad-hoc signed (re-signed in Phase 3 anyway). |
 | Caddy | `https://github.com/caddyserver/caddy/releases/download/v2.11.4/caddy_2.11.4_mac_arm64.tar.gz` | 2.11.4 | **45 MB** | Ad-hoc signed upstream. |
+| waffled-runtime | `apps/runtime` (`go build -trimpath -ldflags "-s -w -X main.version=…"`) | 0.14.3 | **7 MB** | The supervisor, built before the manifest so it is *in* it. `-s -w` drops the symbol and DWARF tables; the `-X` stamps the version `waffled-runtime version` prints, which `verify` then asserts — so a stale binary from an earlier build fails the check instead of passing it. |
 | api | `apps/api` (esbuild, `npm run build`) | 0.14.3 | **11 MB** | dist 10 MB incl. sourcemaps (server.js ≈ 3 MB), 92 migrations 0.4 MB. |
 | web | `apps/web` (Vite, `npm run build`) | 0.14.3 | **10 MB** | |
 | PowerSync | `https://github.com/powersync-ja/powersync-service` @ `v1.22.0`, `pnpm build:production`, then `pnpm install --prod --ignore-scripts --filter '@powersync/service-image...'` | 1.22.0 | **402 MB** (node_modules 381 MB, 1,321 symlinks) | Dev node_modules **619 MB** → prod-pruned **383 MB** (the compose image measures 292 MB on Linux; the darwin-arm64 native prebuilds — rolldown 19 MB, esbuild 10, lightningcss 9, snappy, zstd — account for most of the difference). |
 | config | `infra/compose/{caddy/Caddyfile, postgres/init/00-init.sql, powersync/*.yaml}` | — | 16 KB | byte-identical; `verify` diffs them against the repo. |
 | licenses | upstream | — | 180 KB | |
-| manifest.json | generated | schema 1 | **8.5 MB** | 36,456 files + 1,338 symlinks (35k of them are PowerSync's node_modules). |
-| **Total** | | | **662 MB** (677,392 KiB) | |
+| manifest.json | generated | schema 1 | **8.5 MB** | 36,478 files + 1,338 symlinks (35k of them are PowerSync's node_modules). |
+| **Total** | | | **669 MB** | |
 
-What weighs what: PowerSync 61 %, Node 18 %, Postgres 10 %, Caddy 7 %, ours 3 %.
+What weighs what: PowerSync 60 %, Node 17 %, Postgres 10 %, Caddy 7 %, ours 4 %. (Measured
+2026-09-04 at 662 MB; the table's own numbers are that build's, plus the supervisor and the
+few MB api and web have grown since.)
 
 ### Network cost
 
@@ -132,13 +159,14 @@ and ~5 minutes; the PowerSync `tsc -b` build itself is 23 s on an M-series Mac.
 ### The verify run that produced the table above
 
 ```text
-verifying /Users/kevinsites/.claude/jobs/2b0cdbaf/tmp/runtime
+verifying /Users/kevinsites/tmp/runtime
 ── manifest
-✓ manifest ok — 36456 files + 1338 symlinks, 580 MB, arm64/darwin, built 2026-09-04T23:48:42.438Z from a506c3526 (dirty)
+✓ manifest ok — 36478 files + 1338 symlinks, 587 MB, arm64/darwin, built 2026-09-09T05:14:14.299Z from de70db60a (dirty)
   node 24.19.0 · postgres 16.14 (+4 client tools 16.14.0) · caddy 2.11.4 · powersync 1.22.0 · api 0.14.3 · web 0.14.3
 ── binaries (env -i, PATH=/usr/bin:/bin)
 ✓ node --version v24.19.0
 ✓ caddy version v2.11.4 h1:XKxkMTgNSizEvKG6QHue6cAsFOteU2qA61w2tKkCWi0=
+✓ waffled-runtime version waffled-runtime 0.14.3
 ✓ postgres/bin/postgres --version postgres (PostgreSQL) 16.14
 ✓ postgres/bin/initdb --version initdb (PostgreSQL) 16.14
 ✓ postgres/bin/pg_ctl --version pg_ctl (PostgreSQL) 16.14
@@ -148,11 +176,11 @@ verifying /Users/kevinsites/.claude/jobs/2b0cdbaf/tmp/runtime
 ✓ postgres/bin/psql --version psql (PostgreSQL) 16.14
 ✓ all Mach-O files under bin/ are single-arch
 ── api (bundled node, no node_modules)
-✓ api server.js loads, refuses without secrets /Users/kevinsites/.claude/jobs/2b0cdbaf/tmp/runtime/api/dist/server.js:26
+✓ api server.js loads, refuses without secrets /Users/kevinsites/tmp/runtime/api/dist/server.js:26
 ✓ api migrate.js fails on missing DATABASE_URL migrate: DATABASE_URL is not set
 ✓ api health-cli.js loads {"status":"down","version":{"pkg":"0.14.3","sha":"dev","buildTime":null},"generatedAt":"20
 ✓ api/migrations present
-✓ api migrations present (≥ 90 .sql files) 92
+✓ api migrations present (≥ 90 .sql files) 96
 ── powersync
 ✓ powersync entry.js --help info: Successfully registered Module Core.
 ✓ powersync native addon @napi-rs/snappy-darwin-arm64 loads ok
@@ -167,15 +195,16 @@ verifying /Users/kevinsites/.claude/jobs/2b0cdbaf/tmp/runtime
   116M	bin/node
    69M	bin/postgres
    45M	bin/caddy
+  7.0M	bin/waffled-runtime
    11M	api
   402M	powersync
-   10M	web
+   11M	web
    16K	config
   180K	licenses
   8.5M	manifest.json
-  662M	total
+  669M	total
 
-✓ verify: 24 checks passed
+✓ verify: 25 checks passed
 ```
 
 What the smoke test asserts, and why those particular commands:
@@ -192,11 +221,41 @@ What the smoke test asserts, and why those particular commands:
 - `bin/node powersync/service/lib/entry.js --help` must list `start [options]`, and the one
   native addon (`@napi-rs/snappy-darwin-arm64`, used by mongodb) must `require()` — it is the
   only thing in the tree that could be the wrong architecture.
+- `bin/waffled-runtime version` must print exactly the version the manifest records. It is
+  the one subcommand that touches neither the data directory nor the manifest, so it proves
+  the supervisor executes from inside the tree it supervises with nothing on `PATH` — and
+  because the version is stamped in at build time, a binary left over from another build
+  fails rather than passing.
 - `lipo -archs` on every Mach-O under `bin/` must report a single arch.
 - The manifest check is exhaustive: missing, extra, or changed files; missing, extra, or
   retargeted symlinks; the owner-exec bit; and that `arch`/`platform` match the machine. It was
   negative-tested (appended a byte to `config/Caddyfile`, added `api/extra.txt`, removed
   `bin/postgres/lib/libpq.dylib` → `✗ manifest: 3 problem(s)`, exit 1; restored → clean).
+
+`build.sh` has no test framework and does not need one: `verify` **is** the test, and its
+negative cases are run by hand against a real build. The supervisor's:
+
+```text
+$ rm runtime/bin/waffled-runtime && build.sh verify runtime
+verifying /Users/kevinsites/tmp/runtime
+── manifest
+✗ manifest: 1 problem(s)
+    missing file: bin/waffled-runtime
+── binaries (env -i, PATH=/usr/bin:/bin)
+✓ node --version v24.19.0
+✓ caddy version v2.11.4 h1:XKxkMTgNSizEvKG6QHue6cAsFOteU2qA61w2tKkCWi0=
+✗ waffled-runtime version — exit 127 (wanted 0); output lacks /^waffled-runtime 0.14.3$/
+    env: bin/waffled-runtime: No such file or directory
+✓ postgres/bin/postgres --version postgres (PostgreSQL) 16.14
+…
+✗ verify: 2 failed, 23 passed
+$ echo $?
+1
+```
+
+Both halves fire, which is the point: the manifest notices the file is gone, and the smoke
+check notices there is nothing to run. Restoring the binary (`cp -p`, so the bytes and the
+mode are unchanged) returns the run to 25 green.
 
 ## Manifest (`manifest.json`, schema 1)
 
@@ -214,7 +273,7 @@ What the smoke test asserts, and why those particular commands:
     "web":       { "version": "0.14.3", "path": "web" },
     "config":    { "path": "config", "source": "infra/compose (verbatim)" }
   },
-  "fileCount": 36456, "symlinkCount": 1338, "totalBytes": 580000000,
+  "fileCount": 36478, "symlinkCount": 1338, "totalBytes": 587000000,
   "files":    { "api/dist/server.js": { "sha256": "…", "size": 3012345, "mode": "644" }, "…": {} },
   "symlinks": { "bin/postgres/lib/libpq.dylib": "libpq.5.dylib", "powersync/service/node_modules/@powersync/service-core": "../../../packages/service-core", "…": "" }
 }
@@ -321,8 +380,8 @@ New gotchas found while writing this script:
   symlink hydration, all tools). Not switched because the spike verified EDB's build end to end
   (logical replication, pgcrypto, scram) and this task only adds client tools; worth a
   spike-level check before Phase 3 since it would also remove the mixed-signer question.
-- **Signing / notarization** is Phase 3; `build.sh` has no `sign` step yet (see "How CI will do
-  it" for the ordering constraint with the manifest).
+- **Signing / notarization** is Phase 3 item 5; `build.sh` has no `sign` step yet (see "How CI
+  does it today" for the ordering constraint with the manifest).
 - **Universal (x86_64) bundle** — out of scope (plan §7 "Later"); `ARCH` is a constant, the
   theseus and Node sources both publish x86_64 artifacts, EDB's are universal already.
 - `manifest.json` is 8.5 MB because PowerSync has 35k files. Acceptable; if it ever matters,

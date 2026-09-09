@@ -17,8 +17,6 @@ function gradClass(r: Recipe): string {
   return (r.category && GRAD_BY_CATEGORY[r.category.toLowerCase()]) || 'g-veg'
 }
 
-// Title + every metadata field, so search matches cuisine / protein / a vegetable
-// ("cucumber") / a tag / effort, etc.
 function haystack(r: Recipe): string {
   return [r.title, r.cuisine, r.protein, r.base, r.mealType, r.effort, r.cookMethod, r.collection, ...(r.tags ?? []), ...r.vegetables, ...r.dietary]
     .filter(Boolean)
@@ -42,12 +40,10 @@ const SORTS: Array<{ key: string; label: string }> = [
   { key: 'recent', label: 'Recently cooked' },
 ]
 
-// The library is a unified list: recipes AND saved meals (decision 11). The two
-// come from different endpoints — recipes are already loaded client-side and
-// filtered here, while saved meals are searched *server-side* (`GET /api/meals?q=`,
-// which matches the plate name OR any of its dish titles, so "chicken" finds
-// "BBQ Sunday"). Never re-filter the returned meals against the plate name — that
-// would throw away exactly the matches the server worked to find.
+// The library is a unified list: recipes AND saved meals. Recipes are already loaded
+// client-side and filtered here; saved meals are searched SERVER-side (`GET /api/meals?q=`,
+// which matches the plate name OR any dish title). Never re-filter the returned meals
+// against the plate name — that throws away exactly the matches the server found.
 export function RecipesLibrary() {
   const navigate = useNavigate()
   const { recipes, loading, error } = useRecipes()
@@ -63,34 +59,17 @@ export function RecipesLibrary() {
   const [proteins, setProteins] = useState<string[]>(() => initArr('protein'))
   const [diets, setDiets] = useState<string[]>(() => initArr('diet'))
   const [sort, setSort] = useState('name')
-  // A TYPE filter, not a structured one: it selects saved plates rather than
-  // narrowing recipe metadata. Lumping it in with fav/cuisine/protein (which all
-  // drop meals, since a plate has none of that) would make it filter itself out.
+  // A TYPE filter, not a structured one: it selects saved plates rather than narrowing
+  // recipe metadata, so lumping it in with fav/cuisine/protein would filter itself out.
   const [mealsOnly, setMealsOnly] = useState(() => params.get('type') === 'meal')
 
-  // Debounced so a search doesn't fire a request per keystroke — the recipe list is
-  // already in memory, but the saved-meal search is a round trip.
+  // Debounced: the recipe list is in memory, but the saved-meal search is a round trip.
   const [mealQ, setMealQ] = useState(() => (params.get('q') ?? '').trim())
   useEffect(() => {
     const t = setTimeout(() => setMealQ(q.trim()), 200)
     return () => clearTimeout(t)
   }, [q])
-  const { meals: savedMeals } = useSavedMeals(mealQ || undefined)
-
-  useTopbarFull(
-    () => (
-      <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
-        <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate('/meals')}>‹ Meals</button>
-        <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600 }}>Recipes</div>
-        {/* The only in-app way to start an empty plate. Deliberately the bare route
-            with no id: the builder creates the meal lazily on the first dish, so
-            abandoning this screen leaves no orphan behind. */}
-        <button className="pill" style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={() => navigate('/meals/build')}>＋ New meal</button>
-        <button className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0, cursor: 'pointer' }} onClick={() => navigate('/meals/recipe/new')}>＋ New recipe</button>
-      </div>
-    ),
-    [navigate]
-  )
+  const { meals: savedMeals, loading: mealsLoading } = useSavedMeals(mealQ || undefined)
 
   const collOpts = useMemo(() => distinct(recipes, 'collection'), [recipes])
   const cuisineOpts = useMemo(() => distinct(recipes, 'cuisine'), [recipes])
@@ -121,15 +100,13 @@ export function RecipesLibrary() {
     return a.title.localeCompare(b.title)
   })
 
-  // The structured filters (favorite / never-cooked / collection / cuisine / protein /
-  // dietary) are recipe metadata a plate doesn't carry, so a meal can be neither
-  // included nor excluded by them honestly — with any of them on, this is a recipe
-  // list. Free-text search, by contrast, spans both.
+  // The structured filters are recipe metadata a plate doesn't carry, so with any of them
+  // on this is a recipe list. Free-text search, by contrast, spans both.
   const structuredFilter = fav || newOnly || collections.length > 0 || cuisines.length > 0 || proteins.length > 0 || diets.length > 0
   const mealList = savedMeals ?? []
   const shownMeals = structuredFilter ? [] : [...mealList].sort((a, b) => a.name.localeCompare(b.name))
-  // "Meals" hides the recipes instead of narrowing them — the counts still read
-  // against the whole library, so "1 of 2" tells you what you're not seeing.
+  // "Meals" HIDES the recipes rather than narrowing them — the counts still read against
+  // the whole library, so "1 of 2" tells you what you're not seeing.
   const shownRecipes = mealsOnly ? [] : sorted
   const shownCount = shownRecipes.length + shownMeals.length
   const totalCount = recipes.length + mealList.length
@@ -137,6 +114,52 @@ export function RecipesLibrary() {
   const anyFilter = structuredFilter || mealsOnly || ql
   function clearAll() {
     setFav(false); setNewOnly(false); setCollections([]); setCuisines([]); setProteins([]); setDiets([]); setQ(''); setMealsOnly(false)
+  }
+
+  // THE LIBRARY IS GENUINELY EMPTY — not merely "nothing is showing". A search with no hits
+  // also shows nothing, and hiding the search box there would strand somebody with a query
+  // they can no longer clear. So this needs both sources loaded, both empty, and nothing
+  // typed or toggled.
+  const libraryEmpty = !loading && !error && !mealsLoading && recipes.length === 0 && mealList.length === 0 && !anyFilter
+
+  useTopbarFull(
+    () => (
+      <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
+        <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate('/meals')}>‹ Meals</button>
+        <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600 }}>Recipes</div>
+        {/* The only in-app way to start an empty plate. Deliberately the bare route
+            with no id: the builder creates the meal lazily on the first dish, so
+            abandoning this screen leaves no orphan behind. */}
+        <button className="pill" style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={() => navigate('/meals/build')}>＋ New meal</button>
+        {/* ONE primary on the screen. With an empty library the whole page is a call
+            to add the first recipe, so the header's copy of that button would be the
+            second — which is what made the old empty state read as a mistake. */}
+        {!libraryEmpty && (
+          <button className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0, cursor: 'pointer' }} onClick={() => navigate('/meals/recipe/new')}>＋ New recipe</button>
+        )}
+      </div>
+    ),
+    [navigate, libraryEmpty]
+  )
+
+  if (libraryEmpty) {
+    return (
+      <div className="recipes-lib">
+        {/* No count, no sort, no filters: with nothing to count or narrow they are
+            controls that cannot do their job. One thing to say, one thing to do. */}
+        <div className="recipes-empty">
+          <div className="recipes-empty-e" aria-hidden>🍳</div>
+          <div className="recipes-empty-t wf-serif">No recipes yet</div>
+          <div className="recipes-empty-s">
+            Add your first and it turns up everywhere it&apos;s useful — the meal planner, the
+            grocery list, Cook Mode.
+          </div>
+          <button type="button" className="btn btn-primary" onClick={() => navigate('/meals/recipe/new')}>
+            ＋ New recipe
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -216,12 +239,11 @@ export function RecipesLibrary() {
       )}
 
       {error && <div className="muted" style={{ padding: 20 }}>Couldn't load recipes — try reloading or signing in again.</div>}
+      {/* The empty LIBRARY is handled above, as its own screen. What is left here is
+          the empty RESULT — the search and filters are still on show, so the way out
+          is the Clear beside them rather than a second primary jammed mid-sentence. */}
       {!error && !loading && shownCount === 0 && (
-        <div className="muted" style={{ padding: 20, fontWeight: 600 }}>
-          {totalCount === 0 ? (
-            <>No recipes yet — tap <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0, cursor: 'pointer' }} onClick={() => navigate('/meals/recipe/new')}>＋ New recipe</button> to add your first.</>
-          ) : 'Nothing matches these filters.'}
-        </div>
+        <div className="muted" style={{ padding: 20, fontWeight: 600 }}>Nothing matches these filters.</div>
       )}
 
       <div className="recipes-grid">

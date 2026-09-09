@@ -1,7 +1,7 @@
 import Foundation
 
-/// One queued row op forwarded to the server's CRUD sink, matching the shape the
-/// web connector sends (`{ op, table, id, data }`) and `powersync-crud.ts` reads.
+/// One queued row op forwarded to the server's CRUD sink, matching the shape the web
+/// connector sends (`{ op, table, id, data }`) and `powersync-crud.ts` reads.
 struct CrudOpDTO: Encodable {
     let op: String
     let table: String
@@ -9,10 +9,9 @@ struct CrudOpDTO: Encodable {
     let data: [String: String?]?
 }
 
-/// A minimal JSON value so a single body dict can mix strings, ints, and explicit
-/// nulls (the server distinguishes "absent" from `null` for some fields). It's also
-/// `Decodable`, so free-form server JSON (a capture `args` map, a `Candidate.meta`
-/// blob) round-trips through the app unchanged and back into the commit body.
+/// A minimal JSON value so one body dict can mix strings, ints and explicit nulls (the
+/// server distinguishes absent from `null`). Decodable too, so free-form server JSON
+/// round-trips.
 enum JSONValue: Codable, Equatable, Sendable {
     case string(String), int(Int), double(Double), bool(Bool), null
     case array([JSONValue]), object([String: JSONValue])
@@ -32,8 +31,8 @@ enum JSONValue: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.singleValueContainer()
-        // Bool before Int so a JSON `true` isn't coerced to a number; Int before Double
-        // so a whole number stays integral (and re-encodes without a trailing `.0`).
+        // Bool before Int so a JSON `true` isn't coerced to a number; Int before Double so
+        // a whole number stays integral (and re-encodes without a trailing `.0`).
         if c.decodeNil() { self = .null }
         else if let b = try? c.decode(Bool.self) { self = .bool(b) }
         else if let i = try? c.decode(Int.self) { self = .int(i) }
@@ -72,10 +71,8 @@ struct WaffledAPI: Sendable {
     static let decoder = JSONDecoder()
 
     // MARK: built-in auth (login / refresh / logout)
-    //
-    // The contract the web uses, verbatim — token-based JSON, no cookies. These
-    // calls are public (no bearer) and bypass `perform`'s refresh-retry so a failed
-    // login/refresh can't recurse.
+    // Public (no bearer) and they bypass `perform`'s refresh-retry so a failed login can't
+    // recurse.
 
     struct AuthStatus: Decodable, Sendable {
         let initialized: Bool
@@ -83,13 +80,12 @@ struct WaffledAPI: Sendable {
         let oidc: OIDC?
         struct OIDC: Decodable, Sendable { let buttonLabel: String? }
 
-        // Which sign-in affordances the login screen may offer — the same rules as
-        // the web's `AuthGate` (apps/web/src/kiosk/AuthGate.tsx). Static over an
-        // optional because "no status yet" has defined behavior of its own.
+        // Which sign-in affordances the login screen may offer — the web `AuthGate` rules.
+        // Static over an optional because "no status yet" has defined behavior of its own.
 
-        /// With no status yet (unreachable server / still probing) the password form
-        /// stays available so the screen is never stranded without inputs; once the
-        /// server answers, it alone decides (OIDC-only servers omit "password").
+        /// No status yet (unreachable / still probing) keeps the password form available
+        /// so the screen is never stranded without inputs; once the server answers it
+        /// alone decides.
         static func allowsPassword(_ status: AuthStatus?) -> Bool {
             guard let status else { return true }
             return status.methods.contains("password")
@@ -157,14 +153,12 @@ struct WaffledAPI: Sendable {
     }
 
     // MARK: multi-household identity (memberships, switch, invites)
-    //
-    // One human (an `account`) can belong to several households; the active one is the
-    // `household_id` claim baked into the current access token. These mirror the web's
-    // P3a contract — surface the account's memberships + pending invites, switch the
-    // active household (re-minting the token), and accept an invite.
+    // One account can belong to several households; the active one is the `household_id`
+    // claim baked into the current access token.
 
     /// A household this account belongs to. The "current" one is whichever `householdId`
-    /// matches the active token's household (compare against `HouseholdOverview.household.id`).
+    /// matches the active token's household (compare against
+    /// `HouseholdOverview.household.id`).
     struct Membership: Decodable, Identifiable, Sendable, Hashable {
         let householdId: String
         let householdName: String
@@ -182,11 +176,9 @@ struct WaffledAPI: Sendable {
         let isAdmin: Bool
     }
 
-    /// `GET /api/household`, decoded for the switcher: the active household plus the
-    /// account's memberships + pending invites. Defensive — an account-less caller
-    /// (kiosk/device person) or an unprovisioned `{ provisioned:false }` body omits the
-    /// arrays, so they default to empty instead of failing the whole decode (the same
-    /// strict-Decodable trap the kiosk claim hit).
+    /// `GET /api/household` for the switcher. The arrays default to empty: an account-less
+    /// (kiosk/device) or unprovisioned body omits them and a strict decode would fail
+    /// outright.
     struct HouseholdOverview: Decodable, Sendable {
         let household: Ref?
         let memberships: [Membership]
@@ -202,8 +194,8 @@ struct WaffledAPI: Sendable {
         }
     }
 
-    /// Fetch the account's household memberships + pending invites (and which household
-    /// is active) for the switcher UI.
+    /// Fetch the account's household memberships + pending invites (and which household is
+    /// active) for the switcher UI.
     func householdOverview() async throws -> HouseholdOverview {
         var req = URLRequest(url: try url("/api/household"))
         authorize(&req)
@@ -220,9 +212,8 @@ struct WaffledAPI: Sendable {
         let householdId: String
     }
 
-    /// Switch the active household. Returns an access+refresh pair whose token carries
-    /// the *target* household claim — the caller must persist both and re-scope PowerSync
-    /// (the sync token is minted from this claim). 403 if not a member of `householdId`.
+    /// Switch the active household. Returns a pair whose token carries the *target*
+    /// household claim — persist both and re-scope PowerSync. 403 if not a member.
     func switchHousehold(householdId: String) async throws -> SwitchResult {
         var req = URLRequest(url: try url("/api/auth/switch"))
         req.httpMethod = "POST"
@@ -286,9 +277,8 @@ struct WaffledAPI: Sendable {
 
     // MARK: capture Tier 2 (mutate — resolve → commit)
 
-    /// A single row a mutate could act on, returned by `/api/capture/resolve`. `meta` is a
-    /// free-form blob the resolver attaches (e.g. an event's `{seriesId, occurrenceStart}`)
-    /// that MUST be passed back into `/commit` unchanged. Byte-identical to the web `Candidate`.
+    /// A row a mutate could act on. `meta` is a free-form resolver blob that MUST be
+    /// passed back into `/commit` unchanged.
     struct Candidate: Decodable, Identifiable, Sendable, Equatable {
         let id: String
         let title: String
@@ -297,18 +287,18 @@ struct WaffledAPI: Sendable {
         let meta: [String: JSONValue]?
     }
 
-    /// `/api/capture/resolve` response. Three "empty" cases are distinguished only by
-    /// `unsupported` + `disabledReason` (all HTTP 200 — see the server handler): an
-    /// unregistered kind / unsupported verb → `unsupported: true` + a reason; a disabled
-    /// module → a reason with no `unsupported`; a genuine no-match → bare `candidates: []`.
+    /// `/api/capture/resolve` response. Three "empty" cases, all HTTP 200, differ only by
+    /// `unsupported` + `disabledReason`: unregistered kind/verb → `unsupported` + reason;
+    /// disabled module → reason alone; genuine no-match → bare `candidates: []`.
     struct ResolveResponse: Decodable, Sendable {
         let candidates: [Candidate]
         let disabledReason: String?
         let unsupported: Bool?
     }
 
-    /// The friendly server message a failed `/commit` carries (`{ error, message }`) — thrown
-    /// so its `errorDescription` is the message the user should see (mirrors the web rethrow).
+    /// The friendly server message a failed `/commit` carries (`{ error, message }`) —
+    /// thrown so its `errorDescription` is the message the user should see (mirrors the
+    /// web rethrow).
     struct CaptureCommitError: LocalizedError { let message: String; var errorDescription: String? { message } }
     private struct CommitResult: Decodable { let message: String }
     private struct ServerError: Decodable { let error: String?; let message: String? }
@@ -333,8 +323,7 @@ struct WaffledAPI: Sendable {
         return try Self.decoder.decode(ResolveResponse.self, from: data)
     }
 
-    /// Apply a chosen mutate. Body = the web `MutateCommand`: `{ verb, targetKind, targetId,
-    /// args, meta? }`. Returns the server's success message; on a 4xx/5xx throws a
+    /// Apply a chosen mutate (body = the web `MutateCommand`). On 4xx/5xx throws a
     /// `CaptureCommitError` carrying the server's friendly `message`.
     func commitMutate(verb: String, targetKind: String?, targetId: String,
                       args: [String: JSONValue], meta: [String: JSONValue]?) async throws -> String {
@@ -361,13 +350,11 @@ struct WaffledAPI: Sendable {
     }
 
     // MARK: capture commits (non-synced tables go over REST)
-    //
-    // Grocery / chore / meal-plan rows aren't in the PowerSync schema, so unlike
-    // events (written to the local mirror) these commit straight to the server —
-    // mirroring the web kiosk's CaptureBar.commit() contract exactly.
+    // Grocery / chore / meal-plan rows aren't in the PowerSync schema, so unlike events
+    // they commit straight to the server.
 
-    /// Add a grocery item. Capture folds the quantity into `name` ("milk (2)"); the
-    /// Lists screen passes a separate `quantity` so the aisle/board keeps it tidy.
+    /// Add a grocery item. Capture folds the quantity into `name` ("milk (2)"); the Lists
+    /// screen passes a separate `quantity` so the aisle/board keeps it tidy.
     @discardableResult
     func addGroceryItem(name: String, quantity: String? = nil, section: String? = nil) async throws -> ListItemDTO {
         var body: [String: JSONValue] = ["name": .string(name)]
@@ -378,8 +365,8 @@ struct WaffledAPI: Sendable {
 
     private struct ListItemResponse: Decodable { let item: ListItemDTO }
 
-    /// Create a chore (the "task" intent). personId resolves the assignee; stars map
-    /// to the reward amount; rrule carries a recurrence if the LLM inferred one.
+    /// Create a chore (the "task" intent). personId resolves the assignee; stars map to
+    /// the reward amount; rrule carries a recurrence if the LLM inferred one.
     func createChore(title: String, personId: String?, rewardAmount: Int?, rewardCurrency: String? = nil, rrule: String?) async throws {
         var body: [String: JSONValue] = ["title": .string(title)]
         body["personId"] = personId.map(JSONValue.string) ?? .null
@@ -389,15 +376,10 @@ struct WaffledAPI: Sendable {
         try await send("POST", "/api/chores", body: body)
     }
 
-    /// Plan a meal slot. recipeId links a known recipe; otherwise title is a one-off.
-    /// `cookPersonId` optionally assigns who's cooking. Upserts (re-planning the same
-    /// date+mealType replaces, not duplicates).
-    ///
-    /// `mealId` puts a Meal Builder plate in the slot instead of a recipe — that is how
-    /// a planner **drag** moves a plate: the same plate relocates. (Scheduling a saved
-    /// plate from the builder goes through `scheduleMeal`, which deliberately *copies*
-    /// it so editing next week's can't rewrite the one that already went out.) A slot
-    /// holds one or the other, never both.
+    /// Plan a meal slot. Upserts — re-planning the same date+mealType replaces. `mealId`
+    /// puts a Meal Builder plate in the slot instead of a recipe, and is how a planner
+    /// drag relocates a plate (`scheduleMeal` deliberately *copies* a saved plate
+    /// instead). A slot holds one or the other, never both.
     func planMeal(date: String, mealType: String, recipeId: String?, title: String?,
                   cookPersonId: String? = nil, mealId: String? = nil) async throws {
         var body: [String: JSONValue] = ["date": .string(date), "mealType": .string(mealType)]
@@ -413,8 +395,8 @@ struct WaffledAPI: Sendable {
         try await delete("/api/meals/plan?date=\(date)&mealType=\(mealType)")
     }
 
-    /// One AI-suggested meal for a night (mirrors the server `PlanCard`). `recipeId`
-    /// is set when it matched a library recipe; otherwise it's a brand-new dish.
+    /// One AI-suggested meal for a night (mirrors the server `PlanCard`). `recipeId` is
+    /// set when it matched a library recipe; otherwise it's a brand-new dish.
     struct PlanCardDTO: Decodable, Identifiable, Hashable, Sendable {
         let date: String
         let mealType: String
@@ -427,8 +409,8 @@ struct WaffledAPI: Sendable {
         var id: String { "\(date)|\(mealType)|\(title)" }
     }
 
-    /// The result of an AI "plan my week" run. `error` is set (with empty
-    /// suggestions) when the provider failed at runtime; a 501 throws instead.
+    /// The result of an AI "plan my week" run. `error` is set (with empty suggestions)
+    /// when the provider failed at runtime; a 501 throws instead.
     struct PlanWeekResult: Decodable, Sendable {
         let start: String
         let mealType: String
@@ -437,9 +419,8 @@ struct WaffledAPI: Sendable {
         let error: String?
     }
 
-    /// Ask the household's LLM to draft a dish for each empty night of the week
-    /// (nothing is saved — the client applies accepted cards via `planMeal`). Can be
-    /// slow on a local model, so it uses a generous timeout.
+    /// Draft a dish for each empty night of the week; nothing is saved — the client
+    /// applies accepted cards via `planMeal`. Generous timeout, local models are slow.
     func planWeek(start: String, mealType: String = "dinner", dates: [String]? = nil,
                   cookingFor: Int?, keepInMind: String?, useUp: [String]?,
                   avoidTitles: [String]? = nil, wantToTry: [String]? = nil,
@@ -464,8 +445,8 @@ struct WaffledAPI: Sendable {
         return try Self.decoder.decode(PlanWeekResult.self, from: data)
     }
 
-    /// The result of an AI "plan my month" run: drafted nights (`suggestions`) plus
-    /// the month's already-planned dinners (`existing`, read-only context).
+    /// The result of an AI "plan my month" run: drafted nights (`suggestions`) plus the
+    /// month's already-planned dinners (`existing`, read-only context).
     struct PlanMonthResult: Decodable, Sendable {
         let start: String
         let mealType: String
@@ -516,10 +497,8 @@ struct WaffledAPI: Sendable {
 
     // MARK: Recipes library + detail
 
-    /// One recipe as it appears in the library list. `GET /api/recipes` returns the
-    /// full shape; the card reads title/emoji/meta and the cooked tally. Most fields
-    /// are nullable in the source (markdown frontmatter), so almost everything is
-    /// optional; `servings` and the array meta default server-side.
+    /// One recipe as it appears in the library list. Almost everything is optional because
+    /// the source is markdown frontmatter.
     struct RecipeSummary: Decodable, Identifiable, Hashable, Sendable {
         let id: String
         let title: String
@@ -551,9 +530,7 @@ struct WaffledAPI: Sendable {
     }
 
     /// The user-owned override blob layered over the markdown source. `PATCH
-    /// /api/recipes/:id` **replaces this whole object**, so edits are read-modify-
-    /// write: start from the recipe's current `overrides`, change one key, send it
-    /// all back. (The web kiosk does the same.)
+    /// /api/recipes/:id` **replaces this whole object**, so edits are read-modify-write.
     struct RecipeOverrides: Codable, Hashable, Sendable {
         var meta: [String: String]?
         var dietary: [String]?
@@ -563,9 +540,8 @@ struct WaffledAPI: Sendable {
         var stepNotes: [String: String]?
     }
 
-    /// One ingredient row on the detail screen. `amount` is numeric; `display` is the
-    /// raw original line; `aisle`/`isStaple` drive the "on hand" banner; `sub` is the
-    /// current override substitution if the user picked one.
+    /// One ingredient row: `amount` numeric, `display` the raw line, `aisle`/`isStaple`
+    /// drive the "on hand" banner, `sub` the current override substitution.
     struct RecipeIngredientDTO: Decodable, Identifiable, Hashable, Sendable {
         let id: String
         let name: String
@@ -578,23 +554,16 @@ struct WaffledAPI: Sendable {
         let isStaple: Bool
         let sortOrder: Int?
         let sub: String?
-        /// Does the household's pantry actually have this? Sent by `GET /api/recipes/:id`
-        /// only — the plate/cook-mode/meal-builder ingredient payloads don't carry it, so
-        /// it is **optional**: a strict decode failing on a missing key surfaces to the
-        /// user as "couldn't reach server".
-        ///
-        /// This is a PANTRY observation and stays strictly separate from `isStaple`,
-        /// which is only an assumption that the household keeps a thing around. The
-        /// grocery picker pre-unchecks `inPantry`; staples stay checked. See
-        /// `RecipeGroceryPick`.
-        ///
-        /// nil = the server didn't say (older build); false = matched nothing, or the
-        /// pantry module is off. Neither is a claim that you don't have it.
+        /// Does the household's pantry have this? Sent by `GET /api/recipes/:id` only, so
+        /// it must stay **optional** — a strict decode failure surfaces to the user as
+        /// "couldn't reach server". A pantry observation, strictly separate from
+        /// `isStaple` (only an assumption that the household keeps a thing around). nil =
+        /// the server didn't say; false = no match, or pantry off.
         var inPantry: Bool? = nil
     }
 
-    /// One method step. `ingredients` are the raw lines used at this step; `note` is
-    /// the user's per-step override note if any.
+    /// One method step. `ingredients` are the raw lines used at this step; `note` is the
+    /// user's per-step override note if any.
     struct RecipeStepDTO: Decodable, Identifiable, Hashable, Sendable {
         let stepNumber: Int
         let instruction: String
@@ -611,12 +580,9 @@ struct WaffledAPI: Sendable {
         let ingredients: [RecipeIngredientDTO]
         let steps: [RecipeStepDTO]
         /// **Real pantry-matched** on-hand — nil when the pantry module is off, in which
-        /// case the client must make no on-hand claim at all.
-        ///
-        /// Do NOT compute this client-side from `ingredients.isStaple`: a staple is a
-        /// thing you're assumed to keep around, not a thing you currently have, so that
-        /// count says "4 of 9 on hand" to a household with a completely empty pantry.
-        /// Optional so a server predating this field still decodes.
+        /// case make no on-hand claim at all. Do NOT compute it from
+        /// `ingredients.isStaple`: a staple is assumed kept, not currently held, so that
+        /// says "4 of 9 on hand" to a household with an empty pantry.
         let onHand: OnHandCount?
         /// How many ingredients will land on the grocery list. Not pantry-derived, so it
         /// answers either way — with the pantry ON it's the *unmatched* non-staples.
@@ -625,9 +591,8 @@ struct WaffledAPI: Sendable {
         /// which the client cannot derive from `ingredients` on its own.
         let toBuyNames: [String]?
 
-        /// Spelled out so the pantry fields default to nil — the places that build a
-        /// detail locally (an editor round-trip, a preview) have no pantry answer to
-        /// give, and "no claim" is exactly the right one for them to make.
+        /// Spelled out so the pantry fields default to nil — code that builds a detail
+        /// locally has no pantry answer to give, and "no claim" is the right one.
         init(recipe: RecipeSummary, ingredients: [RecipeIngredientDTO], steps: [RecipeStepDTO],
              onHand: OnHandCount? = nil, toBuy: Int? = nil, toBuyNames: [String]? = nil) {
             self.recipe = recipe
@@ -645,12 +610,10 @@ struct WaffledAPI: Sendable {
         return try await getJSON("/api/recipes", as: Resp.self).recipes
     }
 
-    /// Full detail for one recipe: metadata + ingredients + steps.
     func recipeDetail(id: String) async throws -> RecipeDetailDTO {
         try await getJSON("/api/recipes/\(id)", as: RecipeDetailDTO.self)
     }
 
-    /// Whose history a recently-viewed list reflects.
     enum RecentRecipeScope: String, Sendable { case me, household }
 
     /// Recently-opened recipes, newest first — the caller's own, or the household's
@@ -660,10 +623,8 @@ struct WaffledAPI: Sendable {
         return try await getJSON("/api/recipes/recent?scope=\(scope.rawValue)&limit=\(limit)", as: Resp.self).recipes
     }
 
-    /// Record that this recipe was opened, for the recently-viewed rail.
-    ///
-    /// Deliberately throws nothing: this is a convenience signal, and a failure to
-    /// record it must never surface as an error on the recipe the user is reading.
+    /// Record that this recipe was opened, for the recently-viewed rail. Deliberately
+    /// throws nothing: a failed convenience signal must never surface as an error.
     func recordRecipeView(id: String) async {
         try? await send("POST", "/api/recipes/\(id)/view", body: [:])
     }
@@ -673,22 +634,20 @@ struct WaffledAPI: Sendable {
         let filename: String
     }
 
-    /// The recipe compiled into the blessed Markdown format for sharing, plus a suggested
-    /// `.md` filename. Server-side so it stays identical to the web export and round-trips
-    /// through the same parser.
+    /// The recipe compiled into the blessed Markdown format plus a suggested `.md`
+    /// filename. Server-side so it stays identical to the web export and round-trips
+    /// through one parser.
     func recipeMarkdown(id: String) async throws -> RecipeMarkdown {
         try await getJSON("/api/recipes/\(id)/markdown", as: RecipeMarkdown.self)
     }
 
-    /// The household's previously-used ingredient section names (a global look across
-    /// recipes), for the editor's section-name autocomplete. Merged client-side with the
-    /// curated defaults.
+    /// The household's ingredient section names (global across recipes) for the editor's
+    /// autocomplete. Merged client-side with the curated defaults.
     func recipeSections() async throws -> [String] {
         struct Resp: Decodable { let sections: [String] }
         return try await getJSON("/api/recipes/sections", as: Resp.self).sections
     }
 
-    /// Toggle a recipe's favorite flag; returns the updated recipe.
     @discardableResult
     func setRecipeFavorite(id: String, isFavorite: Bool) async throws -> RecipeSummary {
         struct Resp: Decodable { let recipe: RecipeSummary }
@@ -703,9 +662,9 @@ struct WaffledAPI: Sendable {
         return try await sendJSON("POST", "/api/recipes/\(id)/cooked", as: Resp.self).recipe
     }
 
-    /// Patch a recipe's user notes and/or its full overrides blob (tags, dietary,
-    /// per-step notes). Omitted fields are left untouched server-side; `overrides`,
-    /// when sent, replaces the whole blob — so pass the complete current object.
+    /// Patch a recipe's notes and/or its full overrides blob. Omitted fields are
+    /// untouched; `overrides`, when sent, replaces the whole blob — pass the complete
+    /// current object.
     @discardableResult
     func updateRecipe(id: String, userNotes: String? = nil, overrides: RecipeOverrides? = nil) async throws -> RecipeSummary {
         struct Body: Encodable { var userNotes: String?; var overrides: RecipeOverrides? }
@@ -735,9 +694,8 @@ struct WaffledAPI: Sendable {
         try await delete("/api/recipes/\(id)")
     }
 
-    /// AI Details auto-fill: infer cuisine/protein/tags/etc. from the title + ingredient
-    /// names + step texts. Returns nil when no AI provider is configured or it fails (the
-    /// editor just shows no suggestions then).
+    /// AI Details auto-fill: infer cuisine/protein/tags from title + ingredients + steps.
+    /// nil when no AI provider is configured or it fails.
     struct RecipeMetadataSuggestion: Decodable, Sendable {
         let cuisine: String?; let mealType: String?; let protein: String?; let base: String?
         let effort: String?; let cookMethod: String?; let flavorProfile: String?
@@ -757,7 +715,8 @@ struct WaffledAPI: Sendable {
     }
 
     /// Parse a pasted Markdown recipe into editable fields (does NOT create it — the
-    /// editor hydrates from this, the user reviews, then saves). Mirrors web `parseMarkdown`.
+    /// editor hydrates from this, the user reviews, then saves). Mirrors web
+    /// `parseMarkdown`.
     struct ParsedRecipe: Decodable, Sendable {
         struct Meta: Decodable, Sendable {
             let title: String; let emoji: String?; let servings: Int?
@@ -776,54 +735,43 @@ struct WaffledAPI: Sendable {
         try await sendReturning("POST", "/api/recipes/parse-markdown", body: ["markdown": .string(markdown)], as: ParsedRecipe.self)
     }
 
-    /// Which AI recipe-import paths this household can use right now (mirrors web
-    /// `ingestConfig`): `text` (speech/free-form → recipe) needs any non-heuristic
-    /// provider; `vision` (photo → recipe) needs a vision-capable model. The editor
-    /// uses this to show/hide the "Describe it" / "From a photo" import buttons.
+    /// Which AI recipe-import paths this household can use: `text` needs any non-heuristic
+    /// provider, `vision` a vision-capable model. Gates the editor's import buttons.
     struct RecipeIngestConfig: Decodable, Sendable { let text: Bool; let vision: Bool }
     func recipeIngestConfig() async throws -> RecipeIngestConfig {
         try await getJSON("/api/recipes/ingest/config", as: RecipeIngestConfig.self)
     }
 
-    /// Speech/free-form text → recipe draft (mirrors web `ingestVoice`). The text is
-    /// dictated (SFSpeechRecognizer) or typed client-side; the server's LLM turns it
-    /// into our markdown → structured draft. Does NOT save — the editor hydrates from
-    /// this, the user reviews, then saves. The response's extra `via` key is ignored.
+    /// Speech/free-form text → recipe draft. Does NOT save — the editor hydrates from
+    /// this, the user reviews, then saves.
     func ingestRecipeVoice(text: String) async throws -> ParsedRecipe {
         try await sendReturning("POST", "/api/recipes/ingest/voice", body: ["text": .string(text)], as: ParsedRecipe.self)
     }
 
-    /// Photo(s) → recipe draft (mirrors web `ingestPhoto`). One or more base64 JPEGs of a
-    /// physical/printed recipe → vision LLM → our markdown → structured draft. Does NOT
-    /// save. The response's extra `via`/`photoKeys` keys are ignored.
+    /// Photo(s) → recipe draft: base64 JPEGs → vision LLM → structured draft. Does NOT
+    /// save.
     func ingestRecipePhotos(images: [(data: String, contentType: String)]) async throws -> ParsedRecipe {
         let imgs = images.map { JSONValue.object(["data": .string($0.data), "contentType": .string($0.contentType)]) }
         return try await sendReturning("POST", "/api/recipes/ingest/photo", body: ["images": .array(imgs)], as: ParsedRecipe.self)
     }
 
     // MARK: Meal Builder — plates (a named, multi-recipe meal)
-    //
-    // A "plate" is a named meal composed of several recipes with roles ("BBQ Sunday" =
-    // BBQ Chicken (main) + Potato Salad + Coleslaw (sides) + Peach Cobbler (dessert)).
-    // It can be saved to reuse, scheduled into a day + slot, or sent to the grocery list
-    // without ever being scheduled. See docs/product/meal-builder-plan.md.
-    //
-    // Meals are REST-only by design (decision 9) — they are deliberately NOT in the
-    // PowerSync schema, so every read here is a live fetch.
+    // A "plate" is a named meal composed of several recipes with roles; it can be saved to
+    // reuse, scheduled into a day + slot, or sent to the grocery list without ever being
+    // scheduled. REST-only by design (decision 9) — deliberately NOT in the PowerSync
+    // schema, so every read here is a live fetch. See docs/product/meal-builder-plan.md.
 
-    /// How many of a recipe's ingredients are already in the pantry.
-    ///
-    /// Only ever present when the **pantry module is on**. With it off the server omits
-    /// the whole object rather than sending `{have: 0, total: n}` — which would read as
-    /// "you have none of these", a different and equally untrue claim. `nil` means
-    /// "we can't say", and clients must render nothing at all.
+    /// How many of a recipe's ingredients are already in the pantry. Only present when the
+    /// pantry module is ON — with it off the server omits the whole object rather than
+    /// sending `{have: 0, total: n}`, which would read as "you have none". nil = we can't
+    /// say.
     struct OnHandCount: Decodable, Hashable, Sendable {
         let have: Int
         let total: Int
     }
 
-    /// Who is cooking one dish. A four-dish plate has up to four cooks, which is why
-    /// this hangs off the dish and not off the plate.
+    /// Who is cooking one dish. A four-dish plate has up to four cooks, which is why this
+    /// hangs off the dish and not off the plate.
     struct MealCookDTO: Decodable, Hashable, Sendable {
         let personId: String?
         let name: String?
@@ -831,12 +779,9 @@ struct WaffledAPI: Sendable {
         let colorHex: String?
     }
 
-    /// One dish on a plate.
-    ///
-    /// `role` is free text ('main' | 'side' | 'dessert' today) — soft scaffolding to help
-    /// people compose, not a rigid taxonomy, so a new role is a data change rather than a
-    /// migration. Note it is NOT `mealType`, which already means breakfast/lunch/dinner
-    /// elsewhere in this file.
+    /// One dish on a plate. `role` is free text ('main' | 'side' | 'dessert') so a new
+    /// role is a data change rather than a migration. NOT `mealType`, which means
+    /// breakfast/lunch/dinner elsewhere in this file.
     struct MealDishDTO: Decodable, Identifiable, Hashable, Sendable {
         let recipeId: String
         let title: String?
@@ -851,10 +796,9 @@ struct WaffledAPI: Sendable {
         let cook: MealCookDTO?
         let onHand: OnHandCount?
         let toBuy: Int
-        /// The ingredients behind `toBuy`, so the count can be expanded into the actual
-        /// shopping. Always exactly `toBuy` long, pantry on or off — a bare number names
-        /// nothing, and with the pantry ON the count is the *unmatched* subset, which no
-        /// client could derive from the ingredient list itself.
+        /// The ingredients behind `toBuy`. Always exactly `toBuy` long, pantry on or off —
+        /// with the pantry ON the count is the *unmatched* subset, which no client could
+        /// derive itself.
         let toBuyNames: [String]
 
         var id: String { recipeId }
@@ -874,9 +818,9 @@ struct WaffledAPI: Sendable {
         /// Stored and displayed only — v1 deliberately does not rescale ingredient
         /// quantities (decision 4).
         let servings: Int
-        /// The "Keep in library" toggle. Applied the moment it is flipped, not deferred
-        /// until the plate is scheduled: an unsaved plate is a one-off that never appears
-        /// in the library, a saved one is a reusable template.
+        /// The "Keep in library" toggle, applied the moment it is flipped rather than
+        /// deferred until the plate is scheduled: unsaved = a one-off, saved = a reusable
+        /// template.
         let isSaved: Bool
         let createdBy: String?
         let createdAt: String
@@ -890,16 +834,12 @@ struct WaffledAPI: Sendable {
         let toBuyNames: [String]
         let recipes: [MealDishDTO]
 
-        /// The plate's dishes filed under one role, in plate order.
         func dishes(role: String) -> [MealDishDTO] { recipes.filter { $0.role == role } }
 
-        /// A minimal plate built from what a *summary* surface already knows — a planned
-        /// slot, a grocery row — so tapping it can push the detail immediately instead of
-        /// waiting on a fetch. The detail reloads the real plate by id on appear.
-        ///
-        /// The fields a summary can't know are left empty rather than guessed: `onHand`
-        /// is nil (no claim, same as pantry-off) and `toBuy` is 0, so nothing renders a
-        /// number that would then change under the reader a moment later.
+        /// A minimal plate built from what a summary surface already knows, so a tap can
+        /// push the detail immediately; the detail reloads the real plate by id on appear.
+        /// Unknowable fields are left empty rather than guessed (`onHand` nil, `toBuy` 0)
+        /// so no number changes later.
         static func placeholder(id: String, name: String, servings: Int = 4,
                                 dishes: [(recipeId: String, title: String?, emoji: String?, role: String)] = []) -> MealDTO {
             MealDTO(
@@ -928,11 +868,9 @@ struct WaffledAPI: Sendable {
         }
     }
 
-    /// Whether a dish-patch should touch the cook at all.
-    ///
-    /// The server distinguishes an **absent** `cookPersonId` (leave it alone) from an
-    /// explicit **null** (clear it) — so "unchanged" and "clear" cannot both be modelled
-    /// by `nil` without silently making one of them impossible.
+    /// Whether a dish-patch should touch the cook at all. The server distinguishes an
+    /// absent `cookPersonId` (leave alone) from an explicit null (clear); `nil` can't
+    /// model both.
     enum CookAssignment: Hashable, Sendable {
         case unchanged
         case clear
@@ -966,8 +904,8 @@ struct WaffledAPI: Sendable {
         return try await getJSON("/api/meals/\(id)", as: Resp.self).meal
     }
 
-    /// Rename / re-serve / save-to-library. Every field is optional; omitted ones are
-    /// left alone.
+    /// Rename / re-serve / save-to-library. Every field is optional; omitted ones are left
+    /// alone.
     func updateMeal(id: String, name: String? = nil, servings: Int? = nil, isSaved: Bool? = nil) async throws -> MealDTO {
         struct Resp: Decodable { let meal: MealDTO }
         var body: [String: JSONValue] = [:]
@@ -977,9 +915,8 @@ struct WaffledAPI: Sendable {
         return try await sendReturning("PATCH", "/api/meals/\(id)", body: body, as: Resp.self).meal
     }
 
-    /// Add a recipe to the plate. Re-adding a recipe already on the plate is an upsert
-    /// that **keeps** whatever role, cook and position it already had unless this call
-    /// explicitly names new ones.
+    /// Add a recipe to the plate. Re-adding one already there is an upsert that **keeps**
+    /// its existing role, cook and position unless this call names new ones.
     func addDish(mealId: String, recipeId: String, role: String? = nil,
                  sortOrder: Int? = nil, cookPersonId: String? = nil) async throws -> MealDTO {
         struct Resp: Decodable { let meal: MealDTO }
@@ -991,8 +928,8 @@ struct WaffledAPI: Sendable {
     }
 
     /// Add a SAVED plate to the plate under construction — it **flattens**, so its dishes
-    /// arrive as individual, editable rows keeping their own roles. Meals never nest
-    /// (decision 12).
+    /// arrive as individual editable rows keeping their roles. Meals never nest (decision
+    /// 12).
     func flattenMeal(intoMealId: String, savedMealId: String) async throws -> MealDTO {
         struct Resp: Decodable { let meal: MealDTO }
         return try await sendReturning("POST", "/api/meals/\(intoMealId)/recipes",
@@ -1016,7 +953,6 @@ struct WaffledAPI: Sendable {
                                        body: body, as: Resp.self).meal
     }
 
-    /// Reorder the whole plate in one write (the ids in their new order).
     func reorderDishes(mealId: String, recipeIds: [String]) async throws -> MealDTO {
         struct Resp: Decodable { let meal: MealDTO }
         return try await sendReturning("PUT", "/api/meals/\(mealId)/recipes/order",
@@ -1030,8 +966,8 @@ struct WaffledAPI: Sendable {
     }
 
     /// Put the plate on a day + slot. Scheduling a SAVED plate **copies** it, so editing
-    /// next week's BBQ Sunday never rewrites the one that already went out last week;
-    /// unsaved one-offs are scheduled as themselves.
+    /// next week's never rewrites the one already sent out; unsaved one-offs go as
+    /// themselves.
     func scheduleMeal(id: String, date: String, mealType: String, cookPersonId: String? = nil) async throws -> ScheduledMealDTO {
         var body: [String: JSONValue] = ["date": .string(date), "mealType": .string(mealType)]
         if let cookPersonId { body["cookPersonId"] = .string(cookPersonId) }
@@ -1048,8 +984,7 @@ struct WaffledAPI: Sendable {
     }
 
     /// Undo the add above. Those rows are `source='recipe'`, which the weekly rebuild
-    /// deliberately never wipes, so this is the ONLY way a plate comes back off the list.
-    /// A row survives (losing just this plate's credit) when something else still needs it.
+    /// never wipes, so this is the ONLY way a plate comes back off the list.
     @discardableResult
     func removeMealFromGrocery(id: String, weekStart: String? = nil) async throws -> Int {
         struct Resp: Decodable { let removed: Int }
@@ -1059,13 +994,9 @@ struct WaffledAPI: Sendable {
 
     // MARK: Today dashboard reads (non-synced domains, fetched over REST)
 
-    /// One dinner/lunch/etc. slot in the planned week (mirrors web `WeekEntry`).
-    ///
-    /// A slot points at EITHER a single recipe (`recipeId`) or a Meal Builder plate
-    /// (`mealId`). **Never decide what a slot means by testing `recipeId` alone** — it is
-    /// null for a meal-backed slot, which on the web silently broke four separate
-    /// surfaces at once (the week grid drew a nameless row; the Tonight card announced
-    /// "No recipe attached yet" about a meal with three dishes). Use `isMealBacked`.
+    /// One slot in the planned week, pointing at EITHER a single recipe (`recipeId`) or a
+    /// Meal Builder plate (`mealId`). **Never decide what a slot means by testing
+    /// `recipeId` alone** — it is null for a meal-backed slot. Use `isMealBacked`.
     struct WeekEntryDTO: Decodable, Identifiable, Hashable, Sendable {
         let id: String
         let date: String
@@ -1085,11 +1016,8 @@ struct WaffledAPI: Sendable {
             let id: String
             /// Optional because the server builds this off a `left join meals … and
             /// deleted_at is null`: an entry pointing at a soft-deleted plate serialises
-            /// `name: null`. Non-optional, that one row throws and takes the WHOLE
-            /// `mealsWeek` fetch with it — blanking the week grid, the month grid and
-            /// the Tonight card at once. Today the app cascades the plan entries on
-            /// delete so it can't happen, but that's one guard in another module with
-            /// nothing asserting the coupling.
+            /// `name: null`, and non-optional that one row throws and blanks the week
+            /// grid, the month grid and the Tonight card at once.
             let name: String?
             let servings: Int?
             let recipes: [Dish]
@@ -1116,8 +1044,7 @@ struct WaffledAPI: Sendable {
             let avatarEmoji: String?
             let colorHex: String?
         }
-        /// Spelled out (rather than left to the memberwise default) so `mealId`/`meal`
-        /// can default to nil — the many places that build a plain recipe-backed entry
+        /// Spelled out so `mealId`/`meal` can default to nil — recipe-backed callers
         /// shouldn't have to say "no plate" twice.
         init(id: String, date: String, mealType: String, title: String?, recipeId: String?,
              mealId: String? = nil, meal: MealSlot? = nil, recipe: RecipeInfo?, cook: Cook?) {
@@ -1136,10 +1063,9 @@ struct WaffledAPI: Sendable {
         /// free-text title, or a placeholder.
         var displayTitle: String { recipe?.title ?? meal?.name ?? title ?? "Planned meal" }
 
-        /// This slot holds a plate rather than a single recipe.
-        ///
-        /// Gate on THIS, not on `recipeId != nil`: a plate-backed slot has no `recipeId`,
-        /// so a `recipeId` test reads it as "nothing planned here" and the tap goes dead.
+        /// This slot holds a plate rather than a single recipe. Gate on THIS, not
+        /// `recipeId != nil`: a plate-backed slot has no `recipeId`, so that test reads as
+        /// "nothing planned" and the tap dies.
         var isMealBacked: Bool { mealId != nil }
 
         /// How many dishes the plate has (0 for an ordinary single-recipe slot).
@@ -1171,9 +1097,9 @@ struct WaffledAPI: Sendable {
 
     struct GroceryItemDTO: Decodable { let id: String; let checked: Bool }
 
-    /// The planned meals for the week starting `start` (YYYY-MM-DD).
-    /// Planned meals over a date range. `days` (1–45) widens the window past one
-    /// week — the month grid fetches 42 days. Omitted → the server's default of 7.
+    /// Planned meals over a date range from `start` (YYYY-MM-DD). `days` (1–45) widens the
+    /// window past one week — the month grid fetches 42. Omitted → the server's default of
+    /// 7.
     func mealsWeek(start: String, days: Int? = nil) async throws -> [WeekEntryDTO] {
         struct Resp: Decodable { let entries: [WeekEntryDTO] }
         var path = "/api/meals/week?start=\(start)"
@@ -1181,7 +1107,6 @@ struct WaffledAPI: Sendable {
         return try await getJSON(path, as: Resp.self).entries
     }
 
-    /// Per-person chore progress for today.
     func choresToday() async throws -> [PersonChoresDTO] {
         struct Resp: Decodable { let people: [PersonChoresDTO] }
         return try await getJSON("/api/chores/today", as: Resp.self).people
@@ -1228,19 +1153,16 @@ struct WaffledAPI: Sendable {
         let accounts: [Account]
         let calendars: [Cal]
 
-        // `microsoftConfigured` and `feeds` arrived with multi-provider calendars and
-        // ICS subscriptions. A server older than the app omits them entirely, so they
-        // decode through optional storage and read as "off"/"none" rather than
-        // throwing keyNotFound — a decode failure here reads to the user as
-        // "couldn't reach server", which is a very misleading way to say
-        // "your server is a version behind".
+        // `microsoftConfigured` and `feeds` arrived with multi-provider calendars and ICS
+        // feeds. Optional storage so an older server reads as "off"/"none" instead of
+        // throwing keyNotFound, which surfaces to the user as "couldn't reach server".
         private let microsoftConfiguredRaw: Bool?
         private let feedsRaw: [Feed]?
-        /// Does the server hold Outlook / Microsoft 365 credentials? Gates the
-        /// "Connect Outlook" button — Google and Microsoft are configured separately.
+        /// Does the server hold Outlook / Microsoft 365 credentials? Gates the "Connect
+        /// Outlook" button — Google and Microsoft are configured separately.
         var microsoftConfigured: Bool { microsoftConfiguredRaw ?? false }
-        /// ICS subscriptions. Not OAuth accounts: they need no provider config, so
-        /// they show even when neither Google nor Microsoft is set up.
+        /// ICS subscriptions. Not OAuth accounts: they need no provider config, so they
+        /// show even when neither Google nor Microsoft is set up.
         var feeds: [Feed] { feedsRaw ?? [] }
 
         enum CodingKeys: String, CodingKey {
@@ -1253,13 +1175,13 @@ struct WaffledAPI: Sendable {
             let id: String
             let email: String?
             let connectedAt: String
-            /// 'google' | 'microsoft'. Absent on pre-multi-provider servers, where
-            /// every account was necessarily Google.
+            /// 'google' | 'microsoft'. Absent on pre-multi-provider servers, where every
+            /// account was necessarily Google.
             let provider: String?
         }
 
-        /// One subscribed ICS feed (a URL Waffled polls). Read-only by nature — the
-        /// events it imports are somebody else's calendar.
+        /// One subscribed ICS feed (a URL Waffled polls). Read-only by nature — the events
+        /// it imports are somebody else's calendar.
         struct Feed: Decodable, Identifiable, Hashable, Sendable {
             let id: String
             let url: String
@@ -1272,9 +1194,8 @@ struct WaffledAPI: Sendable {
             let lastError: String?
             let createdAt: String
 
-            /// What to call it on screen. Naming a feed is optional and ICS URLs are
-            /// long and near-identical, so an unnamed feed falls back to its host —
-            /// the only part of the URL a person can tell apart at a glance.
+            /// What to call it on screen. Naming a feed is optional and ICS URLs are long
+            /// and near-identical, so an unnamed feed falls back to its host.
             var displayName: String {
                 if let n = name?.trimmingCharacters(in: .whitespaces), !n.isEmpty { return n }
                 if let host = URL(string: url)?.host, !host.isEmpty { return host }
@@ -1329,8 +1250,8 @@ struct WaffledAPI: Sendable {
         try await send("PATCH", "/api/calendar/feeds/\(id)", body: body)
     }
 
-    /// Unsubscribe. Unlike disconnecting an OAuth account this also removes the
-    /// events it imported — the feed was their only source.
+    /// Unsubscribe. Unlike disconnecting an OAuth account this also removes the events it
+    /// imported — the feed was their only source.
     func deleteIcsFeed(id: String) async throws {
         try await delete("/api/calendar/feeds/\(id)")
     }
@@ -1340,7 +1261,6 @@ struct WaffledAPI: Sendable {
         let imported, updated, deleted: Int
         let error: String?
     }
-    /// Poll one feed right now.
     func syncIcsFeed(id: String) async throws -> IcsFeedSyncResult {
         try await sendReturning("POST", "/api/calendar/feeds/\(id)/sync", body: [:], as: IcsFeedSyncResult.self)
     }
@@ -1367,9 +1287,8 @@ struct WaffledAPI: Sendable {
 
     // MARK: - Settings: AI & capture
 
-    /// The household's capture/AI config — active provider + model, which providers
-    /// have server-side credentials (`available`), and each provider's default model.
-    /// Keys live in the server env and never reach the client.
+    /// The household's capture/AI config — active provider + model, which providers have
+    /// server-side credentials (`available`), and each provider's default model.
     struct CaptureConfig: Decodable, Sendable {
         let provider: String                 // anthropic | openai | ollama | heuristic
         let model: String?
@@ -1389,9 +1308,8 @@ struct WaffledAPI: Sendable {
 
     // MARK: - Settings: meal calendar
 
-    /// How planned meals land on the calendar — calendar toggle, Google push, the
-    /// owning person, who's invited (`participantIds` nil ⇒ whole family), and the
-    /// per-meal times ("HH:MM").
+    /// How planned meals land on the calendar: toggle, Google push, owning person,
+    /// invitees (`participantIds` nil ⇒ whole family), and the per-meal times ("HH:MM").
     struct MealCalendarSettings: Decodable, Sendable {
         let addToCalendar: Bool
         let pushToGoogle: Bool
@@ -1441,19 +1359,18 @@ struct WaffledAPI: Sendable {
         let rewardAmount: Int
         let rewardCurrency: String?   // currency key (e.g. "stars"); nil = default
         let rrule: String?
-        /// The day this instance is due (`yyyy-MM-dd`). For a one-off (`rrule == nil`)
-        /// that has rolled over, it keeps its ORIGINAL due day — so the client can show
-        /// how overdue it is. nil on older payloads.
+        /// The day this instance is due (`yyyy-MM-dd`). A rolled-over one-off (`rrule ==
+        /// nil`) keeps its ORIGINAL due day so the client can show how overdue it is. nil
+        /// on older payloads.
         let dueOn: String?
         /// Optional time-of-day the chore is due, as "HH:mm" (24h). nil = no set time.
         let dueTime: String?
         let requiresApproval: Bool
         let streak: Int
-        /// Photo-proof: the chore needs a snapshot to complete; the (resolved, maybe
-        /// relative) proof URL once one is attached; and whether a proof was ever
-        /// attached (it auto-expires server-side, leaving this flag so the UI can say
-        /// the photo's gone). Decoded defensively so an older payload missing these
-        /// fields still loads the rest of the row.
+        /// Photo-proof: whether the chore needs a snapshot, the resolved proof URL once
+        /// attached, and whether one ever was (it auto-expires server-side, so the UI can
+        /// say the photo's gone). Decoded defensively so an older payload missing these
+        /// still loads the rest of the row.
         let requiresPhoto: Bool
         let proofUrl: String?
         let hadProof: Bool
@@ -1574,7 +1491,8 @@ struct WaffledAPI: Sendable {
         let capabilities: [String]
         let roles: [String]
     }
-    /// Read the per-role capability matrix (admin-only server-side; 403 for everyone else).
+    /// Read the per-role capability matrix (admin-only server-side; 403 for everyone
+    /// else).
     func permissionsMatrix() async throws -> PermissionsResponse {
         try await getJSON("/api/permissions", as: PermissionsResponse.self)
     }
@@ -1609,8 +1527,8 @@ struct WaffledAPI: Sendable {
     /// Delete a trade rate (admins).
     func deleteConversion(id: String) async throws { try await delete("/api/conversions/\(id)") }
 
-    /// Apply a conversion to a person's balance N times (anyone, for their own).
-    /// Returns `{ ok }` — `ok: false` (with `error`) on insufficient funds.
+    /// Apply a conversion to a person's balance N times (anyone, for their own). Returns
+    /// `{ ok }` — `ok: false` (with `error`) on insufficient funds.
     struct ConversionResult: Decodable, Sendable { let ok: Bool; let error: String? }
     func applyConversion(id: String, personId: String, times: Int) async throws -> ConversionResult {
         try await sendReturning("POST", "/api/conversions/\(id)/apply",
@@ -1619,9 +1537,9 @@ struct WaffledAPI: Sendable {
 
     // MARK: - Settings: family display (kiosk screensaver / idle / night-dim)
 
-    /// Household-wide "family display" settings — what a wall tablet or browser signed
-    /// in as a kiosk does when idle. Mirrors the web `DisplayConfig`. Stored in
-    /// households.settings.display; read is open to any member, write is admin-only.
+    /// Household-wide "family display" settings — what a wall tablet does when idle.
+    /// Stored in households.settings.display; read is open to any member, write is
+    /// admin-only.
     struct DisplayConfig: Codable, Sendable, Equatable, Hashable {
         var screensaverMinutes: Int
         var content: String            // "photos" | "clock" | "off"
@@ -1658,7 +1576,8 @@ struct WaffledAPI: Sendable {
     }
 
     /// Pick + order the photos the screensaver should play for a given config (all,
-    /// favorites, or a single album) and shuffle if asked. Mirrors web `screensaverPhotos`.
+    /// favorites, or a single album) and shuffle if asked. Mirrors web
+    /// `screensaverPhotos`.
     static func screensaverPhotos(_ photos: [Photo], _ cfg: DisplayConfig) -> [Photo] {
         var out: [Photo]
         switch cfg.photoSource {
@@ -1732,10 +1651,10 @@ struct WaffledAPI: Sendable {
     struct HouseholdModules: Sendable, Equatable {
         let modules: [String: Bool]
         let rewards: Bool
-        /// `settings.display` — how the calendar paints event chips, and the color for
-        /// events that involve the whole family. Both are raw strings: resolution (and
-        /// the "anything but tinted is solid" rule) lives in `EventStyle`/`EventPalette`
-        /// so it matches the web's `display.ts` exactly. nil = never set.
+        /// `settings.display` — how the calendar paints event chips, plus the whole-family
+        /// color. Raw strings: resolution (and the "anything but tinted is solid" rule)
+        /// lives in `EventStyle`/ `EventPalette` so it matches the web's `display.ts`. nil
+        /// = never set.
         var eventStyle: String? = nil
         var familyColorHex: String? = nil
     }
@@ -1749,8 +1668,8 @@ struct WaffledAPI: Sendable {
                     let chores: C?
                     let display: D?
                     struct C: Decodable { let rewards: Bool? }
-                    // `settings.display` is shared with the kiosk screensaver config;
-                    // only the two calendar keys are read here.
+                    // `settings.display` is shared with the kiosk screensaver config; only
+                    // the two calendar keys are read here.
                     struct D: Decodable { let eventStyle: String?; let familyColorHex: String? }
                 }
             }
@@ -1841,17 +1760,17 @@ struct WaffledAPI: Sendable {
         let isMeal: Bool?
         let createdAt: String?
         /// When the item entered the pantry (YYYY-MM-DD), distinct from `createdAt` (the
-        /// row's log time). Drives the "item age" chip + "Been a while" group; backdatable.
+        /// row's log time). Drives the "item age" chip + "Been a while" group;
+        /// backdatable.
         let addedOn: String?
-        /// Friendly attribution for whichever Open * Facts database this item came from
-        /// (nil for manual adds). Non-food items resolve from the beauty/products/pet
-        /// siblings. Mirrors the web `productSourceLabel`.
+        /// Friendly attribution for whichever Open * Facts database this came from (nil
+        /// for manual adds). Non-food resolves from the beauty/products/pet siblings.
         var sourceLabel: String? { WaffledAPI.productSourceLabel(source) }
     }
 
-    /// Attribution labels for the Open * Facts database a product came from, mirroring the
-    /// web `PRODUCT_SOURCE_LABELS`. Open Food Facts is food-only; the sibling databases
-    /// cover the non-food a pantry holds (personal care, cleaning supplies, pet food).
+    /// Attribution labels for the Open * Facts databases, mirroring the web
+    /// `PRODUCT_SOURCE_LABELS`. Open Food Facts is food-only; the siblings cover non-food
+    /// (personal care, cleaning, pet food).
     static let productSourceLabels: [String: String] = [
         "openfoodfacts": "Open Food Facts",
         "openbeautyfacts": "Open Beauty Facts",
@@ -1884,9 +1803,9 @@ struct WaffledAPI: Sendable {
         var sourceLabel: String? { WaffledAPI.productSourceLabel(source) }
     }
 
-    /// GET /api/pantry payload — the items + the household's pantry config (locations,
-    /// the allergen avoid-list and per-person rollup, the running-low threshold, and
-    /// the per-location emoji icons).
+    /// GET /api/pantry payload — items plus the household's pantry config (locations,
+    /// allergen avoid-list + per-person rollup, running-low threshold, per-location
+    /// emoji).
     struct PantryList: Decodable, Sendable {
         let items: [PantryItem]
         let locations: [String]
@@ -1904,8 +1823,8 @@ struct WaffledAPI: Sendable {
         try await getJSON("/api/pantry", as: PantryList.self)
     }
 
-    /// The pantry module's per-household config (no items) — returned by both the
-    /// list endpoint and `PUT /api/pantry/config`. Editable from Settings → Pantry.
+    /// The pantry module's per-household config (no items) — returned by both the list
+    /// endpoint and `PUT /api/pantry/config`. Editable from Settings → Pantry.
     struct PantryConfig: Decodable, Sendable {
         let locations: [String]
         let showOnToday: Bool
@@ -1923,17 +1842,17 @@ struct WaffledAPI: Sendable {
                             locationIcons: r.locationIcons, staleMonths: r.staleMonths)
     }
 
-    /// Patch the pantry config (any member). `PUT /api/pantry/config` does a partial
-    /// merge — send only the fields you're changing — and returns the merged config.
-    /// The server clamps: `lowThreshold` ≥ 0; `staleMonths` a 1…60 integer.
+    /// Patch the pantry config (any member). `PUT /api/pantry/config` does a partial merge
+    /// — send only what changed — and returns the merged config. The server clamps the
+    /// numeric fields.
     @discardableResult
     func setPantryConfig(_ body: [String: JSONValue]) async throws -> PantryConfig {
         try await sendReturning("PUT", "/api/pantry/config", body: body, as: PantryConfig.self)
     }
 
-    /// Look up a barcode via Open Food Facts (server-cached). Returns the product, or
-    /// nil when OFF has no such barcode (404). Throws on a real failure (502/timeout)
-    /// so the UI can distinguish "not found" from "couldn't reach OFF".
+    /// Look up a barcode via Open Food Facts (server-cached). nil when OFF has no such
+    /// barcode (404); throws on a real failure so the UI can tell "not found" from
+    /// "couldn't reach OFF".
     func pantryLookup(barcode: String) async throws -> OffProduct? {
         struct Resp: Decodable { let found: Bool?; let product: OffProduct? }
         let digits = barcode.filter(\.isNumber)
@@ -1951,17 +1870,17 @@ struct WaffledAPI: Sendable {
         return try await sendReturning("POST", "/api/pantry", body: body, as: Resp.self).item
     }
 
-    /// Append ONE section to the pantry's location list, so the add/scan sheets can
-    /// create a place on the fly instead of sending you to Settings. Returns the full
-    /// list; an existing name (any casing) is a no-op, not a duplicate.
+    /// Append ONE section to the pantry's location list, so the add/scan sheets can create
+    /// a place on the fly. Returns the full list; an existing name (any casing) is a
+    /// no-op.
     @discardableResult
     func pantryAddLocation(name: String) async throws -> [String] {
         struct Resp: Decodable { let locations: [String] }
         return try await sendReturning("POST", "/api/pantry/locations", body: ["name": .string(name)], as: Resp.self).locations
     }
 
-    /// Scan upsert — increments a matching on-hand item (by barcode, else name) instead
-    /// of duplicating it. Returns the item + whether an existing one was incremented.
+    /// Scan upsert — increments a matching on-hand item (by barcode, else name) instead of
+    /// duplicating it. Returns the item + whether an existing one was incremented.
     func pantryScan(_ body: [String: JSONValue]) async throws -> (item: PantryItem, incremented: Bool) {
         struct Resp: Decodable { let item: PantryItem; let incremented: Bool }
         let r = try await sendReturning("POST", "/api/pantry/scan", body: body, as: Resp.self)
@@ -1978,9 +1897,9 @@ struct WaffledAPI: Sendable {
         try await delete("/api/pantry/\(id)")
     }
 
-    /// An on-hand pantry item a just-cooked recipe likely used, with a server-suggested
-    /// action. `suggested` / the consume `mode` are one of "used_up" | "decrement" | "skip"
-    /// ("skip" is never sent to /consume — the sheet filters it out).
+    /// An on-hand pantry item a just-cooked recipe likely used. `suggested` / consume
+    /// `mode` is "used_up" | "decrement" | "skip" ("skip" is never sent to /consume — the
+    /// sheet filters it).
     struct RecipeMatch: Decodable, Identifiable, Hashable, Sendable {
         let id: String
         let name: String
@@ -1990,17 +1909,17 @@ struct WaffledAPI: Sendable {
         let suggested: String
     }
 
-    /// On-hand items that a just-cooked recipe likely used (matched server-side by name
-    /// tokens), each with a suggested consume action. Empty when the pantry module is off
-    /// or nothing matched — the caller then skips the confirm sheet.
+    /// On-hand items a just-cooked recipe likely used (matched server-side by name
+    /// tokens). Empty when the pantry module is off or nothing matched, and the caller
+    /// then skips the sheet.
     func pantryForRecipe(recipeId: String) async throws -> [RecipeMatch] {
         struct Resp: Decodable { let matches: [RecipeMatch] }
         return try await getJSON("/api/pantry/for-recipe/\(recipeId)", as: Resp.self).matches
     }
 
-    /// Apply the confirmed consumption: each `(id, mode)` either marks the item used-up
-    /// (recoverable) or knocks one off a countable amount (a decrement to ≤0 becomes
-    /// used-up). Returns the updated items. Only "used_up"/"decrement" modes are sent.
+    /// Apply the confirmed consumption: each `(id, mode)` marks the item used-up
+    /// (recoverable) or decrements a countable amount (to ≤0 becomes used-up). Returns the
+    /// updated items.
     @discardableResult
     func pantryConsume(_ items: [(id: String, mode: String)]) async throws -> [PantryItem] {
         struct Resp: Decodable { let items: [PantryItem] }
@@ -2053,10 +1972,9 @@ struct WaffledAPI: Sendable {
         try await currentPerson()?.id
     }
 
-    /// The logged-in person plus the household role & capabilities the UI uses to
-    /// gate management/approval controls — mirrors the web `can(person, cap)` helper.
-    /// Capabilities are server-resolved (admins implicitly get all four). nil if the
-    /// account hasn't been provisioned yet.
+    /// The logged-in person plus the household role & capabilities the UI gates on —
+    /// mirrors the web `can(person, cap)`. Server-resolved (admins implicitly get all
+    /// four); nil if the account hasn't been provisioned yet.
     struct CurrentPerson: Decodable, Sendable, Equatable {
         let id: String
         let memberType: String       // "adult" | "teen" | "kid"
@@ -2143,7 +2061,6 @@ struct WaffledAPI: Sendable {
     func setPersonPin(id: String, pin: String) async throws {
         try await send("PUT", "/api/persons/\(id)/pin", body: ["pin": .string(pin)])
     }
-    /// Clear a member's kiosk PIN.
     func clearPersonPin(id: String) async throws { try await delete("/api/persons/\(id)/pin") }
 
     // MARK: - Kiosk device pairing
@@ -2177,14 +2094,11 @@ struct WaffledAPI: Sendable {
     func revokeKioskDevice(id: String) async throws { try await delete("/api/kiosk/devices/\(id)") }
 
     // MARK: - Kiosk shared-device mode (profile picker + PIN)
-    //
-    // The device-token half of the family display: an iPad paired as a shared kiosk
-    // lists the household's kiosk profiles and claims one (optionally PIN-gated),
-    // receiving that person's normal access/refresh pair. These calls authenticate
-    // with the DEVICE token (`KioskDeviceAuth`), not the per-person bearer.
-    //
-    // ⚠️ KEEP IN SYNC with `apps/web/src/lib/api/kiosk.ts` + `apps/web/src/kiosk/*`
-    // and the server kiosk routes — endpoints, bodies, and status codes must match.
+    // An iPad paired as a shared kiosk lists the household's kiosk profiles and claims one
+    // (optionally PIN-gated), receiving that person's normal access/refresh pair. These
+    // calls authenticate with the DEVICE token (`KioskDeviceAuth`), not the per-person
+    // bearer. ⚠️ KEEP IN SYNC with `apps/web/src/lib/api/kiosk.ts` and the server kiosk
+    // routes — endpoints, bodies and status codes must match.
 
     /// One selectable face on the kiosk profile picker.
     struct KioskProfile: Decodable, Identifiable, Sendable, Hashable {
@@ -2211,9 +2125,8 @@ struct WaffledAPI: Sendable {
             avatarUrl = try c.decodeIfPresent(String.self, forKey: .avatarUrl)
             colorHex = try c.decodeIfPresent(String.self, forKey: .colorHex)
             // Only the picker LIST includes `hasPin`; the claim response's embedded
-            // `person` object omits it. Tolerate its absence — a present-but-incomplete
-            // `person` would otherwise throw a DecodingError that the claim path reports
-            // as a bogus "couldn't reach the server". We don't use person.hasPin anyway.
+            // `person` omits it. A strict decode here throws a DecodingError the claim
+            // path reports as a bogus "couldn't reach the server".
             hasPin = try c.decodeIfPresent(Bool.self, forKey: .hasPin) ?? false
         }
     }
@@ -2242,8 +2155,8 @@ struct WaffledAPI: Sendable {
         case other(String)
     }
 
-    /// Pair this device using a one-time code (an admin generated it elsewhere). The
-    /// code is the credential, so no bearer is required. Returns the device secret.
+    /// Pair this device using a one-time code (an admin generated it elsewhere). The code
+    /// is the credential, so no bearer is required. Returns the device secret.
     @discardableResult
     func pairDevice(code: String, label: String?) async throws -> DevicePairing {
         var body: [String: JSONValue] = ["code": .string(code)]
@@ -2251,8 +2164,8 @@ struct WaffledAPI: Sendable {
         return try await sendReturning("POST", "/api/kiosk/pair", body: body, as: DevicePairing.self)
     }
 
-    /// Promote the CURRENT (already signed-in admin) device into a shared kiosk in one
-    /// tap — no code. Uses the admin bearer. Returns the device secret.
+    /// Promote the CURRENT (already signed-in admin) device into a shared kiosk in one tap
+    /// — no code. Uses the admin bearer. Returns the device secret.
     @discardableResult
     func promoteDevice(label: String?) async throws -> DevicePairing {
         var body: [String: JSONValue] = [:]
@@ -2270,10 +2183,10 @@ struct WaffledAPI: Sendable {
     func claimProfile(personId: String, pin: String?) async throws -> KioskClaim {
         var body: [String: JSONValue] = [:]
         if let pin, !pin.isEmpty { body["pin"] = .string(pin) }
-        // Don't auto-retry on 401 here: a claim 401 means *wrong PIN* (not an expired
-        // device token — the picker just minted a fresh one). Retrying would re-submit the
-        // PIN and burn a second attempt, racing the lockout. Any genuinely-stale device
-        // token is refreshed by the profiles poll long before a claim.
+        // Don't auto-retry on 401 here: a claim 401 means *wrong PIN*, not an expired
+        // device token, so retrying re-submits the PIN and burns an attempt against the
+        // lockout. A genuinely stale device token is refreshed by the profiles poll long
+        // before a claim.
         let (data, resp) = try await deviceSend("POST", "/api/kiosk/profile/\(personId)", body: body, retryOn401: false)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
         switch code {
@@ -2296,8 +2209,8 @@ struct WaffledAPI: Sendable {
     }
 
     /// The server's error CODE off a failure body (`{ "error": "NoHousehold", … }`).
-    /// Internal, not private, because the rule it feeds is worth a test of its own —
-    /// keying on the status alone would sign a user out for lacking a capability.
+    /// Internal, not private, so the rule it feeds is testable — keying on status alone
+    /// would sign a user out for merely lacking a capability.
     static func errorCode(_ data: Data) -> String? {
         ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["error"] as? String
     }
@@ -2319,8 +2232,8 @@ struct WaffledAPI: Sendable {
         return try await deviceFetch(req, retryOn401: retryOn401)
     }
     /// Run a device-authed request, refreshing the device token once on a 401. Callers
-    /// where a 401 is a *business* outcome (e.g. a wrong PIN on claim) pass
-    /// `retryOn401: false` so the 401 surfaces instead of silently re-submitting.
+    /// where a 401 is a *business* outcome (a wrong PIN on claim) pass `retryOn401:
+    /// false`.
     private func deviceFetch(_ req: URLRequest, retryOn401: Bool = true) async throws -> (Data, URLResponse) {
         var r = req
         r.setValue("Bearer \(try await KioskDeviceAuth.shared.token())", forHTTPHeaderField: "Authorization")
@@ -2332,12 +2245,10 @@ struct WaffledAPI: Sendable {
     }
 
     // MARK: - Waffled-Bites (kid device pairing + parent controls)
-    //
-    // ⚠️ KEEP IN SYNC with `apps/web/src/lib/api/waffledBites.ts` and the server routes
-    // in `apps/api/src/modules/waffledBites/waffledBites.ts` — endpoints and body shapes
-    // must match. The server does NOT validate `settings` patches (a real deep-merge,
-    // no allowlist) — client-side defaults/clamps below mirror the web app's own
-    // discipline, not a server contract.
+    // ⚠️ KEEP IN SYNC with `apps/web/src/lib/api/waffledBites.ts` and the server routes.
+    // The server does NOT validate `settings` patches (a real deep-merge, no allowlist) —
+    // the client-side defaults/clamps below mirror the web app's discipline, not a server
+    // contract.
 
     struct WaffledBiteDevice: Decodable, Sendable {
         let id: String
@@ -2352,8 +2263,8 @@ struct WaffledAPI: Sendable {
             let timer: Countdown
             let wakeLight: WakeLight
         }
-        /// Always fully populated by the server (computed fresh from stored timestamps
-        /// on every read) — never partial, unlike `settings`' sub-objects.
+        /// Always fully populated by the server (computed fresh from stored timestamps on
+        /// every read) — never partial, unlike `settings`' sub-objects.
         struct Countdown: Decodable, Sendable {
             let active: Bool
             let running: Bool
@@ -2368,9 +2279,8 @@ struct WaffledAPI: Sendable {
         }
     }
 
-    /// A fresh pairing leaves `settings == {}` server-side, so every top-level key here
-    /// is genuinely absent, not just optional in principle — apply `.withDefaults()`
-    /// (below) after decoding before showing this in the UI.
+    /// A fresh pairing leaves `settings == {}` server-side, so every top-level key here is
+    /// genuinely absent — apply `.withDefaults()` after decoding before showing this.
     struct WaffledBiteSettings: Decodable, Sendable {
         let night: Night?
         let sound: Sound?
@@ -2378,17 +2288,16 @@ struct WaffledAPI: Sendable {
         let schedules: [Schedule]?
         let display: Display?
 
-        // `color`/`sound`/`tone` are free-form strings server-side — the option lists
-        // below (WB_NIGHT_COLORS etc.) are a UI-only convention, not a server enum.
-        // `var` (not `let`): `Schedule` in particular needs in-place editing while a
-        // parent edits a wake-light row, before the whole array round-trips in one PATCH.
+        // `color`/`sound`/`tone` are free-form strings server-side; the option lists below
+        // are a UI-only convention, not a server enum. `var` (not `let`) because
+        // `Schedule` is edited in place while a parent edits a wake-light row, before the
+        // array round-trips in one PATCH.
         struct Night: Decodable, Sendable { var on: Bool; var color: String; var brightness: Int }
         struct Sound: Decodable, Sendable { var on: Bool; var sound: String; var volume: Int; var timerMin: Int }
-        /// `volume` is OPTIONAL on purpose. The alarm got its own volume
-        /// (decision D3) after devices were already in the field, so existing
-        /// rows have an `alarm` object with no `volume` key — and Swift's
-        /// synthesised Decodable fails the WHOLE settings blob on one missing
-        /// non-optional field. Read it through `volumeOrDefault`.
+        /// `volume` is OPTIONAL on purpose: the alarm got its own volume (decision D3)
+        /// after devices were in the field, so existing rows have an `alarm` with no
+        /// `volume`, and Swift's synthesised Decodable fails the WHOLE settings blob on
+        /// one missing non-optional field.
         struct Alarm: Decodable, Sendable {
             var on: Bool; var hour: Int; var min: Int; var tone: String
             var volume: Int?
@@ -2397,9 +2306,9 @@ struct WaffledAPI: Sendable {
             var volumeOrDefault: Int { volume ?? Self.defaultVolume }
         }
         struct Display: Decodable, Sendable { var brightness: Int; var nightDim: Bool }
-        // Not `Identifiable` — edited in place by array index (`schedules.indices`), since
-        // a content-derived id would change identity mid-edit (e.g. every keystroke on a
-        // time field), confusing SwiftUI's ForEach diffing.
+        // Not `Identifiable` — edited in place by array index, since a content-derived id
+        // would change identity mid-edit (every keystroke on a time field) and confuse
+        // ForEach diffing.
         struct Schedule: Decodable, Sendable, Hashable {
             var days: [Int]       // 0=Sun..6=Sat
             var wakeMin: Int      // minutes since midnight, light turns green
@@ -2420,9 +2329,8 @@ struct WaffledAPI: Sendable {
         return try await getJSON("/api/persons/\(personId)/waffled-bite", as: Resp.self).device
     }
 
-    /// Mint a one-time pairing code for this kid's Waffled-Bite (admins, ~10-min TTL,
-    /// same as kiosk pairing). No client-side expiry handling — polling for the device
-    /// simply never succeeds if the code lapses unclaimed, matching the web app.
+    /// Mint a one-time pairing code for this kid's Waffled-Bite (admins, ~10-min TTL). No
+    /// client-side expiry handling — polling simply never succeeds if the code lapses.
     func mintWaffledBitePairingCode(personId: String, label: String?) async throws -> WaffledBitePairingCode {
         var body: [String: JSONValue] = [:]
         if let label, !label.isEmpty { body["label"] = .string(label) }
@@ -2442,7 +2350,8 @@ struct WaffledAPI: Sendable {
         return try await sendReturning("PATCH", "/api/waffled-bites/\(deviceId)/settings", body: patch, as: Resp.self).settings
     }
 
-    // Quiet time — server clamps `start`'s duration to [60, 5400]s regardless of what's sent.
+    // Quiet time — server clamps `start`'s duration to [60, 5400]s regardless of what's
+    // sent.
     func waffledBiteQuietStart(deviceId: String, durationSec: Int) async throws {
         try await send("POST", "/api/waffled-bites/\(deviceId)/quiet/start", body: ["durationSec": .int(durationSec)])
     }
@@ -2459,8 +2368,9 @@ struct WaffledAPI: Sendable {
         try await send("POST", "/api/waffled-bites/\(deviceId)/quiet/end", body: [:])
     }
 
-    // Occasional timer — same shape/semantics as quiet time (default start duration differs
-    // server-side: 5min vs quiet's 15min — both are just defaults for an omitted durationSec).
+    // Occasional timer — same shape/semantics as quiet time (default start duration
+    // differs server-side: 5min vs quiet's 15min — both are just defaults for an omitted
+    // durationSec).
     func waffledBiteTimerStart(deviceId: String, durationSec: Int) async throws {
         try await send("POST", "/api/waffled-bites/\(deviceId)/timer/start", body: ["durationSec": .int(durationSec)])
     }
@@ -2491,8 +2401,8 @@ struct WaffledAPI: Sendable {
         let requiresApproval: Bool   // per-reward parent-approval gate
     }
 
-    /// A reward redemption: request → pending → approved/denied. Carries the
-    /// requesting person's display info and a snapshot of the reward at request time.
+    /// A reward redemption: request → pending → approved/denied. Carries the requesting
+    /// person's display info and a snapshot of the reward at request time.
     struct RewardRedemption: Decodable, Identifiable, Hashable, Sendable {
         let id: String
         let rewardId: String
@@ -2541,13 +2451,11 @@ struct WaffledAPI: Sendable {
         let people: [PersonBalance]
     }
 
-    /// The full rewards catalog (active rewards, in sort order).
     func rewardsCatalog() async throws -> [Reward] {
         struct Resp: Decodable { let rewards: [Reward] }
         return try await getJSON("/api/rewards", as: Resp.self).rewards
     }
 
-    /// Per-person, per-currency balances for the whole household.
     func balancesSummary() async throws -> BalancesSummary {
         try await getJSON("/api/balances", as: BalancesSummary.self)
     }
@@ -2559,16 +2467,14 @@ struct WaffledAPI: Sendable {
         return try await getJSON(path, as: Resp.self).redemptions
     }
 
-    /// Request a reward for a person — creates a pending redemption.
     func redeemReward(rewardId: String, personId: String) async throws -> RewardRedemption {
         struct Resp: Decodable { let redemption: RewardRedemption }
         return try await sendReturning("POST", "/api/rewards/\(rewardId)/redeem",
                                        body: ["personId": .string(personId)], as: Resp.self).redemption
     }
 
-    /// Ad-hoc "spot-award": a parent hands a person stars on the spot (not tied to a
-    /// chore) — gated by the `reward.grant` capability. Whole-number amount; writes a
-    /// positive ledger entry and auto-advances the recipient's saving-toward jar.
+    /// Ad-hoc "spot-award": a parent hands a person stars outside any chore, gated by the
+    /// `reward.grant` capability. Writes a positive ledger entry and advances their jar.
     func awardSpot(personId: String, amount: Int, currency: String? = nil, note: String? = nil) async throws {
         var body: [String: JSONValue] = ["amount": .int(amount)]
         if let currency, !currency.isEmpty { body["currency"] = .string(currency) }
@@ -2596,10 +2502,8 @@ struct WaffledAPI: Sendable {
 
     // MARK: rewards catalog admin
 
-    /// Create a reward (admins). Returns the new reward.
-    /// Create a reward from a raw body (`POST /api/rewards`, `reward.manage`) — used by the
-    /// capture bar, which omits fields (currency/category/requiresApproval) so the route
-    /// applies the household defaults. Mirrors the typed `createReward` for the full form.
+    /// Create a reward from a raw body (`POST /api/rewards`, `reward.manage`) — used by
+    /// the capture bar, which omits fields so the route applies household defaults.
     func rewardCreate(_ body: [String: JSONValue]) async throws { try await send("POST", "/api/rewards", body: body) }
 
     func createReward(title: String, emoji: String?, cost: Int, currency: String, category: String?, requiresApproval: Bool) async throws -> Reward {
@@ -2646,21 +2550,21 @@ struct WaffledAPI: Sendable {
         return try await getJSON("/api/chore-instances/awaiting", as: Resp.self).instances
     }
 
-    /// Create a chore definition (admins). Body: title, emoji?, personId?,
-    /// rewardAmount?, rrule?, requiresApproval?.
+    /// Create a chore definition (admins). Body: title, emoji?, personId?, rewardAmount?,
+    /// rrule?, requiresApproval?.
     func createChore(_ body: [String: JSONValue]) async throws { try await send("POST", "/api/chores", body: body) }
     /// Edit a chore definition (admins) — same fields as create.
     func updateChore(id: String, _ body: [String: JSONValue]) async throws { try await send("PATCH", "/api/chores/\(id)", body: body) }
-    /// Delete one occurrence, this-and-following, or the active series. An empty
-    /// body retains the legacy entire-series behavior for older call sites.
+    /// Delete one occurrence, this-and-following, or the active series. An empty body
+    /// retains the legacy entire-series behavior for older call sites.
     func deleteChore(id: String, _ body: [String: JSONValue] = [:]) async throws {
         if body.isEmpty { try await delete("/api/chores/\(id)") }
         else { try await send("DELETE", "/api/chores/\(id)", body: body) }
     }
 
-    /// Mark an instance done. Pass an uploaded proof blob (`storageKey`/`contentType`)
-    /// for a photo-required chore; without it the server returns 422 `ProofRequired`,
-    /// which `APIError.isProofRequired` detects so the caller can prompt for a photo.
+    /// Mark an instance done. Pass an uploaded proof blob for a photo-required chore;
+    /// without it the server returns 422 `ProofRequired`, which `APIError.isProofRequired`
+    /// detects.
     func completeChore(id: String, storageKey: String? = nil, contentType: String? = nil) async throws {
         var body: [String: JSONValue] = [:]
         if let storageKey { body["storageKey"] = .string(storageKey) }
@@ -2674,8 +2578,8 @@ struct WaffledAPI: Sendable {
     func claimChore(id: String, personId: String) async throws {
         try await send("POST", "/api/chore-instances/\(id)/claim", body: ["personId": .string(personId)])
     }
-    /// Move an instance to another person, or back to up-for-grabs (personId nil).
-    /// Powers the board's drag-and-drop between columns.
+    /// Move an instance to another person, or back to up-for-grabs (personId nil). Powers
+    /// the board's drag-and-drop between columns.
     func assignChore(id: String, personId: String?) async throws {
         try await send("POST", "/api/chore-instances/\(id)/assign", body: ["personId": personId.map(JSONValue.string) ?? .null])
     }
@@ -2724,10 +2628,9 @@ struct WaffledAPI: Sendable {
             let progress, target: Double?
             let pct: Int?            // null for target-less goals (no computable %)
             let streakDays: Int
-            /// The overview already measures each goal on its own axis, so `progress`
-            /// above is a habit's THIS-PERIOD count. These carry the cadence through to
-            /// the goal detail we push, so the hero doesn't flash a lifetime total (or a
-            /// bare 0) before the full detail loads.
+            /// `progress` above is a habit's THIS-PERIOD count. These carry the cadence
+            /// through to the goal detail we push, so the hero doesn't flash a lifetime
+            /// total (or a bare 0) before it loads.
             let periodDone: Double?
             let habitPeriod: String?
             let habitTargetPerPeriod: Int?
@@ -2739,30 +2642,28 @@ struct WaffledAPI: Sendable {
                       goalType: goalType ?? "total", unit: unit, habitPeriod: habitPeriod,
                       habitTargetPerPeriod: habitTargetPerPeriod,
                       trackingMode: "shared_total", participantMode: nil, targetBasis: nil, deadline: nil, isFeatured: false, isSpotlight: nil, target: target,
-                      // `progress`/`target` here are ALREADY on the goal's own axis, so a
-                      // habit's is its period count and a checklist's is its step count.
-                      // Put them back where GoalDisplay looks for them, and leave a
-                      // habit's `totalProgress` at 0 — this payload does not carry a
-                      // lifetime figure, and 0 is honest where the period count would be
-                      // a lie. (A checklist's step count IS its total: each tick logs 1.)
+                      // `progress`/`target` are ALREADY on the goal's own axis (a habit's
+                      // period count, a checklist's step count). A habit's `totalProgress`
+                      // stays 0: this payload carries no lifetime figure, and 0 is honest
+                      // where the period count would be a lie.
                       totalProgress: goalType == "habit" ? 0 : (progress ?? 0),
                       milestoneTotal: 0, milestoneReached: 0,
                       // Never fall back to `progress` when the server sent no
                       // `periodDone`: on a server old enough to omit it, `progress` was
-                      // the LIFETIME count, and carrying that over is the very bug this
-                      // helper exists to stop. Unknown stays unknown.
+                      // the LIFETIME count. Unknown stays unknown.
                       periodDone: periodDone,
                       stepTotal: goalType == "checklist" ? target.map { Int($0) } : nil,
                       stepDone: goalType == "checklist" ? progress.map { Int($0) } : nil,
                       streakDays: streakDays,
                       // The overview doesn't say who logged today; the goal detail loads
-                      // that a moment later, and until then the server's own dedupe is
-                      // the guard. nil gates nothing.
+                      // that a moment later, and until then the server's own dedupe is the
+                      // guard. nil gates nothing.
                       loggedTodayBy: nil,
                       autoFromCalendar: false, healthMetric: nil, createdAt: nil, participants: [])
             }
         }
-        /// Alias so `asGoal` can name the outer `WaffledAPI.Goal` from inside this nested type.
+        /// Alias so `asGoal` can name the outer `WaffledAPI.Goal` from inside this nested
+        /// type.
         typealias Goal2 = WaffledAPI.Goal
         struct CategoryBalance: Decodable, Sendable, Identifiable {
             let category, emoji, label: String
@@ -2781,9 +2682,8 @@ struct WaffledAPI: Sendable {
             let createdAt: String
             var id: String { createdAt + reason + "\(amount)" + (detail ?? "") }
 
-            /// Human label for the ledger row: a chore/reward title when present, else
-            /// the humanized reason — and for a spot award, append the parent's note
-            /// ("spot award — being so helpful").
+            /// Human label for the ledger row: a chore/reward title when present, else the
+            /// humanized reason — plus the parent's note for a spot award.
             var label: String {
                 if let d = detail, !d.isEmpty { return d }
                 let base = reason.replacingOccurrences(of: "_", with: " ")
@@ -2833,8 +2733,8 @@ struct WaffledAPI: Sendable {
         return try await getJSON("/api/goals", as: Resp.self).goals
     }
 
-    /// All photos (for the Photos tile count + latest memory, and the Photos wall),
-    /// newest first. Optional `memory` filters to one album.
+    /// All photos (for the Photos tile count + latest memory, and the Photos wall), newest
+    /// first. Optional `memory` filters to one album.
     func photos(memory: String? = nil) async throws -> [Photo] {
         struct Resp: Decodable { let photos: [Photo] }
         let path = memory.flatMap { m in
@@ -2843,7 +2743,6 @@ struct WaffledAPI: Sendable {
         return try await getJSON(path, as: Resp.self).photos
     }
 
-    /// One photo's full detail.
     func photo(id: String) async throws -> Photo {
         struct Resp: Decodable { let photo: Photo }
         return try await getJSON("/api/photos/\(id)", as: Resp.self).photo
@@ -2864,7 +2763,6 @@ struct WaffledAPI: Sendable {
         return try await sendReturning("PATCH", "/api/photos/\(id)", body: body, as: Resp.self).photo
     }
 
-    /// Soft-delete a photo.
     func deletePhoto(id: String) async throws { try await delete("/api/photos/\(id)") }
 
     /// The household's lists (for the Lists tile count).
@@ -2881,16 +2779,11 @@ struct WaffledAPI: Sendable {
 
     // MARK: Lists (index + generic detail)
 
-    /// A list in the household's index (Grocery, packing lists, …).
-    ///
-    /// Two server shapes decode into this: the index endpoints (GET /api/lists,
-    /// GET templates) attach a live `itemCount`, but every *mutate* reply (create,
-    /// apply-template, save-as-/unmark-template, PATCH rename) is bare
-    /// `presentList(...)` JSON **without** it — so `itemCount` defaults to 0
-    /// instead of failing the whole decode (which silently broke create → open,
-    /// template convert/use, and capture's create-on-the-fly against every server).
-    /// The 0 is honest for a just-created list, and cosmetic elsewhere: consumers
-    /// reload the index (counted) or open the detail (loads real items).
+    /// A list in the household's index (Grocery, packing lists, …). Two server shapes
+    /// decode into this: the index endpoints attach a live `itemCount`, but every *mutate*
+    /// reply is bare `presentList(...)` JSON **without** it — so `itemCount` defaults to 0
+    /// instead of failing the whole decode. The 0 is honest for a just-created list and
+    /// cosmetic elsewhere: consumers reload the index or open the detail.
     struct ListSummary: Decodable, Identifiable, Hashable, Sendable {
         let id: String
         let name: String
@@ -2914,47 +2807,45 @@ struct WaffledAPI: Sendable {
         }
     }
 
-    /// One row in a list detail — section (aisle for grocery), quantity, assignee.
-    /// The grocery *board* endpoint also fills `aisle` and `sourceRecipeIds` (which
-    /// dinners need this item); the plain list endpoint leaves them nil.
+    /// One row in a list detail — section (aisle for grocery), quantity, assignee. The
+    /// grocery *board* endpoint also fills `aisle` and `sourceRecipeIds`; the plain list
+    /// endpoint doesn't.
     struct ListItemDTO: Decodable, Identifiable, Sendable {
         let id: String
         var name: String
         var quantity: String?
-        /// `quantity` with fraction glyphs spelled out ("1 1/2 lb" for a displayed
-        /// "1½ lb") — seed edit fields from this, since ½ can be read but not typed.
-        /// Optional so older servers decode.
+        /// `quantity` with fraction glyphs spelled out ("1 1/2 lb" for "1½ lb") — seed
+        /// edit fields from this, since ½ can be read but not typed. Optional so older
+        /// servers decode.
         var quantityInput: String?
         var checked: Bool
         var section: String?
         /// Free-text store/vendor (Costco, Walmart, …); nil = unassigned.
         var store: String?
-        /// 1–5 urgency (1 = not urgent, 3 = normal/default, 5 = urgent). Optional so older servers decode.
+        /// 1–5 urgency (1 = not urgent, 3 = normal/default, 5 = urgent). Optional so older
+        /// servers decode.
         var priority: Int?
         var assignee: Assignee?
         var aisle: String?
         var sourceRecipeIds: [String]?
-        /// The week this row belongs to (meal-derived + off-plan rows); nil = global manual row.
+        /// The week this row belongs to (meal-derived + off-plan rows); nil = global
+        /// manual row.
         var weekStart: String?
         /// The pantry item covering this row, matched at read time by the **grocery
-        /// board** endpoint only — the plain `/api/lists/:id/items` rows never carry it,
-        /// and neither does a server predating the field. Hence optional: a strict
-        /// `Decodable` throwing on a key one endpoint doesn't send has already surfaced
-        /// in this app as a bogus "couldn't reach server", i.e. an optional badge taking
-        /// the whole list offline.
-        ///
-        /// **nil means "we don't know"**, not "you have none" — it's also what a
-        /// household with the pantry module off gets, so never render a zero/empty state
-        /// from it. And the match is presence-only (never a quantity comparison), so the
-        /// row stays on the list and stays checkable: this FLAGS, it never filters.
+        /// board** endpoint only — hence optional: a strict decode throwing on a key one
+        /// endpoint doesn't send has already surfaced here as a bogus "couldn't reach
+        /// server". **nil means "we don't know"**, not "you have none" (it is also what
+        /// pantry-off gets), so never render an empty state from it. The match is
+        /// presence-only, so the row stays on the list and stays checkable: this FLAGS, it
+        /// never filters.
         var pantry: PantryHit?
         struct PantryHit: Decodable, Sendable, Equatable {
-            /// The pantry item's own name — matching is fuzzy, so this can differ from
-            /// the row's ("Peas" matched by "Frozen peas").
+            /// The pantry item's own name — matching is fuzzy, so this can differ from the
+            /// row's ("Peas" matched by "Frozen peas").
             let name: String
-            /// Free text off the pantry row ("2", "half", "bag") — for display only,
-            /// never arithmetic. The server sends "" rather than null, but older/other
-            /// shapes are tolerated.
+            /// Free text off the pantry row ("2", "half", "bag") — display only, never
+            /// arithmetic. The server sends "" rather than null, but other shapes are
+            /// tolerated.
             var amount: String?
             var unit: String?
         }
@@ -2965,20 +2856,19 @@ struct WaffledAPI: Sendable {
         }
 
         /// What an edit field is seeded with. Anything asking "did the user change this?"
-        /// must compare against THIS and not `quantity`: the box holds "1 1/2 lb" while the
-        /// row holds "1½ lb", so comparing the two makes every tap-away look like an edit.
+        /// must compare against THIS, not `quantity`: "1 1/2 lb" vs "1½ lb" makes every
+        /// tap-away look like an edit.
         var editableQuantity: String { quantityInput ?? quantity ?? "" }
     }
 
-    /// The grocery board: items tagged with aisle + the meals that need them, plus
-    /// this week's meals (each with a color used for the per-item meal dots) and the
-    /// pantry staples (assumed in-house, so left off the list).
+    /// The grocery board: items tagged with aisle + the meals that need them, this week's
+    /// meals (each with a color for the per-item dots), and the pantry staples left off
+    /// the list.
     struct GroceryBoardDTO: Decodable, Sendable {
         let weekStart: String
         let meals: [Meal]
-        /// Recipes whose ingredients are on the list but that aren't planned this
-        /// week (added straight from a recipe page). Optional so older servers
-        /// without the field still decode.
+        /// Recipes whose ingredients are on the list but that aren't planned this week
+        /// (added straight from a recipe page). Optional so older servers decode.
         let unscheduled: [UnscheduledRecipe]?
         /// Plates put on the list WITHOUT being scheduled ("Add plate to list"). Optional
         /// so a server predating Meal Builder still decodes.
@@ -2989,18 +2879,16 @@ struct WaffledAPI: Sendable {
             let recipeId: String?
             /// Set when this slot holds a Meal Builder plate. A plate-backed slot has NO
             /// `recipeId` — grouping this board by meal must key off the plate, or the
-            /// whole plate silently vanishes from the by-meal view.
+            /// plate vanishes from that view.
             let mealId: String?
             let title: String?
             let emoji: String?
             let color: String
             let date: String
             let mealType: String?
-            /// The plate's dishes, rendered as child rows under the parent. Empty for an
-            /// ordinary single-recipe slot.
-            ///
-            /// Note these carry no `sortOrder` — the grocery board sends them already in
-            /// plate order, unlike the week endpoint which sends the field explicitly.
+            /// The plate's dishes, rendered as child rows under the parent; empty for a
+            /// single-recipe slot. They carry no `sortOrder` — the grocery board sends
+            /// them already in plate order, unlike the week endpoint.
             let recipes: [Dish]?
 
             /// Spelled out so `mealId`/`recipes` default to nil — see `WeekEntryDTO.init`.
@@ -3017,10 +2905,9 @@ struct WaffledAPI: Sendable {
             }
 
             var id: String { (mealId ?? recipeId ?? "") + "|" + date + "|" + (mealType ?? "") }
-            /// Every recipe whose ingredients this row accounts for: the plate's dishes,
-            /// or the single recipe. This is what a list item's `sourceRecipeIds` must be
-            /// matched against — a plate's items are tagged with its DISHES' ids, never
-            /// with the plate's own.
+            /// Every recipe whose ingredients this row accounts for. This is what a list
+            /// item's `sourceRecipeIds` must be matched against — a plate's items are
+            /// tagged with its DISHES' ids, never the plate's own.
             var contributingRecipeIds: [String] {
                 if let recipes, !recipes.isEmpty { return recipes.map(\.recipeId) }
                 return recipeId.map { [$0] } ?? []
@@ -3055,23 +2942,18 @@ struct WaffledAPI: Sendable {
         }
     }
 
-    /// The grocery board (aisle groupings + meal dots + a week's meals + staples) for a
-    /// given week — meal-derived + off-plan rows are per week; manually-typed rows are
-    /// global. Omit `weekStart` for the current week.
+    /// The grocery board for a given week — meal-derived + off-plan rows are per week,
+    /// manually typed rows are global. Omit `weekStart` for the current week.
     func groceryBoard(weekStart: String? = nil) async throws -> GroceryBoardDTO {
         let q = weekStart.map { "?weekStart=\($0)" } ?? ""
         return try await getJSON("/api/lists/grocery/board\(q)", as: GroceryBoardDTO.self)
     }
 
-    /// Add a recipe's ingredients straight to the grocery list — no meal-plan entry
-    /// needed. The server skips pantry staples, merges quantities into rows already
-    /// on the list, and links every item back to the recipe (so it groups under the
-    /// recipe in the by-meal view). Returns how many new rows were added (merges
-    /// into existing rows don't count).
-    /// `weekStart` scopes the off-plan add to the week being shopped (defaults to the
-    /// current week server-side when omitted, e.g. from a recipe page with no week).
-    /// `ingredientIds` (optional) adds only the picked subset — the shopper already has
-    /// the rest on hand. Omit it to add every non-staple ingredient (the default).
+    /// Add a recipe's ingredients straight to the grocery list, no meal-plan entry needed.
+    /// The server skips staples, merges into existing rows, and links each item back to
+    /// the recipe. Returns how many NEW rows were added (merges don't count). `weekStart`
+    /// scopes the off-plan add to the week being shopped; `ingredientIds` adds only the
+    /// picked subset.
     func groceryFromRecipe(recipeId: String, weekStart: String? = nil, ingredientIds: [String]? = nil) async throws -> Int {
         struct Resp: Decodable { let added: Int }
         let q = weekStart.map { "?weekStart=\($0)" } ?? ""
@@ -3084,8 +2966,8 @@ struct WaffledAPI: Sendable {
     }
 
     /// Take a recipe's ingredients back off the grocery list (undo the off-plan add;
-    /// removes it from the by-meal "Unscheduled" group). Keeps rows shared with
-    /// another recipe. Returns how many rows were removed.
+    /// removes it from the by-meal "Unscheduled" group). Keeps rows shared with another
+    /// recipe. Returns how many rows were removed.
     @discardableResult
     func removeRecipeFromGrocery(recipeId: String, weekStart: String? = nil) async throws -> Int {
         struct Resp: Decodable { let removed: Int }
@@ -3114,23 +2996,22 @@ struct WaffledAPI: Sendable {
         return try await sendJSON("POST", "/api/lists/grocery/rebuild?weekStart=\(weekStart)", as: Resp.self).board
     }
 
-    /// "Start over": un-check everything on this week's grocery list (Refresh keeps
-    /// checks instead). Returns the refreshed board.
+    /// "Start over": un-check everything on this week's grocery list (Refresh keeps checks
+    /// instead). Returns the refreshed board.
     func clearGroceryChecks(weekStart: String) async throws -> GroceryBoardDTO {
         struct Resp: Decodable { let board: GroceryBoardDTO }
         return try await sendJSON("POST", "/api/lists/grocery/clear-checks?weekStart=\(weekStart)", as: Resp.self).board
     }
 
     /// All lists in the household (for the Lists index). Templates are excluded
-    /// server-side; we also filter defensively so a `list_type == "template"` row
-    /// never pollutes the normal rail (mirrors the web/server behavior).
+    /// server-side; we also filter defensively so a `list_type == "template"` row never
+    /// pollutes the normal rail (mirrors the web/server behavior).
     func listSummaries() async throws -> [ListSummary] {
         struct Resp: Decodable { let lists: [ListSummary] }
         return try await getJSON("/api/lists", as: Resp.self).lists
             .filter { $0.listType.lowercased() != "template" }
     }
 
-    /// Create a custom list. Returns the new list summary.
     func addList(name: String, emoji: String?) async throws -> ListSummary {
         var body: [String: JSONValue] = ["name": .string(name)]
         body["emoji"] = emoji.map(JSONValue.string) ?? .null
@@ -3138,7 +3019,6 @@ struct WaffledAPI: Sendable {
         return try await sendReturning("POST", "/api/lists", body: body, as: Resp.self).list
     }
 
-    /// Delete a custom list.
     func deleteList(id: String) async throws { try await delete("/api/lists/\(id)") }
 
     /// Rename a list / change its emoji (PATCH). Passing an empty emoji clears it.
@@ -3167,9 +3047,8 @@ struct WaffledAPI: Sendable {
         return try await sendReturning("POST", "/api/lists/\(listId)/items", body: body, as: ListItemResponse.self).item
     }
 
-    /// Edit a list item (name / quantity / checked / section / priority). Empty
-    /// quantity clears it; `section`/`priority` are only sent when provided (a
-    /// section-move or priority-mark PATCHes just that field).
+    /// Edit a list item (name / quantity / checked / section / priority). Empty quantity
+    /// clears it; `section`/`priority` are only sent when provided.
     func patchListItem(id: String, name: String? = nil, quantity: String? = nil, checked: Bool? = nil,
                        section: String? = nil, store: String?? = .none, priority: Int? = nil) async throws {
         var body: [String: JSONValue] = [:]
@@ -3198,14 +3077,12 @@ struct WaffledAPI: Sendable {
         try await send("PATCH", "/api/list-items/\(id)", body: body)
     }
 
-    /// Remove a list item.
     func deleteListItem(id: String) async throws {
         try await delete("/api/list-items/\(id)")
     }
 
-    /// Bulk-edit section / assignee / priority across many items in one call. A
-    /// double-optional distinguishes "leave unchanged" (.none) from "set to null"
-    /// (.some(nil)); e.g. `assignedTo: .some(nil)` unassigns the whole selection.
+    /// Bulk-edit section / assignee / priority in one call. The double-optional
+    /// distinguishes "leave unchanged" (.none) from "set to null" (.some(nil)).
     func bulkPatchListItems(ids: [String], section: String?? = .none, store: String?? = .none, assignedTo: String?? = .none, priority: Int? = nil) async throws {
         var patch: [String: JSONValue] = [:]
         if case let .some(s) = section { patch["section"] = s.map(JSONValue.string) ?? .null }
@@ -3216,8 +3093,8 @@ struct WaffledAPI: Sendable {
         try await send("PATCH", "/api/list-items/bulk", body: ["ids": .array(ids.map(JSONValue.string)), "patch": .object(patch)])
     }
 
-    /// The household's previously-used store names (most-used first) — quick-select
-    /// for a grocery item's store field.
+    /// The household's previously-used store names (most-used first) — quick-select for a
+    /// grocery item's store field.
     func listStores() async throws -> [String] {
         struct Resp: Decodable { let stores: [String] }
         return try await sendJSON("GET", "/api/lists/stores", as: Resp.self).stores
@@ -3229,15 +3106,13 @@ struct WaffledAPI: Sendable {
     }
 
     // MARK: List templates (save-as-template / apply)
-    // A template is a `lists` row with listType == "template"; its items are stored
-    // unchecked. Templates are excluded from the normal `GET /api/lists` rail
-    // server-side (and defensively filtered in `listSummaries()`) and surfaced in
-    // their own group. Marking a list as a template CONVERTS it in place (no copy),
-    // so there's one editable template — edit it and every list you spin off reflects
-    // the change. `apply` spins up a fresh custom list with everything unchecked.
+    // A template is a `lists` row with listType == "template", items stored unchecked,
+    // excluded from the normal `GET /api/lists` rail. Marking a list as a template
+    // CONVERTS it in place (no copy), so there is one editable template; `apply` spins up
+    // a fresh unchecked list.
 
-    /// Mark a list as a reusable template — converts it in place (only a plain
-    /// 'custom' list; grocery is protected). Returns the now-template summary.
+    /// Mark a list as a reusable template — converts it in place (only a plain 'custom'
+    /// list; grocery is protected). Returns the now-template summary.
     func saveListAsTemplate(listId: String) async throws -> ListSummary {
         struct Resp: Decodable { let template: ListSummary }
         return try await sendReturning("POST", "/api/lists/\(listId)/save-as-template", body: [:], as: Resp.self).template
@@ -3256,8 +3131,8 @@ struct WaffledAPI: Sendable {
         return try await getJSON("/api/lists/templates", as: Resp.self).templates
     }
 
-    /// Apply a template → a fresh custom list with everything unchecked. Returns the
-    /// new list's summary (so the caller can open it / refresh the index).
+    /// Apply a template → a fresh custom list with everything unchecked. Returns the new
+    /// list's summary (so the caller can open it / refresh the index).
     func applyListTemplate(templateId: String, name: String? = nil) async throws -> ListSummary {
         var body: [String: JSONValue] = [:]
         if let name, !name.isEmpty { body["name"] = .string(name) }
@@ -3267,8 +3142,8 @@ struct WaffledAPI: Sendable {
 
     // MARK: Goals (lists + goals + log/create; non-synced, fetched over REST)
 
-    /// A goal-list membership group (Family, an individual, a couple…). `members`
-    /// drives the avatar stack and the "Personal / Kevin & Kelly / Everyone" subline.
+    /// A goal-list membership group (Family, an individual, a couple…). `members` drives
+    /// the avatar stack and the "Personal / Kevin & Kelly / Everyone" subline.
     struct GoalList: Decodable, Identifiable, Hashable, Sendable {
         let id: String
         let name: String
@@ -3296,10 +3171,11 @@ struct WaffledAPI: Sendable {
         let habitPeriod: String?
         let habitTargetPerPeriod: Int?
         let trackingMode: String
-        /// How a SHARED goal counts a multi-person entry: count_once | split. Optional so an
-        /// older/cached response still decodes; default to "count_once" at read.
+        /// How a SHARED goal counts a multi-person entry: count_once | split. Optional so
+        /// an older/cached response still decodes; default to "count_once" at read.
         let participantMode: String?
-        /// For each_tracks goals: family (flat target) | per_person (ring = target × members).
+        /// For each_tracks goals: family (flat target) | per_person (ring = target ×
+        /// members).
         let targetBasis: String?
         let deadline: String?
         let isFeatured: Bool
@@ -3310,24 +3186,25 @@ struct WaffledAPI: Sendable {
         let totalProgress: Double
         let milestoneTotal: Int
         let milestoneReached: Int
-        /// Habit only: distinct days logged in the CURRENT period (day/week/month, in the
-        /// household's timezone). This — not `totalProgress` — is what a habit displays,
-        /// so the count resets when the period rolls over. Optional so an older/cached
-        /// response still decodes. Read it through `GoalDisplay`, never inline.
+        /// Habit only: distinct days logged in the CURRENT period (household timezone).
+        /// This — not `totalProgress` — is what a habit displays, so it resets when the
+        /// period rolls over. Optional so an older response decodes. Read it through
+        /// `GoalDisplay`, never inline.
         let periodDone: Double?
         /// Checklist only: steps done / steps total, the axis a checklist displays on.
         /// Optional for the same reason as `periodDone`.
         let stepTotal: Int?
         let stepDone: Int?
         let streakDays: Int
-        /// Who has already logged this goal TODAY (household timezone) — person ids, with
-        /// `__family__` standing in for a no-person (shared) log. A habit is once per day
-        /// per person, so the Log sheet reads this to say so before you tap. Optional: an
-        /// older/cached response simply gates nothing (the server dedupes regardless).
+        /// Who has already logged this goal TODAY (household timezone); `__family__`
+        /// stands in for a shared log. A habit is once per day per person, so the Log
+        /// sheet says so before you tap. Optional: an older response simply gates nothing
+        /// (the server dedupes regardless).
         let loggedTodayBy: [String]?
         /// Goal opted in to count matching calendar events (drives "Plan time").
         let autoFromCalendar: Bool
-        /// Apple Health metric this goal auto-fills from (nil = manual). See HealthKitBridge.
+        /// Apple Health metric this goal auto-fills from (nil = manual). See
+        /// HealthKitBridge.
         let healthMetric: String?
         /// ISO-8601 creation timestamp — floors the first Health sync so a new goal never
         /// pulls steps from before it existed.
@@ -3401,18 +3278,16 @@ struct WaffledAPI: Sendable {
             let amount: Double
             let loggedAt: String
             /// Household-timezone day (YYYY-MM-DD), matching the /activity endpoint's
-            /// day bucketing exactly. Use this to match an entry to a day/month cell —
-            /// NOT a re-parse of `loggedAt`, which would bucket by the device's own
-            /// timezone instead of the household's.
+            /// bucketing. Match an entry to a day/month cell with this, NOT a re-parse of
+            /// `loggedAt`, which would bucket by the device's timezone.
             let dateKey: String
             let note: String?
             /// Split-pool logs collapse to one entry: `amount` is the summed total and
             /// `participants` lists everyone credited (empty for a family/shared log).
             let participants: [Participant]
             /// False when the entry belongs to its source (a checklist tick, a calendar
-            /// confirm, an Apple Health sync): only its note can be edited, and it can't
-            /// be deleted from the entry sheet. Optional so a server too old to send it
-            /// still decodes — and reads as fully editable, exactly as it behaved before.
+            /// confirm, a Health sync): only its note can be edited and it can't be
+            /// deleted here. Optional so an older server decodes as fully editable.
             let editable: Bool?
             struct Participant: Decodable, Identifiable, Sendable {
                 let personId: String?
@@ -3430,11 +3305,10 @@ struct WaffledAPI: Sendable {
         return try await getJSON("/api/goals/\(id)", as: Resp.self).goal
     }
 
-    /// Day-bucketed log history powering the goal-detail data views (Week/Month/
-    /// Pace/Year/By-person/Year-ring). Days are keyed by household-LOCAL date
-    /// ('YYYY-MM-DD'), bucketed server-side the same way as the goal's streak, so
-    /// anything derived from this matches the streak shown elsewhere. Only days
-    /// with activity appear (sparse) — GoalStats fills the zero gaps.
+    /// Day-bucketed log history powering the goal-detail data views. Days are keyed by
+    /// household-LOCAL date, bucketed server-side the same way as the goal's streak, so
+    /// anything derived matches the streak shown elsewhere. Sparse — GoalStats fills the
+    /// zero gaps.
     struct GoalActivity: Decodable, Sendable {
         let startDate: String
         let endDate: String?
@@ -3454,10 +3328,9 @@ struct WaffledAPI: Sendable {
         try await getJSON("/api/goals/\(id)/activity", as: GoalActivity.self)
     }
 
-    /// Smart note-field suggestions for the log sheet — the notes already logged against
-    /// this goal, most-used first. `personId` scopes to the notes where that person was the
-    /// credited participant, so each member's box learns their own history. Failures are the
-    /// caller's to swallow (the sheet just falls back to its defaults).
+    /// Note-field suggestions for the log sheet — notes already logged against this goal,
+    /// most-used first. `personId` scopes to that person's own history. Failures are the
+    /// caller's to swallow.
     func goalNoteSuggestions(goalId: String, personId: String?) async throws -> [String] {
         struct Resp: Decodable { let suggestions: [String] }
         var path = "/api/goals/\(goalId)/note-suggestions"
@@ -3481,7 +3354,6 @@ struct WaffledAPI: Sendable {
         return try await sendReturning("POST", "/api/goal-lists", body: body, as: Resp.self).list.id
     }
 
-    /// The household's goal lists (the membership picker).
     func goalLists() async throws -> [GoalList] {
         struct Resp: Decodable { let lists: [GoalList] }
         return try await getJSON("/api/goal-lists", as: Resp.self).lists
@@ -3494,15 +3366,14 @@ struct WaffledAPI: Sendable {
         return try await getJSON(path, as: Resp.self).goals
     }
 
-    /// Log progress against a goal: `amount` (can be negative to correct), credited
-    /// to `personIds` (one log per person; empty = unattributed pool).
-    /// Log progress. `loggedOn` (YYYY-MM-DD) backdates the entry to catch up a missed
-    /// day and keep a streak alive; nil logs against today.
+    /// Log progress against a goal: `amount` (negative to correct), credited to
+    /// `personIds` (one log per person; empty = unattributed pool). `loggedOn` backdates
+    /// to keep a streak alive.
     func logGoalProgress(goalId: String, amount: Double, personIds: [String], note: String?, loggedOn: String? = nil,
                          hours: Int? = nil, minutes: Int? = nil) async throws {
         // A time goal sends hours + minutes and lets the server fold them to decimal
-        // hours; everything else sends the amount. The two are mutually exclusive (the
-        // server 400s if both are present).
+        // hours; everything else sends the amount. Mutually exclusive — the server 400s if
+        // both are sent.
         var body: [String: JSONValue] = [:]
         if hours != nil || minutes != nil {
             body["hours"] = .int(hours ?? 0)
@@ -3540,8 +3411,7 @@ struct WaffledAPI: Sendable {
     }
 
     /// Push today's Apple Health total for a linked goal. Idempotent server-side: one
-    /// replaceable progress row per person/metric/day, so re-syncing never double-counts.
-    /// `day` is YYYY-MM-DD (household-local); `metric` is a HealthKitBridge.Metric.key.
+    /// replaceable row per person/metric/day, so re-syncing never double-counts.
     func syncGoalHealth(goalId: String, metric: String, day: String, value: Double) async throws {
         try await send("POST", "/api/goals/\(goalId)/health-sync",
                        body: ["metric": .string(metric), "day": .string(day), "value": .double(value)])
@@ -3560,10 +3430,9 @@ struct WaffledAPI: Sendable {
 
     // MARK: Goal ↔ calendar review (the Today "review events" queues)
 
-    /// A *confirmed* link (purple): an event the household agreed ties to a goal,
-    /// now ended and waiting to be logged. `suggestedAmount` is a default preview;
-    /// the user can edit it. For checklist goals `goalStepId`/`stepLabel` say which
-    /// step a confirm ticks (and the amount is ignored).
+    /// A *confirmed* link (purple): an event the household agreed ties to a goal, now
+    /// ended and waiting to be logged. For checklist goals `goalStepId`/`stepLabel` say
+    /// which step a confirm ticks (and the amount is ignored).
     struct GoalRecapItem: Decodable, Identifiable, Sendable {
         let eventId: String
         let occurrenceDate: String
@@ -3587,8 +3456,8 @@ struct WaffledAPI: Sendable {
         var isAmountBased: Bool { goalType == "total" || goalType == "count" }
     }
 
-    /// A *suggested* link (orange): an untagged event the matcher thinks might
-    /// count toward `goalId` (best single match). Link or dismiss.
+    /// A *suggested* link (orange): an untagged event the matcher thinks might count
+    /// toward `goalId` (best single match). Link or dismiss.
     struct GoalSuggestionItem: Decodable, Identifiable, Sendable {
         let eventId: String
         let title: String
@@ -3613,8 +3482,8 @@ struct WaffledAPI: Sendable {
         return try await getJSON("/api/goal-calendar/suggestions", as: Resp.self).items
     }
 
-    /// Confirm a linked event → logs `amount` to `personIds` (checklist goals tick
-    /// their step and ignore amount). Idempotent on (event, occurrence, goal).
+    /// Confirm a linked event → logs `amount` to `personIds` (checklist goals tick their
+    /// step and ignore amount). Idempotent on (event, occurrence, goal).
     func confirmRecap(eventId: String, occurrenceDate: String, amount: Double, personIds: [String], note: String? = nil) async throws {
         var body: [String: JSONValue] = [
             "eventId": .string(eventId),
@@ -3651,7 +3520,8 @@ struct WaffledAPI: Sendable {
         let goalEmoji: String?
         let via: String?
         /// True when the learned memory score crosses the server's AUTO_LINK_THRESHOLD —
-        /// confident enough to pre-link in the modal (never on a one-off keyword/LLM guess).
+        /// confident enough to pre-link in the modal (never on a one-off keyword/LLM
+        /// guess).
         let auto: Bool?
     }
     func suggestOne(title: String, participantIds: [String]) async throws -> GoalSuggestOne? {
@@ -3661,10 +3531,9 @@ struct WaffledAPI: Sendable {
         return try await sendReturning("POST", "/api/goal-calendar/suggest-one", body: body, as: Resp.self).suggestion
     }
 
-    /// Create an event via the rich REST route (records the goal-match signal +
-    /// routes to Google). Used when linking a goal — the PowerSync `events` table
-    /// has no goal columns, so goal-tagged creates can't go through the local mirror.
-    /// Returns the new event id; PowerSync down-syncs it for display.
+    /// Create an event via the rich REST route (records the goal-match signal + routes to
+    /// Google). The PowerSync `events` table has no goal columns, so goal-tagged creates
+    /// can't go through the local mirror. PowerSync down-syncs the new event for display.
     func createEvent(title: String, startsAtISO: String, endsAtISO: String?, allDay: Bool,
                      location: String?, personIds: [String], goalId: String?, goalStepId: String?,
                      rhythmId: String? = nil,
@@ -3691,12 +3560,11 @@ struct WaffledAPI: Sendable {
         return try await sendReturning("POST", "/api/events", body: body, as: Resp.self).event.id
     }
 
-    /// Update an event via REST (PATCH /api/events/:id) — used when a goal link or a
-    /// recurrence is involved, since the local mirror's events table has no goal_id
-    /// columns and can't expand a rule. For a recurring occurrence, `scope`
-    /// ('this' | 'following' | 'all') + `occurrenceStart` pick which occurrences change;
-    /// the master `rrule` is sent with scope 'following'/'all' (or when promoting a
-    /// single event to recurring), never for a one-occurrence override.
+    /// Update an event via REST — used when a goal link or a recurrence is involved, since
+    /// the local mirror has no goal columns and can't expand a rule. For a recurring
+    /// occurrence, `scope` ('this' | 'following' | 'all') + `occurrenceStart` pick which
+    /// occurrences change; the master `rrule` goes with 'following'/'all', never a
+    /// one-occurrence override.
     static func eventUpdateBody(
         title: String,
         startsAtISO: String,
@@ -3706,9 +3574,9 @@ struct WaffledAPI: Sendable {
         personIds: [String],
         goalId: String?,
         goalStepId: String?,
-        // Which rhythm this event settles. Absent means "leave it alone" — the upload
-        // sink coalesces a missing rhythm_id on purpose, so a client that predates the
-        // picker can't blank a link it never showed. Unlinking is therefore stated.
+        // Which rhythm this event settles. Absent means "leave it alone" — the upload sink
+        // coalesces a missing rhythm_id so a client predating the picker can't blank a
+        // link. Unlinking is stated.
         rhythmId: String? = nil,
         clearRhythmId: Bool = false,
         rrule: String?,
@@ -3728,8 +3596,8 @@ struct WaffledAPI: Sendable {
         if let scope { body["scope"] = .string(scope) }
         if let occ = occurrenceStart { body["occurrenceStart"] = .string(occ) }
 
-        // A per-occurrence override can represent only the fields above. Following
-        // and all create/update complete masters, so they carry the full series state.
+        // A per-occurrence override can represent only the fields above. Following and all
+        // create/update complete masters, so they carry the full series state.
         if scope != "this" {
             body["allDay"] = .bool(allDay)
             body["personId"] = personIds.first.map(JSONValue.string) ?? .null
@@ -3775,10 +3643,9 @@ struct WaffledAPI: Sendable {
         try await send("PATCH", "/api/events/\(id)", body: body)
     }
 
-    /// Delete an event via REST (DELETE /api/events/:id). For a recurring occurrence,
-    /// `scope` 'this' cancels the one occurrence and 'following' caps the series before
-    /// it; both require `occurrenceStart` (carried as query params — DELETE has no body).
-    /// `scope` 'all' (the default) drops the whole series.
+    /// Delete an event via REST. For a recurring occurrence, `scope` 'this' cancels the
+    /// one and 'following' caps the series before it; both need `occurrenceStart` (query
+    /// params — DELETE has no body). 'all' (the default) drops the whole series.
     func deleteEvent(id: String, scope: String? = nil, occurrenceStart: String? = nil) async throws {
         var path = "/api/events/\(id)"
         if let scope, scope != "all", let occ = occurrenceStart {
@@ -3827,17 +3694,17 @@ struct WaffledAPI: Sendable {
 
     // MARK: countdowns ("N days until…")
 
-    /// A countdown item, merged server-side from three sources (`source`): a standalone
-    /// `countdowns` row, a calendar event flagged `isCountdown`, or a member's next
-    /// birthday. `daysLeft` is computed in the household timezone; the list is soonest
-    /// first and never includes past items. Only `standalone` items are editable.
+    /// A countdown item, merged server-side from three sources (`source`): a `countdowns`
+    /// row, an event flagged `isCountdown`, or a member's next birthday. `daysLeft` is in
+    /// the household timezone; soonest first, never past. Only `standalone` items are
+    /// editable.
     struct Countdown: Decodable, Identifiable, Hashable, Sendable {
         let id: String
         let title: String
         let date: String            // YYYY-MM-DD
         let daysLeft: Int
-        // Deliberately a String, not an enum: a strict Decodable enum would fail the
-        // WHOLE list the moment the server grows a new kind (as it did with 'rhythm').
+        // Deliberately a String, not an enum: a strict Decodable enum would fail the WHOLE
+        // list the moment the server grows a new kind (as it did with 'rhythm').
         let source: String          // standalone | event | birthday | rhythm
         let emoji: String?
         let color: String?
@@ -3871,9 +3738,8 @@ struct WaffledAPI: Sendable {
         try await send("POST", "/api/persons", body: body)
     }
 
-    /// Create a goal (`POST /api/goals`). Mirrors the web `createGoal`; the capture bar
-    /// gates on the Goals module being enabled before calling. A count target is sent as
-    /// a whole number, a total as-is.
+    /// Create a goal (`POST /api/goals`). The capture bar gates on the Goals module being
+    /// enabled before calling. A count target is sent as a whole number, a total as-is.
     func createGoal(title: String, goalType: String, trackingMode: String, targetValue: Double?, unit: String?, deadline: String?, participantIds: [String] = []) async throws {
         var body: [String: JSONValue] = ["title": .string(title), "goalType": .string(goalType), "trackingMode": .string(trackingMode)]
         if let t = targetValue {
@@ -3882,7 +3748,8 @@ struct WaffledAPI: Sendable {
         if let u = unit, !u.isEmpty { body["unit"] = .string(u) }
         if let d = deadline, !d.isEmpty { body["deadline"] = .string(d) }
         // Who the goal is for. Empty = the route scopes it to the caller; a non-empty list
-        // is the picked participants (only assigning others needs goal.manage server-side).
+        // is the picked participants (only assigning others needs goal.manage
+        // server-side).
         if !participantIds.isEmpty { body["participantIds"] = .array(participantIds.map { .string($0) }) }
         try await send("POST", "/api/goals", body: body)
     }
@@ -3897,7 +3764,6 @@ struct WaffledAPI: Sendable {
         try await send("PATCH", "/api/countdowns/\(id)", body: body)
     }
 
-    /// Soft-delete a standalone countdown.
     func deleteCountdown(id: String) async throws {
         try await delete("/api/countdowns/\(id)")
     }
@@ -3914,8 +3780,8 @@ struct WaffledAPI: Sendable {
 
     // MARK: - Family Night (weekly gathering with a rotating agenda)
 
-    /// One agenda "part" (e.g. Activity, Treat). `rotates` = auto-rotate a person
-    /// through this part each week. Mirrors the web `FamilyNightPart` (camelCase 1:1).
+    /// One agenda "part" (e.g. Activity, Treat). `rotates` = auto-rotate a person through
+    /// this part each week. Mirrors the web `FamilyNightPart` (camelCase 1:1).
     struct FamilyNightPart: Codable, Identifiable, Hashable, Sendable {
         var id: String
         var label: String
@@ -3983,7 +3849,6 @@ struct WaffledAPI: Sendable {
 
     /// Persist assignments / theme / notes / status for a gathering. `assignments` is
     /// partial — only the parts you pass are written (a nil `personId` clears a part).
-    /// Returns the occurrence id.
     @discardableResult
     func saveFamilyNightOccurrence(date: String, theme: String? = nil, notes: String? = nil,
                                    status: String? = nil,
@@ -4002,14 +3867,14 @@ struct WaffledAPI: Sendable {
         return try await sendReturning("POST", "/api/family-night/occurrence", body: body, as: Resp.self).id
     }
 
-    /// Put Family Night on the calendar (create/refresh the weekly event). Returns eventId.
+    /// Put Family Night on the calendar (create/refresh the weekly event). Returns
+    /// eventId.
     @discardableResult
     func scheduleFamilyNight() async throws -> String {
         struct Resp: Decodable { let eventId: String }
         return try await sendReturning("POST", "/api/family-night/schedule", body: [:], as: Resp.self).eventId
     }
 
-    /// Remove Family Night from the calendar.
     func unscheduleFamilyNight() async throws {
         try await delete("/api/family-night/schedule")
     }
@@ -4038,29 +3903,18 @@ struct WaffledAPI: Sendable {
     }
 
     // MARK: - Rhythms (the things that should keep happening)
-    //
-    // A rhythm is a standing intention with a cadence — trash weekly, the air filter every
-    // three months, a temple visit each quarter. Two shapes, and the difference is what
+    // A rhythm is a standing intention with a cadence. Two shapes, differing in what
     // closes out a period:
-    //
     //   .completion — you did the thing. Surfaces as `kind: .due`.
-    //   .scheduling — a calendar event exists for the period. Surfaces as
-    //                 `kind: .unscheduled`. We never ask whether it happened; getting the
-    //                 opportunity onto the calendar IS the outcome.
-    //
-    // That second sentence is the whole line between a rhythm and a goal, and it is a copy
-    // rule as much as a data one — see `RhythmFormat`. REST-only in v1 (the table is
-    // deliberately not on PowerSync); the events a booking creates sync as usual.
-    // Mirrors apps/web/src/lib/api/rhythms.ts 1:1.
+    //   .scheduling — a calendar event exists for the period (`kind: .unscheduled`). We never ask
+    //                 whether it happened; getting it onto the calendar IS the outcome.
+    // That second one is the whole line between a rhythm and a goal, and it is a copy rule
+    // as much as a data one — see `RhythmFormat`. REST-only in v1 (deliberately not on
+    // PowerSync). Mirrors apps/web/src/lib/api/rhythms.ts 1:1.
 
-    /// What closes out a period.
-    ///
-    /// `unknown` is the forward-compatibility valve, not a state the server sends: a
-    /// strict Decodable enum fails the WHOLE response the moment the server grows a third
-    /// shape, and this one sits on every row of the register — so one unrecognised value
-    /// emptied the screen and reported it as "couldn't reach the server", which sends
-    /// someone to check their wifi over an additive server change. `CountdownSource` was
-    /// softened for exactly this reason; these two were missed.
+    /// What closes out a period. `unknown` is a forward-compatibility valve, not a state
+    /// the server sends: a strict Decodable enum fails the WHOLE response the moment the
+    /// server grows a third shape, and this sits on every row of the register.
     enum RhythmShape: String, Codable, Sendable {
         case completion, scheduling, unknown
 
@@ -4083,16 +3937,11 @@ struct WaffledAPI: Sendable {
         let startsOn: String?
         let autoSchedule: Bool
         let rrule: String?
-        /// How much of each period a booking counts in, from the period's start.
-        ///
-        /// Postgres interval text; nil means the whole period, which is what `every` meant
-        /// on its own and what every rhythm made before this column has. It exists because
-        /// `every` was doing two jobs — how often, and how wide a span a booking may land
-        /// in — and "date night, in the first week of the month" needs them separated. The
-        /// period still owns the grid and the skips; this owns where a booking settles
-        /// anything.
-        ///
-        /// Optional so a server that predates it still decodes.
+        /// How much of each period a booking counts in, from the period's start. Postgres
+        /// interval text; nil means the whole period. It exists because `every` was doing
+        /// two jobs — how often, and how wide a span a booking may land in — and "date
+        /// night, in the first week of the month" needs them separated. Optional so an
+        /// older server still decodes.
         let bookWithin: String?
         /// Postgres interval text, clamped server-side to the booking window where there
         /// is one and to half of `every` where there isn't.
@@ -4100,54 +3949,42 @@ struct WaffledAPI: Sendable {
         let lastCompletedAt: String?
         let nextDueAt: String?
         let isActive: Bool
-        // Only `GET /api/rhythms` carries current-period state (the server's
-        // `RhythmWithPeriod`); every single-row read omits it. Optional rather than a
-        // second near-identical type — and decoding must tolerate their absence, which is
-        // exactly the asymmetry the kiosk-claim decode bug shipped on.
+        // Only `GET /api/rhythms` carries current-period state; every single-row read
+        // omits it. Optional rather than a second near-identical type, so decoding
+        // tolerates their absence.
         let currentPeriodStart: String?
         let currentPeriodEnd: String?
-        /// Where the current period stops accepting bookings.
-        ///
-        /// Read it through `windowEnd`, never directly: a server without the column sends
-        /// nothing here, and the period's end is then the right answer rather than a guess
-        /// — without a window the two ARE the same date.
+        /// Where the current period stops accepting bookings. Read it through `windowEnd`,
+        /// never directly: a server without the column sends nothing, and the period's end
+        /// is then the right answer — without a window the two ARE the same date.
         let currentWindowEnd: String?
         let satisfied: Bool?
-        /// Whether a live recurring event still exists for this rhythm.
-        ///
-        /// Only meaningful on an auto-scheduled one, where it separates two situations an
-        /// empty period cannot tell apart: the series is **gone** and wants putting back,
-        /// versus the series is **alive** and this one period has nothing in it. Optional
-        /// for the same reason as `satisfied` — single-row reads don't carry it.
+        /// Whether a live recurring event still exists for this rhythm. Only meaningful on
+        /// an auto-scheduled one, where it separates "the series is gone and wants putting
+        /// back" from "the series is alive and this one period is empty". Optional —
+        /// single-row reads omit it.
         let hasSeries: Bool?
-        /// When the event that settles this period starts, or nil.
-        ///
-        /// Nil is NOT "unsettled". A **skip** settles a period and has no time and never
-        /// will, so on a scheduling rhythm `satisfied == true` with a nil `bookedAt` is
-        /// exactly "skipped" — the one distinction that stops a row claiming a calendar
-        /// entry the user chose specifically not to create. Optional for the same reason
-        /// as the two above.
+        /// When the event that settles this period starts, or nil. Nil is NOT "unsettled":
+        /// a **skip** settles a period and has no time, so on a scheduling rhythm
+        /// `satisfied == true` with a nil `bookedAt` is exactly "skipped" — which stops a
+        /// row claiming a calendar entry the user chose not to create. Optional for the
+        /// same reason as the two above.
         let bookedAt: String?
-        /// Whether that booking is an all-day event.
-        ///
-        /// The server has always sent this and nothing read it, so a settled row said
-        /// "Booked" and left you to open the calendar for the when. It matters for more
-        /// than completeness: an all-day event is stored at LOCAL MIDNIGHT, so printing a
-        /// time for one shows "12:00 AM" — an hour nobody chose and the row's only
-        /// falsehood. This is what says to stop at the date.
+        /// Whether that booking is an all-day event. An all-day event is stored at LOCAL
+        /// MIDNIGHT, so printing a time for one shows "12:00 AM" — an hour nobody chose.
+        /// This is what says to stop at the date.
         let bookedAllDay: Bool?
 
-        /// The deadline a person is actually working against: where bookings stop counting.
-        ///
-        /// Every "how long have I got" line wants this one — a card saying "12 days left"
+        /// The deadline a person is actually working against: where bookings stop
+        /// counting. Every "how long have I got" line wants this one — "12 days left"
         /// beside a picker that refuses day 8 reads as a broken picker. `currentPeriodEnd`
-        /// is only for talking about the cadence and for keying the grid.
+        /// is only for the cadence and the grid.
         var windowEnd: String? { currentWindowEnd ?? currentPeriodEnd }
     }
 
     /// Why a rhythm is on the attention feed. `unknown` is the same forward-compatibility
-    /// valve as `RhythmShape.unknown`; the model drops those rows rather than drawing a
-    /// row it has no words for.
+    /// valve as `RhythmShape.unknown`; the model drops those rows rather than drawing one
+    /// it has no words for.
     enum RhythmAttentionKind: String, Codable, Sendable {
         case due, unscheduled, unknown
 
@@ -4157,9 +3994,8 @@ struct WaffledAPI: Sendable {
         }
     }
 
-    /// One row of `GET /api/rhythms/attention` — the single question every surface asks.
-    /// The fields are per-kind: `dueAt`/`overdue` for `.due`, `periodStart`/`periodEnd`
-    /// for `.unscheduled`.
+    /// One row of `GET /api/rhythms/attention`. The fields are per-kind: `dueAt`/`overdue`
+    /// for `.due`, `periodStart`/`periodEnd` for `.unscheduled`.
     struct RhythmAttentionItem: Codable, Identifiable, Sendable {
         let kind: RhythmAttentionKind
         let rhythm: Rhythm
@@ -4175,7 +4011,8 @@ struct WaffledAPI: Sendable {
         let hasSeries: Bool?
         var id: String { rhythm.id }
 
-        /// The last boundary a booking still counts against — the window's, not the grid's.
+        /// The last boundary a booking still counts against — the window's, not the
+        /// grid's.
         var bookableUntil: String? { windowEnd ?? periodEnd }
     }
 
@@ -4215,9 +4052,8 @@ struct WaffledAPI: Sendable {
     /// "I did the filter today" — logs it and re-anchors the clock to when it was actually
     /// done. Only a completion rhythm can be completed.
     @discardableResult
-    /// `completedAt` nil means "now" and lets the server stamp it. An explicit instant
-    /// backdates the completion — the completion shape re-anchors its clock to when the
-    /// thing was ACTUALLY done, so logging it late has to be able to say when.
+    /// `completedAt` nil means "now". An explicit instant backdates it — the completion
+    /// shape re-anchors its clock to when the thing was ACTUALLY done.
     func completeRhythm(id: String, completedAt: String? = nil) async throws -> Rhythm {
         struct Resp: Decodable { let rhythm: Rhythm }
         let body: [String: JSONValue] = completedAt.map { ["completedAt": .string($0)] } ?? [:]
@@ -4225,15 +4061,12 @@ struct WaffledAPI: Sendable {
     }
 
     /// Book a period into a REAL calendar event. Title and assignee come from the rhythm,
-    /// so a booking UI needs a time picker and nothing else — retyping the title is
-    /// precisely the friction that keeps these things off the calendar.
+    /// so a booking UI needs a time picker and nothing else.
     @discardableResult
-    /// `periodStart` names the period this booking is meant to fill.
-    ///
-    /// Any booking is legal — satisfaction is derived, so it settles whichever period it
-    /// lands in — which is exactly why the server cannot tell an intended booking from a
-    /// mistaken one. Sending the period we are SHOWING lets it refuse the mismatch rather
-    /// than return 201 for a booking that leaves the card still asking.
+    /// `periodStart` names the period this booking is meant to fill. Any booking is legal
+    /// — satisfaction is derived — which is why the server can't tell an intended booking
+    /// from a mistaken one. Sending the period we are SHOWING lets it refuse a mismatch
+    /// instead of returning 201 for a booking that leaves the card still asking.
     func scheduleRhythm(id: String, startsAt: String, allDay: Bool,
                         periodStart: String? = nil) async throws -> String {
         struct Resp: Decodable { let event: Ev; struct Ev: Decodable { let id: String } }
@@ -4249,7 +4082,6 @@ struct WaffledAPI: Sendable {
         try await send("POST", "/api/rhythms/\(id)/skip", body: ["periodStart": .string(periodStart)])
     }
 
-    /// One completion in a rhythm's history.
     struct RhythmCompletion: Decodable, Identifiable, Sendable {
         let id: String
         let personId: String?
@@ -4257,12 +4089,9 @@ struct WaffledAPI: Sendable {
         let notes: String?
     }
 
-    /// A rhythm's history, and how often it REALLY happens.
-    ///
-    /// `averageIntervalDays` is deliberately not derivable from `completions`: the list is
-    /// a page and the average is over all of them, so computing it here would be a
-    /// different number wearing the same label. Null below two completions — one date is
-    /// not an interval.
+    /// A rhythm's history, and how often it REALLY happens. `averageIntervalDays` is
+    /// deliberately not derivable from `completions`: the list is a page and the average
+    /// is over all of them. Null below two completions — one date is not an interval.
     struct RhythmHistory: Decodable, Sendable {
         let completions: [RhythmCompletion]
         let total: Int
@@ -4316,9 +4145,15 @@ struct WaffledAPI: Sendable {
 
     // MARK: helpers
 
-    /// POST/PATCH a JSON body to `path`, throwing on non-2xx. The response body is
-    /// ignored — capture commits only care that the write succeeded.
-    private func send(_ method: String, _ path: String, body: [String: JSONValue]) async throws {
+    // THE SIX HELPERS BELOW ARE INTERNAL, NOT PRIVATE, and it is load-bearing. Weekly
+    // Planning's reads live in their own files under `Features/Planning/API/` and extend
+    // `WaffledAPI` to reach exactly this plumbing: one `url(path:)`, one auth header, one
+    // 401-refresh, one decoder. Private would mean each of those hand-rolling its own
+    // request building, which is how two clients of the same API start disagreeing about
+    // what a 401 means.
+    /// POST/PATCH a JSON body to `path`, throwing on non-2xx. The response body is ignored
+    /// — capture commits only care that the write succeeded.
+    func send(_ method: String, _ path: String, body: [String: JSONValue]) async throws {
         var req = URLRequest(url: try url(path))
         req.httpMethod = method
         authorize(&req)
@@ -4329,7 +4164,7 @@ struct WaffledAPI: Sendable {
     }
 
     /// POST/PATCH a JSON body and decode the JSON response, throwing on non-2xx.
-    private func sendReturning<T: Decodable>(_ method: String, _ path: String, body: [String: JSONValue], as: T.Type) async throws -> T {
+    func sendReturning<T: Decodable>(_ method: String, _ path: String, body: [String: JSONValue], as: T.Type) async throws -> T {
         var req = URLRequest(url: try url(path))
         req.httpMethod = method
         authorize(&req)
@@ -4340,10 +4175,9 @@ struct WaffledAPI: Sendable {
         return try Self.decoder.decode(T.self, from: data)
     }
 
-    /// PATCH an arbitrary Encodable body and decode the JSON response. Optionals in
-    /// the body are omitted when nil (Swift's `encodeIfPresent`), so only the fields
-    /// you set are sent.
-    private func patchEncodable<B: Encodable, T: Decodable>(_ path: String, body: B, as: T.Type) async throws -> T {
+    /// PATCH an arbitrary Encodable body and decode the JSON response. Nil optionals are
+    /// omitted (`encodeIfPresent`), so only the fields you set are sent.
+    func patchEncodable<B: Encodable, T: Decodable>(_ path: String, body: B, as: T.Type) async throws -> T {
         var req = URLRequest(url: try url(path))
         req.httpMethod = "PATCH"
         authorize(&req)
@@ -4355,7 +4189,7 @@ struct WaffledAPI: Sendable {
     }
 
     /// POST/PATCH (no body) and decode the JSON response, throwing on non-2xx.
-    private func sendJSON<T: Decodable>(_ method: String, _ path: String, as: T.Type) async throws -> T {
+    func sendJSON<T: Decodable>(_ method: String, _ path: String, as: T.Type) async throws -> T {
         var req = URLRequest(url: try url(path))
         req.httpMethod = method
         authorize(&req)
@@ -4365,7 +4199,7 @@ struct WaffledAPI: Sendable {
     }
 
     /// GET `path` and decode the JSON body, throwing on non-2xx.
-    private func getJSON<T: Decodable>(_ path: String, as: T.Type) async throws -> T {
+    func getJSON<T: Decodable>(_ path: String, as: T.Type) async throws -> T {
         var req = URLRequest(url: try url(path))
         authorize(&req)
         let (data, resp) = try await perform(req)
@@ -4374,7 +4208,7 @@ struct WaffledAPI: Sendable {
     }
 
     /// DELETE `path`, throwing on non-2xx (204 is success).
-    private func delete(_ path: String) async throws {
+    func delete(_ path: String) async throws {
         var req = URLRequest(url: try url(path))
         req.httpMethod = "DELETE"
         authorize(&req)
@@ -4391,19 +4225,17 @@ struct WaffledAPI: Sendable {
         req.setValue("Bearer \(AppConfig.bearerToken)", forHTTPHeaderField: "Authorization")
     }
 
-    /// Run an authed request, transparently refreshing the access token once on a
-    /// 401 and retrying. Mirrors the web's `authFetch`: a single rotating-refresh
-    /// (coordinated by `TokenRefresher`) recovers an expired access token without the
-    /// user noticing; if the refresh token is dead, the original 401 is returned and
-    /// `.waffledAuthExpired` (fired by the refresher) sends the user to login.
+    /// Run an authed request, transparently refreshing the access token once on a 401 and
+    /// retrying. Mirrors the web's `authFetch`: a single rotating-refresh (coordinated by
+    /// `TokenRefresher`) recovers silently; if the refresh token is dead, the original 401
+    /// is returned and `.waffledAuthExpired` sends the user to login.
     private func perform(_ req: URLRequest) async throws -> (Data, URLResponse) {
         let (data, resp) = try await URLSession.shared.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode
         // The household this token names is GONE (a restored database, a deleted
         // household). Refreshing would mint another token for the same hole, so end the
-        // session exactly the way a dead refresh token does — clear the Keychain and let
-        // `Session`'s `.waffledAuthExpired` observer put us back on login. Never on a
-        // bare 403: a permission denial is the app working.
+        // session the way a dead refresh token does. Never on a bare 403: a permission
+        // denial is the app working.
         if code == 403, Self.errorCode(data) == "NoHousehold" {
             AuthTokens.clear()
             await MainActor.run { NotificationCenter.default.post(name: .waffledAuthExpired, object: nil) }
@@ -4428,11 +4260,10 @@ struct WaffledAPI: Sendable {
 
     // MARK: - Version & update check
 
-    /// Admin-gated server-update check — mirrors the web's `/api/updates`. Compares the
-    /// running build against the newest GitHub release; 403s for non-admins. `current`
-    /// is always present (even when update-checking is disabled), so it also serves as
-    /// the "which server build am I on?" source in About. (`/healthz` carries the version
-    /// too, but Caddy only proxies `/api/*`, so the app can't reach it.)
+    /// Admin-gated server-update check — mirrors the web's `/api/updates`. `current` is
+    /// always present (even with update-checking disabled), so it also answers "which
+    /// server build am I on?" in About. (`/healthz` carries the version too, but Caddy
+    /// only proxies the API.)
     struct UpdateInfo: Decodable, Sendable {
         struct Release: Decodable, Sendable { let tag: String; let url: String; let publishedAt: String? }
         struct Current: Decodable, Sendable { let version: String; let sha: String? }

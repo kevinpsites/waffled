@@ -1,9 +1,9 @@
-// Role-based capabilities — the things a household can grant beyond the
-// always-allowed self-serve actions. Admins (and default adults) get them all
-// baked into person.capabilities server-side, so `can()` needs no special-casing.
+// Role-based capabilities beyond the always-allowed self-serve actions. Admins (and
+// default adults) get them all baked into person.capabilities server-side, so `can()`
+// needs no special-casing.
 import { apiGet, apiSend } from './client'
 
-export const CAPABILITIES = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'reward.grant', 'goal.manage'] as const
+export const CAPABILITIES = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'reward.grant', 'goal.manage', 'planning.manage'] as const
 export type Capability = (typeof CAPABILITIES)[number]
 
 export type Role = 'adult' | 'teen' | 'kid'
@@ -17,11 +17,13 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   'reward.approve': 'Approve redemptions',
   'reward.grant': 'Award stars',
   'goal.manage': 'Manage goals',
+  // Not "run the session" — anybody can do that. This is the household-wide choices the
+  // session offers, currently which lists its first step asks about.
+  'planning.manage': 'Set up planning',
 }
 export const ROLE_LABELS: Record<Role, string> = { adult: 'Adult', teen: 'Teen', kid: 'Kid' }
 
-// `can(person, cap)` — does this person hold the capability. A null person (not yet
-// loaded) is treated as no — gate UI conservatively until we know.
+// A null person (not yet loaded) is treated as no — gate UI conservatively until we know.
 export function can(person: { capabilities?: string[] } | null, cap: Capability): boolean {
   return !!person?.capabilities?.includes(cap)
 }

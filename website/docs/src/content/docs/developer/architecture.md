@@ -71,8 +71,11 @@ authoritative.
 
 - **api:** a single global auth gate resolves the tenant from the JWT, then per-route
   [guards](/concepts/permissions/) re-assert it (`tenantRoute` / `adminRoute` / `capRoute`, and
-  `moduleRoutes(key)` for optional [modules](/administration/modules/)). lambda-api has no
-  per-route middleware, so authorization is wrapper guards, not path middleware.
+  `moduleRoutes(key)` for optional [modules](/administration/modules/)). These are wrapper
+  guards rather than middleware, so a handler receives the resolved tenant as a typed
+  argument — a preference, not a limitation of the framework. API-key **scopes** are the exception: they are checked centrally in the
+  gate against a path-prefix catalog, which is fail-closed — a path in no resource is
+  refused to keys outright.
 - **PowerSync:** the sync rules define **one bucket per household** — parameters read
   `request.jwt() ->> 'household_id'`, and every data query is `WHERE household_id = … AND
   deleted_at IS NULL`. A client only ever receives its own household's rows.

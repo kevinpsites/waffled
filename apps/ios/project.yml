@@ -101,6 +101,14 @@ targets:
             UTTypeDescription: Waffled planned meal slot
             UTTypeConformsTo:
               - public.data
+          # And again for dragging a task card onto a person in Weekly Planning's Tasks
+          # step. MUST stay declared here: UTType(exportedAs:) silently falls back to an
+          # undeclared type if this entry goes missing, so no test can catch its absence —
+          # the drops just quietly stop being accepted.
+          - UTTypeIdentifier: app.waffled.planning-task
+            UTTypeDescription: Waffled weekly-planning task card
+            UTTypeConformsTo:
+              - public.data
     # HealthKit capability. Required for the read-authorization prompt to work at runtime
     # (the framework itself autolinks from `import HealthKit`). iPhone-only feature, but the
     # entitlement lives on the single universal target; code guards on isHealthDataAvailable().
