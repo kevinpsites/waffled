@@ -295,10 +295,16 @@ archive in the directory into `appcast.xml`. Set `WAFFLED_DOWNLOAD_URL_PREFIX` t
 the archives will live at. Phase 3 item 5's release script is what will call this; nothing
 in CI does.
 
-Two things to expect: it takes **~3 minutes** per release (it extracts and hashes the whole
-671 MB archive), and the first run in a while raises a **Keychain prompt** — macOS asking
-whether `generate_appcast` may use the signing key. Answer it (`Always Allow`) or the tool
-sits there at 0% CPU with nothing in its output; a headless shell cannot get past it.
+Expect **~3 minutes** per release: it extracts and hashes the whole 671 MB archive. Two
+things that happened while it was first used here, in case they happen to you:
+
+- The first run signed with no interruption; later ones **stopped dead at 0% CPU** with
+  nothing on stdout and a `SecurityAgent` process alive beside them. That is what a Keychain
+  authorisation dialog looks like from a terminal — so if it hangs, go and look at the
+  screen. A headless shell cannot answer one.
+- **Killing it mid-extraction poisons its cache.** The next run dies in `ditto` with
+  `No such file or directory`; `rm -rf ~/Library/Caches/Sparkle_generate_appcast` and start
+  again.
 
 It also refuses an app that fails Apple's code-signing checks — which is why `build-app.sh`
 **re-signs the app after embedding the runtime**. `xcodebuild` sealed an app that did not
