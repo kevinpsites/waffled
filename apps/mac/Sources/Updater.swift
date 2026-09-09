@@ -1,0 +1,81 @@
+import AppKit
+import Sparkle
+
+/// The Sparkle side of an update, and the only file that imports Sparkle.
+///
+/// Everything an update actually *decides* is in `Lifecycle` and `MenuPresentation`; this
+/// is the shell that connects those decisions to the framework, which is why no test
+/// touches it.
+@MainActor
+@Observable
+final class Updater {
+    /// Sparkle's own answer, observed: false while a check or a download is in flight, and
+    /// before the updater has started at all.
+    private(set) var canCheckForUpdates = false
+
+    private let controller: SPUStandardUpdaterController
+    /// Strong on purpose: `SPUStandardUpdaterController` holds its delegate **weakly**, so
+    /// a delegate created inline would deallocate at once and take the feed seam and the
+    /// stop-before-relaunch rule with it — silently, since Sparkle then just uses its
+    /// defaults.
+    private let delegate: UpdaterDelegate
+    private var availability: NSKeyValueObservation?
+
+    init(model: ServerModel,
+         environment: [String: String] = ProcessInfo.processInfo.environment) {
+        delegate = UpdaterDelegate(model: model,
+                                   feedOverride: Updates.feedURL(environment: environment))
+        controller = SPUStandardUpdaterController(startingUpdater: true,
+                                                  updaterDelegate: delegate,
+                                                  userDriverDelegate: nil)
+        canCheckForUpdates = controller.updater.canCheckForUpdates
+        availability = controller.updater.observe(\.canCheckForUpdates) { [weak self] updater, _ in
+            // Read on whatever thread KVO used; only the Bool crosses to the main actor.
+            let can = updater.canCheckForUpdates
+            Task { @MainActor in self?.canCheckForUpdates = can }
+        }
+    }
+
+    /// An `LSUIElement` app is never the frontmost one, so Sparkle's windows would open
+    /// behind whatever the person was reading — the same reason the quit alert activates
+    /// first.
+    func checkForUpdates() {
+        NSApp.activate(ignoringOtherApps: true)
+        controller.updater.checkForUpdates()
+    }
+}
+
+/// The three things Sparkle has to ask this app.
+///
+/// Not `@MainActor`: these are ObjC protocol methods, and Sparkle delivers them on the
+/// main thread — asserted rather than assumed, the same way `AppDelegate` does.
+final class UpdaterDelegate: NSObject, SPUUpdaterDelegate {
+    private let model: ServerModel
+    private let feedOverride: String?
+
+    init(model: ServerModel, feedOverride: String?) {
+        self.model = model
+        self.feedOverride = feedOverride
+    }
+
+    /// Nil hands the question back to Sparkle, which uses the `SUFeedURL` in the plist.
+    func feedURLString(for updater: SPUUpdater) -> String? { feedOverride }
+
+    /// **The rule that makes an update an update** (plan §6, `apps/mac/CLAUDE.md`): the
+    /// server has to be down before the app is swapped, or the household keeps running the
+    /// old binaries out of memory and the relaunched app — finding it `running` — stands
+    /// its auto-start down and never migrates anything. Returning true holds the relaunch
+    /// until `installHandler` runs, and a `stop` that refuses never runs it: the icon
+    /// slashes, the menu says why, and the person can check for updates again.
+    func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem,
+                 untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
+        MainActor.assumeIsolated { model.stopBeforeUpdate(then: installHandler) }
+        return true
+    }
+
+    /// The one line in the log that says the feed was read and understood — what the
+    /// manual update test in README.md looks for.
+    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        NSLog("Waffled: Sparkle found version %@ in the appcast", item.displayVersionString)
+    }
+}

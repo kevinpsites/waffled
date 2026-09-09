@@ -62,6 +62,8 @@ final class ServerModel {
     /// or the one auto-start. Derived from the trigger the start recorded, because the two
     /// were only ever written together.
     var setupBegun: Bool { startTrigger != .notUs }
+    /// Whether the version note has been shown; see `noteAnyVersionCrossing`.
+    private var updateNoted = false
     private var firstRunDismissed = false
     private var firstRunCloseTask: Task<Void, Never>?
     private let firstRunWindow = FirstRunWindow()
@@ -94,10 +96,13 @@ final class ServerModel {
     /// lookup on every poll.
     var currentImage: NSImage { image(pointSize: 18) }
 
-    var presentation: MenuPresentation {
+    /// - Parameter canCheckForUpdates: the updater's own answer. The menu is a function of
+    ///   this model and of Sparkle, and Sparkle is owned by the app rather than by here.
+    func presentation(canCheckForUpdates: Bool) -> MenuPresentation {
         MenuPresentation.make(status: status, failure: heldFailure, transient: transient,
                               busy: busy, runtimeAvailable: client != nil,
-                              stopFailure: stopFailure, awaitingSetup: awaitingSetup)
+                              stopFailure: stopFailure, awaitingSetup: awaitingSetup,
+                              canCheckForUpdates: canCheckForUpdates)
     }
 
     /// The first-run window's whole content, or nil on every launch that gets no window.
@@ -199,6 +204,7 @@ final class ServerModel {
             // The opposite rule for a failed stop: it describes a server that is still
             // up, and is forgotten the moment a poll says it no longer is.
             if !Lifecycle.stopFailureStillApplies(reported: fresh.state) { stopFailure = nil }
+            noteAnyVersionCrossing(fresh)
             openBrowserIfAnyoneIsWaiting(fresh)
         } catch {
             status = nil
@@ -238,6 +244,23 @@ final class ServerModel {
         case .established:
             firstRunDecided = true
         }
+    }
+
+    /// "Updated to 0.15.0" / "Rolled back to 0.14.3", once, on the first status that
+    /// carries a bundle version.
+    ///
+    /// `bundle.previousVersion` records the last crossing this data went through and stays
+    /// there for good — it is a fact about the directory, not an event — so the latch is
+    /// what keeps a poll every two seconds from repeating it. The price is that the note
+    /// also appears for its few seconds on the *next* launch after an update: this app
+    /// keeps no memory of its own between launches, and the alternative (guessing from
+    /// `versionChangedAt` how fresh is fresh) would be a rule nobody could predict.
+    private func noteAnyVersionCrossing(_ fresh: RuntimeStatus) {
+        guard !updateNoted, !fresh.bundle.version.isEmpty else { return }
+        updateNoted = true
+        guard let line = MenuPresentation.updateNote(previous: fresh.bundle.previousVersion,
+                                                     current: fresh.bundle.version) else { return }
+        note(line)
     }
 
     private func openBrowserIfAnyoneIsWaiting(_ fresh: RuntimeStatus) {
@@ -388,6 +411,42 @@ final class ServerModel {
         alert.addButton(withTitle: "Quit and Stop the Server")
         alert.addButton(withTitle: "Cancel")
         return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    /// Sparkle has downloaded an update and is ready to swap this app — runtime bundle and
+    /// all — and relaunch it. The server has to be down first, and if it will not go down
+    /// the relaunch is held: see `Lifecycle.relaunchDecision`.
+    ///
+    /// The relaunched app's ordinary auto-start is what runs the new runtime against the
+    /// existing data, which is where the snapshot, the migrations and the health gate
+    /// happen. Nothing here knows about any of that, deliberately.
+    func stopBeforeUpdate(then install: @escaping () -> Void) {
+        guard operationTask == nil else {
+            // A start or a backup is mid-flight. Two overlapping operations would leave
+            // this one holding a task reference it did not create, so the update waits for
+            // another click rather than racing.
+            recordStopFailure("a start or a backup was still running — check for updates again")
+            return
+        }
+        stopFailure = nil
+        note("Stopping for the update…", clearAfter: nil)
+        operationTask = Task { [weak self] in
+            defer { self?.finishOperation() }
+            var stopError: String?
+            do {
+                try await self?.client?.stop()
+            } catch {
+                stopError = Self.describe(error)
+            }
+
+            switch Lifecycle.relaunchDecision(afterStop: stopError) {
+            case .relaunch:
+                install()
+            case let .hold(message):
+                self?.recordStopFailure(message)
+                await self?.refresh()
+            }
+        }
     }
 
     /// `stop` can take up to two and a half minutes (a graceful shutdown, then SIGKILL),
