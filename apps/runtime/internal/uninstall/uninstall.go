@@ -104,11 +104,20 @@ type Options struct {
 	// The process seams. Tests replace them; nothing else may.
 	alive  func(pid int) bool
 	signal func(pid int, sig syscall.Signal) error
+	// grace overrides orphanGrace, so a test need not wait out a real one.
+	grace time.Duration
 }
 
-// How long a process gets to exit after SIGTERM before it is killed. The supervisor's
-// own ordered shutdown is what takes the time here — it stops five services in sequence.
-const stopGrace = 2 * time.Minute
+// How long a process gets to exit after SIGTERM before it is killed.
+//
+// The supervisor gets minutes because what it is doing is stopping five services in
+// dependency order. An orphan gets seconds, the same as supervisor.stopOrphan: there may
+// be one pidfile per service and they are signalled in sequence, so a per-orphan wait in
+// minutes would run the whole command out of its own deadline.
+const (
+	supervisorGrace = 2 * time.Minute
+	orphanGrace     = 15 * time.Second
+)
 
 const pollInterval = 200 * time.Millisecond
 
@@ -121,6 +130,9 @@ func (o *Options) applyDefaults() {
 	}
 	if o.signal == nil {
 		o.signal = signalPid
+	}
+	if o.grace == 0 {
+		o.grace = orphanGrace
 	}
 }
 
@@ -148,7 +160,7 @@ func Run(ctx context.Context, o Options) (Report, error) {
 					"`waffled-runtime stop`, or pass --yes to stop it as part of the uninstall", pid)
 		}
 		fmt.Fprintf(o.Log, "Stopping the running server (pid %d)…\n", pid)
-		if err := o.terminate(ctx, pid); err != nil {
+		if err := o.terminate(ctx, pid, supervisorGrace); err != nil {
 			return report, fmt.Errorf("stop the running server: %w", err)
 		}
 		fmt.Fprintf(o.Log, "Stopped.\n")
@@ -171,6 +183,14 @@ func Run(ctx context.Context, o Options) (Report, error) {
 		if !it.Present || it.Action != ActionRemove {
 			continue
 		}
+		// Nothing that is still alive may be left holding the data root open: a
+		// half-failed cleanup is exactly when os.RemoveAll would run out from under a
+		// live Postgres.
+		if it.Kind == KindData && len(problems) > 0 {
+			problems = append(problems, fmt.Errorf(
+				"left %s in place — something above could not be cleaned up first", o.Layout.Root))
+			continue
+		}
 		if err := o.remove(ctx, it); err != nil {
 			problems = append(problems, err)
 		}
@@ -190,7 +210,9 @@ func (o Options) remove(ctx context.Context, it Item) error {
 	case KindBonjour:
 		// Killing dns-sd IS the deregistration — mDNSResponder drops a registration when
 		// the client that made it goes away (see supervisor.stopBonjour).
-		o.terminatePidfile(ctx, o.Layout.PidPath(services.Bonjour))
+		if err := o.terminatePidfile(ctx, o.Layout.PidPath(services.Bonjour)); err != nil {
+			return err
+		}
 		return errors.Join(
 			removeIfPresent(o.Layout.BonjourState),
 			removeIfPresent(o.Layout.PidPath(services.Bonjour)),
@@ -200,8 +222,15 @@ func (o Options) remove(ctx context.Context, it Item) error {
 		// crash, which is precisely the "nothing dead left behind" case.
 		entries, err := os.ReadDir(o.Layout.Pids)
 		if err == nil {
+			var survivors []error
 			for _, e := range entries {
-				o.terminatePidfile(ctx, filepath.Join(o.Layout.Pids, e.Name()))
+				if err := o.terminatePidfile(ctx, filepath.Join(o.Layout.Pids, e.Name())); err != nil {
+					survivors = append(survivors, err)
+				}
+			}
+			// The pidfiles stay: they are the only handle left on whatever would not go.
+			if len(survivors) > 0 {
+				return errors.Join(survivors...)
 			}
 		}
 		return removeIfPresent(o.Layout.Pids)
@@ -351,11 +380,11 @@ func (o Options) supervisorPid() (int, bool) {
 }
 
 // terminate asks a process to stop the way `stop` does — SIGTERM, wait, then kill.
-func (o Options) terminate(ctx context.Context, pid int) error {
+func (o Options) terminate(ctx context.Context, pid int, grace time.Duration) error {
 	if err := o.signal(pid, syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		return err
 	}
-	deadline := time.Now().Add(stopGrace)
+	deadline := time.Now().Add(grace)
 	for {
 		if !o.alive(pid) {
 			return nil
@@ -376,14 +405,20 @@ func (o Options) terminate(ctx context.Context, pid int) error {
 	return nil
 }
 
-func (o Options) terminatePidfile(ctx context.Context, path string) {
+// terminatePidfile stops whatever a pidfile names, if it is still alive.
+//
+// The error matters: everything above deletes the pidfile straight afterwards, and that
+// file is the only remaining handle on an orphan. Reporting "removed" over a process
+// that is still running would invert this package's whole reason for existing.
+func (o Options) terminatePidfile(ctx context.Context, path string) error {
 	pid, err := readPidfile(path)
 	if err != nil || !o.alive(pid) {
-		return
+		return nil
 	}
-	if err := o.terminate(ctx, pid); err != nil {
-		fmt.Fprintf(o.Log, "! %v\n", err)
+	if err := o.terminate(ctx, pid, o.grace); err != nil {
+		return fmt.Errorf("%s: %w", filepath.Base(path), err)
 	}
+	return nil
 }
 
 // Text renders the inventory for a person: one line per item, and a closing paragraph

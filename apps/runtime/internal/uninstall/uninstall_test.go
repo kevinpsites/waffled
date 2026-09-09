@@ -7,6 +7,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/kevinpsites/waffled/apps/runtime/internal/datadir"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/rtstate"
@@ -457,5 +458,33 @@ func TestASymlinkedDataRootIsMeasuredAndDeletedThrough(t *testing.T) {
 	}
 	if _, err := os.Lstat(link); !os.IsNotExist(err) {
 		t.Errorf("the dangling symlink was left behind: %v", err)
+	}
+}
+
+// An orphan that will not die must not be reported as cleaned up, must keep its pidfile
+// — that is the only remaining handle on it — and must stop --delete-data from pulling
+// the data root out from under it.
+func TestAnOrphanThatWillNotDieFailsTheRun(t *testing.T) {
+	opts, _, _ := fixture(t)
+	opts.DeleteData = true
+	if err := os.WriteFile(opts.Layout.PidPath("api"), []byte("5555\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var signals int
+	opts.grace = 20 * time.Millisecond
+	opts.alive = func(pid int) bool { return pid == 5555 }
+	opts.signal = func(int, syscall.Signal) error { signals++; return nil }
+
+	if _, err := Run(context.Background(), opts); err == nil {
+		t.Fatal("Run reported success with a live orphan it could not kill")
+	}
+	if signals == 0 {
+		t.Error("the orphan was never signalled at all")
+	}
+	if _, err := os.Stat(opts.Layout.Pids); err != nil {
+		t.Errorf("the pidfiles were deleted anyway, losing the only handle on the orphan: %v", err)
+	}
+	if _, err := os.Stat(opts.Layout.Root); err != nil {
+		t.Errorf("--delete-data removed the data root under a process that is still running: %v", err)
 	}
 }
