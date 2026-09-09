@@ -93,6 +93,9 @@ final class UpdaterDelegate: NSObject, SPUUpdaterDelegate {
         updateCycleEnded(error)
     }
 
+    /// A nil error is a real end too — Sparkle's installer aborts with one when it decides
+    /// not to relaunch — while an install that *succeeds* terminates this app rather than
+    /// calling back, which is why acting on the nil case cannot undo an update in flight.
     private func updateCycleEnded(_ error: Error?) {
         let model = model
         let message = error?.localizedDescription

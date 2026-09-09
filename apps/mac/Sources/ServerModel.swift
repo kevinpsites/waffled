@@ -462,12 +462,15 @@ final class ServerModel {
     /// case of finding no update at all, which is why the decision turns on whether we had
     /// stopped the server for it.
     func updateCycleEnded(error: String?) {
+        // Whatever else this ends, it ends the handler: the driver that would have run it
+        // is gone, so the menu goes back to an ordinary check — which works again, because
+        // the session that was blocking it has ended with the cycle.
+        pendingInstall = nil
         switch Lifecycle.recoveryAfterAbort(weStoppedTheServer: stoppedForUpdate, error: error) {
         case .leaveItAlone:
             return
         case let .restart(message):
             stoppedForUpdate = false
-            pendingInstall = nil
             // Replaces `Stopping for the update…`, which was left up deliberately until
             // something else said otherwise. Restarting is not a second supervisor: this
             // is the server this app stopped a moment ago.

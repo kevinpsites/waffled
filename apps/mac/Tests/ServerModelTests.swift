@@ -58,6 +58,25 @@ final class ServerModelTests: XCTestCase {
         XCTAssertTrue(model.busy)
     }
 
+    /// The other way a held update ends: not a retry that works, but the cycle it belonged
+    /// to finishing without us. The handler cannot install anything once its driver is
+    /// gone, and the item has to go back to an ordinary check — which works again, because
+    /// the session that was blocking it has ended too.
+    func testTheHeldHandlerGoesWithTheCycleThatOwnedIt() async {
+        let model = makeModel()
+        defer { model.end() }
+
+        model.stopBeforeUpdate {}
+        await settle(model)
+        XCTAssertTrue(model.hasPendingUpdate, "precondition: the stop refused and we kept it")
+
+        model.updateCycleEnded(error: "You cancelled the update.")
+
+        XCTAssertFalse(model.hasPendingUpdate)
+        XCTAssertEqual(model.presentation(canCheckForUpdates: true).checkForUpdatesLabel,
+                       "Check for updates…")
+    }
+
     /// Waits out the one operation the model has in flight. It is stopping a runtime that
     /// is not there, so every call fails immediately — this is bounded by the failure, not
     /// by the sleep.

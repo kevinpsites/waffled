@@ -158,6 +158,7 @@ Two things worth knowing:
    Start at login              SMAppService.mainApp
    Back up now                 works while stopped — backup starts Postgres itself
    Check for updates…          Sparkle; stops the server before it relaunches
+                               (reads `Install the update now` while one is held)
    Show logs                   appears only when something has gone wrong
    ─────────
    Quit Waffled                confirms, stops the server, then quits
