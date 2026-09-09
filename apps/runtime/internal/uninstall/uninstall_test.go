@@ -25,13 +25,19 @@ var _ ScheduleAgent = (*schedule.Agent)(nil)
 // boots out a launchd LABEL (gui/<uid>/app.waffled.backup), so pointing it at a temp
 // AgentsDir would still unload the nightly backup of whoever runs the suite.
 type fakeAgent struct {
-	path      string
-	dataDir   string
-	uninstall int
-	fail      bool
+	path       string
+	dataDir    string
+	dataDirErr error
+	uninstall  int
+	fail       bool
 }
 
-func (f *fakeAgent) ScheduledDataDir() string { return f.dataDir }
+func (f *fakeAgent) ScheduledDataDir() (string, error) {
+	if f.dataDirErr != nil {
+		return "", f.dataDirErr
+	}
+	return f.dataDir, nil
+}
 
 func (f *fakeAgent) PlistPath() string { return f.path }
 
@@ -970,5 +976,23 @@ func TestADryRunDoesNotPromiseADeletionTheServerBlocks(t *testing.T) {
 	// A dry run is still a plan, so the present tense is right here.
 	if detail := item(t, report, KindPidfiles).Detail; !strings.Contains(detail, "is running") {
 		t.Errorf("a dry run reports the running server in the past tense: %q", detail)
+	}
+}
+
+// A plist that cannot be attributed is left alone: the label is global, so booting it out
+// on a guess stops a household's real nightly backup.
+func TestAnUnreadableScheduleIsKept(t *testing.T) {
+	opts, agent, _ := fixture(t)
+	agent.dataDirErr = errors.New("no complete ProgramArguments array")
+
+	report, err := Run(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := item(t, report, KindSchedule).Action; got != ActionKeep {
+		t.Errorf("schedule action = %q, want keep for a plist we cannot read", got)
+	}
+	if agent.uninstall != 0 {
+		t.Error("a schedule we could not attribute was unloaded anyway")
 	}
 }

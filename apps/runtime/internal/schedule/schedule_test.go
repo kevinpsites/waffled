@@ -291,14 +291,59 @@ func TestScheduledDataDirReadsTheInstalledPlist(t *testing.T) {
 		t.Fatalf("Install: %v", err)
 	}
 
-	if got := a.ScheduledDataDir(); got != a.DataDir {
+	got, err := a.ScheduledDataDir()
+	if err != nil {
+		t.Fatalf("ScheduledDataDir: %v", err)
+	}
+	if got != a.DataDir {
 		t.Errorf("ScheduledDataDir() = %q, want %q", got, a.DataDir)
 	}
 }
 
-func TestScheduledDataDirIsEmptyWithNoPlist(t *testing.T) {
+func TestScheduledDataDirFailsWithNoPlist(t *testing.T) {
 	a, _ := newAgent(t)
-	if got := a.ScheduledDataDir(); got != "" {
-		t.Errorf("ScheduledDataDir() = %q with nothing installed, want empty", got)
+	got, err := a.ScheduledDataDir()
+	if err == nil {
+		t.Errorf("ScheduledDataDir() = %q with nothing installed, want an error", got)
+	}
+}
+
+// The parser decides whether a schedule is ours to remove, so it must fail closed: a
+// plist it cannot read has to be an error, never a confident empty answer.
+func TestScheduledDataDirFailsClosedOnAnUnreadablePlist(t *testing.T) {
+	a, _ := newAgent(t)
+	if err := os.MkdirAll(a.AgentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	truncated := `<?xml version="1.0"?><plist version="1.0"><dict><key>ProgramArguments</key><array><string>--data</string><string>/D`
+	if err := os.WriteFile(a.PlistPath(), []byte(truncated), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dir, err := a.ScheduledDataDir()
+	if err == nil {
+		t.Errorf("a truncated plist parsed to %q instead of failing", dir)
+	}
+}
+
+// A <string> whose text is broken up by a comment or CDATA arrives as several tokens.
+// Appending each one separately would silently truncate the recorded path.
+func TestScheduledDataDirReadsAStringSplitAcrossTokens(t *testing.T) {
+	a, _ := newAgent(t)
+	if err := os.MkdirAll(a.AgentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	split := `<?xml version="1.0"?><plist version="1.0"><dict><key>ProgramArguments</key>` +
+		`<array><string>--data</string><string>/Users/<!-- note -->sam/W</string></array></dict></plist>`
+	if err := os.WriteFile(a.PlistPath(), []byte(split), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dir, err := a.ScheduledDataDir()
+	if err != nil {
+		t.Fatalf("ScheduledDataDir: %v", err)
+	}
+	if dir != "/Users/sam/W" {
+		t.Errorf("ScheduledDataDir() = %q, want the whole path /Users/sam/W", dir)
 	}
 }

@@ -90,8 +90,9 @@ type Report struct {
 type ScheduleAgent interface {
 	PlistPath() string
 	Installed() bool
-	// ScheduledDataDir is which data directory the installed plist backs up, or "".
-	ScheduledDataDir() string
+	// ScheduledDataDir is which data directory the installed plist backs up. An error
+	// means unknown, and unknown must never be read as "ours".
+	ScheduledDataDir() (string, error)
 	Uninstall() error
 }
 
@@ -366,7 +367,15 @@ func (o Options) inspect() Report {
 			// to whichever data directory installed it. `Installed()` only says a
 			// schedule exists, so uninstalling some OTHER data directory would boot out
 			// the household's real backups and report it as a job done.
-			if dir := o.Agent.ScheduledDataDir(); dir != "" && !sameDir(dir, o.Layout.Root) {
+			// Fail closed: a plist we cannot attribute is left alone. Booting out the
+			// global label on a guess would stop a household's real backups, and the
+			// remedy for the rare unreadable plist is one explicit command
+			// (`waffled-runtime backup --uninstall-schedule`).
+			switch dir, err := o.Agent.ScheduledDataDir(); {
+			case err != nil:
+				it.Action = ActionKeep
+				it.Detail = "kept: could not read which data directory it backs up (" + err.Error() + ")"
+			case !sameDir(dir, o.Layout.Root):
 				it.Action = ActionKeep
 				it.Detail = "the nightly backup belongs to " + dir + ", not this data directory"
 			}

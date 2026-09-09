@@ -144,29 +144,33 @@ func (a *Agent) Loaded() (bool, error) {
 // The label is global: one Mac holds one nightly backup, belonging to whichever data
 // directory installed it. Anything deciding whether that schedule is *theirs* to remove
 // has to ask this rather than trust the plist's presence.
-func (a *Agent) ScheduledDataDir() string {
+func (a *Agent) ScheduledDataDir() (string, error) {
 	raw, err := os.ReadFile(a.PlistPath())
 	if err != nil {
-		return ""
+		return "", err
 	}
-	args := programArguments(raw)
+	args, err := programArguments(raw)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", a.PlistPath(), err)
+	}
 	for i := 0; i+1 < len(args); i++ {
 		if args[i] == "--data" {
-			return args[i+1]
+			return args[i+1], nil
 		}
 	}
-	return ""
+	return "", fmt.Errorf("%s names no --data directory", a.PlistPath())
 }
 
 // programArguments pulls the ProgramArguments array back out of a plist. It reads the
 // token stream rather than matching strings so that the XML escaping Plist() applies —
 // the whole reason that function marshals instead of concatenating — is undone the same
 // way launchd would undo it.
-func programArguments(raw []byte) []string {
+func programArguments(raw []byte) ([]string, error) {
 	dec := xml.NewDecoder(bytes.NewReader(raw))
 	var (
 		out        []string
 		lastKey    string
+		cur        string
 		inKey      bool
 		inString   bool
 		collecting bool
@@ -174,7 +178,10 @@ func programArguments(raw []byte) []string {
 	for {
 		tok, err := dec.Token()
 		if err != nil {
-			return out
+			// Reaching the end without ever closing the array means the file is
+			// truncated or malformed. Returning what accumulated so far would hand back
+			// half a path with the confidence of a whole one.
+			return nil, fmt.Errorf("no complete ProgramArguments array: %w", err)
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
@@ -184,24 +191,30 @@ func programArguments(raw []byte) []string {
 			case "array":
 				collecting = lastKey == "ProgramArguments"
 			case "string":
-				inString = true
+				inString, cur = true, ""
 			}
 		case xml.CharData:
+			// Accumulated, not appended: a comment or CDATA inside an element splits its
+			// text across several tokens, and appending each would turn one path into
+			// several arguments — silently truncating it.
 			if inKey {
 				lastKey += string(t)
 			}
 			if collecting && inString {
-				out = append(out, string(t))
+				cur += string(t)
 			}
 		case xml.EndElement:
 			switch t.Name.Local {
 			case "key":
 				inKey = false
 			case "string":
+				if collecting && inString {
+					out = append(out, cur)
+				}
 				inString = false
 			case "array":
 				if collecting {
-					return out
+					return out, nil
 				}
 			}
 		}
