@@ -41,6 +41,23 @@ final class VersionChangeTests: XCTestCase {
         XCTAssertEqual(VersionChange.describe(previous: "0.15.0", current: ""), .unchanged)
     }
 
+    /// A version this project cannot order is not a version it will name a direction for.
+    /// The runtime refuses the same strings for the same reason
+    /// (`apps/runtime/internal/status/version.go`), and two answers about one crossing that
+    /// disagreed would be worse than either: a pre-release read as a fourth number makes
+    /// `0.15.0-rc.1` → `0.15.0` a *rollback*, which is the direction being wrong.
+    func testAVersionThatCannotBeOrderedIsNotADirection() {
+        XCTAssertEqual(VersionChange.describe(previous: "0.15.0-rc.1", current: "0.15.0"),
+                       .unchanged,
+                       "a release candidate is not a fourth version number")
+        XCTAssertEqual(VersionChange.describe(previous: "main-abc1234", current: "0.15.0"),
+                       .unchanged,
+                       "a git description names a commit, not a place in an order")
+        XCTAssertEqual(VersionChange.describe(previous: "0.14.3", current: "0.15.0-3-gabc1234"),
+                       .unchanged,
+                       "commits since a tag are not a patch level")
+    }
+
     // MARK: the feed-URL test seam
 
     /// `WAFFLED_APPCAST_URL` points the updater at a feed you are serving yourself, which

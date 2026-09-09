@@ -10,28 +10,40 @@ import Foundation
 enum VersionChange: Equatable {
     case upgraded, downgraded, unchanged
 
+    /// MAJOR.MINOR.PATCH is the whole of the order; a pair where either side is not that
+    /// is a crossing with no direction, which `.unchanged` reports by saying nothing.
+    private static let segments = 3
+
     static func describe(previous: String, current: String) -> VersionChange {
-        guard !previous.isEmpty, !current.isEmpty else { return .unchanged }
-        let a = components(previous)
-        let b = components(current)
-        for i in 0..<max(a.count, b.count) {
-            // A missing component is a zero: 1.0 and 1.0.0 are one version.
-            let lhs = i < a.count ? a[i] : 0
-            let rhs = i < b.count ? b[i] : 0
-            if lhs != rhs { return rhs > lhs ? .upgraded : .downgraded }
+        guard let a = numbers(previous), let b = numbers(current) else { return .unchanged }
+        for (lhs, rhs) in zip(a, b) where lhs != rhs {
+            return rhs > lhs ? .upgraded : .downgraded
         }
         return .unchanged
     }
 
-    /// The numbers, in order. `+build` is metadata rather than precedence (semver §10),
-    /// and anything else non-numeric — a `-rc.1`, a git describe suffix — reads as the
-    /// release it hangs off, which keeps a pre-release from being announced as a rollback
-    /// from the version it precedes.
-    private static func components(_ version: String) -> [Int] {
-        version
-            .split(separator: "+", maxSplits: 1)[0]
-            .split(separator: ".")
-            .map { Int($0.prefix { $0.isNumber }) ?? 0 }
+    /// The numbers, or nothing at all — the runtime's rule from `compareVersions`
+    /// (`apps/runtime/internal/status/version.go`), copied because two answers about one
+    /// crossing that disagreed would be worse than either.
+    ///
+    /// Segments left off count as zero, so 1.0 and 1.0.0 are one version, and `+build` says
+    /// which build rather than which is newer. Everything else declines: a `-rc.1`, a git
+    /// description, a leading `v`. Reading those as the release they hang off is what makes
+    /// `0.15.0-rc.1` → `0.15.0` announce itself as a rollback, and a direction that is
+    /// wrong is worse than no direction.
+    private static func numbers(_ version: String) -> [Int]? {
+        let withoutBuild = version
+            .trimmingCharacters(in: .whitespaces)
+            .split(separator: "+", maxSplits: 1, omittingEmptySubsequences: false)[0]
+        let parts = withoutBuild.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count <= segments else { return nil }
+
+        var out = [Int](repeating: 0, count: segments)
+        for (i, part) in parts.enumerated() {
+            guard let number = Int(part), number >= 0 else { return nil }
+            out[i] = number
+        }
+        return out
     }
 }
 
