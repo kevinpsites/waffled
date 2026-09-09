@@ -97,42 +97,12 @@ else
   ok "copied into the app (no clonefile — different volume?)"
 fi
 
-# Symlinks must survive as symlinks (the manifest records targets and never follows them),
-# and every target must stay inside the tree: the bundle is relocatable only because all
-# 1,338 of them are relative. One absolute or ../-escaping link would work on this Mac and
-# break on the machine that downloads the app.
-"$DEST/bin/node" -e '
-  const fs = require("fs"), path = require("path");
-  const root = path.resolve(process.argv[1]);
-  let links = 0; const bad = [];
-  (function walk(dir) {
-    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-      const p = path.join(dir, e.name);
-      if (e.isSymbolicLink()) {
-        links++;
-        const target = fs.readlinkSync(p);
-        const resolved = path.resolve(path.dirname(p), target);
-        if (resolved !== root && !resolved.startsWith(root + path.sep)) {
-          bad.push(p.slice(root.length + 1) + " → " + target);
-        }
-      } else if (e.isDirectory()) walk(p);
-    }
-  })(root);
-  if (bad.length) {
-    console.error(bad.length + " symlink(s) point outside the embedded runtime:");
-    for (const b of bad.slice(0, 20)) console.error("  " + b);
-    process.exit(1);
-  }
-  console.log(String(links));  // a bare Number gets util.inspect colour codes
-' "$DEST" >"$OUT/.links" || die "the embedded runtime has symlinks pointing outside itself"
-ok "$(cat "$OUT/.links") symlinks preserved, none pointing outside the tree"
-rm -f "$OUT/.links"
-
 # ── 4. verify the EMBEDDED copy, with the EMBEDDED binary ────────────────────
 # `version` proves the supervisor runs from inside the app and is the build this tree
 # produced. `doctor` then runs the same manifest verification that gates `start` — set
-# equality on files and symlinks, sha256 per file, the exec bit — against the copy that
-# will ship, which is what catches a copy that dropped a symlink or a mode.
+# equality on files and symlinks, sha256 per file, the exec bit, and that every one of the
+# 1,338 symlinks resolves back inside the tree — against the copy that will ship, which is
+# what catches a copy that dropped a symlink, a mode, or turned a relative link absolute.
 RUNTIME_BIN="$DEST/bin/waffled-runtime"
 [ -x "$RUNTIME_BIN" ] || die "no $RUNTIME_BIN in the assembled app"
 say "→ verifying the embedded runtime"
