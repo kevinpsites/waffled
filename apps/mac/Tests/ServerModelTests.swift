@@ -153,8 +153,8 @@ final class ServerModelTests: XCTestCase {
     }
 
     /// The abort landing while a person's own `Start Waffled` is the operation in the way.
-    /// The queued restart used to fire from the freed slot regardless, and that second
-    /// `start` hit the runtime's pidfile guard and slashed the icon until the next poll.
+    /// The freed slot reads their server as running, so the restart we owed is discharged
+    /// rather than fired into the runtime's pidfile guard.
     func testTheQueuedRestartDoesNotStartAServerSomebodyElseBroughtBack() async {
         let runtime = FakeRuntime()
         await runtime.hold("start")

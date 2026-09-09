@@ -2,8 +2,8 @@ import XCTest
 @testable import Waffled
 
 /// The whole update flow, as a table. Every row is one (phase, event) pair and the phase
-/// and effects it produces, so the rules that used to be four booleans scattered through
-/// `ServerModel` can be read in one place and asserted without a process or a menu.
+/// and effects it produces, so every rule is read in one place and asserted without a
+/// process or a menu.
 final class UpdateFlowTests: XCTestCase {
 
     private let h1 = InstallHandler {}

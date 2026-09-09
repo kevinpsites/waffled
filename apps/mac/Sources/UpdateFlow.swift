@@ -18,19 +18,11 @@ final class InstallHandler: Equatable {
 /// The whole of what this app does about an update, as one state machine.
 ///
 /// **The invariant: `armed` is irreversible from this side.** Once Sparkle has extracted
-/// and validated the new app, `Autoupdate` has performed stage 1 and is listening for this
-/// process to exit; it then completes the swap on *any* termination — an abort reported to
-/// the delegate, `Install on Quit`, a crash, a force quit (`Autoupdate/AppInstaller.m`,
-/// and `SPUUpdaterDelegate.h`: "In either case Sparkle will always attempt to install the
-/// update when the app terminates"). So the app latches the first news of a prepared
-/// installer and never unlatches it for an ending cycle, an abort or an error. It clears
-/// in one place only: `handedOff`, where our stop succeeded and we invoked the block, and
-/// the swap is Sparkle's to finish.
-///
-/// The alternative — keying the Quit gate on the install block we happen to be holding —
-/// is the bug this replaces: `Install on Quit` and an abort after stage 1 both leave the
-/// app holding nothing while Sparkle is still armed, and `Quit anyway (server keeps
-/// running)` then swaps the app and its runtime under a running server.
+/// and validated the new app, `Autoupdate` completes the swap on *any* termination — an
+/// abort, `Install on Quit`, a crash, a force quit — so the app latches the first news of
+/// a prepared installer and clears it in one place only: `handedOff`, where our stop
+/// succeeded, we invoked the block, and the swap became Sparkle's to finish. Why, in
+/// Sparkle's own words: `docs/product/native-mac-plan.md`, Phase 3 item 6.
 struct UpdateFlow {
     /// - `armed`: Sparkle holds a prepared installer. The handler is the block that can
     ///   drive it — the postpone block, or the immediate-install block from
