@@ -1,7 +1,12 @@
 # Tenant isolation — security audit
 
-**Status:** complete, audited 2026-09-08 against `origin/main` (`261f4c68`). Read-only
-analysis; no application code was changed. Scope is the API (`apps/api`) — every service
+**Status:** audited 2026-09-08 against `origin/main` (`261f4c68`); **all nine findings
+remediated, verified 2026-09-09.** The audit text below is preserved as written — it
+describes the code *as it was found*, which is what makes the failure modes legible. Every
+claim about the present tense has since been fixed; see **Remediation status** immediately
+below before reading anything here as a live description of `main`.
+
+The original analysis was read-only; no application code was changed by the audit itself. Scope is the API (`apps/api`) — every service
 and route file under `apps/api/src/modules/*`, the shared guards in
 `apps/api/src/platform/`, all 100 migrations in `apps/api/migrations/`, and the PowerSync
 sync rules in `infra/compose/powersync/sync-config.yaml`.
@@ -9,6 +14,34 @@ sync rules in `infra/compose/powersync/sync-config.yaml`.
 The question this audit set out to answer: Waffled is multi-tenant, every row belongs to a
 household, and the API must guarantee that a caller acting for household A can never read,
 modify, or reference data belonging to household B. **Where does that guarantee break?**
+
+## Remediation status — 2026-09-09
+
+| # | Finding | Fixed in |
+|---|---|---|
+| 1 | Spot-award cross-household write (+ unfiltered balances join) | **#188** — membership assertion *and* `b.household_id = $1` on the join |
+| 2 | Reward redemption accepts a foreign `personId` | **#188** — write guard + household predicate on the read join |
+| 3 | Photo `uploadedBy` accepts a foreign person | **#188** |
+| 4 | ICS feed `personId` accepts a foreign person | **#188** |
+| 5 | Family Night assignments accept a foreign person | **#188** |
+| 6 | No capability check when redeeming for another member | **#188** — `reward.manage`, enforced on the REST route *and* the capture bar |
+| 7 | `/api/health` reports instance-wide counts | **#188** — scoped to the caller; `./waffled doctor` keeps the instance view |
+| 8 | Schema-wide: no composite FKs, no `unique (household_id, id)` | **#192** — *for `persons` only*; see *Class 3* for what remains |
+| 9 | Duplicate `assertPersonInHousehold` in `rhythms.ts` | consistency only; not actioned |
+
+Two things found during remediation that this audit missed:
+
+- **The capture bar reached the same redeem service without the new capability check**, so a
+  kid could still spend a sibling's balance by naming them in a phrase. Same rule, a second
+  door. Fixed in #188 and given one home as
+  `assertSelfOrCapability` in `platform/permissions.ts`.
+- **`updateGoalList` was correctly cleared here (see below), but the same audit pass did not
+  look for *alternate routes to a guarded service*.** That is the generalisable lesson: this
+  audit checked whether each write site asserts, not whether every caller of a write service
+  does.
+
+Regression coverage lives in `apps/api/test/tenant-isolation.integration.test.ts` (every test
+seeds two households) and `apps/api/test/tenant-composite-fks.integration.test.ts`.
 
 ## Verdict
 
@@ -322,7 +355,20 @@ These were checked and found correct — recorded so the next audit does not red
 
 ## Class 3 — the schema picture
 
-This is the structural core of the verdict. Across all 100 migrations:
+This is the structural core of the verdict.
+
+> **Superseded in part by #192 (migration `0104`).** `persons` now has
+> `unique (household_id, id)`, and **53 foreign keys across 40 tables** were converted to
+> composite `(household_id, person_id)` form — so the database itself now refuses a
+> cross-household *person* reference, which is what all five write findings were. Three
+> person references stay exempt with reason: `refresh_tokens` and `auth_handoffs` (the value
+> is the authenticated person, never client-supplied) and `meal_recipes.cook_person_id` (a
+> join table with no `household_id` to compose with; it keeps an application-layer guard).
+>
+> **Every other domain table is still single-column.** The counts below are the pre-fix
+> figures; see *What remains* at the end of this section for the current picture.
+
+As found on 2026-09-08, across all 100 migrations:
 
 - **Composite `(household_id, id)` foreign keys: 0.**
 - **`unique (household_id, id)` constraints: 0.**
@@ -360,7 +406,47 @@ Two prerequisites the maintainer should know before costing this work:
 The highest-value, lowest-cost subset is therefore: `persons`, then `goals`, `events`,
 `recipes` — covering 75 of the 93 references.
 
+### What remains — 2026-09-09
+
+`persons` is done. The other domain tables are not, and they carry roughly **47** remaining
+single-column references (migration-text sweep; the `persons` figures above come from live
+introspection during #192, which is the more reliable method and worth repeating here before
+anyone costs this work):
+
+| Referenced table | Refs |
+|---|---|
+| `goals` | 9 |
+| `events` | 7 |
+| `recipes` | 5 |
+| `goal_steps`, `meals`, `rhythms` | 3 each |
+| `lists`, `goal_lists`, `rewards`, `goal_logs`, `planning_sessions` | 2 each |
+| `chores`, `meal_plans`, `ledger_entries`, `calendar_accounts`, `calendars`, `event_overrides`, `family_night_occurrences` | 1 each |
+
+The argument for continuing is weaker than it was for `persons`, and should be made
+honestly: every one of the nine findings was a **person** reference, so the highest-value
+slice is already taken. The remaining tables are cross-tenant-capable in principle but no
+lapse was found against any of them. Treat `goals`, `events` and `recipes` as the next
+tranche if this is picked up — 21 of the 47 — and do it as its own migration, not folded
+into feature work.
+
+`apps/api/test/tenant-composite-fks.integration.test.ts` carries a ratchet:
+*"leaves no household-scoped persons reference on a single-column FK"*. It fails the moment
+a new `references persons(id)` is added to a household-scoped table, so the `persons` half
+cannot regress. **No equivalent ratchet exists for the other tables** — adding one is
+cheaper than the migration and would stop the gap widening.
+
 ## Recommended remediation order
+
+> **All of steps 1–6 landed in #188, and step 7 landed for `persons` in #192.** The list is
+> kept as written because the *ordering argument* is the reusable part — fix the write and
+> the read together, add the two-household regression test in the same commit, and only then
+> reach for the structural fix. Step 6 (the duplicate helper in `rhythms.ts`) was judged
+> consistency-only and left alone.
+>
+> One correction the remediation earned: step 4 called read-join hardening "defense in
+> depth". It is not optional. In finding 1 the read join *was* the disclosure — the write
+> guard alone would have left every already-poisoned row visible, and it is what the
+> composite FK cannot retroactively clean.
 
 Cheapest and highest-value first.
 
