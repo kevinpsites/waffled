@@ -100,8 +100,10 @@ private struct MenuContent: View {
         Divider()
 
         // The title carries the second question after a stop that refused, because an
-        // alert cannot ask it: by then the app is staying, not leaving.
+        // alert cannot ask it: by then the app is staying, not leaving. With an update
+        // prepared it carries a refusal instead — see `Lifecycle.QuitAction`.
         Button(menu.quitTitle) { model.confirmAndQuit() }
+            .disabled(!menu.quitEnabled)
     }
 }
 

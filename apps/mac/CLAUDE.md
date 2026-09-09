@@ -62,7 +62,9 @@ the shape of `status --json`. It must never learn more.
   `UpdaterDelegate` postpones the relaunch until `stop` succeeds, holds it when `stop`
   refuses — the item then reads `Install the update now`, because the postponed session
   makes a fresh check a no-op — and starts the server back up if the install aborts after
-  the stop. Item 5 must also sign `Sparkle.framework`'s nested `Autoupdate`, `Updater.app`
+  the stop. **Quit is part of that rule**: a prepared installer finishes the swap when this
+  process exits for *any* reason, so a refused stop with an update waiting disables quitting
+  instead of offering `Quit anyway`. Item 5 must also sign `Sparkle.framework`'s nested `Autoupdate`, `Updater.app`
   and XPC services **inside-out**, before the app that contains them.
 - **Sign the app AFTER the runtime goes into it.** `xcodebuild` seals an app with no runtime
   in it, so `codesign --verify` then fails with `SecCSResourceAdded` for all 36,478 embedded

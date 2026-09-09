@@ -162,6 +162,7 @@ Two things worth knowing:
    Show logs                   appears only when something has gone wrong
    ─────────
    Quit Waffled                confirms, stops the server, then quits
+                               (its words change when a stop has refused)
 ```
 
 The app starts the server by itself **once** per launch: the first poll that answers spends
@@ -232,6 +233,12 @@ that takes — and if the stop *refuses*, the app stays where it is, says why, a
 quit item into the second question: **Quit anyway (server keeps running)**. Exiting on a
 failed stop would leave the household's server up with no icon left to explain it.
 
+The one exception is a refused stop with an **update already downloaded**: leaving is then
+the one thing the app must not offer, because Sparkle's installer swaps `Waffled.app` the
+moment this process exits, whatever the reason (see "Updates"). The item reads **Quit — stop
+the server first (an update is waiting)** and is disabled; `Install the update now` retries
+the stop, and `waffled-runtime stop` in Terminal is the way out if it keeps refusing.
+
 ## Updates
 
 Waffled updates as one unit, Plex-style: **Sparkle 2 swaps the whole `Waffled.app`, runtime
@@ -255,8 +262,10 @@ Phase 3 item 6). The updater therefore **postpones Sparkle's relaunch until
 tries the stop again with the install Sparkle handed over. (It has to be that item rather
 than an ordinary check: Sparkle counts the postponed session as still in progress, so
 `Check for updates…` would do nothing until the app relaunches.) It is
-the same rule as quit, for the same reason. (Quitting Waffled with a downloaded update
-pending is safe for the same reason: quit stops the server first.) If the install aborts
+the same rule as quit, for the same reason. Quit obeys it too, and has to: once the
+installer has been prepared it finishes the swap when this process exits, for **any**
+reason, so with an update waiting a refused stop disables quitting outright rather than
+offering "Quit anyway". If the install aborts
 *after* that stop — a signature that does not check out, an authorisation someone declined —
 the app starts the server back up and says why, rather than leaving the household with
 neither a server nor an update.

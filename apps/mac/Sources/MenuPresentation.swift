@@ -85,6 +85,9 @@ struct MenuPresentation: Equatable {
     /// "Quit anyway (server keeps running)" once a stop has refused — the second question
     /// the alert cannot ask, because by then the app is no longer on its way out.
     var quitTitle: String
+    /// Off in the one case quitting cannot be made safe: a prepared update and a server
+    /// that will not stop (`Lifecycle.QuitAction.stopTheServerFirst`).
+    var quitEnabled: Bool
 
     /// What the updater's item is for, which is not always a check.
     enum UpdateAction: Equatable {
@@ -126,6 +129,8 @@ struct MenuPresentation: Equatable {
         let state = status?.state
         let address = status?.serverAddress
         let running = state == .running
+        let quit = Lifecycle.quitAction(stopHasFailed: stopFailure != nil,
+                                        updatePending: updatePending)
 
         // A fault is a fault whether the runtime reported it or we caught it ourselves,
         // and either way `logs/` is the next place to look.
@@ -190,8 +195,8 @@ struct MenuPresentation: Equatable {
             // operation slot a start or a backup is already holding.
             checkForUpdatesEnabled: (updatePending || canCheckForUpdates) && !busy,
             updateAction: updatePending ? .installNow : .check,
-            quitTitle: stopFailure == nil
-                ? "Quit Waffled" : "Quit anyway (server keeps running)")
+            quitTitle: quit.title,
+            quitEnabled: quit != .stopTheServerFirst)
     }
 
     /// The line the menu shows once after an update installed itself and relaunched the
@@ -300,10 +305,33 @@ enum Lifecycle {
     enum QuitAction: Equatable {
         case confirmThenStop
         case quitWithoutStopping
+        /// A refused stop with an update already prepared: leaving is the one thing that
+        /// cannot be offered, so the item says what has to happen first.
+        case stopTheServerFirst
+
+        /// The item's words, which carry their own reason — a `.menu`-style `MenuBarExtra`
+        /// renders no tooltip. `stopTheServerFirst` is disabled rather than hidden: a Quit
+        /// that vanished would read as a broken menu. Its way out is `Install the update
+        /// now`, or `waffled-runtime stop` in Terminal when the menu's stop keeps refusing —
+        /// Sparkle has no public API to cancel an installer it has already prepared
+        /// (`docs/product/native-mac-plan.md`, Phase 3 item 6).
+        var title: String {
+            switch self {
+            case .confirmThenStop: return "Quit Waffled"
+            case .quitWithoutStopping: return "Quit anyway (server keeps running)"
+            case .stopTheServerFirst: return "Quit — stop the server first (an update is waiting)"
+            }
+        }
     }
 
-    static func quitAction(stopHasFailed: Bool) -> QuitAction {
-        stopHasFailed ? .quitWithoutStopping : .confirmThenStop
+    /// - Parameter updatePending: Sparkle has extracted and validated the new app and is
+    ///   listening for this process to exit; once it does, `Autoupdate` finishes the swap
+    ///   whatever the reason for the exit (`Autoupdate/AppInstaller.m`). Quitting over a
+    ///   server that refused to stop would therefore replace the app — runtime bundle
+    ///   included — under the old binaries still running it.
+    static func quitAction(stopHasFailed: Bool, updatePending: Bool) -> QuitAction {
+        guard stopHasFailed else { return .confirmThenStop }
+        return updatePending ? .stopTheServerFirst : .quitWithoutStopping
     }
 
     /// What the icon draws. A held failure outranks the document — a start that refused

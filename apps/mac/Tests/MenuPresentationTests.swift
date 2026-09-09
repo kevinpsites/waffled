@@ -256,6 +256,25 @@ final class MenuPresentationTests: XCTestCase {
 
         let ordinary = MenuPresentation.make(status: s)
         XCTAssertEqual(ordinary.quitTitle, "Quit Waffled")
+        XCTAssertTrue(m.quitEnabled, "nothing is prepared to swap — leaving is a person's call")
+    }
+
+    /// The same refused stop with an update already prepared, which is the one case "Quit
+    /// anyway" cannot be offered for: Sparkle's installer finishes the swap when this
+    /// process exits, whatever the reason for the exit, so quitting would replace the app
+    /// under the server still running the old bundle.
+    func testQuitIsHeldWhenQuittingWouldSwapTheAppOverARunningServer() throws {
+        let s = try RuntimeStatus.decode(Fixtures.data(Fixtures.fullRunning))
+        let m = MenuPresentation.make(status: s, stopFailure: "postgres would not shut down",
+                                      canCheckForUpdates: false, updatePending: true)
+
+        XCTAssertEqual(m.quitTitle, "Quit — stop the server first (an update is waiting)")
+        XCTAssertFalse(m.quitEnabled)
+        XCTAssertEqual(m.statusLine, "Could not stop Waffled: postgres would not shut down",
+                       "the reason the item is off is the line above it")
+        XCTAssertEqual(m.checkForUpdatesLabel, "Install the update now",
+                       "the retry is still the way on")
+        XCTAssertTrue(m.checkForUpdatesEnabled)
     }
 
     /// While the stop is in flight the status line says so and the actions are off: it

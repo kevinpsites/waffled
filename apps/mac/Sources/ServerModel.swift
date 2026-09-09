@@ -397,7 +397,12 @@ final class ServerModel {
     /// run modally after activating; a `.confirmationDialog` inside a `.menu`-style
     /// `MenuBarExtra` has nothing to present from and never appears.
     func confirmAndQuit() {
-        switch Lifecycle.quitAction(stopHasFailed: stopFailure != nil) {
+        switch Lifecycle.quitAction(stopHasFailed: stopFailure != nil,
+                                    updatePending: hasPendingUpdate) {
+        case .stopTheServerFirst:
+            // The item is disabled, so this is only reachable if the update landed between
+            // the menu being drawn and the click. Quitting is what must not happen.
+            return
         case .quitWithoutStopping:
             // The menu item is already the second question — "Quit anyway (server keeps
             // running)" — and this click is its answer. Nothing is asked twice.

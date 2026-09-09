@@ -436,6 +436,13 @@ nothing to serve until that lands.
      And an install that aborts *after* the stop (a bad signature, an authorisation someone
      declined) leaves the household with no server and no update, so the app starts back the
      one it stopped and says why.
+   - **Quit obeys the same rule, and has to.** Once Sparkle's installer has extracted and
+     validated the new app it listens for this process to exit and finishes the swap whenever
+     that happens, for any reason at all (`Autoupdate/AppInstaller.m`), and Sparkle exposes no
+     way to cancel it. So a refused stop with an update waiting is the one case where
+     `Quit anyway (server keeps running)` cannot be offered: the item reads `Quit — stop the
+     server first (an update is waiting)` and is disabled, with `Install the update now` as
+     the retry and `waffled-runtime stop` in Terminal as the way out.
    - **Known edge, still open:** dragging a newer DMG over a running install has the same
      stale-server problem with nobody to stop the server first — the swapped app keeps
      talking to the runtime already in memory until the next stop/start. Item 5 will either

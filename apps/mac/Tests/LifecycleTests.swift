@@ -115,9 +115,31 @@ final class LifecycleTests: XCTestCase {
         XCTAssertEqual(Lifecycle.outcomeAfterStop(error: "postgres would not shut down"),
                        .refused("postgres would not shut down"))
 
-        XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: false), .confirmThenStop)
-        XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: true), .quitWithoutStopping,
+        XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: false, updatePending: false),
+                       .confirmThenStop)
+        XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: true, updatePending: false),
+                       .quitWithoutStopping,
                        "the changed menu item is the second confirmation")
+    }
+
+    /// The one case where "Quit anyway" is not a way out. Once Sparkle's installer has
+    /// extracted and validated the new app it listens for this process to exit and finishes
+    /// the swap whenever that happens, whatever the reason (`Autoupdate/AppInstaller.m`) —
+    /// so quitting over a server that would not stop replaces Waffled.app, runtime bundle
+    /// and all, under the old binaries still running it. The item says what has to happen
+    /// first, and `Install the update now` stays the retry.
+    func testQuitWillNotHandAPreparedUpdateAServerThatIsStillRunning() {
+        XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: true, updatePending: true),
+                       .stopTheServerFirst)
+        XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: false, updatePending: true),
+                       .confirmThenStop,
+                       "nothing refused: quit stops the server first, and that is what makes the swap safe")
+
+        XCTAssertEqual(Lifecycle.QuitAction.confirmThenStop.title, "Quit Waffled")
+        XCTAssertEqual(Lifecycle.QuitAction.quitWithoutStopping.title,
+                       "Quit anyway (server keeps running)")
+        XCTAssertEqual(Lifecycle.QuitAction.stopTheServerFirst.title,
+                       "Quit — stop the server first (an update is waiting)")
     }
 
     /// The relaunch waits for the stop, and a stop that refuses holds it back rather than
