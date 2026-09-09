@@ -26,7 +26,7 @@ xcodebuild test -project Waffled.xcodeproj -scheme Waffled -destination 'platfor
   that runs Postgres against a real filesystem; sandboxing it breaks the only thing it does.
 - **A whole app is `Scripts/build-app.sh <bundle-dir> [out-dir]`**, not a build phase. It
   builds Release and clones a ~670 MB runtime bundle into `Contents/Resources/runtime`; an
-  Xcode copy-files phase would re-copy all of it on every incremental build of a nine-file
+  Xcode copy-files phase would re-copy all of it on every incremental build of an eleven-file
   app. CI runs the same script, then boots what it produced.
 - **`WAFFLED_DATA_DIR` is not a dev-mode variable.** `WAFFLED_RUNTIME_BIN` is what turns dev
   mode on (the app is running a runtime it did not ship with, and the menu says so); the data

@@ -103,9 +103,11 @@ struct RuntimeStatus: Equatable {
     /// only launch that shows a window.
     ///
     /// It defaults false like everything else here, which means a runtime too old to
-    /// report it reads as a first run. That is safe because the app and the runtime ship
-    /// as one unit (plan §6): the only way to see the older half is dev mode, and the
-    /// worst outcome there is a welcome screen whose button starts the server anyway.
+    /// report it reads as a first run: a welcome window in front of a household that has
+    /// one, the auto-start held behind its button, and the browser opened on every launch.
+    /// That is tolerable only because the app and the runtime ship as **one unit**
+    /// (plan §6) — the sole way to meet an older runtime is `WAFFLED_RUNTIME_BIN`, and a
+    /// dev run is where a wrong first-run window costs nothing.
     var initialized = false
     var dataDir = ""
     var bundleDir = ""

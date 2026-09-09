@@ -54,9 +54,11 @@ WAFFLED_DATA_DIR=/tmp/waffled/data \
   /tmp/waffled/app/Waffled.app/Contents/MacOS/Waffled
 ```
 
-The icon appears within a second, the server starts, and the browser opens once it is green.
-A first start on an empty data directory runs `initdb` and every migration — measured at
-**18 s** on an M-series Mac, minutes on a slow one.
+The icon appears within a second. An **empty** data directory is a first run, so the setup
+window opens instead of a server (see "First run" below); point it at one you have already
+set up and the server starts by itself, with no window and no browser. A first start runs
+`initdb` and every migration — 5.5 s on an M1 Max, 18 s measured elsewhere, minutes on a
+slow Mac.
 
 The app is **ad-hoc signed**, which is enough here and nowhere else: copy it to another Mac
 and Gatekeeper will refuse to open it, because none of it is signed with a Developer ID or
@@ -241,7 +243,7 @@ The destination is the host Mac — there is no simulator. Always pass
 `-project Waffled.xcodeproj`: `apps/ios` has a scheme with the same name, and a bare
 `-scheme Waffled` from the repo root can pick the wrong one. For a whole app rather than
 just the binary, use `Scripts/build-app.sh` — a copy-files build phase would re-copy 670 MB
-on every incremental build of a nine-file app.
+on every incremental build of an eleven-file app.
 
 No test spawns a process. `RuntimeProcessRunning` is the seam, and the tests assert the argv
 the app would really have used — the piece whose breakage looks exactly like a broken server.
