@@ -4,8 +4,10 @@
 #
 # Scope, same rationale as ci.yml's header: this workflow covers apps/runtime/ (the Go
 # supervisor, `waffled-runtime`), infra/native/bundle/ (the script that assembles the
-# runtime/ directory it drives), and infra/compose/** — Phase 2 of
-# docs/product/native-mac-plan.md. infra/compose is included even though ci.yml never
+# runtime/ directory it drives), apps/mac/ (the menu-bar app the bundle is embedded in) and
+# infra/compose/** — Phases 2 and 3 of docs/product/native-mac-plan.md. apps/mac is here
+# rather than in ci.yml because its only automated proof that matters is the assembled
+# .app booting a real server, which needs the bundle this job already has. infra/compose is included even though ci.yml never
 # watches it: build_config() in build.sh copies its Caddyfile/00-init.sql/powersync yaml
 # into the bundle VERBATIM and `verify` asserts byte-identity against the repo, and the
 # caddyconf unit test has its own drift alarm against the real Caddyfile (see
@@ -23,14 +25,24 @@
 #     network beyond the Go toolchain — seconds, on the cheapest runner. runtime-macos
 #     `needs` it, so a formatting or unit failure costs one ubuntu minute, not a macOS run.
 #   - runtime-macos needs an Apple-silicon host because the bundle IS arm64 darwin binaries
-#     (Postgres, Caddy, the built PowerSync service) — there is no cross-build path, and
-#     macOS minutes cost 10x an ubuntu minute. It downloads/builds the ~660 MB bundle
-#     (`build.sh fetch` + `build` + `verify`, the same three commands a person runs
-#     locally — see infra/native/bundle/README.md "How CI does it today"), then runs the Go
-#     integration suite against it, which starts the whole stack — Postgres, api,
-#     PowerSync, Caddy — from an empty temp data dir on free ports and drives it through
-#     every health check. That IS the Phase 2 exit-criterion check (native-mac-plan.md §7
-#     Phase 2 item 4), not a proxy for it.
+#     (Postgres, Caddy, the built PowerSync service, and now the Go supervisor itself) —
+#     there is no cross-build path, and macOS minutes cost 10x an ubuntu minute. It
+#     downloads/builds the ~670 MB bundle (`build.sh fetch` + `build` + `verify`, the same
+#     three commands a person runs locally — see infra/native/bundle/README.md "How CI does
+#     it today"), then runs the Go integration suite against it, which starts the whole
+#     stack — Postgres, api, PowerSync, Caddy — from an empty temp data dir on free ports
+#     and drives it through every health check. That IS the Phase 2 exit-criterion check
+#     (native-mac-plan.md §7 Phase 2 item 4), not a proxy for it.
+#
+#     The same job then goes on to Phase 3: the Mac app's 56 unit tests, `build-app.sh` to
+#     assemble Waffled.app with that bundle embedded under Contents/Resources/runtime, and a
+#     smoke boot of the assembled app with NO dev-mode environment variables — only
+#     WAFFLED_DATA_DIR, pointed at a temp directory. That last step is the one that cannot
+#     be faked: it proves the app finds the runtime it carries, that the copy into the .app
+#     still verifies against its manifest, and that a real household server comes up from an
+#     empty data directory with nothing but the .app on disk. It runs here rather than as a
+#     second macOS job because it needs the bundle this one already built; a second job
+#     would rebuild or re-download all 670 MB of it.
 #
 # build.sh deliberately needs nothing preinstalled to build the bundle beyond the Xcode
 # command-line tools' base utilities (lipo, rsync, xxd, curl, shasum, tar — present on every
@@ -48,6 +60,7 @@ on:
   pull_request:
     paths:
       - 'apps/runtime/**'
+      - 'apps/mac/**'
       - 'infra/native/bundle/**'
       - 'infra/compose/**'
       - '.github/workflows/native-runtime.yml'
@@ -55,6 +68,7 @@ on:
     branches: [main]
     paths:
       - 'apps/runtime/**'
+      - 'apps/mac/**'
       - 'infra/native/bundle/**'
       - 'infra/compose/**'
       - '.github/workflows/native-runtime.yml'
@@ -119,9 +133,16 @@ jobs:
     # unpacked) + `pnpm build:production` + the prod prune, on top of the Node/Postgres/Caddy
     # downloads (README "Network cost": ~0.5-1 GB, ~5 min on a fast link) and a networked
     # `npm ci` for api + web. macos-15 standard runners are ~3 cores and slower than the dev
-    # Mac this was measured on, and the 36k-file/580 MB verify walk is I/O bound. 45 minutes
-    # leaves real headroom for that unmeasured cold path without masking a genuine hang.
-    timeout-minutes: 45
+    # Mac this was measured on, and the 36k-file/587 MB verify walk is I/O bound.
+    #
+    # The Phase 3 steps add, measured on the same Mac: `xcodebuild test` ~20s, build-app.sh
+    # ~28s warm (Release build, the APFS clone of the bundle into the .app, and the embedded
+    # runtime's own manifest verification), and a smoke boot that reached state=running in
+    # 18s from an empty data directory — initdb, 96 migrations, api, PowerSync and Caddy.
+    # Call it 10-15 minutes on a runner with a third of the cores and no clonefile guarantee,
+    # plus a one-off `brew install xcodegen` (a bottle, ~1 min). 60 minutes leaves real
+    # headroom for the unmeasured cold-cache path without masking a genuine hang.
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -193,6 +214,114 @@ jobs:
           set -o pipefail
           go test -tags integration -p 1 -v ./... 2>&1 | tee "$RUNNER_TEMP/runtime-integration.log"
 
+      # ── Phase 3: the Mac app, with that bundle embedded ──────────────────────────
+      # XcodeGen is not on the macOS image. The bottle is small and installs in about a
+      # minute; HOMEBREW_NO_AUTO_UPDATE stops brew spending several more updating its
+      # formula index first, which this job has no use for. Waffled.xcodeproj is generated
+      # and gitignored (apps/mac/CLAUDE.md), so it has to be generated here.
+      - name: Install XcodeGen
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: brew install xcodegen
+
+      # The 56 unit tests. Always -project: apps/ios has a scheme with the same name and a
+      # bare -scheme Waffled from the repo root can resolve to the iOS one.
+      - name: Mac app unit tests
+        working-directory: apps/mac
+        run: |
+          set -o pipefail
+          xcodegen generate
+          xcodebuild test -project Waffled.xcodeproj -scheme Waffled \
+            -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/mac-dd" \
+            2>&1 | tee "$RUNNER_TEMP/mac-tests.log" | tail -n 30
+
+      # Release build + the bundle cloned into Contents/Resources/runtime, then the embedded
+      # supervisor verifying its own embedded bundle. ~670 MB of .app comes out of this.
+      - name: Assemble Waffled.app (bundle embedded)
+        run: apps/mac/Scripts/build-app.sh "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/app"
+
+      # The one check that cannot be faked: the assembled app, with NO dev-mode environment
+      # variables — no WAFFLED_RUNTIME_BIN, no WAFFLED_RUNTIME_BUNDLE — so it has to find the
+      # runtime it carries, verify it, and bring a real server up from an empty data
+      # directory. Only WAFFLED_DATA_DIR is set, and only to keep this run out of
+      # ~/Library/Application Support/Waffled. The executable is run directly because `open`
+      # cannot pass environment to an app.
+      - name: Smoke boot the assembled .app (no dev-mode envs)
+        env:
+          APP: ${{ runner.temp }}/app/Waffled.app
+          DATA: ${{ runner.temp }}/appdata
+        run: |
+          set -uo pipefail
+          RT="$APP/Contents/Resources/runtime/bin/waffled-runtime"
+          mkdir -p "$DATA"
+          WAFFLED_DATA_DIR="$DATA" "$APP/Contents/MacOS/Waffled" >"$RUNNER_TEMP/mac-app.log" 2>&1 &
+          app_pid=$!
+          echo "app pid $app_pid"
+
+          # Bounded at ~3 minutes: locally this is 18s, but the runner has a third of the
+          # cores and pays initdb plus every migration on a cold filesystem.
+          state=""
+          for i in $(seq 1 90); do
+            sleep 2
+            if ! kill -0 "$app_pid" 2>/dev/null; then
+              echo "::error::the menu-bar app exited before the server came up"
+              cat "$RUNNER_TEMP/mac-app.log"
+              exit 1
+            fi
+            # `|| state=""`: GitHub runs each step with `bash -e`, and a status that
+            # cannot answer yet (no data dir, no supervisor) would otherwise end the step
+            # on its exit code instead of going round the loop again.
+            state="$("$RT" status --json --data "$DATA" 2>/dev/null \
+              | sed -n 's/.*"state": *"\([a-z]*\)".*/\1/p' | head -1)" || state=""
+            echo "  $((i * 2))s ${state:-(no status yet)}"
+            if [ "$state" = running ]; then break; fi
+          done
+
+          rc=0
+          if [ "$state" != running ]; then
+            echo "::error::the assembled app never reached state=running"
+            cat "$RUNNER_TEMP/mac-app.log"
+            rc=1
+          fi
+          "$RT" status --data "$DATA" || rc=1
+
+          # The health URL the app itself would open. /healthz is Caddy's unauthenticated
+          # one, so a 200 here means Caddy, the api behind it and everything the api needed
+          # to start are all up (/api/health is admin-only and answers 401 by design).
+          url="$("$RT" status --json --data "$DATA" 2>/dev/null \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["urls"]["local"])')" || url=""
+          if [ -n "$url" ]; then
+            code="$(curl -s -o /dev/null -w '%{http_code}' "$url/healthz")"
+            echo "GET $url/healthz -> $code"
+            [ "$code" = 200 ] || { echo "::error::$url/healthz answered $code"; rc=1; }
+          else
+            echo "::error::status --json reported no local URL"
+            rc=1
+          fi
+
+          # Leave nothing running: `start` re-execs into its own session, so killing the app
+          # does not stop the server it started. Stop first, then the app.
+          "$RT" stop --data "$DATA" || rc=1
+          kill "$app_pid" 2>/dev/null || true
+          wait "$app_pid" 2>/dev/null || true
+          exit $rc
+
+      # Only on push to main: the .app is ~670 MB and no PR needs a copy of it. ditto -c -k
+      # keeps the 1,338 symlinks as symlinks and the exec bits intact — upload-artifact would
+      # otherwise follow every one of them and inflate a pnpm farm into thousands of copies.
+      - name: Zip the assembled app (push to main only)
+        if: github.event_name == 'push'
+        run: ditto -c -k --keepParent "$RUNNER_TEMP/app/Waffled.app" "$RUNNER_TEMP/Waffled.app.zip"
+
+      - name: Upload the assembled app (push to main only)
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Waffled-app-${{ github.sha }}
+          path: ${{ runner.temp }}/Waffled.app.zip
+          retention-days: 3
+
       - name: Upload manifest + test logs (failure only)
         if: failure()
         uses: actions/upload-artifact@v4
@@ -202,5 +331,8 @@ jobs:
             ${{ runner.temp }}/runtime/manifest.json
             ${{ runner.temp }}/bundle-verify.log
             ${{ runner.temp }}/runtime-integration.log
+            ${{ runner.temp }}/mac-tests.log
+            ${{ runner.temp }}/mac-app.log
+            ${{ runner.temp }}/app/xcodebuild.log
           if-no-files-found: warn
           retention-days: 7
