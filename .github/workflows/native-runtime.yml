@@ -135,13 +135,14 @@ jobs:
     # `npm ci` for api + web. macos-15 standard runners are ~3 cores and slower than the dev
     # Mac this was measured on, and the 36k-file/587 MB verify walk is I/O bound.
     #
-    # The Phase 3 steps add, measured on the same Mac: `xcodebuild test` ~20s, build-app.sh
-    # ~28s warm (Release build, the APFS clone of the bundle into the .app, and the embedded
-    # runtime's own manifest verification), and a smoke boot that reached state=running in
-    # 18s from an empty data directory — initdb, 96 migrations, api, PowerSync and Caddy.
-    # Call it 10-15 minutes on a runner with a third of the cores and no clonefile guarantee,
-    # plus a one-off `brew install xcodegen` (a bottle, ~1 min). 60 minutes leaves real
-    # headroom for the unmeasured cold-cache path without masking a genuine hang.
+    # The Phase 3 steps turn out to be the cheap end of this job — measured on a warm run
+    # (34318097623): xcodegen 2s (preinstalled), the 56 unit tests 36s, build-app.sh 35s
+    # (Release build + the APFS clone of 670 MB into the .app + the embedded runtime
+    # verifying its own manifest), and the smoke boot 19s, of which 6s was an empty data
+    # directory becoming a running server — initdb, 96 migrations, api, PowerSync, Caddy.
+    # 92 seconds for all four; the whole macOS job was 11m07s warm. 60 minutes is headroom
+    # for the cold-cache path (fetch_powersync's clone, install and build, plus ~1 GB of
+    # downloads) without masking a genuine hang.
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -215,10 +216,12 @@ jobs:
           go test -tags integration -p 1 -v ./... 2>&1 | tee "$RUNNER_TEMP/runtime-integration.log"
 
       # ── Phase 3: the Mac app, with that bundle embedded ──────────────────────────
-      # XcodeGen is not on the macOS image. The bottle is small and installs in about a
-      # minute; HOMEBREW_NO_AUTO_UPDATE stops brew spending several more updating its
-      # formula index first, which this job has no use for. Waffled.xcodeproj is generated
-      # and gitignored (apps/mac/CLAUDE.md), so it has to be generated here.
+      # macos-15 ships XcodeGen already, so this measures 2 seconds — it is here as a
+      # guard, not a cost: the image's contents are not a contract, and a future one that
+      # drops it should cost this job a bottle download rather than a red build.
+      # HOMEBREW_NO_AUTO_UPDATE stops brew spending minutes refreshing its formula index
+      # before deciding it has nothing to do. Waffled.xcodeproj is generated and gitignored
+      # (apps/mac/CLAUDE.md), so it does have to be generated here.
       - name: Install XcodeGen
         env:
           HOMEBREW_NO_AUTO_UPDATE: '1'
