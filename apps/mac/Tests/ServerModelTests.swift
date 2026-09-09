@@ -9,9 +9,13 @@ import XCTest
 @MainActor
 final class ServerModelTests: XCTestCase {
 
-    private func makeModel() -> ServerModel {
+    /// - Parameter runtime: a runtime that answers, for the tests that need an operation
+    ///   to still be running. Without one the binary does not exist, so every call fails
+    ///   at once — which is what the refusal tests want.
+    private func makeModel(_ runtime: FakeRuntime? = nil) -> ServerModel {
         ServerModel(environment: [RuntimeLocator.binaryVariable: "/nonexistent/waffled-runtime"],
-                    resourceURL: nil, memory: InMemoryDefaults())
+                    resourceURL: nil, memory: InMemoryDefaults(),
+                    runner: runtime ?? SubprocessRunner())
     }
 
     /// An update that arrives while a backup is running is a "not now", not a server that
@@ -83,6 +87,48 @@ final class ServerModelTests: XCTestCase {
         XCTAssertFalse(model.hasPendingUpdate)
         XCTAssertEqual(model.presentation(canCheckForUpdates: true).checkForUpdatesLabel,
                        "Check for updates…")
+    }
+
+    /// An update that aborts after our stop is a restart — and a restart is an operation,
+    /// so it lost to whatever already held the one slot: `startServer` returned at its
+    /// guard, under a note saying the update had been dealt with, and the household's
+    /// server stayed down for the rest of the process.
+    func testTheRestartAfterAnAbortWaitsForTheOperationSlot() async {
+        let runtime = FakeRuntime()
+        await runtime.hold("stop")
+        await runtime.hold("backup")
+        let model = makeModel(runtime)
+        defer { model.end() }
+
+        model.stopBeforeUpdate {}
+        await waitUntil("the stop reaches the runtime") { await runtime.isWaiting(for: "stop") }
+        await runtime.finish("stop")
+        await settle(model)
+        var starts = await runtime.count(of: "start")
+        XCTAssertEqual(starts, 0, "precondition: nothing has started")
+
+        // Back up now stays enabled while the server is stopped, which is exactly when
+        // someone asks for one — so it is the operation most likely to be in the way.
+        model.backUpNow()
+        await waitUntil("the backup reaches the runtime") { await runtime.isWaiting(for: "backup") }
+
+        model.updateCycleEnded(error: "You cancelled the update.")
+        starts = await runtime.count(of: "start")
+        XCTAssertEqual(starts, 0, "the backup holds the slot; the restart has to wait for it")
+
+        await runtime.finish("backup")
+        await waitUntil("the queued restart fires") { await runtime.count(of: "start") == 1 }
+    }
+
+    /// Polls a condition until it holds, bounded rather than blocking: everything these
+    /// tests drive is deterministic, but it lands across task boundaries.
+    private func waitUntil(_ what: String, _ condition: () async -> Bool) async {
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            if await condition() { return }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        XCTFail("timed out waiting for \(what)")
     }
 
     /// Waits out the one operation the model has in flight. It is stopping a runtime that

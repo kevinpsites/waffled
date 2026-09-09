@@ -39,6 +39,9 @@ final class ServerModel {
     /// Our stop succeeded and Sparkle has the app: what makes an update that then ends
     /// without installing anything ours to recover from.
     private var stoppedForUpdate = false
+    /// A restart that arrived while the one operation slot was taken. It is the household's
+    /// server coming back, so it waits for the slot rather than being dropped.
+    private var restartAfterOperation = false
 
     /// A start, stop or backup is in flight. Derived rather than stored: the two were
     /// set in lockstep at four call sites, which is four chances for a menu stuck at
@@ -78,13 +81,16 @@ final class ServerModel {
 
     private let memory: UpdateMemory
 
+    /// - Parameter runner: the seam every runtime call goes through, so a test can drive a
+    ///   start or a stop that is still running without spawning anything.
     init(environment: [String: String] = ProcessInfo.processInfo.environment,
          resourceURL: URL? = Bundle.main.resourceURL,
          hardware: HardwareProbe = SystemHardware(),
-         memory: UpdateMemory = UserDefaults.standard) {
+         memory: UpdateMemory = UserDefaults.standard,
+         runner: RuntimeProcessRunning = SubprocessRunner()) {
         self.memory = memory
         location = RuntimeLocator.locate(environment: environment, resourceURL: resourceURL)
-        client = location.map { RuntimeClient(location: $0, runner: SubprocessRunner()) }
+        client = location.map { RuntimeClient(location: $0, runner: runner) }
         // Read once: neither the model of this Mac nor its battery changes while the app
         // is running, and the answer is only ever asked for one paragraph.
         isPortable = Hardware.isPortable(hardware)
@@ -187,6 +193,9 @@ final class ServerModel {
     }
 
     func end() {
+        // Before the cancellations: a cancelled operation still runs `finishOperation`,
+        // and a queued restart there would start a server on the way out of the app.
+        restartAfterOperation = false
         pollTask?.cancel()
         animationTask?.cancel()
         operationTask?.cancel()
@@ -483,8 +492,19 @@ final class ServerModel {
             // something else said otherwise. Restarting is not a second supervisor: this
             // is the server this app stopped a moment ago.
             note(message)
-            startServer(trigger: .app)
+            restartTheServerWeStopped()
         }
+    }
+
+    /// The put-it-back start. `startServer` returns at its guard while another operation is
+    /// running — a backup, which stays offered while the server is down — and a note saying
+    /// the update was handled over a server that never came back is the worst of both.
+    private func restartTheServerWeStopped() {
+        guard operationTask == nil else {
+            restartAfterOperation = true
+            return
+        }
+        startServer(trigger: .app)
     }
 
     private func stopThenQuit() {
@@ -528,6 +548,9 @@ final class ServerModel {
     private func finishOperation() {
         operationTask = nil
         syncFirstRunWindow()
+        guard restartAfterOperation else { return }
+        restartAfterOperation = false
+        startServer(trigger: .app)
     }
 
     /// One line for the menu, whatever went wrong. The runtime's own sentence when it
