@@ -361,7 +361,7 @@ paperwork: the first-run sheet (item 3), and Developer ID signing, notarization 
 Gatekeeper refuses it on any Mac but the one that built it.
 
 1. `apps/mac/` SwiftUI `MenuBarExtra`, XcodeGen project like iOS, bundles the runtime and
-   binaries under `Resources/runtime/`. *(done — PR #195 the app, PR #TBD the embedding)* →
+   binaries under `Resources/runtime/`. *(done — PR #195 the app, PR #196 the embedding)* →
    The XcodeGen project, the `status --json` client and the app landed first; the
    **embedding** followed: `waffled-runtime` is now built into the bundle (and into its
    manifest) by `infra/native/bundle/build.sh`, `apps/mac/Scripts/build-app.sh` assembles a
