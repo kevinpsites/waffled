@@ -38,18 +38,34 @@ final class ServerModel {
     private var operationTask: Task<Void, Never>?
     private var transientTask: Task<Void, Never>?
 
-    /// Set when *this* process asked for a start, which is what makes opening the browser
-    /// correct rather than intrusive.
-    private var startWasAppInitiated = false
+    /// Who asked for the start that is in flight — what decides whether reaching `running`
+    /// opens a browser.
+    private var startTrigger = Lifecycle.StartTrigger.notUs
     private var alreadyOpenedBrowser = false
     /// Whether the one auto-start this process is allowed has been spent (or stood down).
     private var autoStartDecided = false
     private var animationFrame = 0
 
+    /// What the first poll that answered said about the data directory, latched: the rest
+    /// of the launch behaves the same way even after `initialized` flips to true halfway
+    /// through the first start.
+    private(set) var isFirstRun = false
+    private var firstRunDecided = false
+    /// A person has clicked — on the window or on `Start Waffled`, which count the same.
+    private(set) var setupBegun = false
+    private var firstRunDismissed = false
+    private var firstRunCloseTask: Task<Void, Never>?
+    private let firstRunWindow = FirstRunWindow()
+    let isPortable: Bool
+
     init(environment: [String: String] = ProcessInfo.processInfo.environment,
-         resourceURL: URL? = Bundle.main.resourceURL) {
+         resourceURL: URL? = Bundle.main.resourceURL,
+         hardware: HardwareProbe = SystemHardware()) {
         location = RuntimeLocator.locate(environment: environment, resourceURL: resourceURL)
         client = location.map { RuntimeClient(location: $0, runner: SubprocessRunner()) }
+        // Read once: neither the model of this Mac nor its battery changes while the app
+        // is running, and the answer is only ever asked for one paragraph.
+        isPortable = Hardware.isPortable(hardware)
         if location == nil {
             failure = "No Waffled runtime is bundled with this build — see apps/mac/README.md"
         }
@@ -74,7 +90,25 @@ final class ServerModel {
     var presentation: MenuPresentation {
         MenuPresentation.make(status: status, failure: failure, transient: transient,
                               busy: busy, runtimeAvailable: client != nil,
-                              stopFailure: stopFailure)
+                              stopFailure: stopFailure, awaitingSetup: awaitingSetup)
+    }
+
+    /// The first-run window's whole content, or nil on every launch that gets no window.
+    var firstRunPresentation: FirstRunPresentation? {
+        FirstRunPresentation.make(status: status, isFirstRun: isFirstRun,
+                                  setupBegun: setupBegun, failure: failure,
+                                  isPortable: isPortable)
+    }
+
+    /// A first run whose welcome step is still waiting for a person. It holds the
+    /// auto-start open and changes the menu's status line.
+    var awaitingSetup: Bool { isFirstRun && !setupBegun }
+
+    /// The mark at whatever size the window wants it, on the animation frame the menu bar
+    /// is drawing — so the iron cooks at the same cadence in both places.
+    func image(pointSize: CGFloat) -> NSImage {
+        WaffleIronIcon.image(state: iconState, fillCount: icon.fillCount(frame: animationFrame),
+                             pointSize: pointSize)
     }
 
     var isDevMode: Bool { location?.isDevMode ?? false }
@@ -133,6 +167,7 @@ final class ServerModel {
         animationTask?.cancel()
         operationTask?.cancel()
         transientTask?.cancel()
+        firstRunCloseTask?.cancel()
     }
 
     private var pollInterval: TimeInterval { Lifecycle.pollInterval(for: status?.state) }
@@ -152,6 +187,7 @@ final class ServerModel {
         do {
             let fresh = try await client.status()
             status = fresh
+            decideFirstRun(initialized: fresh.initialized)
             // A server that came up is the only thing that clears a start failure —
             // clearing it on any successful poll would erase the message a moment after
             // it appeared, since `status` keeps answering fine when `start` refuses.
@@ -159,31 +195,72 @@ final class ServerModel {
             // The opposite rule for a failed stop: it describes a server that is still
             // up, and is forgotten the moment a poll says it no longer is.
             if !Lifecycle.stopFailureStillApplies(reported: fresh.state) { stopFailure = nil }
-            openBrowserIfThisAppStartedIt(fresh)
+            openBrowserIfAnyoneIsWaiting(fresh)
         } catch {
             status = nil
             failure = Self.describe(error)
         }
+        syncFirstRunWindow()
     }
 
     private func considerAutoStart() {
-        switch Lifecycle.autoStartDecision(state: status?.state, alreadyDecided: autoStartDecided) {
+        switch Lifecycle.autoStartDecision(state: status?.state, alreadyDecided: autoStartDecided,
+                                           awaitingSetup: awaitingSetup) {
         case .keepWaiting:
             return
         case .standDown:
             autoStartDecided = true
         case .start:
-            autoStartDecided = true
-            startServer()
+            startServer(trigger: .app)
         }
     }
 
-    private func openBrowserIfThisAppStartedIt(_ fresh: RuntimeStatus) {
-        guard Lifecycle.shouldOpenBrowser(newState: fresh.state,
-                                          startWasAppInitiated: startWasAppInitiated,
+    /// Latched by the first poll that answered — and only inside the `do` branch above,
+    /// because a `status` that threw is the ordinary cold start (the runtime verifies its
+    /// bundle before it can reply) and says nothing about the data directory.
+    private func decideFirstRun(initialized: Bool?) {
+        guard !firstRunDecided else { return }
+        switch Lifecycle.firstRunDecision(initialized: initialized) {
+        case .keepWaiting:
+            return
+        case .firstRun:
+            firstRunDecided = true
+            isFirstRun = true
+        case .established:
+            firstRunDecided = true
+        }
+    }
+
+    private func openBrowserIfAnyoneIsWaiting(_ fresh: RuntimeStatus) {
+        guard Lifecycle.shouldOpenBrowser(newState: fresh.state, trigger: startTrigger,
+                                          isFirstRun: isFirstRun,
                                           alreadyOpened: alreadyOpenedBrowser) else { return }
         alreadyOpenedBrowser = true
         openWebApp(fresh)
+    }
+
+    // MARK: the first-run window
+
+    /// The window follows the presentation: it appears when there is one, goes away when
+    /// there is not, and never comes back once it has been dismissed — closing it during
+    /// the start is a person saying "I will watch the menu bar", not "start again".
+    private func syncFirstRunWindow() {
+        guard let presentation = firstRunPresentation, !firstRunDismissed else {
+            firstRunWindow.close()
+            return
+        }
+        firstRunWindow.show(model: self)
+        guard let closesAfter = presentation.closesAfter, firstRunCloseTask == nil else { return }
+        firstRunCloseTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(closesAfter))
+            guard !Task.isCancelled else { return }
+            self?.dismissFirstRunWindow()
+        }
+    }
+
+    func dismissFirstRunWindow() {
+        firstRunDismissed = true
+        firstRunWindow.close()
     }
 
     // MARK: actions
@@ -191,11 +268,17 @@ final class ServerModel {
     /// Never called on a timer and never in a loop: the runtime supervises its own
     /// children, and a second supervisor retrying behind it is the failure mode plan §7
     /// rules out.
-    func startServer() {
+    /// - Parameter trigger: `.person` by default, because every call site but the
+    ///   auto-start is a click — including the first-run window's button, which is why
+    ///   the click also spends the one auto-start attempt.
+    func startServer(trigger: Lifecycle.StartTrigger = .person) {
         guard let client, operationTask == nil else { return }
-        startWasAppInitiated = true
+        startTrigger = trigger
+        autoStartDecided = true
+        setupBegun = true
         failure = nil
         stopFailure = nil
+        syncFirstRunWindow()
         operationTask = Task { [weak self] in
             defer { self?.finishOperation() }
             do {

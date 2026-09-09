@@ -40,23 +40,72 @@ final class LifecycleTests: XCTestCase {
         XCTAssertEqual(Lifecycle.autoStartDecision(state: nil, alreadyDecided: true), .standDown)
     }
 
-    /// Finding a server already running is a relaunch, not a first start: it re-opens the
-    /// existing server (plan §2 step 6) without stealing the screen.
-    func testBrowserOpensOnlyForAStartThisAppInitiated() {
+    /// Whether this data directory has ever been set up is decided the same way as the
+    /// auto-start: by the first poll that ANSWERS. A `status` that threw says nothing —
+    /// and it is the ordinary cold-start case, because the runtime verifies its bundle
+    /// before it can reply — so latching on it would either show the welcome window to a
+    /// household that has been running for a year, or never show it at all.
+    func testTheFirstRunAnswerComesFromTheFirstPollThatAnswers() {
+        XCTAssertEqual(Lifecycle.firstRunDecision(initialized: nil), .keepWaiting)
+        XCTAssertEqual(Lifecycle.firstRunDecision(initialized: false), .firstRun)
+        XCTAssertEqual(Lifecycle.firstRunDecision(initialized: true), .established)
+    }
+
+    /// A first run is the one launch the app does NOT start the server by itself: the
+    /// welcome window is asking, and a server that came up while the question was on
+    /// screen would have answered it. The one-attempt rule is unchanged — the click
+    /// spends it — so this holds the decision open rather than standing it down.
+    func testTheWelcomeStepHoldsTheAutoStartOpen() {
+        XCTAssertEqual(Lifecycle.autoStartDecision(state: .stopped, alreadyDecided: false,
+                                                   awaitingSetup: true),
+                       .keepWaiting,
+                       "the button on the welcome window is what starts a first run")
+
+        XCTAssertEqual(Lifecycle.autoStartDecision(state: .stopped, alreadyDecided: false,
+                                                   awaitingSetup: false),
+                       .start,
+                       "every later launch is unchanged")
+
+        XCTAssertEqual(Lifecycle.autoStartDecision(state: .stopped, alreadyDecided: true,
+                                                   awaitingSetup: true),
+                       .standDown,
+                       "the click spent the attempt; nothing revives it")
+    }
+
+    /// The quiet relaunch (plan §2 step 6). The browser is for the two moments someone is
+    /// waiting for it: the first run, and a click on `Start Waffled`. Everything else —
+    /// the login-item start at every boot, a server that was already up when the menu
+    /// appeared — leaves the screen alone.
+    ///
+    /// This is the rule that changed in the first-run pass: "any start this app made" used
+    /// to be enough, which meant a browser window at every login. What survives from it is
+    /// both halves that were never about who started it — do not steal the screen from
+    /// someone who only wanted the menu, and open once per process rather than per poll.
+    func testTheBrowserOpensForAFirstRunOrAClickAndNothingElse() {
         XCTAssertTrue(Lifecycle.shouldOpenBrowser(
-            newState: .running, startWasAppInitiated: true, alreadyOpened: false))
+            newState: .running, trigger: .person, isFirstRun: false, alreadyOpened: false),
+            "a person clicked Start Waffled and is waiting for something to happen")
+
+        XCTAssertTrue(Lifecycle.shouldOpenBrowser(
+            newState: .running, trigger: .app, isFirstRun: true, alreadyOpened: false),
+            "the end of a first run is the web app opening (plan §2 step 3)")
 
         XCTAssertFalse(Lifecycle.shouldOpenBrowser(
-            newState: .running, startWasAppInitiated: false, alreadyOpened: false),
+            newState: .running, trigger: .app, isFirstRun: false, alreadyOpened: false),
+            "the auto-start at login must not pop a browser at every boot")
+
+        XCTAssertFalse(Lifecycle.shouldOpenBrowser(
+            newState: .running, trigger: .notUs, isFirstRun: false, alreadyOpened: false),
             "already running when we launched — do not steal the screen")
 
         XCTAssertFalse(Lifecycle.shouldOpenBrowser(
-            newState: .running, startWasAppInitiated: true, alreadyOpened: true),
+            newState: .running, trigger: .person, isFirstRun: true, alreadyOpened: true),
             "once per process, not once per poll")
 
         for state in [RuntimeState.stopped, .starting, .unhealthy] {
             XCTAssertFalse(Lifecycle.shouldOpenBrowser(
-                newState: state, startWasAppInitiated: true, alreadyOpened: false))
+                newState: state, trigger: .person, isFirstRun: true, alreadyOpened: false),
+                "\(state) is not a server anyone can open yet")
         }
     }
 
