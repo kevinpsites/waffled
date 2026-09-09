@@ -76,7 +76,9 @@ struct MenuPresentation: Equatable {
     var startEnabled: Bool
     /// Appears only when there is something in `logs/` worth reading.
     var showLogs: Bool
-    /// Present and inert until the Sparkle appcast (plan §7, Phase 3 item 6).
+    /// The updater's item. The label carries the reason it is off, because a
+    /// `.menu`-style `MenuBarExtra` renders no tooltip on an item.
+    var checkForUpdatesLabel: String
     var checkForUpdatesEnabled: Bool
     /// "Quit anyway (server keeps running)" once a stop has refused — the second question
     /// the alert cannot ask, because by then the app is no longer on its way out.
@@ -95,6 +97,7 @@ struct MenuPresentation: Equatable {
     ///     because the server it describes is still *running* — so a successful poll must
     ///     not clear it — and because it is what changes the quit item.
     ///   - awaitingSetup: a first run whose welcome window is still waiting for a click.
+    ///   - canCheckForUpdates: Sparkle's own answer, observed on the updater.
     static func make(
         status: RuntimeStatus?,
         failure: String? = nil,
@@ -102,7 +105,8 @@ struct MenuPresentation: Equatable {
         busy: Bool = false,
         runtimeAvailable: Bool = true,
         stopFailure: String? = nil,
-        awaitingSetup: Bool = false
+        awaitingSetup: Bool = false,
+        canCheckForUpdates: Bool = false
     ) -> MenuPresentation {
         let state = status?.state
         let address = status?.serverAddress
@@ -159,9 +163,27 @@ struct MenuPresentation: Equatable {
             showStart: startable,
             startEnabled: startable && !busy,
             showLogs: faulted,
-            checkForUpdatesEnabled: false,
+            // Sparkle takes `canCheckForUpdates` away while a check or an install is in
+            // flight (and before its updater has started at all, which it reports itself
+            // with an alert of its own), so the disabled item names the ordinary reason.
+            checkForUpdatesLabel: canCheckForUpdates
+                ? "Check for updates…" : "Checking for updates…",
+            checkForUpdatesEnabled: canCheckForUpdates,
             quitTitle: stopFailure == nil
                 ? "Quit Waffled" : "Quit anyway (server keeps running)")
+    }
+
+    /// The line the menu shows once after an update installed itself and relaunched the
+    /// app — or after someone re-installed an older build, which is the supported way back
+    /// and reads the same way round.
+    ///
+    /// Nil when there is nothing to report, which is every ordinary launch.
+    static func updateNote(previous: String, current: String) -> String? {
+        switch VersionChange.describe(previous: previous, current: current) {
+        case .unchanged: return nil
+        case .upgraded: return "Updated to \(current)"
+        case .downgraded: return "Rolled back to \(current)"
+        }
     }
 }
 
@@ -289,6 +311,27 @@ enum Lifecycle {
 
     static func outcomeAfterStop(error: String?) -> StopOutcome {
         error.map { StopOutcome.report($0) } ?? .terminate
+    }
+
+    /// What to do when `stop` comes back during an **update**. Shaped like
+    /// `outcomeAfterStop` and deliberately not folded into it: the success branch is the
+    /// opposite of quitting — the app hands control back to Sparkle to swap and relaunch it.
+    enum RelaunchDecision: Equatable {
+        /// Nothing of ours is running any more: let Sparkle install and relaunch.
+        case relaunch
+        /// The server is still up, so the swap would land on top of it. Held, with the
+        /// runtime's reason, exactly as a failed stop during quit is held.
+        case hold(String)
+    }
+
+    /// A Sparkle update replaces `Waffled.app` — the runtime bundle inside it included —
+    /// and relaunches. macOS keeps a running process's mapped binaries alive after the
+    /// files under them are replaced, so a swap over a *running* server leaves the
+    /// household on the old runtime; the relaunched app then finds it `running`, stands
+    /// its one auto-start down, and the update never reaches the data at all. The stop is
+    /// what makes the relaunch's ordinary auto-start the update (plan §6).
+    static func relaunchDecision(afterStop error: String?) -> RelaunchDecision {
+        error.map { RelaunchDecision.hold($0) } ?? .relaunch
     }
 
     /// The failures the app is holding on to between polls, kept apart because they are

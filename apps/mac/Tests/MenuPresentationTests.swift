@@ -121,8 +121,6 @@ final class MenuPresentationTests: XCTestCase {
         XCTAssertTrue(m.addressEnabled)
         XCTAssertTrue(m.backupEnabled)
         XCTAssertFalse(m.showLogs)
-        // Present but inert until Phase 3 item 6 ships the appcast.
-        XCTAssertFalse(m.checkForUpdatesEnabled)
     }
 
     func testStartingDisablesTheActionsThatNeedAServer() throws {
@@ -305,5 +303,35 @@ final class MenuPresentationTests: XCTestCase {
 
         XCTAssertFalse(m.backupEnabled)
         XCTAssertTrue(m.openEnabled, "opening a browser cannot collide with anything")
+    }
+
+    // MARK: the updater
+
+    /// The item follows Sparkle's own `canCheckForUpdates`, and says why when it is off:
+    /// a `.menu`-style `MenuBarExtra` renders no tooltip, so a disabled item that does not
+    /// explain itself explains nothing.
+    func testCheckForUpdatesSaysWhichOfTheTwoStatesItIsIn() throws {
+        let s = try RuntimeStatus.decode(Fixtures.data(Fixtures.fullRunning))
+
+        let ready = MenuPresentation.make(status: s, canCheckForUpdates: true)
+        XCTAssertEqual(ready.checkForUpdatesLabel, "Check for updates…")
+        XCTAssertTrue(ready.checkForUpdatesEnabled)
+
+        let checking = MenuPresentation.make(status: s, canCheckForUpdates: false)
+        XCTAssertEqual(checking.checkForUpdatesLabel, "Checking for updates…")
+        XCTAssertFalse(checking.checkForUpdatesEnabled)
+    }
+
+    /// What the menu says after an update installed itself and relaunched — in whichever
+    /// direction it went, since re-installing an older DMG is a supported way back.
+    func testTheUpdateNoteNamesTheVersionItLandedOn() {
+        XCTAssertEqual(MenuPresentation.updateNote(previous: "0.14.3", current: "0.15.0"),
+                       "Updated to 0.15.0")
+        XCTAssertEqual(MenuPresentation.updateNote(previous: "0.15.0", current: "0.14.3"),
+                       "Rolled back to 0.14.3")
+        XCTAssertNil(MenuPresentation.updateNote(previous: "0.15.0", current: "0.15.0"),
+                     "no crossing, nothing to say")
+        XCTAssertNil(MenuPresentation.updateNote(previous: "", current: "0.15.0"),
+                     "a data directory that has never crossed has no news")
     }
 }

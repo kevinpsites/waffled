@@ -120,6 +120,18 @@ final class LifecycleTests: XCTestCase {
                        "the changed menu item is the second confirmation")
     }
 
+    /// An update is a stop, a swap and a start. macOS keeps a running process's mapped
+    /// binaries alive after the file under them is replaced, so a relaunch over a running
+    /// server leaves the household on the OLD runtime — and the new app, finding it
+    /// `running`, stands its auto-start down and never notices. So the relaunch waits for
+    /// `stop`, and a `stop` that refuses holds it back rather than pressing on.
+    func testTheUpdateRelaunchWaitsForTheServerToStop() {
+        XCTAssertEqual(Lifecycle.relaunchDecision(afterStop: nil), .relaunch)
+        XCTAssertEqual(Lifecycle.relaunchDecision(afterStop: "postgres would not shut down"),
+                       .hold("postgres would not shut down"),
+                       "the swap would land on a server still running the old bundle")
+    }
+
     /// The icon is the only thing a person sees without opening the menu, so a failed
     /// stop — the one situation that needs a person — has to reach it, exactly as a
     /// failed start does.
