@@ -637,8 +637,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   a later route guard. The fix is therefore a **typed registrar** wrapping
   `api.get/post/...` where a scope — or an explicit `sessionOnly` marker — is a *required*
   argument, so omission is a compile error and fail-closed survives the move. Retires the
-  `scope catalog covers the route table` guard and both `NOT_KEY_REACHABLE` buckets in
-  `api-keys.integration.test.ts`, which exist only because the declaration is remote from
+  `scope catalog covers the route table` guard in `api-keys.integration.test.ts` and both
+  deny buckets in `api-keys.ts`, which exist only because the declaration is remote from
   the route. ~135 routes, mechanical but wide.
 - **Shared album import** for Photos (Google Photos / iCloud).
 - **Server-side fuzzy person resolution** for capture (nicknames/aliases).

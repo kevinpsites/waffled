@@ -270,42 +270,60 @@ describe('currency conversions answer to the rewards scope', () => {
 // ── the catalog covers every live route, or the route says why not ──────────────
 // The bug above was silent because nothing tied API_SCOPES to the route table. This walks
 // lambda-api's own table, so it can't drift, and fails on any route that is neither
-// scope-matched nor listed below.
+// scope-matched nor named in a deny bucket.
 //
-// Adding a route family? Give its prefix to a resource in API_SCOPES, or list it in the
-// bucket that tells the truth: NEVER_KEY_REACHABLE is a decision; UNSCOPED_YET is debt, and
-// its `tracked` must name where that work lives. Both gate identically (absence is 403), so
-// the split is for the reader. See docs/product/api-key-scopes-plan.md.
-type NeverReachable = { why: string; prefixes: string[] }
-type UnscopedYet = NeverReachable & { tracked: string }
+// The buckets ship in src/modules/api-keys/api-keys.ts and the gate consults them, so these
+// tests check the shipped lists rather than a copy that could drift from them. Imported
+// lazily like every other src module here — the beforeAll above sets DATABASE_URL and
+// clears AUTH0_DOMAIN before anything under src/ loads.
+type DenyLists = typeof import('../src/modules/api-keys/api-keys')
+let NEVER_KEY_REACHABLE: DenyLists['NEVER_KEY_REACHABLE'] = []
+let UNSCOPED_YET: DenyLists['UNSCOPED_YET'] = []
+let NOT_KEY_REACHABLE: DenyLists['NOT_KEY_REACHABLE'] = []
 
-const NEVER_KEY_REACHABLE: NeverReachable[] = [
-  { why: 'public liveness probe', prefixes: ['/healthz'] },
-  { why: 'echoes the token sub — tells a key nothing it does not already know', prefixes: ['/api/me'] },
-  { why: 'login, OIDC, invites and self-service account are session-only', prefixes: ['/api/auth', '/auth', '/api/account', '/api/households'] },
-  { why: 'a key can never mint or manage keys', prefixes: ['/api/api-keys'] },
-  { why: 'kiosk and Waffled-Bite pairing run on their own device tokens', prefixes: ['/api/kiosk', '/api/waffled-bites'] },
-  { why: 'the capability grid is an admin session surface', prefixes: ['/api/permissions'] },
-  { why: 'offline sync is the first-party clients own transport', prefixes: ['/api/powersync'] },
-  { why: 'LLM capture and the blob upload sink are first-party client surfaces', prefixes: ['/api/capture', '/api/media'] },
-  { why: 'integrations surface — documented as always 403 for a key', prefixes: ['/api/countdowns', '/api/family-night', '/api/goal-calendar', '/api/calendar'] },
-  { why: 'per-viewer UI layout, not household data', prefixes: ['/api/today-layout'] },
-  { why: 'operator surfaces (deep health report, update channel)', prefixes: ['/api/health', '/api/updates'] },
-]
+beforeAll(async () => {
+  const m = await import('../src/modules/api-keys/api-keys')
+  NEVER_KEY_REACHABLE = m.NEVER_KEY_REACHABLE
+  UNSCOPED_YET = m.UNSCOPED_YET
+  NOT_KEY_REACHABLE = m.NOT_KEY_REACHABLE
+})
 
-const UNSCOPED_YET: UnscopedYet[] = [
-  // The same boundary bug as /api/chore-instances. PR #180 adds the prefix, so this entry
-  // only keeps the guard green until it lands.
-  { why: 'a lists route that the /api/lists prefix cannot match', prefixes: ['/api/list-items'], tracked: 'PR #180' },
-  { why: 'rhythms wants a whole new scope resource, not another prefix — nobody has designed it', prefixes: ['/api/rhythms'], tracked: 'docs/product/api-key-scopes-plan.md' },
-  // Debt rather than a boundary, and the distinction is the point: a planning session WRITES
-  // THROUGH to other modules, so with one scope per prefix a `weeklyPlanning` scope would be
-  // a skeleton key past `chores:write` and the rest. Per-route, each asks for what it needs.
-  { why: 'no correct scope exists under one-scope-per-prefix — a session writes through to chores/goals/events/meals', prefixes: ['/api/weekly-planning'], tracked: 'docs/product/api-key-scopes-plan.md' },
-]
+// A denied path answers 403 whether it was DECLARED denied or merely absent, so a test that
+// just hits one and sees 403 passes for the wrong reason. The discriminator: the answer must
+// not depend on API_SCOPES. Give a denied prefix a real scope and hold that scope — the key
+// still gets the same 403, with the same AuthError name and message, because the deny list is
+// checked first and is authoritative.
+describe('the deny list, not mere absence, refuses a denied path', () => {
+  const DENIED_PATH = '/api/permissions' // a live GET route, and a NEVER_KEY_REACHABLE prefix
+  let familyRead = ''
 
-// Checked as one list: the buckets differ in what they claim, not in how they gate.
-const NOT_KEY_REACHABLE: (NeverReachable | UnscopedYet)[] = [...NEVER_KEY_REACHABLE, ...UNSCOPED_YET]
+  beforeAll(async () => {
+    familyRead = JSON.parse(
+      (await call('POST', '/api/api-keys', kevin, { name: 'deny-probe', scopes: ['family:read'] })).body
+    ).key as string
+  })
+
+  it('refuses the path even when API_SCOPES would grant it', async () => {
+    expect(NEVER_KEY_REACHABLE.some((e) => e.prefixes.includes(DENIED_PATH))).toBe(true)
+
+    const { API_SCOPES } = await import('../src/modules/api-keys/api-keys')
+    const family = API_SCOPES.find((s) => s.resource === 'family')
+    if (!family) throw new Error('the family resource went missing from API_SCOPES')
+    const restore = [...family.prefixes]
+    family.prefixes = [...restore, DENIED_PATH] // family:read would now cover it
+    try {
+      const res = await keyCall('GET', DENIED_PATH, familyRead)
+      // Byte-identical to the absence 403: never leak WHY a path is excluded to a key holder.
+      expect(res.statusCode).toBe(403)
+      expect(JSON.parse(res.body)).toEqual({
+        error: 'AuthError',
+        message: 'This endpoint is not available to API keys',
+      })
+    } finally {
+      family.prefixes = restore
+    }
+  })
+})
 
 describe('scope catalog covers the route table', () => {
   it('leaves no live route both unscoped and unlisted', async () => {

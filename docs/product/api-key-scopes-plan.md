@@ -1,7 +1,7 @@
 # API-key scopes: findings, corrections, and the plan
 
-**Status:** investigation complete, two work items specified, neither built.
-**Written:** 2026-09-08, from the Weekly Planning branch (`worktree-weekly-planning`).
+**Status:** work item 2 built (PR below); work item 3 specified, not built.
+**Written:** 2026-09-08, alongside the Weekly Planning work that became PR #184 (merged).
 **Why it exists:** PR #184 added 29 routes that tripped a guard test from #185, and pulling
 that thread turned up a factual error that had been repeated across five files for months.
 This doc is the handoff — it should be enough to start work without re-deriving anything.
@@ -12,15 +12,16 @@ This doc is the handoff — it should be enough to start work without re-derivin
 
 Three separate things, in the order they should be done:
 
-1. **Correction of record — DONE** (commits `e0e8102c`, `701b2b2e` on `worktree-weekly-planning`).
+1. **Correction of record — DONE** (commits `e0e8102c`, `701b2b2e`, in `main` via PR #184).
    "lambda-api has no per-route middleware" was **false** and was load-bearing in five
    places. It supports both `api.use(path, mw)` and method-based
    `api.get(path, mw1, mw2, handler)`. Fixed everywhere, including the follow-on
    overstatement that middleware "cannot" pass a resolved tenant.
-2. **Move the deny list into production code — SMALL, NOT BUILT.** The allow list
-   (`API_SCOPES`) lives in `src`; the deny list (`NOT_KEY_REACHABLE`) lives in a **test
-   file** and is never consulted at runtime. Absence already fails closed, so this is
-   about making the deny decision a real declaration rather than a CI-enforced comment.
+2. **Move the deny list into production code — DONE.** The allow list (`API_SCOPES`)
+   and the deny list (`NEVER_KEY_REACHABLE` / `UNSCOPED_YET`) now both live in
+   `apps/api/src/modules/api-keys/api-keys.ts`, and `enforceApiKeyScope` consults the deny
+   list first. Absence still fails closed, so nothing moved — the deny decision is now a
+   real declaration rather than a CI-enforced comment. See [§5](#5-work-item-move-the-deny-list-into-production-code).
 3. **Declare scopes per route instead of by path prefix — LARGE, NOT BUILT.** The prefix
    model puts the scope far from the route, which has already produced three near-misses
    and leaves cross-module surfaces (Weekly Planning) with *no* correct scope. The fix
@@ -80,8 +81,13 @@ weather (readOnly) /api/weather
 ```ts
 export function enforceApiKeyScope(req: Request): void {
   const scopes = req.apiKey?.scopes ?? []
+  // Deny first, so an explicit exclusion wins if a prefix ever lands in both lists.
+  if (denyForPath(req.path)) {
+    throw new AuthError('This endpoint is not available to API keys', 403)
+  }
   const need = scopeForRequest(req.method, req.path)
   if (!need || need.denied) {
+    // Same body as the explicit deny above — a key holder never learns which applied.
     throw new AuthError('This endpoint is not available to API keys', 403)
   }
   if (!keyHasScope(scopes, need.required)) {
@@ -103,11 +109,13 @@ new route family cannot make it key-reachable. Preserve this through any refacto
 | | where it lives | consulted at runtime? |
 |---|---|---|
 | **Allow list** — `API_SCOPES` | `apps/api/src/modules/api-keys/api-keys.ts` | **yes** |
-| **Deny list** — `NEVER_KEY_REACHABLE` / `UNSCOPED_YET` | `apps/api/test/api-keys.integration.test.ts` | **no** |
+| **Deny list** — `NEVER_KEY_REACHABLE` / `UNSCOPED_YET` | `apps/api/src/modules/api-keys/api-keys.ts` | **yes**, checked first |
 | **In neither** | nowhere | denied by default |
 
-So "not in either → still denied" is *already* the behavior. But the deny list restricts
-nothing — it is a CI-enforced comment. That is work item 2.
+"Not in either → still denied" is the behavior, and always was — which is why moving the
+deny list into `src` (work item 2, [§5](#5-work-item-move-the-deny-list-into-production-code))
+changed no outcome. What it changed is that a deliberate exclusion is now a declaration
+sitting beside the allow list, rather than a CI-enforced comment in a test file.
 
 ### The guard tests
 
@@ -322,15 +330,25 @@ limitation.
 
 ---
 
-## 5. Work item: move the deny list into production code
+## 5. Work item: move the deny list into production code — DONE
 
+**Status:** built and merged; see [§8](#8-what-is-already-committed) for the commit.
 **Size:** small (~40 lines + tests). **Risk:** touches the auth path — needs care.
 **Blocked by:** nothing, but see [sequencing](#7-sequencing-and-conflicts).
 
-### Current shape (after `e0e8102c`)
+**As built**, with the one deviation called out: the buckets and a `denyForPath(path)`
+lookup live beside `API_SCOPES`; `enforceApiKeyScope` checks deny first and throws the
+identical `AuthError('This endpoint is not available to API keys', 403)` for an explicit
+deny and for absence; the test imports the lists instead of owning a copy. **No log was
+added** — of the two options below, the second. A `Set` keyed on `method+path` is not in
+fact bounded by the route count: the gate runs before routing, so `req.path` is the
+concrete URL and unrouted paths would grow the Set without limit. All 319 registered
+routes were diffed old-vs-new: zero decision changes.
 
-`apps/api/test/api-keys.integration.test.ts` holds two typed buckets, because the single
-old list conflated two different claims under one mechanism — a permanent boundary and an
+### Shape before this work (after `e0e8102c`)
+
+`apps/api/test/api-keys.integration.test.ts` held two typed buckets, because the single
+older list conflated two different claims under one mechanism — a permanent boundary and an
 unpaid debt looked identical, and adding a prefix cost one line and read as a decision
 either way:
 
@@ -433,9 +451,10 @@ route.post('/api/weekly-planning/session', { scope: sessionOnly('interactive rit
 - `API_SCOPES`' prefix lists (the resource/label/description catalog for the create-key UI
   stays — it is what `GET /api/api-keys/scopes` serves).
 - `scopeForRequest`'s longest-prefix matching and `pathMatches`' boundary rule.
-- **All three guard tests** and both deny buckets in `api-keys.integration.test.ts` — they
-  exist *only* because the declaration is remote from the route. Deleting them is the
-  signal the refactor actually landed.
+- **All three guard tests** in `api-keys.integration.test.ts`, and both deny buckets (now in
+  `apps/api/src/modules/api-keys/api-keys.ts` — see [§5](#5-work-item-move-the-deny-list-into-production-code))
+  along with `denyForPath`. They exist *only* because the declaration is remote from the
+  route. Deleting them is the signal the refactor actually landed.
 
 ### Design questions still open
 
@@ -453,12 +472,14 @@ route.post('/api/weekly-planning/session', { scope: sessionOnly('interactive rit
 
 - **PR #184 (Weekly Planning)** carries `e0e8102c` + `701b2b2e`: comments, docs, and one
   test file. **No production behavior.** It is green and independent of everything above.
-- **Work item 2 rewrites the same region of `api-keys.integration.test.ts`** that #184's
-  bucket split touches. Whichever lands second needs a rebase. Cleanest order: **merge
-  #184 first, then start work item 2 on top of main.**
-- **PR #180** gives `/api/list-items` to the `lists` resource. When it lands, guard test 2
-  goes red and names the `UNSCOPED_YET` entry to delete. That is intended — the entry is
-  `tracked: 'PR #180'` for exactly this reason.
+- **Work item 2 rewrote the same region of `api-keys.integration.test.ts`** that #184's
+  bucket split touched. **Satisfied:** #184 merged as `57704f06`, and work item 2 was built
+  on top of `main`.
+- **PR #180** gives `/api/list-items` to the `lists` resource. Still **open** as of
+  2026-09-09, so its `UNSCOPED_YET` entry stays. When it lands, guard test 2 goes red and
+  names the entry to delete — that is intended, the entry is `tracked: 'PR #180'` for
+  exactly this reason. Note #180 needs a rebase: the entry it deletes moved from
+  `apps/api/test/api-keys.integration.test.ts` to `apps/api/src/modules/api-keys/api-keys.ts`.
 - Do **not** put work item 2 in #184. It is a production auth change, and an auth bug there
   would block a planning merge for an unrelated reason.
 
@@ -466,7 +487,7 @@ route.post('/api/weekly-planning/session', { scope: sessionOnly('interactive rit
 
 ## 8. What is already committed
 
-On branch `worktree-weekly-planning` (PR #184):
+Already landed in `main` (PR #184, `57704f06`):
 
 - **`e0e8102c`** — corrected the false middleware claim in five places; split
   `NOT_KEY_REACHABLE` into `NEVER_KEY_REACHABLE` / `UNSCOPED_YET` with a required
@@ -476,8 +497,19 @@ On branch `worktree-weekly-planning` (PR #184):
   resolved tenant; recorded the wrapper choice as a preference in `route-guards.ts`, the
   engineering plan, and the developer architecture page.
 
-Neither commit changes behavior. No `CHANGELOG.md` entry for either — comments, one test
-file and docs are internal churn by the repo's own rule.
+Then work item 2, on top of `main`:
+
+- **Deny list moved into production code** — `NEVER_KEY_REACHABLE` / `UNSCOPED_YET` (and the
+  `NeverReachable` / `UnscopedYet` types) moved from the test file into
+  `apps/api/src/modules/api-keys/api-keys.ts` and exported; new `denyForPath()`;
+  `enforceApiKeyScope` consults it **first**, with a response body byte-identical to the
+  absence case; the integration test imports the lists rather than keeping a copy. Added the
+  discriminating test — a denied prefix is refused *even when `API_SCOPES` would grant it*,
+  which is what distinguishes deny from mere absence. API suite 1691 pass (+1), `tsc` clean.
+
+None of these commits changes behavior. No `CHANGELOG.md` entry for any — comments, one test
+file, one internal auth refactor with no observable change, and docs are internal churn by
+the repo's own rule.
 
 Also corrected outside the repo: the agent memory `observability-and-guards.md`, which
 asserted "no path-scoped `api.use`" and would otherwise keep re-injecting the false fact.
@@ -490,7 +522,8 @@ asserted "no path-scoped `api.use`" and would otherwise keep re-injecting the fa
 |---|---|
 | Scope catalog, `scopeForRequest`, `keyHasScope`, `enforceApiKeyScope`, `pathMatches` | `apps/api/src/modules/api-keys/api-keys.ts` |
 | The single auth gate that calls it | `apps/api/src/app.ts:112` |
-| Deny buckets + the three guard tests | `apps/api/test/api-keys.integration.test.ts` |
+| Deny buckets (`NEVER_KEY_REACHABLE` / `UNSCOPED_YET`) + `denyForPath` | `apps/api/src/modules/api-keys/api-keys.ts` |
+| The three guard tests + the deny-is-consulted test | `apps/api/test/api-keys.integration.test.ts` |
 | Per-route permission guards (`tenantRoute`, `adminRoute`, `capRoute`, `moduleRoutes`) | `apps/api/src/platform/route-guards.ts` |
 | Underlying helpers (`requireTenant`, `requireAdmin`, `requireCapability`) | `apps/api/src/modules/households/households.ts`, `apps/api/src/platform/permissions.ts` |
 | `AuthError` (its `.name` becomes the response's `error` field) | `apps/api/src/platform/auth.ts` |
