@@ -1,3 +1,5 @@
+import { MediaImage } from './components/MediaImage'
+import { refreshRecipeImage } from '../lib/api/media-recovery'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
@@ -206,7 +208,7 @@ export function RecipesLibrary() {
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/meals/recipe/${r.id}`) } }}
               >
                 <div className={`recents-img ${gradClass(r)}`}>
-                  {r.imageUrl ? <img className="rc-img-photo" src={r.imageUrl} alt="" /> : (r.emoji ?? '🍽️')}
+                  {r.imageUrl ? <MediaImage className="rc-img-photo" src={r.imageUrl} refresh={() => refreshRecipeImage(r.id)} alt="" /> : (r.emoji ?? '🍽️')}
                 </div>
                 <div className="recents-t">{r.title}</div>
               </div>
@@ -240,7 +242,7 @@ export function RecipesLibrary() {
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/meals/recipe/${r.id}`) } }}
           >
             <div className={`rc-img ${gradClass(r)}`}>
-              {r.imageUrl ? <img className="rc-img-photo" src={r.imageUrl} alt={r.title} /> : (r.emoji ?? '🍽️')}
+              {r.imageUrl ? <MediaImage className="rc-img-photo" src={r.imageUrl} refresh={() => refreshRecipeImage(r.id)} alt={r.title} /> : (r.emoji ?? '🍽️')}
               {r.isFavorite && <span className="recipes-fav">❤️</span>}
               {r.cookedCount === 0 && <span className="recipes-new" title="Never cooked" style={{ position: 'absolute', top: 8, left: 10, fontSize: 16 }}>🆕</span>}
             </div>

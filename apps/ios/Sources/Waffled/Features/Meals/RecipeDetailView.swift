@@ -214,7 +214,7 @@ struct RecipeDetailView: View {
         // URL(string:) can't load an uploaded "/media/…" path, which is why the photo used
         // to fall back to the emoji here even though the web showed it. Placeholder = the
         // category gradient + emoji, shown until/unless a real photo loads.
-        CachedImage(r.imageUrl, contentMode: .fill) {
+        CachedImage(r.imageUrl, contentMode: .fill, refreshURL: { try await MediaURL.recipe(r.id) }) {
             ZStack {
                 RecipeGradient.forCategory(r.category)
                 Text(r.emoji ?? RecipeGradient.emoji(r.category)).font(.system(size: 64))

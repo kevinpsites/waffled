@@ -142,10 +142,7 @@ struct StoredProofsSheet: View {
                 Color.clear
                     .frame(height: 128).frame(maxWidth: .infinity)
                     .overlay {
-                        AsyncImage(url: MediaURL.resolve(p.proofUrl)) { phase in
-                            if let img = phase.image { img.resizable().scaledToFill() }
-                            else { ZStack { WF.panel; ProgressView() } }
-                        }
+                        CachedImage(p.proofUrl, refreshURL: { try await MediaURL.storedProof(p.id) }) { WF.panel }
                     }
                     .clipped()
             }
@@ -174,10 +171,8 @@ struct StoredProofsSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
-                    AsyncImage(url: MediaURL.resolve(p.proofUrl)) { phase in
-                        if let img = phase.image { img.resizable().scaledToFit() }
-                        else { ZStack { WF.panel; ProgressView() }.frame(height: 240) }
-                    }
+                    CachedImage(p.proofUrl, contentMode: .fit,
+                                refreshURL: { try await MediaURL.storedProof(p.id) }) { WF.panel }
                     .frame(maxWidth: .infinity)
                     .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))

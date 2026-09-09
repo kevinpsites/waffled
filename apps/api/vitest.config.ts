@@ -21,7 +21,12 @@ export default defineConfig({
     // Signals runMigrations() to skip node-pg-migrate's cluster-wide advisory lock:
     // every test file owns an isolated, single-writer database, so the lock would only
     // serialize otherwise-parallel migrations. See src/migrate.ts.
-    env: { WAFFLED_TEST_SHARED_PG: '1' },
+    // Media URL signing deliberately has no hardcoded runtime fallback. Give integration
+    // tests an explicit non-production key while storage.test exercises the missing-key case.
+    env: {
+      WAFFLED_TEST_SHARED_PG: '1',
+      MEDIA_SIGNING_KEY: 'waffled-test-media-signing-key-not-for-production',
+    },
     testTimeout: 120_000,
     hookTimeout: 180_000,
     fileParallelism: true,

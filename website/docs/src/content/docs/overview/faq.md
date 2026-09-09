@@ -107,7 +107,7 @@ areas (chores, lists, meals…) are online REST for now. See [Mobile app](/featu
 
 ### How are backups handled?
 A backup sidecar dumps Postgres **nightly** out of the box. Point it at a host folder and/or an
-S3-compatible bucket, and optionally include media. Restore is `./waffled restore <file>`. See
+S3-compatible bucket, and include media by default. Restore is `./waffled restore <file>`. See
 [Backup & restore](/operations/backup/).
 
 ### ⚠️ Can I ever delete a Docker volume to "start fresh"?

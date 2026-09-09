@@ -161,6 +161,24 @@ describe('GET /api/health — backup check', () => {
     expect(body.status).toBe('degraded')
   })
 
+  it('degrades but reports the retained database dump when media made the run partial', async () => {
+    await withClient(async (c) => {
+      await c.query('delete from backup_runs')
+      await c.query(
+        `insert into backup_runs (status, finished_at, file_name, size_bytes, error)
+         values ('partial', now(), 'waffled-safe.sql.gz', 4321, 'media archive failed')`
+      )
+    })
+    const body = await backupCheck()
+    expect(body.checks.backup.status).toBe('degraded')
+    expect(body.checks.backup.lastStatus).toBe('partial')
+    expect(body.checks.backup.lastFile).toBe('waffled-safe.sql.gz')
+    expect(body.checks.backup.lastSizeBytes).toBe(4321)
+    expect(body.checks.backup.error).toContain('media')
+    expect(body.checks.backup.hint).toContain('database dump succeeded')
+    expect(body.status).toBe('degraded')
+  })
+
   it('degrades when the last successful backup is stale (>48h)', async () => {
     await withClient(async (c) => {
       await c.query('delete from backup_runs')

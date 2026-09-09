@@ -95,6 +95,7 @@ struct PhotosView: View {
         .fullScreenCover(isPresented: $playing) {
             ScreensaverView(content: "photos", photos: shownPhotos, weather: nil, nextEvent: nil,
                             timezone: .current, dimmed: false, bare: true, motion: motion,
+                            onMediaExpired: { Task { await model.load() } },
                             onWake: { playing = false })
         }
         .sheet(item: $detail) { photo in
@@ -346,7 +347,7 @@ struct PhotoTile: View {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .overlay {
-                    CachedImage(photo.imageUrl) { emojiTile }
+                    CachedImage(photo.imageUrl, refreshURL: { try await MediaURL.photo(photo.id) }) { emojiTile }
                 }
                 .clipped()
         } else {

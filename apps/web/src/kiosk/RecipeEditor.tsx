@@ -1,3 +1,5 @@
+import { MediaImage } from './components/MediaImage'
+import { refreshRecipeImage } from '../lib/api/media-recovery'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
@@ -681,7 +683,7 @@ export function RecipeEditorBody({
             {uploadErr && <div className="tiny" style={{ color: 'var(--danger)', fontWeight: 700, marginTop: 6 }}>{uploadErr}</div>}
             {imagePreview && (
               <div className="re-image-preview">
-                <img src={imagePreview} alt="Recipe preview" />
+                <MediaImage showRetry src={imagePreview} refresh={() => recipeId ? refreshRecipeImage(recipeId) : Promise.resolve(null)} alt="Recipe preview" />
                 <button
                   type="button"
                   className="pill"

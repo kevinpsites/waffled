@@ -1,3 +1,5 @@
+import { MediaImage } from './MediaImage'
+import { refreshPantryImage } from '../../lib/api/media-recovery'
 // "Cook from your pantry" — sidebar card + modal. Five sections (per the mock):
 //   • Plan my week (AI) — seeds the weekly planner with soon-to-expire items
 //   • Tonight · no cooking — your meal-flagged items (heat & serve / ready to eat)
@@ -141,7 +143,7 @@ function CookModal({ items, ready, mains, onClose, onChanged }: { items: PantryI
               const heat = (m.location ?? '').toLowerCase().includes('freez')
               return (
                 <div key={m.id} className="pl-cookm-card">
-                  <span className="pl-cookm-thumb">{m.imageUrl ? <img src={m.imageUrl} alt="" /> : '🍱'}</span>
+                  <span className="pl-cookm-thumb">{m.imageUrl ? <MediaImage src={m.imageUrl} refresh={() => refreshPantryImage(m.id)} alt="" /> : '🍱'}</span>
                   <div className="pl-cookm-cardmain">
                     <div className="pl-cookm-cardrow">
                       <span className="pl-cookm-cardname">{m.name}</span>

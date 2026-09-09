@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Testing
 @testable import Waffled
 
@@ -27,5 +28,58 @@ import Testing
         // A *replaced* photo is the same bug as a removed one: without the clear, the
         // previous recipe's decode stays on screen until the new one arrives.
         #expect(CachedImageDecision.forURL(url, cached: false) == .fetch)
+    }
+}
+
+private actor MediaFetchRecorder {
+    var requests: [URL] = []
+    var refreshes = 0
+    func request(_ url: URL) { requests.append(url) }
+    func refresh() { refreshes += 1 }
+}
+
+@Suite struct CachedImageRecoveryTests {
+    @Test func expiredProofOrRecipeRefetchesItsParentAndLoadsFreshSignature() async throws {
+        let old = URL(string: "https://home.test/media/house/proof.jpg?expires=100&sig=old")!
+        let fresh = URL(string: "https://home.test/media/house/proof.jpg?expires=200&sig=new")!
+        let png = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2)).image { ctx in
+            UIColor.red.setFill(); ctx.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+        }.pngData()!
+        let recorder = MediaFetchRecorder()
+        let cache = ImageMemoryCache(loadData: { url in
+            await recorder.request(url)
+            return (url == old ? Data() : png, HTTPURLResponse(url: url, statusCode: url == old ? 403 : 200, httpVersion: nil, headerFields: nil)!)
+        })
+        let image = await cache.load(old, refreshingWith: {
+            await recorder.refresh()
+            return fresh
+        })
+        #expect(image != nil)
+        #expect(await recorder.requests == [old, fresh])
+        #expect(await recorder.refreshes == 1)
+        #expect(cache.image(for: old) != nil) // signature rotation keeps decoded cache hits
+    }
+
+    @Test func repeatedForbiddenResponseDoesNotLoop() async {
+        let old = URL(string: "https://home.test/media/house/proof.jpg?expires=100&sig=old")!
+        let fresh = URL(string: "https://home.test/media/house/proof.jpg?expires=200&sig=new")!
+        let recorder = MediaFetchRecorder()
+        let cache = ImageMemoryCache(loadData: { url in
+            await recorder.request(url)
+            return (Data(), HTTPURLResponse(url: url, statusCode: 403, httpVersion: nil, headerFields: nil)!)
+        })
+        #expect(await cache.load(old, refreshingWith: { await recorder.refresh(); return fresh }) == nil)
+        #expect(await recorder.requests == [old, fresh])
+        #expect(await recorder.refreshes == 1)
+    }
+
+    @Test func unsignedFailureNeverRefreshesAHouseholdResource() async {
+        let url = URL(string: "https://images.example/food.jpg")!
+        let recorder = MediaFetchRecorder()
+        let cache = ImageMemoryCache(loadData: { url in
+            (Data(), HTTPURLResponse(url: url, statusCode: 403, httpVersion: nil, headerFields: nil)!)
+        })
+        #expect(await cache.load(url, refreshingWith: { await recorder.refresh(); return url }) == nil)
+        #expect(await recorder.refreshes == 0)
     }
 }

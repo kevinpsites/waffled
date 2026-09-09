@@ -16,8 +16,17 @@ unless you want to — Caddy already:
 - Proxies `/api/*` → the api container.
 - Proxies the Google OAuth callback → the api container.
 - Proxies the device-facing PowerSync port → the private PowerSync container.
-- Serves uploaded media at `/media/*`.
+- Serves uploaded media at short-lived signed `/media/*` bearer URLs after signature validation.
 - Can provision **automatic HTTPS** for a real hostname.
+
+:::caution[Do not bypass Caddy for uploaded media]
+Signed-media enforcement is wired into the **shipped Caddy route**. An outer proxy that forwards
+the whole site to Caddy is safe, but replacing Caddy or serving the `waffled_media` volume directly
+removes this protection unless your proxy first sends the original `/media/*` URI to
+`/api/media/authorize` as `X-Forwarded-Uri` and serves the file only after a 2xx response. A signed
+URL is a temporary bearer credential: anyone who obtains it can read that file until it expires;
+the signature check is not user, session, or household authorization.
+:::
 
 ## The easy path: `./waffled setup`
 
@@ -99,6 +108,10 @@ publish.
 Then set `CADDY_SITE_ADDRESS=:80` and `POWERSYNC_CADDY_ADDRESS=:8090` (let your outer
 proxy own TLS), and set both public URL variables to the addresses clients use.
 
+Keep `/media/*` flowing through the bundled Caddy container. If you intentionally replace Caddy,
+implement the signed-media validation described in the caution above before exposing any media
+filesystem path.
+
 ## Editing by hand
 
 The four variables `setup` writes are just entries in `infra/compose/.env` — you can set them
@@ -112,3 +125,12 @@ directly and `./waffled up`:
 | `POWERSYNC_CADDY_ADDRESS` | `:8090` locally, or the HTTPS hostname listener used for sync. |
 
 See the full list in [Environment variables](/install/environment-variables/).
+
+### Expired images on open screens
+
+Web and iOS reload the owning recipe, chore occurrence, stored-proof list, or photo
+when a signed image fails to load, then retry with its fresh URL. Recovery is bounded
+to one automatic retry per image request; deleted media stays unavailable. Ordinary
+external image failures do not trigger a household API refresh. Decoded iOS images
+continue to use stable storage keys, so scrolling and signature rotation reuse them.
+The kiosk also refreshes its photo URLs during night dimming.

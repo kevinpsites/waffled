@@ -425,6 +425,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   Today card's "pin a specific goal" chooser all shipped on web + iOS. Internally the Pinned tier
   is still the `is_featured` column; a clean rename to `is_pinned` is optional cleanup.)
 
+- **Pantry media recovery.** Uploaded photos persist stable keys, including migrated
+  legacy URLs. iOS photo grids and detail views recover expired image links.
 - **Pantry ↔ meal-planning loop.** The pantry redesign + Open Food Facts integration
   (cached barcode lookup/scanner, nutrition + colored allergen badges, household∪per-person
   allergen warnings incl. "may contain" traces, dietary flags, running-low thresholds,

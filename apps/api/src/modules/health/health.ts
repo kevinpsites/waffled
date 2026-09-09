@@ -130,9 +130,9 @@ function checkStorage(): { status: Status } & Record<string, unknown> {
   }
 }
 
-// Last automatic backup — degraded if the most recent run failed, or if the newest
-// successful dump is older than ~2 daily cycles (48h). Off cleanly when BACKUP_ENABLED
-// is false, or before the first run / migration (never a false alarm).
+// Last automatic backup — degraded if the most recent run failed or completed only
+// partially, or if the newest successful dump is older than ~2 daily cycles (48h).
+// Off cleanly when BACKUP_ENABLED is false, or before the first run / migration.
 async function checkBackup(): Promise<{ status: Status } & Record<string, unknown>> {
   if ((process.env.BACKUP_ENABLED ?? 'true') === 'false') {
     return { status: 'ok', enabled: false, note: 'Automatic backups are disabled (BACKUP_ENABLED=false).' }
@@ -149,7 +149,7 @@ async function checkBackup(): Promise<{ status: Status } & Record<string, unknow
       `select status, finished_at, file_name, size_bytes, error,
               extract(epoch from (now() - finished_at)) / 3600 as age_hours
          from backup_runs
-        where status in ('success','failed')
+        where status in ('success','partial','failed')
         order by finished_at desc nulls last
         limit 1`
     )
@@ -170,6 +170,18 @@ async function checkBackup(): Promise<{ status: Status } & Record<string, unknow
         lastBackupAt: last.finished_at,
         error: last.error ?? undefined,
         hint: 'The last backup failed. Check `./waffled logs backup` (disk space, or BACKUP_S3_* credentials/endpoint).',
+      }
+    }
+    if (last.status === 'partial') {
+      return {
+        status: 'degraded',
+        enabled: true,
+        lastStatus: 'partial',
+        lastBackupAt: last.finished_at,
+        lastFile: last.file_name ?? undefined,
+        lastSizeBytes: last.size_bytes != null ? Number(last.size_bytes) : undefined,
+        error: last.error ?? undefined,
+        hint: 'The database dump succeeded, but uploaded media was incomplete. Check `./waffled logs backup`.',
       }
     }
     const ageHours = last.age_hours == null ? null : Math.round(last.age_hours)

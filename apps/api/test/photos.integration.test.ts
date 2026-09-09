@@ -270,7 +270,7 @@ describe('photos api', () => {
     const id = JSON.parse(add.body).photo.id
 
     const got = JSON.parse((await call('GET', `/api/photos/${id}`, kevin)).body).photo
-    expect(got.imageUrl).toBe(`/media/${key}`)
+    expect(got.imageUrl).toMatch(new RegExp(`^/media/${key}\\?expires=\\d{10}&sig=[A-Za-z0-9_-]{43}$`))
 
     // Deleting the photo best-effort removes the backing blob.
     expect((await call('DELETE', `/api/photos/${id}`, kevin)).statusCode).toBe(204)

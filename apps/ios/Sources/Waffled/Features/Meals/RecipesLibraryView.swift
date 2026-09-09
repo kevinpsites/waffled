@@ -388,7 +388,7 @@ struct RecipesLibraryView: View {
         VStack(alignment: .leading, spacing: 6) {
             // CachedImage for the same reason the grid uses it — these scroll, and
             // AsyncImage would re-decode on every pass.
-            CachedImage(r.imageUrl, contentMode: .fill) {
+            CachedImage(r.imageUrl, contentMode: .fill, refreshURL: { try await MediaURL.recipe(r.id) }) {
                 RecipeGradient.forCategory(r.category)
                     .overlay(Text(r.emoji ?? RecipeGradient.emoji(r.category)).font(.system(size: 26)))
             }
@@ -461,7 +461,7 @@ struct RecipeCard: View {
                 // CachedImage (NSCache-backed, resolves relative /media URLs) shows the real
                 // photo when there is one; otherwise the category gradient + emoji. Cards
                 // live in a LazyVGrid, so AsyncImage would re-fetch on every scroll/keystroke.
-                CachedImage(recipe.imageUrl, contentMode: .fill) {
+                CachedImage(recipe.imageUrl, contentMode: .fill, refreshURL: { try await MediaURL.recipe(recipe.id) }) {
                     RecipeGradient.forCategory(recipe.category)
                         .overlay(Text(recipe.emoji ?? RecipeGradient.emoji(recipe.category)).font(.system(size: 42)))
                 }

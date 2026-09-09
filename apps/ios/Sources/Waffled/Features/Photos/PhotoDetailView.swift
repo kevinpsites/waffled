@@ -92,14 +92,9 @@ struct PhotoDetailView: View {
 
     private var stage: some View {
         ZStack(alignment: .bottomLeading) {
-            if let url = MediaURL.resolve(photo.imageUrl) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case let .success(image): image.resizable().scaledToFit()
-                    case .failure: emojiStage
-                    default: ZStack { tint; ProgressView().tint(.white) }.frame(height: 280)
-                    }
-                }
+            if photo.imageUrl != nil {
+                CachedImage(photo.imageUrl, contentMode: .fit,
+                            refreshURL: { try await MediaURL.photo(photo.id) }) { emojiStage }
             } else {
                 emojiStage
             }

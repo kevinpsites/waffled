@@ -24,6 +24,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Images recover after their links expire.** Pantry uploads keep their storage key,
+  so reads issue fresh links even for older uploads. Recipes, chore proofs, Photos
+  grids/details, and stored-proof screens refresh their owning resource and retry;
+  failed web tiles keep their layout. The iPad display keeps links fresh during night dimming.
+
+- **Media trouble no longer hides a usable database backup.** Uploaded media is included when
+  `BACKUP_INCLUDE_MEDIA` is omitted, matching the documented default. A missing media mount,
+  failed archive, or failed offsite media upload now records a visible partial/degraded run while
+  preserving the successful database dump; database dump or database-upload failures still fail
+  the run. Existing installs that left this setting unset will create an additional media archive
+  and, when S3 is configured, upload it—so disk use and offsite egress can increase after upgrade.
+
 - **API keys can now reach chore instances, chore proofs, goal lists, pantry staples and
   currency conversions.** Those endpoint families were refused for every key — "This endpoint
   is not available to API keys" — no matter which scopes the key held. They now answer to the
@@ -52,6 +64,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or server changes so one household’s data cannot appear in another. Both Today approvals
   entry points stay visible after a failed fetch. Unreachable-server notices account for
   self-hosting; expired sessions ask for sign-in instead of offering a fruitless retry.
+
+### Security
+
+- **Uploaded family media now uses expiring bearer URLs.** The API validates image bytes and
+  storage keys, signs each local-media URL, and the shipped Caddy route verifies that signature
+  before serving a file. Web and iOS displays refresh credentials before expiry, reuse decoded
+  images by their stable storage path, and fetch fresh parent data after a rejected URL. These
+  URLs reduce the lifetime of a leaked link; they do not add per-viewer or per-household
+  authorization while the link remains valid.
 
 ## [0.14.3] - 2026-09-02
 
