@@ -494,7 +494,14 @@ func processAlive(pid int) bool {
 	if err != nil {
 		return false
 	}
-	return proc.Signal(syscall.Signal(0)) == nil
+	err = proc.Signal(syscall.Signal(0))
+	if err == nil {
+		return true
+	}
+	// EPERM means it exists but belongs to someone else — a second account on a shared
+	// Mac, or a root LaunchDaemon. Reading that as "dead" would walk the refusal below
+	// straight past a live server. Same answer as supervisor.processAlive, deliberately.
+	return errors.Is(err, syscall.EPERM)
 }
 
 func signalPid(pid int, sig syscall.Signal) error {

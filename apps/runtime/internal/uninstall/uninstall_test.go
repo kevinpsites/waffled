@@ -388,3 +388,17 @@ func mustInspect(t *testing.T, opts Options) Report {
 	t.Helper()
 	return Inspect(opts)
 }
+
+// A process owned by somebody else — Waffled started by another account on a shared Mac,
+// or by a root LaunchDaemon — is still running. Signal 0 answers EPERM for it, not nil,
+// and reading that as "dead" would let uninstall walk straight past its own refusal and
+// delete the data root out from under a live Postgres.
+func TestProcessAliveCountsAProcessOwnedBySomebodyElse(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("running as root: every signal is permitted, so there is no EPERM to observe")
+	}
+	// pid 1 is launchd on macOS and init on Linux, always running and never ours.
+	if !processAlive(1) {
+		t.Error("processAlive(1) = false; a running process we may not signal is still running")
+	}
+}
