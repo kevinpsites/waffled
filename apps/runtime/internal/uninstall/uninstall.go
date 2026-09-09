@@ -352,15 +352,8 @@ func (o Options) inspect() Report {
 	}
 	r.Items = append(r.Items, pids)
 
-	if socket := o.socketDir(); socket != "" {
-		r.Items = append(r.Items, Item{
-			Kind:      KindSocket,
-			Path:      socket,
-			SizeBytes: dirSize(socket),
-			Action:    ActionRemove,
-			Present:   exists(socket),
-			Detail:    "Postgres's unix socket directory, outside the data folder because its path was too long",
-		})
+	if socket, ok := o.socketItem(); ok {
+		r.Items = append(r.Items, socket)
 	}
 
 	r.DataSizeBytes = dirSize(o.dataTarget())
@@ -380,15 +373,18 @@ func (o Options) inspect() Report {
 	return r
 }
 
-// socketDir is the fallback directory Postgres put its socket in, when there is one.
+// socketItem describes the fallback directory Postgres put its socket in, when
+// runtime.json records one. The second return is false only when there is no such
+// directory to talk about at all — a directory that is merely gone, or one we have
+// decided not to touch, is still REPORTED, because a directory Waffled made outside the
+// data root and is leaving behind is exactly what a person needs told.
 //
-// runtime.json is the only record of it and it lives outside the data root, so nothing
-// else would ever clean it up. Read best-effort: a runtime.json this build cannot parse
-// is not a reason to refuse to uninstall.
-func (o Options) socketDir() string {
+// runtime.json is the only record of it. Read best-effort: a runtime.json this build
+// cannot parse is not a reason to refuse to uninstall.
+func (o Options) socketItem() (Item, bool) {
 	st, existed, err := rtstate.Load(o.Layout.RuntimeJSON)
 	if err != nil || !existed || st.SocketDir == "" || st.SocketDir == o.Layout.Postgres {
-		return ""
+		return Item{}, false
 	}
 	// Three guards, because this is the one path outside the data root that gets
 	// deleted and it comes out of a file a person can edit: it must not be inside the
@@ -396,31 +392,47 @@ func (o Options) socketDir() string {
 	// household's data with it), and the name alone is not enough — what is in there has
 	// to be Postgres's sockets and nothing else.
 	if within(o.Layout.Root, st.SocketDir) || within(st.SocketDir, o.Layout.Root) {
-		return ""
+		return Item{}, false
 	}
 	if !strings.HasPrefix(filepath.Base(st.SocketDir), datadir.SocketDirPrefix) {
-		return ""
+		return Item{}, false
 	}
-	if !holdsOnlySockets(st.SocketDir) {
-		return ""
+
+	it := Item{
+		Kind:      KindSocket,
+		Path:      st.SocketDir,
+		SizeBytes: dirSize(st.SocketDir),
+		Action:    ActionRemove,
+		Present:   exists(st.SocketDir),
+		Detail:    "Postgres's unix socket directory, outside the data folder because its path was too long",
 	}
-	return st.SocketDir
+	// The name alone is not enough of a guard on a path that came out of a file a person
+	// can edit. Anything else in there and the directory is reported and kept, not
+	// deleted and not quietly dropped from the inventory.
+	if it.Present {
+		if why := notJustSockets(st.SocketDir); why != "" {
+			it.Action = ActionKeep
+			it.Detail = "recorded as Postgres's socket directory, kept because " + why
+		}
+	}
+	return it, true
 }
 
-// holdsOnlySockets reports whether a directory contains nothing but Postgres's socket and
-// its lock file — `.s.PGSQL.<port>` and `.s.PGSQL.<port>.lock`. An empty one qualifies:
-// the postmaster removes the socket on a clean shutdown and leaves the directory.
-func holdsOnlySockets(dir string) bool {
+// notJustSockets says why a directory is not safe to remove, or "" when it holds nothing
+// but Postgres's own socket and lock file — `.s.PGSQL.<port>` and `.s.PGSQL.<port>.lock`.
+// An empty one qualifies: the postmaster removes the socket on a clean shutdown and
+// leaves the directory behind.
+func notJustSockets(dir string) string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return false
+		return fmt.Sprintf("it could not be read (%v)", err)
 	}
 	for _, e := range entries {
 		if !strings.HasPrefix(e.Name(), ".s.PGSQL") {
-			return false
+			return "it holds files that are not Postgres sockets"
 		}
 	}
-	return true
+	return ""
 }
 
 func within(root, path string) bool {

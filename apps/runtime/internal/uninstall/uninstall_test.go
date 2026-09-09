@@ -547,13 +547,36 @@ func TestASocketDirectoryWithSomebodysFilesInItIsLeftAlone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	for _, it := range report.Items {
-		if it.Kind == KindSocket {
-			t.Errorf("a directory of somebody's own files was listed for removal: %+v", it)
-		}
+	// Reported, not silently dropped: a directory Waffled recorded, outside the data
+	// root, that is being left behind is exactly what a person needs told.
+	socket := item(t, report, KindSocket)
+	if socket.Action != ActionKeep {
+		t.Errorf("socket action = %q, want keep for a directory of somebody's own files", socket.Action)
 	}
 	if _, err := os.Stat(filepath.Join(work, "notes.txt")); err != nil {
 		t.Errorf("a directory of somebody's own files was deleted: %v", err)
+	}
+}
+
+// A socket directory already gone must report present: false, not vanish from the
+// inventory — the README promises a second run reports every item present: false, and
+// the Mac app cannot otherwise tell "never used one" from "already cleaned".
+func TestAnAlreadyRemovedSocketDirectoryIsStillReported(t *testing.T) {
+	opts, _, _ := fixture(t)
+	if _, err := Run(context.Background(), opts); err != nil {
+		t.Fatalf("first Run: %v", err)
+	}
+
+	report, err := Run(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("second Run: %v", err)
+	}
+	socket := item(t, report, KindSocket)
+	if socket.Present {
+		t.Error("the socket directory is reported present after it was removed")
+	}
+	if socket.Action != ActionRemove {
+		t.Errorf("socket action = %q, want remove", socket.Action)
 	}
 }
 
