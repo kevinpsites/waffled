@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -1133,5 +1134,28 @@ func TestTheDeleteCommandNamesTheSameDirectoryTheSummaryDid(t *testing.T) {
 	}
 	if !strings.Contains(text, opts.Layout.Root) {
 		t.Errorf("the delete command does not name this data directory:\n%s", text)
+	}
+}
+
+// The printed delete command is the one line a person is invited to run verbatim, so the
+// quoting is asserted against a real shell rather than against a string I believe to be
+// right. An apostrophe in a user's name is the case that breaks naive quoting.
+func TestTheDeleteCommandSurvivesAShell(t *testing.T) {
+	for _, dir := range []string{
+		"/Users/kev/Library/Application Support/Waffled",
+		"/Users/kev/Kevin's Data/Waffled",
+		"/Users/kev/a'b'c/Waffled",
+		`/Users/sam & jo/Waffled`,
+		`/Users/kev/"quoted"/Waffled`,
+		`/Users/kev/back\slash/Waffled`,
+	} {
+		out, err := exec.Command("/bin/sh", "-c", "printf %s "+shellQuote(dir)).Output()
+		if err != nil {
+			t.Errorf("%s: the quoted path does not parse in a shell: %v", dir, err)
+			continue
+		}
+		if string(out) != dir {
+			t.Errorf("through a shell %q came back as %q", dir, out)
+		}
 	}
 }

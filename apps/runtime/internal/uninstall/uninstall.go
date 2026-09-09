@@ -765,8 +765,12 @@ func (r Report) deleteCommand() string {
 
 // shellQuote makes a path safe to paste into a shell. The default data directory has a
 // space in it, so this is not optional.
+//
+// An embedded quote has to close the string, escape a literal one and reopen. The
+// plausible-looking version without the backslash closes and reopens, contributing
+// nothing, and silently drops the character — see the round-trip test through /bin/sh.
 func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'''`) + "'"
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // JSON is the --json document.
