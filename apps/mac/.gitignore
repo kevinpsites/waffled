@@ -1,6 +1,7 @@
 # XcodeGen generates the project from project.yml — don't commit it. Unlike iOS
-# (whose shared scheme is committed so Xcode Cloud can discover it), nothing here is
-# built by CI yet, so the whole generated project is ignored.
+# (whose shared scheme is committed so Xcode Cloud can discover it), CI generates the
+# whole project itself — `xcodegen generate` in the runtime-macos job, and again from
+# Scripts/build-app.sh — so nothing generated needs to be in the repo.
 Waffled.xcodeproj/
 Waffled-Info.plist
 

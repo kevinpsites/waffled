@@ -30,6 +30,12 @@ const (
 	CheckFail = "fail"
 )
 
+// CheckBundleManifest names the check that reports the bundle's manifest verification.
+// `doctor --json` emits these names, and apps/mac/Scripts/build-app.sh selects this one
+// out of the array to gate assembling the app — so the string is a contract with a
+// script, not a label. Change it here and change it there.
+const CheckBundleManifest = "bundle manifest"
+
 // minFreeDisk is roughly what a household needs before disk space becomes the problem:
 // the bundle is already on disk, so this is headroom for the database, media and dumps.
 const minFreeDisk = 5 << 30 // 5 GiB
@@ -44,7 +50,7 @@ func (s *Supervisor) Doctor(ctx context.Context) []Check {
 
 	// The bundle was already verified in New(), or we would not be here.
 	if m := s.manifest; m != nil {
-		add("bundle manifest", CheckOK, "%d files + %d symlinks verified — %s",
+		add(CheckBundleManifest, CheckOK, "%d files + %d symlinks verified — %s",
 			m.FileCount, m.SymlinkCount, m.VersionSummary())
 	}
 

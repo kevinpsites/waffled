@@ -39,8 +39,16 @@ import (
 // The migration bundle B adds. A leaf table nothing else references, with a Down that
 // fully undoes it — the same properties that make 0096 safe to rewind in the rollback
 // test, because this one gets rewound too.
+//
+// 9999, not a number near the current head. The downgrade guard decides "this came from a
+// newer build" by comparing migration NAMES against the newest one the bundle ships
+// (backup.fromANewerBuild: `name > BundleLevel`), so the probe only makes bundle B newer
+// while it sorts last. It was 0100 when 0100 was the newest shipped migration; 0101 landing
+// silently turned this test's subject into the renamed-or-renumbered branch instead, and the
+// suite failed asserting on a refusal about the wrong thing. 9999 cannot rot that way — do
+// not renumber it to sit beside the real migrations.
 const (
-	probeMigration = "0100_update_probe"
+	probeMigration = "9999_update_probe"
 	probeSQL       = `-- Up Migration
 -- Added by update_integration_test.go to make bundle B genuinely newer than bundle A.
 -- A leaf table nothing references, so applying and reversing it touches nothing else.

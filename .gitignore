@@ -39,6 +39,12 @@ ios/**/xcuserdata/
 ios/**/*.xcuserstate
 ios/**/DerivedData/
 
+# xcodebuild test writes this at the repo root when a scheme gathers coverage (apps/mac
+# does). Left untracked it dirties `git status --porcelain`, which is exactly what the
+# bundle manifest records as gitDirty — so running the Mac tests would mark every later
+# bundle build dirty for no reason.
+default.profraw
+
 # docker
 postgres/data/
 

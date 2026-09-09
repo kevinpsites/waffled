@@ -24,6 +24,14 @@ xcodebuild test -project Waffled.xcodeproj -scheme Waffled -destination 'platfor
   (`Waffled.app/Waffled`) builds fine and then fails to launch the host.
 - There is deliberately **no App Sandbox and no entitlements file**. The app spawns a runtime
   that runs Postgres against a real filesystem; sandboxing it breaks the only thing it does.
+- **A whole app is `Scripts/build-app.sh <bundle-dir> [out-dir]`**, not a build phase. It
+  builds Release and clones a ~670 MB runtime bundle into `Contents/Resources/runtime`; an
+  Xcode copy-files phase would re-copy all of it on every incremental build of a nine-file
+  app. CI runs the same script, then boots what it produced.
+- **`WAFFLED_DATA_DIR` is not a dev-mode variable.** `WAFFLED_RUNTIME_BIN` is what turns dev
+  mode on (the app is running a runtime it did not ship with, and the menu says so); the data
+  directory moves independently, and must move for any test run — the default is the
+  household's real `~/Library/Application Support/Waffled`.
 
 ## The runtime is a black box behind `status --json`
 

@@ -28,9 +28,10 @@ waffled-runtime doctor [--json]
 waffled-runtime version
 ```
 
-`--bundle` defaults to the directory **above** the binary — it ships at
-`Waffled.app/Contents/Resources/runtime/bin/waffled-runtime`, so `../` is the bundle
-root. `--data` defaults to `~/Library/Application Support/Waffled`.
+`--bundle` defaults to the directory **above** the binary — it ships *inside* the bundle it
+supervises, at `Waffled.app/Contents/Resources/runtime/bin/waffled-runtime`, so `../` is the
+bundle root and neither the app nor a person has to pass the flag. `--data` defaults to
+`~/Library/Application Support/Waffled`.
 
 ### The daemonize decision
 
@@ -310,7 +311,10 @@ the firewall is blocking into a clean bill of health.
 
 The runtime refuses to execute anything until the bundle matches its `manifest.json`:
 set equality on files **and symlinks**, sha256 per file, the owner-exec bit, and
-`arch`/`platform` against this machine. It is a port of `manifest.mjs verify` from
+`arch`/`platform` against this machine. **This binary is one of the files it checks** —
+`infra/native/bundle/build.sh` compiles it into `bin/waffled-runtime` before writing the
+manifest, so the supervisor verifies itself along with everything it is about to run, and a
+hand-built binary dropped into `bin/` afterwards is refused as a changed or extra file. It is a port of `manifest.mjs verify` from
 `infra/native/bundle/` (branch `native-bundle`), whose README is the interface this
 implements.
 
@@ -318,7 +322,7 @@ Symlinks are recorded and **never followed** — `bin/postgres/lib` has 17 relat
 without which `postgres` dies at dyld time, and PowerSync's `node_modules` is a 1,321-link
 pnpm farm.
 
-Verifying the real bundle (36,456 files, 1,338 symlinks, 580 MB) takes ~1.5s, so the
+Verifying the real bundle (36,478 files, 1,338 symlinks, 587 MB) takes ~1.5s, so the
 result is memoized in `bundle-verified.json`, keyed on three things: the bundle path, the
 sha256 of `manifest.json`, and a stat fingerprint (size + mtime) of every path that
 manifest lists. The manifest hash alone would not be enough — it changes with the build,
@@ -769,8 +773,8 @@ The plan's Phase 2 exit criterion is under 60s; the test fails if a cold start e
 
 ## CI
 
-`.github/workflows/native-runtime.yml` runs on every PR/push touching `apps/runtime/**` or
-`infra/native/bundle/**`:
+`.github/workflows/native-runtime.yml` runs on every PR/push touching `apps/runtime/**`,
+`apps/mac/**`, `infra/native/bundle/**` or `infra/compose/**`:
 
 - `runtime-go` (ubuntu-latest): `gofmt -l`, `go vet ./...`, `go test ./...` — the unit suite
   above, no bundle. Fast, fails fast.
@@ -779,7 +783,11 @@ The plan's Phase 2 exit criterion is under 60s; the test fails if a cold start e
   `build.sh`), then `go build ./cmd/waffled-runtime` and
   `WAFFLED_BUNDLE=<outdir> go test -tags integration -p 1 ./...` — the same integration suite
   above, boot-testing the stack from an empty data dir on free ports. This is the Phase 2 exit
-  criterion's automated check (`docs/product/native-mac-plan.md` §7).
+  criterion's automated check (`docs/product/native-mac-plan.md` §7). The same job then builds
+  `Waffled.app` around that bundle (`apps/mac/Scripts/build-app.sh`) and boots the assembled
+  app with **no dev-mode environment variables**, which is where this binary gets exercised the
+  way a household will actually run it: found by path inside the app, resolving its own
+  `--bundle`, verifying it, and bringing the stack up from an empty data directory.
 
 ## Not this task
 

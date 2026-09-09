@@ -13,6 +13,8 @@ Postgres, PowerSync, or migrations.
 ```text
 apps/mac/
   project.yml            # XcodeGen — the source of truth for the Xcode project
+  Scripts/
+    build-app.sh         # builds Waffled.app with a runtime bundle embedded
   Sources/
     WaffledApp.swift     # the MenuBarExtra scene and the menu itself
     ServerModel.swift    # the one observable object: poll, start, back up, quit
@@ -25,49 +27,95 @@ apps/mac/
   Tests/                 # XCTest; no test spawns a process
 ```
 
-## Running it on your Mac today (dev mode)
+## Building the app
 
-Nothing is embedded in the app yet — that is Phase 3 item 5 — so the app is told where to
-find a runtime through three environment variables. `open` does not pass environment, so run
-the executable inside the `.app` directly.
+Two commands: a runtime bundle, then an app with that bundle inside it.
 
 ```sh
-# 1. build the runtime binary (from apps/runtime)
-go build -o /tmp/waffled/bin/waffled-runtime ./cmd/waffled-runtime
+infra/native/bundle/build.sh fetch                        # once — populates the cache
+infra/native/bundle/build.sh build /tmp/waffled/runtime   # ~2 min; ~670 MB
+apps/mac/Scripts/build-app.sh /tmp/waffled/runtime /tmp/waffled/app
+```
 
-# 2. build the Mac app (from apps/mac)
+`build-app.sh` regenerates the Xcode project if `project.yml` is newer, builds Release,
+clones the bundle into `Waffled.app/Contents/Resources/runtime`, and then makes the
+**embedded** supervisor verify the **embedded** bundle — `waffled-runtime version`, then
+`doctor`'s manifest check over all 36,478 files and 1,338 symlinks. It is idempotent; run it
+again and it replaces the app rather than nesting a runtime inside the last one.
+
+Out comes `/tmp/waffled/app/Waffled.app`, **671 MB**, which needs nothing else on the
+machine: no Homebrew, no Node, no Docker. Run it with a scratch data directory:
+
+```sh
+WAFFLED_DATA_DIR=/tmp/waffled/data \
+  /tmp/waffled/app/Waffled.app/Contents/MacOS/Waffled
+```
+
+The icon appears within a second, the server starts, and the browser opens once it is green.
+A first start on an empty data directory runs `initdb` and every migration — measured at
+**18 s** on an M-series Mac, minutes on a slow one.
+
+The app is **ad-hoc signed**, which is enough here and nowhere else: copy it to another Mac
+and Gatekeeper will refuse to open it, because none of it is signed with a Developer ID or
+notarized. That is Phase 3 item 5. Nothing re-signs the app after the bundle goes in, and
+the order matters — signing rewrites Mach-O files, so a `codesign --deep` over an embedded
+runtime invalidates every hash in its manifest. See the packaging note in
+[`infra/native/bundle/README.md`](../../infra/native/bundle/README.md).
+
+CI does exactly this on every PR that touches `apps/mac/`, `apps/runtime/` or the bundle
+script, and then boots the assembled app with no dev-mode variables at all —
+`.github/workflows/native-runtime.yml`, the `runtime-macos` job.
+
+## Running against a runtime you are working on (dev mode)
+
+Setting `WAFFLED_RUNTIME_BIN` points the app at a runtime it did not ship with, which is
+what dev mode is: it says so in the menu, so a scratch run is never mistaken for the
+household's real server. Two variables, because `--bundle` defaults to the directory above
+the binary — so a binary inside a bundle needs no third variable to find it. `open` does not
+pass environment, so run the executable inside the `.app` directly.
+
+```sh
 xcodegen generate && xcodebuild build -project Waffled.xcodeproj -scheme Waffled \
   -destination 'platform=macOS' -derivedDataPath /tmp/waffled/dd
 
-# 3. run it, pointed at a runtime bundle and a data directory
-WAFFLED_RUNTIME_BIN=/tmp/waffled/bin/waffled-runtime \
-WAFFLED_RUNTIME_BUNDLE=/path/to/a/built/runtime/bundle \
+WAFFLED_RUNTIME_BIN=/tmp/waffled/runtime/bin/waffled-runtime \
 WAFFLED_DATA_DIR=/tmp/waffled/data \
   /tmp/waffled/dd/Build/Products/Debug/Waffled.app/Contents/MacOS/Waffled
 ```
 
-The icon appears in the menu bar within a second, goes to the *starting* pulse, and the web
-app opens in your browser once the stack is green. A first start on an empty data directory
-runs `initdb` and every migration, so give it a minute.
+Two variables is the common case — pointing at a *built bundle's* supervisor. If you are
+iterating on `apps/runtime` itself, **`go build` to a path outside the bundle** and set
+`WAFFLED_RUNTIME_BUNDLE` as well:
+
+```sh
+go build -o /tmp/waffled/bin/waffled-runtime ./cmd/waffled-runtime   # from apps/runtime
+
+WAFFLED_RUNTIME_BIN=/tmp/waffled/bin/waffled-runtime \
+WAFFLED_RUNTIME_BUNDLE=/tmp/waffled/runtime \
+WAFFLED_DATA_DIR=/tmp/waffled/data \
+  /tmp/waffled/dd/Build/Products/Debug/Waffled.app/Contents/MacOS/Waffled
+```
+
+Both halves of that matter. The bundle is verified against its `manifest.json` on every
+command and the manifest has **no exemption for the supervisor's own binary** — it is a
+bundled file like any other — so `go build -o <bundle>/bin/waffled-runtime` breaks the very
+bundle you were testing with (`changed: bin/waffled-runtime`, and nothing starts). And a
+binary built outside a bundle has no bundle above it, so the `--bundle` default has nothing
+to find: `WAFFLED_RUNTIME_BUNDLE` is what tells it which runtime to drive.
 
 | variable | what it is | required |
 |---|---|---|
-| `WAFFLED_RUNTIME_BIN` | path to a built `waffled-runtime` — **setting this is what turns dev mode on** | yes |
-| `WAFFLED_RUNTIME_BUNDLE` | a runtime bundle directory, passed as `--bundle` | in practice yes |
+| `WAFFLED_RUNTIME_BIN` | path to a `waffled-runtime` — **setting this is what turns dev mode on** | no |
+| `WAFFLED_RUNTIME_BUNDLE` | a runtime bundle directory, passed as `--bundle` | no — defaults to the directory above the binary, which is right when the binary is in a bundle |
 | `WAFFLED_DATA_DIR` | passed as `--data`; omit to use `~/Library/Application Support/Waffled` | no |
 
 Two things worth knowing:
 
-- **Build the binary outside the bundle.** A runtime bundle is verified against its
-  `manifest.json` on every command, and an unlisted file under `bin/` is an `extra file`
-  refusal — `go build -o <bundle>/bin/waffled-runtime` breaks the bundle you were trying to
-  test with. Build somewhere else and point `WAFFLED_RUNTIME_BIN` at it.
-- **The port will not be 8080** if you have the Compose stack up; the runtime takes the next
+- **`WAFFLED_DATA_DIR` is not a dev-mode variable.** It moves the data, not the code, and it
+  applies to an embedded runtime too — which is how the assembled app is tested without
+  writing into the household's real data directory.
+- **The port will not be 8080** if you have the Compose stack up. The runtime takes the next
   free one and reports it. That is the runtime working, not a fault.
-
-Without `WAFFLED_RUNTIME_BIN` the app looks for
-`Waffled.app/Contents/Resources/runtime/bin/waffled-runtime` — which nothing puts there yet —
-and the menu says so rather than reporting a stopped server.
 
 ## The contract it depends on
 
@@ -143,7 +191,6 @@ Phase 3 item numbers from `docs/product/native-mac-plan.md` §7:
 
 | missing | item |
 |---|---|
-| the runtime bundle embedded in `Resources/runtime/` (hence dev mode) | 1, finished by 5 |
 | the first-run sheet (welcome → starting → ready) and the MacBook warning | 3 |
 | Developer ID signing + notarization of every embedded binary, and the DMG | 5 |
 | Sparkle, and a `Check for updates…` that does something | 6 |
@@ -158,7 +205,9 @@ xcodebuild test  -project Waffled.xcodeproj -scheme Waffled -destination 'platfo
 
 The destination is the host Mac — there is no simulator. Always pass
 `-project Waffled.xcodeproj`: `apps/ios` has a scheme with the same name, and a bare
-`-scheme Waffled` from the repo root can pick the wrong one.
+`-scheme Waffled` from the repo root can pick the wrong one. For a whole app rather than
+just the binary, use `Scripts/build-app.sh` — a copy-files build phase would re-copy 670 MB
+on every incremental build of a nine-file app.
 
 No test spawns a process. `RuntimeProcessRunning` is the seam, and the tests assert the argv
 the app would really have used — the piece whose breakage looks exactly like a broken server.
