@@ -77,10 +77,8 @@ final class LifecycleTests: XCTestCase {
     /// the login-item start at every boot, a server that was already up when the menu
     /// appeared — leaves the screen alone.
     ///
-    /// This is the rule that changed in the first-run pass: "any start this app made" used
-    /// to be enough, which meant a browser window at every login. What survives from it is
-    /// both halves that were never about who started it — do not steal the screen from
-    /// someone who only wanted the menu, and open once per process rather than per poll.
+    /// Why it is narrower than "any start this app made": docs/product/native-mac-plan.md,
+    /// Phase 3 item 3, "The relaunch rule".
     func testTheBrowserOpensForAFirstRunOrAClickAndNothingElse() {
         XCTAssertTrue(Lifecycle.shouldOpenBrowser(
             newState: .running, trigger: .person, isFirstRun: false, alreadyOpened: false),
