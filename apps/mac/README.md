@@ -20,6 +20,7 @@ apps/mac/
     WaffledApp.swift     # the MenuBarExtra scene and the menu itself
     ServerModel.swift    # the one observable object: poll, start, back up, quit
     Updater.swift        # Sparkle: the check, and the stop before the relaunch
+    UpdateFlow.swift     # the update state machine — armed until we hand the app over
     Updates.swift        # which way a version crossing went; the feed-URL seam
     RuntimeClient.swift  # locating waffled-runtime and running its four subcommands
     RuntimeStatus.swift  # decoding `status --json`
@@ -236,8 +237,8 @@ failed stop would leave the household's server up with no icon left to explain i
 The one exception is a refused stop with an **update already downloaded**: leaving is then
 the one thing the app must not offer, because Sparkle's installer swaps `Waffled.app` the
 moment this process exits, whatever the reason (see "Updates"). The item reads **Quit — stop
-the server first (an update is waiting)** and is disabled; `Install the update now` retries
-the stop, and `waffled-runtime stop` in Terminal is the way out if it keeps refusing.
+the server first (an update will install on quit)** and is disabled; `Install the update now`
+retries the stop, and `waffled-runtime stop` in Terminal is the way out if it keeps refusing.
 
 ## Updates
 
@@ -264,8 +265,17 @@ than an ordinary check: Sparkle counts the postponed session as still in progres
 `Check for updates…` would do nothing until the app relaunches.) It is
 the same rule as quit, for the same reason. Quit obeys it too, and has to: once the
 installer has been prepared it finishes the swap when this process exits, for **any**
-reason, so with an update waiting a refused stop disables quitting outright rather than
-offering "Quit anyway". If the install aborts
+reason, so with an update armed a refused stop disables quitting outright rather than
+offering "Quit anyway".
+
+**"Armed" is decided by Sparkle, not by what the app is holding.** The moment Sparkle has
+extracted and validated the new app, `Autoupdate` has done stage 1 and is listening for this
+process to exit; from then on it finishes the swap on *any* termination — an abort, the
+alert's **Install on Quit**, a crash, a force quit. So the app latches "armed" on the
+earliest news of it (`didExtractUpdate`) and never unlatches: not for an ending cycle, not
+for an abort, not for an error. It clears in one place, once the server is really down and
+the app has been handed over. All of that is one state machine, `UpdateFlow.swift`, whose
+(phase, event) table is the whole rule. If the install aborts
 *after* that stop — a signature that does not check out, an authorisation someone declined —
 the app starts the server back up and says why, rather than leaving the household with
 neither a server nor an update.

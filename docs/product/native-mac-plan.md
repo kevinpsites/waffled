@@ -438,11 +438,19 @@ nothing to serve until that lands.
      one it stopped and says why.
    - **Quit obeys the same rule, and has to.** Once Sparkle's installer has extracted and
      validated the new app it listens for this process to exit and finishes the swap whenever
-     that happens, for any reason at all (`Autoupdate/AppInstaller.m`), and Sparkle exposes no
-     way to cancel it. So a refused stop with an update waiting is the one case where
-     `Quit anyway (server keeps running)` cannot be offered: the item reads `Quit — stop the
-     server first (an update is waiting)` and is disabled, with `Install the update now` as
-     the retry and `waffled-runtime stop` in Terminal as the way out.
+     that happens, for any reason at all (`Autoupdate/AppInstaller.m` — `startInstallation`
+     arms it as soon as validation passes, well before the app is asked to postpone
+     anything), and Sparkle exposes no way to cancel it. So a refused stop with an update
+     armed is the one case where `Quit anyway (server keeps running)` cannot be offered: the
+     item reads `Quit — stop the server first (an update will install on quit)` and is
+     disabled, with `Install the update now` as the retry and `waffled-runtime stop` in
+     Terminal as the way out. **The alert's `Install on Quit` button is handled the same
+     way**: it ends the cycle with no error and leaves the app holding no install block at
+     all, while Sparkle stays armed — so the gate is keyed on the flow's own latched
+     `armed`, set on the earliest news of a prepared installer and never cleared by a cycle
+     ending, an abort or an error. It clears in one place only, once our stop has succeeded
+     and the app has been handed over. The whole thing is a table in
+     `apps/mac/Sources/UpdateFlow.swift`.
    - **Known edge, still open:** dragging a newer DMG over a running install has the same
      stale-server problem with nobody to stop the server first — the swapped app keeps
      talking to the runtime already in memory until the next stop/start. Item 5 will either
