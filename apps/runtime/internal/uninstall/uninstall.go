@@ -232,11 +232,12 @@ func Run(ctx context.Context, o Options) (Report, error) {
 			continue
 		}
 		if err := o.remove(ctx, *it); err != nil {
+			// The marker is internal bookkeeping; what reaches the user is the reason.
 			it.Error = unwrapMarker(err)
-			problems = append(problems, err)
 			if errors.Is(err, errStillRunning) {
 				stillLive = true
 			}
+			problems = append(problems, errors.New(it.Error))
 		}
 	}
 
