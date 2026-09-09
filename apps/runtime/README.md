@@ -795,7 +795,10 @@ The plan's Phase 2 exit criterion is under 60s; the test fails if a cold start e
   `Waffled.app` around that bundle (`apps/mac/Scripts/build-app.sh`) and boots the assembled
   app with **no dev-mode environment variables**, which is where this binary gets exercised the
   way a household will actually run it: found by path inside the app, resolving its own
-  `--bundle`, verifying it, and bringing the stack up from an empty data directory.
+  `--bundle`, verifying it, and bringing the stack up — twice. Once from an empty data
+  directory, where the app holds its one auto-start for the welcome window and the CLI's own
+  `start` does the setup a person's click would; and once on that set-up directory, which the
+  app auto-starts by itself.
 
 ## Not this task
 

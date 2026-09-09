@@ -146,7 +146,10 @@ jobs:
     # (Release build + the APFS clone of 670 MB into the .app + the embedded runtime
     # verifying its own manifest), and the smoke boot 19s, of which 6s was an empty data
     # directory becoming a running server — initdb, 96 migrations, api, PowerSync, Caddy.
-    # 92 seconds for all four; the whole macOS job was 11m07s warm. 60 minutes is headroom
+    # The boot is two phases now, measured on run 34378498037 (the runner, not this Mac):
+    # 11s for the empty directory to become a running server and 6s for the relaunch to
+    # come back up, plus the 30s dwell that proves the first run holds — about a minute
+    # rather than 19s. The whole macOS job was 11m07s warm. 60 minutes is headroom
     # for the cold-cache path (fetch_powersync's clone, install and build, plus ~1 GB of
     # downloads) without masking a genuine hang.
     timeout-minutes: 60
@@ -256,17 +259,16 @@ jobs:
       # set, and only to keep this run out of ~/Library/Application Support/Waffled. The
       # executable is run directly because `open` cannot pass environment to an app.
       #
-      # Two launches, because an empty data directory and a set-up one are now different
-      # launches (apps/mac/README.md, "First run"):
-      #   1. empty — a first run, where the app deliberately starts NOTHING: its welcome
-      #      window is asking, and a runner has nobody to click it. What is asserted is
-      #      exactly that nothing came up. (A first poll that has not answered yet also
-      #      reads as stopped, so this is a regression guard against starting anyway,
-      #      not proof of the decision.)
-      #   2. set up — the ordinary launch, and the one that exercises everything: the app
-      #      auto-starts the server it finds down, reaches green, and answers on /healthz.
-      #      The cluster is created by the CLI in between, which is the half a person does
-      #      by clicking.
+      # Two phases, because an empty data directory and a set-up one are now two different
+      # launches, and neither one exercises the other:
+      #   1. First run. The app holds its one auto-start open while the welcome window asks
+      #      — that is the feature, and it is asserted here rather than worked around: the
+      #      stack must stay down for as long as we watch. Then the CLI does what the
+      #      button does (`start`), because nobody clicks on a runner, and the window
+      #      follows the server. Green, and /healthz answers.
+      #   2. Quiet relaunch. Stop, kill the app, launch it again on the same directory —
+      #      now initialized, so `start` is never called: the app's own auto-start has to
+      #      bring the server up, which is the half phase 1 no longer covers.
       - name: Smoke boot the assembled .app (no dev-mode envs)
         env:
           APP: ${{ runner.temp }}/app/Waffled.app
@@ -295,91 +297,119 @@ jobs:
           trap teardown EXIT
 
           rc=0
-
-          # 1. The first run: the app must leave an empty data directory alone.
-          WAFFLED_DATA_DIR="$DATA" "$APP/Contents/MacOS/Waffled" >>"$RUNNER_TEMP/mac-app.log" 2>&1 &
-          app_pid=$!
-          echo "app pid $app_pid (first run — nothing should start)"
-          sleep 45
-          if ! kill -0 "$app_pid" 2>/dev/null; then
-            echo "::error::the menu-bar app exited on a first run"
-            cat "$RUNNER_TEMP/mac-app.log"
-            exit 1
-          fi
-          held="$("$RT" status --json --data "$DATA" 2>/dev/null \
-            | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["state"], d["initialized"])')" || held=""
-          echo "after 45s on an empty data directory: ${held:-(no status yet)}"
-          # `initialized` is the flag the app reads to know this is a first run, so it is
-          # worth pinning through the assembled binary and not only in the Go unit tests.
-          if [ "$held" != "stopped False" ]; then
-            echo "::error::a first run waits for the welcome window's button, but status said: $held"
-            rc=1
-          fi
-          kill "$app_pid" 2>/dev/null || true
-          wait "$app_pid" 2>/dev/null || true
-          app_pid=""
-
-          # 2. Set the data directory up the way the button does, then hand it back. This
-          # is the expensive part — initdb plus every migration — and it is the runtime's
-          # own work, not the app's.
-          "$RT" start --data "$DATA" || { echo "::error::the CLI could not set the data directory up"; exit 1; }
-          "$RT" stop --data "$DATA" || { echo "::error::the CLI could not stop what it started"; exit 1; }
-
-          WAFFLED_DATA_DIR="$DATA" "$APP/Contents/MacOS/Waffled" >>"$RUNNER_TEMP/mac-app.log" 2>&1 &
-          app_pid=$!
-          echo "app pid $app_pid (relaunch — the app auto-starts a server it finds down)"
-
-          # Bounded at ~3 minutes: locally this is seconds on a warm cluster, but the
-          # runner has a third of the cores and a cold filesystem.
-          state=""
           doc=""
-          for i in $(seq 1 90); do
-            sleep 2
-            if ! kill -0 "$app_pid" 2>/dev/null; then
-              echo "::error::the menu-bar app exited before the server came up"
-              cat "$RUNNER_TEMP/mac-app.log"
-              exit 1
-            fi
-            # One read of the document per attempt, parsed twice: `state` now and
-            # `urls.local` after the loop, so the URL is the one belonging to the status
-            # that ended the loop rather than a second, later stack state.
-            #
-            # Parsed, not grepped: every service has a "state" of its own, and the first
-            # one a regex finds need not be the stack's. `|| doc=""`: GitHub runs each step
-            # with `bash -e`, and a status that cannot answer yet (no data dir, no
-            # supervisor) would otherwise end the step on its exit code instead of going
-            # round the loop again.
+          state=""
+          initialized=""
+
+          # One read of the document per attempt, parsed rather than grepped: every service
+          # has a `state` of its own, and the first one a regex finds need not be the
+          # stack's. `|| doc=""`: GitHub runs each step with `bash -e`, and a status that
+          # cannot answer yet would otherwise end the step on its exit code instead of
+          # going round the loop again.
+          read_status() {
             doc="$("$RT" status --json --data "$DATA" 2>/dev/null)" || doc=""
             state="$(printf '%s' "$doc" \
               | python3 -c 'import json,sys; print(json.load(sys.stdin)["state"])')" || state=""
-            echo "  $((i * 2))s ${state:-(no status yet)}"
-            if [ "$state" = running ]; then break; fi
-          done
+            initialized="$(printf '%s' "$doc" \
+              | python3 -c 'import json,sys; print(str(json.load(sys.stdin)["initialized"]).lower())')" \
+              || initialized=""
+            return 0
+          }
 
-          if [ "$state" != running ]; then
-            echo "::error::the assembled app never reached state=running"
+          # shellcheck disable=SC2329  # called from both phases below
+          alive() {
+            if kill -0 "$app_pid" 2>/dev/null; then return 0; fi
+            echo "::error::$1"
             cat "$RUNNER_TEMP/mac-app.log"
-            rc=1
-          fi
-          "$RT" status --data "$DATA" || rc=1
+            exit 1
+          }
 
-          # The health URL the app itself would open, out of the same document the loop
-          # ended on. /healthz is Caddy's unauthenticated one, so a 200 here means Caddy,
-          # the api behind it and everything the api needed to start are all up
-          # (/api/health is admin-only and answers 401 by design).
-          url="$(printf '%s' "$doc" \
-            | python3 -c 'import json,sys; print(json.load(sys.stdin)["urls"]["local"])')" || url=""
-          if [ -n "$url" ]; then
+          # The health URL the app itself would open, out of the same document the caller
+          # last read. /healthz is Caddy's unauthenticated one, so a 200 means Caddy, the
+          # api behind it and everything the api needed are all up (/api/health is
+          # admin-only and answers 401 by design).
+          # shellcheck disable=SC2329  # called from both phases below
+          check_health() {
+            url="$(printf '%s' "$doc" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["urls"]["local"])')" || url=""
+            if [ -z "$url" ]; then
+              echo "::error::status --json reported no local URL"
+              rc=1
+              return 0
+            fi
             # `|| code=000`: curl exits 7 on a refused connection, and under the step's
             # inherited `-e` an unguarded substitution would end the step right here — the
             # one failure this check exists to report, turned into a bare red X.
             code="$(curl -s -o /dev/null -w '%{http_code}' "$url/healthz")" || code=000
             echo "GET $url/healthz -> $code"
             [ "$code" = 200 ] || { echo "::error::$url/healthz answered $code"; rc=1; }
-          else
-            echo "::error::status --json reported no local URL"
+            return 0
+          }
+
+          # 1. The first run. The app must leave an empty data directory alone: its welcome
+          # window is asking, and the click is what starts a household's server.
+          WAFFLED_DATA_DIR="$DATA" "$APP/Contents/MacOS/Waffled" >>"$RUNNER_TEMP/mac-app.log" 2>&1 &
+          app_pid=$!
+          echo "app pid $app_pid (first run — the welcome window is asking)"
+
+          # 30 seconds of it holding. The app polls every 2s, so a start it had decided to
+          # make would read as `starting` well inside this window.
+          for i in $(seq 1 15); do
+            sleep 2
+            alive "the menu-bar app exited during a first run"
+            read_status
+            echo "  $((i * 2))s ${state:-(no status yet)} initialized=${initialized:-?}"
+            if [ "$state" != stopped ] || [ "$initialized" != false ]; then
+              echo "::error::a first run waits for the window's button, but status said ${state:-(none)} initialized=${initialized:-?}"
+              rc=1
+              break
+            fi
+          done
+
+          # The click, in the only form a runner has: `Set up Waffled` runs exactly this,
+          # and the window follows the server rather than its own button. This is the
+          # expensive half — initdb plus every migration — and it is the runtime's work.
+          "$RT" start --data "$DATA" || { echo "::error::the runtime could not set up an empty data directory"; exit 1; }
+          alive "the menu-bar app exited while its first run came up"
+          read_status
+          echo "after the first start: ${state:-(no status yet)} initialized=${initialized:-?}"
+          [ "$state" = running ] || { echo "::error::the first start returned but status said ${state:-(none)}"; rc=1; }
+          [ "$initialized" = true ] || { echo "::error::a set-up data directory must report initialized=true"; rc=1; }
+          check_health
+
+          # 2. The quiet relaunch: the same directory, now set up, and nothing to click.
+          # `start` is deliberately not called again — the app's own auto-start is what has
+          # to bring this one up.
+          "$RT" stop --data "$DATA" || { echo "::error::the runtime could not stop what it started"; exit 1; }
+          kill "$app_pid" 2>/dev/null || true
+          wait "$app_pid" 2>/dev/null || true
+          app_pid=""
+
+          WAFFLED_DATA_DIR="$DATA" "$APP/Contents/MacOS/Waffled" >>"$RUNNER_TEMP/mac-app.log" 2>&1 &
+          app_pid=$!
+          echo "app pid $app_pid (relaunch — the app starts the server it finds down)"
+
+          # Bounded at ~3 minutes: a warm cluster comes up in seconds, but the runner has a
+          # third of the cores and a cold filesystem.
+          state=""
+          for i in $(seq 1 90); do
+            sleep 2
+            alive "the menu-bar app exited before the server came up"
+            read_status
+            echo "  $((i * 2))s ${state:-(no status yet)}"
+            if [ "$state" = running ]; then break; fi
+          done
+
+          if [ "$state" != running ]; then
+            # The last state is in the message because `unhealthy` is a legitimate transient
+            # here (a service still coming up), and a run that ends parked on it looks
+            # nothing like one where the app never tried.
+            echo "::error::the relaunched app never reached running — last state ${state:-(none)}"
+            cat "$RUNNER_TEMP/mac-app.log"
             rc=1
           fi
+          "$RT" status --data "$DATA" || rc=1
+          check_health
 
           # Stopping is itself part of what this step proves, so a `stop` that fails is a
           # failure and not just a mess to clean up. The trap then runs a second, silent

@@ -69,10 +69,13 @@ runtime invalidates every hash in its manifest. See the packaging note in
 
 CI does exactly this on every PR that touches `apps/mac/`, `apps/runtime/` or the bundle
 script, and then boots the assembled app with no dev-mode variables at all —
-`.github/workflows/native-runtime.yml`, the `runtime-macos` job. It boots it **twice**:
-once on an empty data directory, where the assertion is that nothing started (a first run
-waits for a person, and a runner has nobody to click), and again after the CLI has created
-the cluster, where the app auto-starts the server and `/healthz` must answer 200.
+`.github/workflows/native-runtime.yml`, the `runtime-macos` job. It boots it **twice**,
+because a first run and every launch after it are now different launches. First on an empty
+data directory, where the assertion is that the app starts nothing — the welcome window is
+asking, and a runner has nobody to click — after which the CLI plays the button (`start`)
+and `/healthz` must answer 200 with the app still watching. Then again on that same, now
+set-up directory, where the app's own auto-start has to bring the server back up with no
+`start` of ours.
 
 ## Running against a runtime you are working on (dev mode)
 
