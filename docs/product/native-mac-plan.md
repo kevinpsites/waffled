@@ -354,15 +354,22 @@ Throwaway bash under `infra/native/spike/`. Purpose: **learn**, not build.
 
 ### Phase 3 — Menu-bar app
 
-In progress. The app exists and drives a real server; the notarization spike (item 5) was
-deliberately deferred by the user, so nothing is embedded yet and the app is run in dev mode
-(three environment variables, `apps/mac/README.md`).
+In progress. The app exists, carries its own runtime and drives a real server from it;
+CI assembles the `.app` and boots it on every change. What is left is the polish and the
+paperwork: the first-run sheet (item 3), and Developer ID signing, notarization and Sparkle
+(items 5 and 6), which the user deliberately deferred — so the app is ad-hoc signed and
+Gatekeeper refuses it on any Mac but the one that built it.
 
 1. `apps/mac/` SwiftUI `MenuBarExtra`, XcodeGen project like iOS, bundles the runtime and
-   binaries under `Resources/runtime/`. *(done — PR #195)* → The XcodeGen project, the
-   `status --json` client and the app are in place, verified against a real bundle; the
-   **embedding** is the half that waits on item 5's signing pipeline, since every binary
-   inside `Resources/runtime/` has to be signed with the app.
+   binaries under `Resources/runtime/`. *(done — PR #195 the app, PR #TBD the embedding)* →
+   The XcodeGen project, the `status --json` client and the app landed first; the
+   **embedding** followed: `waffled-runtime` is now built into the bundle (and into its
+   manifest) by `infra/native/bundle/build.sh`, `apps/mac/Scripts/build-app.sh` assembles a
+   671 MB `Waffled.app` with that bundle cloned into `Contents/Resources/runtime`, and CI
+   boot-tests the assembled app with **no dev-mode environment variables** — it finds the
+   runtime it carries, verifies it against its manifest and brings a real server up from an
+   empty data directory. Signing is not a prerequisite for embedding after all: it is a
+   later pass over the same tree (item 5), which is why the manifest is written last.
 2. Icon states (stopped / starting / running / error), the menu from §2, "Open Waffled".
    *(done — PR #195; the first-run sheet is item 3)* → The Waffled mark itself — the closed
    waffle iron from the logo, drawn in CoreGraphics as a template image (a menu-bar image is
