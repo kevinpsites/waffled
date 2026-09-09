@@ -72,13 +72,10 @@ class LlmHttpError extends Error {
 const AI_RETRIES = Math.max(0, Number(process.env.AI_MAX_RETRIES ?? 2))
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-// Retry provider 5xx/429 and transport errors (timeout abort, dropped socket), but
-// NOT 4xx (auth/bad request) or a parse/refusal — those won't fix themselves.
+// Only retry when the provider ANSWERED and said it didn't do the work.
+// Timeouts / transport aborts are ambiguous — the generation may be in flight.
 function isRetryable(err: unknown): boolean {
-  if (err instanceof LlmHttpError) return err.status === 429 || err.status >= 500
-  const name = (err as { name?: string } | null)?.name
-  const msg = err instanceof Error ? err.message : ''
-  return name === 'AbortError' || /fetch failed|terminated|ECONNRESET|ETIMEDOUT|socket hang up|network/i.test(msg)
+  return err instanceof LlmHttpError && (err.status === 429 || err.status >= 500)
 }
 
 async function fetchJson(url: string, init: RequestInit, timeoutMs: number): Promise<unknown> {

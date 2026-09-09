@@ -177,9 +177,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Timed-out AI prompts are never reissued.** Provider timeouts and connection errors
+  no longer make Waffled silently repeat the same request up to two more times, avoiding
+  duplicate generations and charges for a single action. Received 429/5xx responses
+  continue to retry as transient provider failures.
+  
 - **An impossible chore date is refused instead of erroring.** Saving a chore dated to a day
   that doesn't exist (a 31st of February, say) reached the database and came back as a bare
   server error. It is now turned away with a clear message, and a real date still saves.
+  
 - **A session whose household is gone now signs you out instead of getting stuck.** If the
   household your device is signed in to disappears — a restored backup, a deleted
   household, a rebuilt server — the app used to sit there looking signed in while every

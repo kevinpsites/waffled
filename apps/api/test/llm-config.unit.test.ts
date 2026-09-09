@@ -175,9 +175,29 @@ describe('completeJson — retries transient provider failures', () => {
     expect(fetchMock.mock.calls.length).toBe(2)
   })
 
+  it('retries a 429 then succeeds', async () => {
+    const llm = await loadLlmOpenai()
+    const fetchMock = vi.fn().mockResolvedValueOnce(httpFail(429)).mockResolvedValueOnce(okResponses)
+    vi.stubGlobal('fetch', fetchMock)
+    const r = await llm.completeJson('h1', req)
+    expect(r.via).toBe('openai')
+    expect(r.data).toEqual({ suggestions: [] })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('does NOT retry a 400 (bad request / auth) — fails immediately', async () => {
     const llm = await loadLlmOpenai()
     const fetchMock = vi.fn().mockResolvedValue(httpFail(400))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(llm.completeJson('h1', req)).rejects.toThrow()
+    expect(fetchMock.mock.calls.length).toBe(1)
+  })
+
+  it('does not reissue a timed-out prompt', async () => {
+    const llm = await loadLlmOpenai()
+    const timeout = new Error('The operation was aborted')
+    timeout.name = 'AbortError'
+    const fetchMock = vi.fn().mockRejectedValue(timeout)
     vi.stubGlobal('fetch', fetchMock)
     await expect(llm.completeJson('h1', req)).rejects.toThrow()
     expect(fetchMock.mock.calls.length).toBe(1)
