@@ -28,19 +28,26 @@ struct RuntimeLocation: Equatable {
 }
 
 enum RuntimeLocator {
-    /// The three dev-mode variables, documented in README.md. They exist because the app
-    /// is useful before anything is embedded in it: the runtime bundle is built by
-    /// `apps/runtime/build.sh` long before Phase 3 item 5 teaches the app to carry one.
+    /// The environment overrides, documented in README.md. `WAFFLED_RUNTIME_BIN` and
+    /// `WAFFLED_RUNTIME_BUNDLE` point the app at a runtime it did not ship with — that is
+    /// dev mode, and it is how this app was useful before anything was embedded in it.
+    ///
+    /// `WAFFLED_DATA_DIR` is **not** one of those: it moves the data, not the code, and it
+    /// applies to the embedded runtime too. That is what lets CI boot the assembled `.app`
+    /// (and anyone try a build) without writing into the household's real data directory —
+    /// a thing you want most for the runtime you actually shipped.
     static let binaryVariable = "WAFFLED_RUNTIME_BIN"
     static let bundleVariable = "WAFFLED_RUNTIME_BUNDLE"
     static let dataVariable = "WAFFLED_DATA_DIR"
 
     static func locate(environment: [String: String], resourceURL: URL?) -> RuntimeLocation? {
+        let dataDir = environment[dataVariable].flatMap(directory)
+
         if let binary = environment[binaryVariable], !binary.isEmpty {
             return RuntimeLocation(
                 binary: URL(fileURLWithPath: binary),
                 bundleDir: environment[bundleVariable].flatMap(directory),
-                dataDir: environment[dataVariable].flatMap(directory),
+                dataDir: dataDir,
                 isDevMode: true)
         }
 
@@ -55,7 +62,7 @@ enum RuntimeLocator {
         guard let resourceURL else { return nil }
         let bundleDir = resourceURL.appendingPathComponent("runtime")
         let binary = bundleDir.appendingPathComponent("bin/waffled-runtime")
-        return RuntimeLocation(binary: binary, bundleDir: bundleDir, dataDir: nil, isDevMode: false)
+        return RuntimeLocation(binary: binary, bundleDir: bundleDir, dataDir: dataDir, isDevMode: false)
     }
 
     private static func directory(_ path: String) -> URL? {

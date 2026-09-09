@@ -151,6 +151,32 @@ final class RuntimeLocatorTests: XCTestCase {
         XCTAssertTrue(l.isDevMode)
     }
 
+    /// The embedded runtime with only the data directory pointed elsewhere: how CI's smoke
+    /// boot runs the assembled app, and how anyone tries a build without letting it touch
+    /// the household's real data. It is **not** dev mode — the app is running the runtime
+    /// it shipped with, which is the only thing dev mode is about.
+    func testDataDirectoryOverridesTheEmbeddedRuntimeWithoutDevMode() throws {
+        let env = ["WAFFLED_DATA_DIR": "/tmp/mac-data"]
+
+        let l = try XCTUnwrap(RuntimeLocator.locate(environment: env, resourceURL: resources))
+
+        XCTAssertEqual(l.binary.path,
+                       "/Applications/Waffled.app/Contents/Resources/runtime/bin/waffled-runtime")
+        XCTAssertEqual(l.bundleDir?.path,
+                       "/Applications/Waffled.app/Contents/Resources/runtime")
+        XCTAssertEqual(l.dataDir?.path, "/tmp/mac-data")
+        XCTAssertFalse(l.isDevMode, "an embedded runtime is not a dev runtime, wherever its data lives")
+    }
+
+    /// An empty value is not an override. `--data ""` is not the same as omitting the flag,
+    /// and the runtime's own default is the right answer for both.
+    func testEmptyDataDirectoryIsNotAnOverride() throws {
+        let l = try XCTUnwrap(RuntimeLocator.locate(environment: ["WAFFLED_DATA_DIR": ""],
+                                                    resourceURL: resources))
+
+        XCTAssertNil(l.dataDir)
+    }
+
     /// Nothing embedded yet and no dev envs set: there is no runtime to talk to, and the
     /// menu has to say so rather than report a stopped server.
     func testNoBundleAndNoEnvironmentLocatesNothing() {
