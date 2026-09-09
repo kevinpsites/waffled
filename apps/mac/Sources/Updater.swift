@@ -47,9 +47,6 @@ final class Updater {
 }
 
 /// The three things Sparkle has to ask this app.
-///
-/// Not `@MainActor`: these are ObjC protocol methods, and Sparkle delivers them on the
-/// main thread — asserted rather than assumed, the same way `AppDelegate` does.
 final class UpdaterDelegate: NSObject, SPUUpdaterDelegate {
     private let model: ServerModel
     private let feedOverride: String?
@@ -68,9 +65,14 @@ final class UpdaterDelegate: NSObject, SPUUpdaterDelegate {
     /// its auto-start down and never migrates anything. Returning true holds the relaunch
     /// until `installHandler` runs, and a `stop` that refuses never runs it: the icon
     /// slashes, the menu says why, and the person can check for updates again.
+    ///
+    /// Hopped onto the main actor rather than asserted onto it: Sparkle's header documents
+    /// no thread for this callback, the stop is asynchronous either way, and a wrong guess
+    /// would crash a household mid-update.
     func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem,
                  untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
-        MainActor.assumeIsolated { model.stopBeforeUpdate(then: installHandler) }
+        let model = model
+        Task { @MainActor in model.stopBeforeUpdate(then: installHandler) }
         return true
     }
 

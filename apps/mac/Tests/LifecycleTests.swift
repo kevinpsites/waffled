@@ -132,6 +132,31 @@ final class LifecycleTests: XCTestCase {
                        "the swap would land on a server still running the old bundle")
     }
 
+    /// The note is said once — but "once" has to mean *once there is something to say*.
+    ///
+    /// The two facts arrive on different polls after an update. `bundle.version` comes from
+    /// the manifest and is there from the first status, while the server is still stopped;
+    /// `previousVersion` is written by the runtime when it **starts** against the existing
+    /// data, which on a relaunched app is the auto-start, several polls later. A latch spent
+    /// on the first status that carried a version would therefore be spent on the one poll
+    /// that could not possibly know about the crossing.
+    func testThePollBeforeTheAutoStartDoesNotSpendTheUpdateNote() {
+        var noted = false
+
+        // Poll 1: the new bundle, but nothing has started against the data yet.
+        var line = Lifecycle.updateNote(alreadyNoted: noted, previous: "", current: "0.15.0")
+        XCTAssertNil(line)
+        noted = noted || line != nil
+
+        // The auto-start records the crossing; the next poll carries it.
+        line = Lifecycle.updateNote(alreadyNoted: noted, previous: "0.14.3", current: "0.15.0")
+        XCTAssertEqual(line, "Updated to 0.15.0")
+        noted = noted || line != nil
+
+        XCTAssertNil(Lifecycle.updateNote(alreadyNoted: noted, previous: "0.14.3", current: "0.15.0"),
+                     "said once, not on every poll for the rest of the process")
+    }
+
     /// The icon is the only thing a person sees without opening the menu, so a failed
     /// stop — the one situation that needs a person — has to reach it, exactly as a
     /// failed start does.

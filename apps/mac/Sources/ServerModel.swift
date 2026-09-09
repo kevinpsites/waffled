@@ -246,8 +246,8 @@ final class ServerModel {
         }
     }
 
-    /// "Updated to 0.15.0" / "Rolled back to 0.14.3", once, on the first status that
-    /// carries a bundle version.
+    /// "Updated to 0.15.0" / "Rolled back to 0.14.3", once per process — see
+    /// `Lifecycle.updateNote` for why the latch is spent on the note and not on the poll.
     ///
     /// `bundle.previousVersion` records the last crossing this data went through and stays
     /// there for good — it is a fact about the directory, not an event — so the latch is
@@ -256,10 +256,10 @@ final class ServerModel {
     /// keeps no memory of its own between launches, and the alternative (guessing from
     /// `versionChangedAt` how fresh is fresh) would be a rule nobody could predict.
     private func noteAnyVersionCrossing(_ fresh: RuntimeStatus) {
-        guard !updateNoted, !fresh.bundle.version.isEmpty else { return }
+        guard let line = Lifecycle.updateNote(alreadyNoted: updateNoted,
+                                              previous: fresh.bundle.previousVersion,
+                                              current: fresh.bundle.version) else { return }
         updateNoted = true
-        guard let line = MenuPresentation.updateNote(previous: fresh.bundle.previousVersion,
-                                                     current: fresh.bundle.version) else { return }
         note(line)
     }
 

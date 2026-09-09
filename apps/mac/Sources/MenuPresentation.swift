@@ -324,6 +324,18 @@ enum Lifecycle {
         case hold(String)
     }
 
+    /// The version note, or nil when there is nothing to say — which is also the signal to
+    /// keep the one note this process gets.
+    ///
+    /// The latch belongs on the note rather than on the poll, because the two halves of a
+    /// crossing arrive on different polls: `bundle.version` comes from the manifest and is
+    /// there before anything starts, while `previousVersion` is written when the runtime
+    /// starts against the existing data — the auto-start, several polls later.
+    static func updateNote(alreadyNoted: Bool, previous: String, current: String) -> String? {
+        guard !alreadyNoted else { return nil }
+        return MenuPresentation.updateNote(previous: previous, current: current)
+    }
+
     /// A Sparkle update replaces `Waffled.app` — the runtime bundle inside it included —
     /// and relaunches. macOS keeps a running process's mapped binaries alive after the
     /// files under them are replaced, so a swap over a *running* server leaves the
