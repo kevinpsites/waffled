@@ -170,12 +170,14 @@ t "release_repository_ready accepts a clean main synchronized with origin" '
   git -C "$tmp/work" config user.email test@example.com
   git -C "$tmp/work" config user.name "Waffled Test"
   git -C "$tmp/work" switch -q -c main
-  mkdir -p "$tmp/work/apps/api" "$tmp/work/apps/web" "$tmp/work/apps/ios" "$tmp/work/infra/compose"
+  mkdir -p "$tmp/work/apps/api" "$tmp/work/apps/web" "$tmp/work/apps/ios" \
+           "$tmp/work/apps/mac" "$tmp/work/infra/compose"
   printf "%s\n" "## [Unreleased]" "" "### Added" "- Ready to ship" "" "## [0.8.0]" > "$tmp/work/CHANGELOG.md"
   printf "%s\n" "{\"version\":\"0.8.0\"}" > "$tmp/work/apps/api/package.json"
   printf "%s\n" "{\"version\":\"0.8.0\"}" > "$tmp/work/apps/web/package.json"
   printf "%s\n" "WAFFLED_VERSION=0.8.0" > "$tmp/work/infra/compose/.env.example"
   printf "%s\n" "  MARKETING_VERSION: \"0.8.0\"" > "$tmp/work/apps/ios/project.yml"
+  printf "%s\n" "    MARKETING_VERSION: \"0.8.0\"" > "$tmp/work/apps/mac/project.yml"
   git -C "$tmp/work" add .
   git -C "$tmp/work" commit -qm "test fixture"
   git -C "$tmp/work" push -qu origin main
@@ -186,6 +188,40 @@ t "release_repository_ready accepts a clean main synchronized with origin" '
   case "$out" in
     *"Release repository checks passed"*) echo "PASS" ;;
     *) echo "FAIL: missing success message: $out" ;;
+  esac
+'
+
+# --- 8b. every version site is checked, the Mac app included ------------------------
+# A Mac version left behind is a release Sparkle cannot tell from the last one: it
+# compares CFBundleVersion, which follows MARKETING_VERSION in apps/mac/project.yml.
+t "release_repository_ready rejects a Mac version left behind" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  git init --bare -q "$tmp/origin.git"
+  git clone -q "$tmp/origin.git" "$tmp/work"
+  git -C "$tmp/work" config user.email test@example.com
+  git -C "$tmp/work" config user.name "Waffled Test"
+  git -C "$tmp/work" switch -q -c main
+  mkdir -p "$tmp/work/apps/api" "$tmp/work/apps/web" "$tmp/work/apps/ios" \
+           "$tmp/work/apps/mac" "$tmp/work/infra/compose"
+  printf "%s\n" "## [Unreleased]" "" "### Added" "- Ready to ship" "" "## [0.8.0]" > "$tmp/work/CHANGELOG.md"
+  printf "%s\n" "{\"version\":\"0.8.0\"}" > "$tmp/work/apps/api/package.json"
+  printf "%s\n" "{\"version\":\"0.8.0\"}" > "$tmp/work/apps/web/package.json"
+  printf "%s\n" "WAFFLED_VERSION=0.8.0" > "$tmp/work/infra/compose/.env.example"
+  printf "%s\n" "  MARKETING_VERSION: \"0.8.0\"" > "$tmp/work/apps/ios/project.yml"
+  printf "%s\n" "    MARKETING_VERSION: \"0.7.0\"" > "$tmp/work/apps/mac/project.yml"
+  git -C "$tmp/work" add .
+  git -C "$tmp/work" commit -qm "test fixture"
+  git -C "$tmp/work" push -qu origin main
+  ROOT="$tmp/work"
+  set +e
+  out="$(release_repository_ready "0.9.0" 2>&1)"
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || { echo "FAIL: a stale Mac version was accepted"; exit 0; }
+  case "$out" in
+    *"mac=0.7.0"*) echo "PASS" ;;
+    *) echo "FAIL: the drift report does not name the Mac version: $out" ;;
   esac
 '
 
@@ -236,12 +272,14 @@ t "release_repository_ready rejects main when origin has advanced" '
   git -C "$tmp/work" config user.email test@example.com
   git -C "$tmp/work" config user.name "Waffled Test"
   git -C "$tmp/work" switch -q -c main
-  mkdir -p "$tmp/work/apps/api" "$tmp/work/apps/web" "$tmp/work/apps/ios" "$tmp/work/infra/compose"
+  mkdir -p "$tmp/work/apps/api" "$tmp/work/apps/web" "$tmp/work/apps/ios" \
+           "$tmp/work/apps/mac" "$tmp/work/infra/compose"
   printf "%s\n" "## [Unreleased]" "" "### Added" "- Ready to ship" "" "## [0.8.0]" > "$tmp/work/CHANGELOG.md"
   printf "%s\n" "{\"version\":\"0.8.0\"}" > "$tmp/work/apps/api/package.json"
   printf "%s\n" "{\"version\":\"0.8.0\"}" > "$tmp/work/apps/web/package.json"
   printf "%s\n" "WAFFLED_VERSION=0.8.0" > "$tmp/work/infra/compose/.env.example"
   printf "%s\n" "  MARKETING_VERSION: \"0.8.0\"" > "$tmp/work/apps/ios/project.yml"
+  printf "%s\n" "    MARKETING_VERSION: \"0.8.0\"" > "$tmp/work/apps/mac/project.yml"
   git -C "$tmp/work" add .
   git -C "$tmp/work" commit -qm "test fixture"
   git -C "$tmp/work" push -qu origin main
