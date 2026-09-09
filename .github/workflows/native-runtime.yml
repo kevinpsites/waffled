@@ -258,6 +258,24 @@ jobs:
           set -uo pipefail
           RT="$APP/Contents/Resources/runtime/bin/waffled-runtime"
           mkdir -p "$DATA"
+          app_pid=""
+          # Teardown, unconditionally. `start` re-execs into its own session, so killing the
+          # app does NOT stop the Postgres/Caddy/api it started — and every path out of this
+          # step has to free them or the runner keeps a stack (and its ports) for the rest of
+          # the job. A trap covers the paths a trailing block cannot: the early `exit 1` when
+          # the app dies, and any future line that fails under the step's inherited `-e`.
+          # The step's exit status is decided before the trap runs, so this never changes the
+          # verdict — the explicit `stop` below still owns that.
+          # shellcheck disable=SC2329  # it is invoked, by the EXIT trap two lines down
+          teardown() {
+            "$RT" stop --data "$DATA" >/dev/null 2>&1 || true
+            if [ -n "$app_pid" ]; then
+              kill "$app_pid" 2>/dev/null || true
+              wait "$app_pid" 2>/dev/null || true
+            fi
+            return 0
+          }
+          trap teardown EXIT
           WAFFLED_DATA_DIR="$DATA" "$APP/Contents/MacOS/Waffled" >"$RUNNER_TEMP/mac-app.log" 2>&1 &
           app_pid=$!
           echo "app pid $app_pid"
@@ -297,7 +315,10 @@ jobs:
           url="$("$RT" status --json --data "$DATA" 2>/dev/null \
             | python3 -c 'import json,sys; print(json.load(sys.stdin)["urls"]["local"])')" || url=""
           if [ -n "$url" ]; then
-            code="$(curl -s -o /dev/null -w '%{http_code}' "$url/healthz")"
+            # `|| code=000`: curl exits 7 on a refused connection, and under the step's
+            # inherited `-e` an unguarded substitution would end the step right here — the
+            # one failure this check exists to report, turned into a bare red X.
+            code="$(curl -s -o /dev/null -w '%{http_code}' "$url/healthz")" || code=000
             echo "GET $url/healthz -> $code"
             [ "$code" = 200 ] || { echo "::error::$url/healthz answered $code"; rc=1; }
           else
@@ -305,11 +326,10 @@ jobs:
             rc=1
           fi
 
-          # Leave nothing running: `start` re-execs into its own session, so killing the app
-          # does not stop the server it started. Stop first, then the app.
+          # Stopping is itself part of what this step proves, so a `stop` that fails is a
+          # failure and not just a mess to clean up. The trap then runs a second, silent
+          # teardown over whatever is left.
           "$RT" stop --data "$DATA" || rc=1
-          kill "$app_pid" 2>/dev/null || true
-          wait "$app_pid" 2>/dev/null || true
           exit $rc
 
       # Only on push to main: the .app is ~670 MB and no PR needs a copy of it. ditto -c -k
