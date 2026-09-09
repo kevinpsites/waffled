@@ -188,7 +188,7 @@ uses bash because it is throwaway and the point is to learn, not to build.
   (`SMAppService.loginItem`) runs only after someone signs in. → Ship the login item first and
   document "Mac mini: enable auto-login"; daemon mode is a later opt-in.
 - **Lid-close sleep cannot be prevented from user space.** A MacBook is not a server.
-  *(done — PR #TBD)* → The first-run window's welcome step says so plainly on a portable and
+  *(done — PR #197)* → The first-run window's welcome step says so plainly on a portable and
   recommends a Mac mini or a desktop, then lets the person carry on. Detection is
   `Hardware.isPortable`: an internal battery (IOKit power sources) **or** "MacBook" in
   `hw.model`, because Apple Silicon laptops report models like `Mac14,7` with no MacBook in
@@ -387,7 +387,7 @@ Gatekeeper refuses it on any Mac but the one that built it.
    refuses during quit keeps the app alive to say so rather than exiting on a server that is
    still running.
 3. First-run window (welcome → starting → "your server is ready, opening…") and the MacBook
-   warning. *(done — PR #TBD)* → The runtime answers the question — `status --json` gained
+   warning. *(done — PR #197)* → The runtime answers the question — `status --json` gained
    an additive `initialized`, a stat of `postgres/PG_VERSION`, so the app never stats a
    layout the runtime owns — and the window appears only when the first poll that *answers*
    says false. The welcome step **holds** the auto-start open rather than spending it: the
