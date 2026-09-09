@@ -157,16 +157,21 @@ type Bonjour struct {
 
 // Report is the whole document.
 type Report struct {
-	Schema     int        `json:"schema"`
-	State      string     `json:"state"`
-	DataDir    string     `json:"dataDir"`
-	BundleDir  string     `json:"bundleDir"`
-	URLs       URLs       `json:"urls"`
-	Ports      Ports      `json:"ports"`
-	Versions   Versions   `json:"versions"`
-	Bundle     Bundle     `json:"bundle"`
-	Supervisor Supervisor `json:"supervisor"`
-	Services   []Service  `json:"services"`
+	Schema    int    `json:"schema"`
+	State     string `json:"state"`
+	DataDir   string `json:"dataDir"`
+	BundleDir string `json:"bundleDir"`
+	// Initialized is true once the data directory holds a database cluster — a fact
+	// about the DATA, not about anything running, so it is answered with every service
+	// stopped. It exists so the menu-bar app can tell a first run from every later one
+	// without stat'ing a layout the runtime owns.
+	Initialized bool       `json:"initialized"`
+	URLs        URLs       `json:"urls"`
+	Ports       Ports      `json:"ports"`
+	Versions    Versions   `json:"versions"`
+	Bundle      Bundle     `json:"bundle"`
+	Supervisor  Supervisor `json:"supervisor"`
+	Services    []Service  `json:"services"`
 	// Backups and Bonjour are additive: Schema stays at 1 because no existing field
 	// changed meaning.
 	Backups     Backups `json:"backups"`

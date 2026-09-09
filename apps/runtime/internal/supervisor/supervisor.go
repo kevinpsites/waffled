@@ -616,8 +616,9 @@ func (s *Supervisor) Stop(ctx context.Context) error {
 // process boundaries), health from live probes.
 func (s *Supervisor) Status(ctx context.Context) *status.Report {
 	r := &status.Report{
-		DataDir:   s.plan.Layout.Root,
-		BundleDir: s.plan.Bundle,
+		DataDir:     s.plan.Layout.Root,
+		BundleDir:   s.plan.Bundle,
+		Initialized: s.postgresInitialized(),
 		Ports: status.Ports{
 			Public: s.plan.Ports.Public, PowerSyncPublic: s.plan.Ports.PowerSyncPublic,
 			API: s.plan.Ports.API, PowerSync: s.plan.Ports.PowerSync, Postgres: s.plan.Ports.Postgres,

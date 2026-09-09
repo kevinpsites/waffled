@@ -348,6 +348,7 @@ renamed.
   "state": "running",            // stopped | starting | running | unhealthy
   "dataDir": "/Users/…/Application Support/Waffled",
   "bundleDir": "/Applications/Waffled.app/Contents/Resources/runtime",
+  "initialized": true,           // false until initdb has created the cluster
   "urls":     { "local": "http://127.0.0.1:8080", "lan": "http://192.168.1.5:8080",
                 "powersync": "http://192.168.1.5:8081" },
   "ports":    { "public": 8080, "powersyncPublic": 8081, "api": 3000,
@@ -366,6 +367,13 @@ renamed.
   "generatedAt": "2026-09-08T16:20:00Z"
 }
 ```
+
+`initialized` says whether the **data directory** has ever been set up — it is a `stat` of
+`postgres/PG_VERSION`, so it is answered with the whole stack down, which is exactly when
+it is asked. The menu-bar app shows its first-run window on `false` and nothing on `true`;
+it is reported here rather than worked out there because the runtime owns its layout, and
+an app that stat'd PGDATA would be a second place that knows where the cluster lives.
+`schema` stays at **1**: additive, and no existing field changed meaning.
 
 Service states: `stopped` (not running), `starting` (up, health not green yet),
 `running` (up and healthy), `unhealthy` (gone when it should not be, or failing its
