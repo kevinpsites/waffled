@@ -81,9 +81,9 @@ final class ServerModelTests: XCTestCase {
         XCTAssertEqual(starts, 0, "the server stays down for the swap")
     }
 
-    /// The status a restart is decided on. A stop of ours makes every poll before it wrong,
-    /// and the hand-off path takes no new one: read as `running`, the restart an abort owes
-    /// is dropped and the household is left with no server at all.
+    /// The status a restart is decided on. A stop of ours makes every poll before it wrong:
+    /// read as `running`, the restart an abort owes is dropped and the household is left
+    /// with no server at all.
     func testAnAbortRestartsEvenWhenTheLastPollBeforeTheStopSaidRunning() async {
         let runtime = FakeRuntime()
         await runtime.answer(status: Fixtures.fullRunning)
