@@ -449,7 +449,10 @@ final class ServerModel {
             // reason, so arriving here means one began between the menu opening and the
             // click. Nothing was asked to stop, so nothing refused — and a stop failure
             // recorded here would turn Quit into "Quit anyway", over a server that is
-            // still running and a backup that is still writing.
+            // still running and a backup that is still writing. The handler is kept all
+            // the same: it is the only way this update can ever be installed, and the item
+            // becomes `Install the update now`, disabled until the slot comes free.
+            pendingInstall = install
             note("Waffled is busy — try the update again in a moment")
             return
         }

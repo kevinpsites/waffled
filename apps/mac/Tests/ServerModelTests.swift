@@ -18,6 +18,10 @@ final class ServerModelTests: XCTestCase {
     /// refused to stop — nothing asked it to. Recorded as a stop failure it turned the Quit
     /// item into "Quit anyway (server keeps running)", whose very next click terminates over
     /// a running server and a backup still writing.
+    ///
+    /// "Not now" still has to keep the handler: Sparkle's session stays open around it, so
+    /// dropping it leaves the item a dead `Checking for updates…` for the rest of the
+    /// process and the downloaded update with no way to be installed at all.
     func testAnUpdateThatLandsMidOperationIsANoteRatherThanAFailedStop() {
         let model = makeModel()
         defer { model.end() }
@@ -33,7 +37,11 @@ final class ServerModelTests: XCTestCase {
                        "Quit must still ask, rather than offering to leave the server running")
         XCTAssertFalse(installed, "the swap waits for a stop that has not happened")
         XCTAssertNotNil(model.transient, "the click still gets an answer")
-        XCTAssertFalse(model.hasPendingUpdate, "we never took Sparkle's handler")
+        XCTAssertTrue(model.hasPendingUpdate, "the handler is the only way this update lands")
+
+        let menu = model.presentation(canCheckForUpdates: false)
+        XCTAssertEqual(menu.checkForUpdatesLabel, "Install the update now")
+        XCTAssertFalse(menu.checkForUpdatesEnabled, "until the backup gives the slot back")
     }
 
     /// A stop that refuses holds the relaunch — and Sparkle's install handler with it. That
