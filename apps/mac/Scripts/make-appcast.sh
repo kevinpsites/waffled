@@ -95,9 +95,11 @@ if [ -x "$GENKEYS" ]; then
   fi
 fi
 
-# No delta updates: they are built by extracting and diffing every archive, and a Waffled
-# release is a 671 MB app whose runtime bundle is rebuilt from scratch each time. Sparkle
-# downloads the whole archive when there is no delta, which is what would happen anyway.
+# No delta updates — a cost decision, not a "nobody wants them" one. A 200 MB download that
+# is mostly an unchanged runtime bundle is exactly where a delta would help a household on a
+# slow link. It is the release side that cannot afford it: hashing one archive already takes
+# ~3 minutes here, and a delta is built by extracting and diffing this archive against every
+# retained version. Turning them on is item 5's call, with its pipeline's budget in view.
 set -- "$DIR" --maximum-deltas 0
 if [ -n "$OUT" ]; then
   set -- "$@" -o "$OUT"
