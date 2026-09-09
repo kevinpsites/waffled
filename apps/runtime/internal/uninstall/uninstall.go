@@ -199,10 +199,7 @@ func Run(ctx context.Context, o Options) (Report, error) {
 	// nothing, and "is it safe to uninstall yet" is exactly what it is for.
 	if pid, running := o.supervisorPid(); running && !o.DryRun {
 		if !o.Yes {
-			return report, fmt.Errorf(
-				"%w (supervisor pid %d) — stop it first with `waffled-runtime stop`, "+
-					"or pass --yes to stop it as part of the uninstall; %w",
-				ErrServerRunning, pid, ErrRefused)
+			return report, o.refusal(pid)
 		}
 		fmt.Fprintf(o.Log, "Stopping the running server (pid %d)…\n", pid)
 		if err := o.terminate(ctx, pid, supervisorGrace); err != nil {
@@ -257,6 +254,27 @@ func Run(ctx context.Context, o Options) (Report, error) {
 		}
 	}
 	return report, errors.Join(problems...)
+}
+
+// refusal explains the running server, and how to get past it.
+//
+// processAlive counts EPERM as alive deliberately, so this fires for a supervisor owned
+// by another account and for a recycled pid that now belongs to somebody else's process.
+// In that case both of the ordinary remedies dead-end on the same EPERM — `stop` cannot
+// signal it either — and the only way out is the pidfile, so the message says so rather
+// than sending someone round the loop twice.
+func (o Options) refusal(pid int) error {
+	if err := o.signal(pid, syscall.Signal(0)); errors.Is(err, syscall.EPERM) {
+		return fmt.Errorf(
+			"%w (supervisor pid %d), and it belongs to another user — neither "+
+				"`waffled-runtime stop` nor --yes can signal it. Stop it from that account, or "+
+				"if that pid is not Waffled at all, delete %s and run this again; %w",
+			ErrServerRunning, pid, o.Layout.PidPath(supervisor.SupervisorPidName), ErrRefused)
+	}
+	return fmt.Errorf(
+		"%w (supervisor pid %d) — stop it first with `waffled-runtime stop`, "+
+			"or pass --yes to stop it as part of the uninstall; %w",
+		ErrServerRunning, pid, ErrRefused)
 }
 
 // markNotAttempted records that the run ended before the removals began, so nothing in

@@ -996,3 +996,21 @@ func TestAnUnreadableScheduleIsKept(t *testing.T) {
 		t.Error("a schedule we could not attribute was unloaded anyway")
 	}
 }
+
+// processAlive counts EPERM as alive on purpose, so the refusal fires for a supervisor
+// owned by another account — or for a recycled pid now belonging to a root process. Both
+// remedies it offers dead-end on the same EPERM, so the message has to name the one
+// thing that does work.
+func TestTheRefusalNamesThePidfileWhenItCannotSignal(t *testing.T) {
+	opts, _, _ := fixture(t)
+	opts.alive = func(pid int) bool { return pid == 4242 }
+	opts.signal = func(int, syscall.Signal) error { return syscall.EPERM }
+
+	_, err := Run(context.Background(), opts)
+	if err == nil {
+		t.Fatal("Run succeeded with a supervisor it cannot signal")
+	}
+	if !strings.Contains(err.Error(), opts.Layout.PidPath("supervisor")) {
+		t.Errorf("the refusal does not name the pidfile, the only way out: %v", err)
+	}
+}
