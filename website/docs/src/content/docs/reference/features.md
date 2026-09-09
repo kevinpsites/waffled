@@ -130,6 +130,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Photo-proof **review** (tap thumbnail → large photo → Approve/Not-yet) | ✅ | ✅ | ✅ | ✅ Done |
 | Proof **retention** — auto-delete after N days (default 3, admin setting) | ✅ | ✅ | ✅ | ✅ Done |
 | Stored-proof **review & delete** gallery (view / delete / clear all) | ✅ | ✅ | ✅ | ✅ Done |
+| **Concurrent balance checks** — spending, conversions and chore undo serialize; undo preserves completion/proof when the reward has already been spent | ✅ | ✅ | ✅ | ✅ Done |
 | **Capability gating** — `chore.manage` / `chore.approve`; anyone may add for self/up-for-grabs | ✅ | ✅ | ✅ | ✅ Done |
 
 ## Rewards & economy
@@ -147,7 +148,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Saving-toward** a reward — bar/jar progress + inline redeem | ✅ | ✅ | ✅ | ✅ Done |
 | **Spot-award stars** — parent hands out ad-hoc stars (untied to a chore) + optional reason | ✅ | ✅ | ✅ | ✅ Done — gated on `reward.grant`; mobile: **Award** on the person profile **and** a person-picker Award sheet on the Rewards page → `POST /api/persons/:id/award`; the ledger row reads "spot award — {reason}" (person-overview surfaces `ledger_entries.note`) |
 | Append-only **corrections and refunds** — linked reversal, optional replacement, required reason | ✅ | ✅ | ✅ | ✅ Done — `reward.correct`; originals remain visible and concurrent retries are idempotent |
-| **Capability gating** — `reward.manage` / `reward.approve` / `reward.grant` / `reward.correct`; anyone may redeem for self or cancel their own pending request | ✅ | ✅ | ✅ | ✅ Done |
+| **Capability gating** — `reward.manage` / `reward.approve` / `reward.grant` / `reward.correct`; anyone may request for self or cancel their own pending request; acting for others needs `reward.approve`, and pending approval requires a second person | ✅ | ✅ | ✅ | ✅ Done |
 | Milestone reward **payouts** | 🚧 | 🚧 | 🚧 | 🚧 Deferred (design done) |
 
 ## Goals

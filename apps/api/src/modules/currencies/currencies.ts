@@ -9,7 +9,7 @@ import { requireTenant, requireAdmin, type Tenant } from '../households/househol
 import { tenantRoute, adminRoute } from '../../platform/route-guards'
 import { assertPersonInHousehold } from '../../platform/household-refs'
 import { requireCapability } from '../../platform/permissions'
-import { lockLedgerSubject } from '../../platform/ledger-lock'
+import { lockLedgerSubject, lockSpendableCurrencies } from '../../platform/ledger-lock'
 
 type Api = ReturnType<typeof createAPI>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -258,6 +258,10 @@ export async function applyConversion(
     )
     const conv = cur.rows[0]
     if (!conv) { await client.query('rollback'); return { ok: false, error: 'conversion not found' } }
+    if (!(await lockSpendableCurrencies(client, tenant.householdId, [conv.from_currency, conv.to_currency]))) {
+      await client.query('rollback')
+      return { ok: false, error: 'conversion currency is no longer available' }
+    }
     const debit = conv.from_amount * n
     const credit = conv.to_amount * n
     const bal = await client.query<{ balance: string | null }>(
@@ -353,7 +357,7 @@ export function registerCurrencyRoutes(api: Api): void {
     const personId = body.personId?.trim() || tenant.personId
     if (!UUID_RE.test(personId)) return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
     await assertPersonInHousehold(tenant.householdId, personId)
-    if (personId !== tenant.personId) await requireCapability(tenant, 'reward.manage')
+    if (personId.toLowerCase() !== tenant.personId.toLowerCase()) await requireCapability(tenant, 'reward.approve')
     const result = await applyConversion(tenant, id, personId, body.times ?? 1)
     if (!result.ok) {
       return res.status(result.error === 'conversion not found' ? 404 : 409).json({ error: 'Conflict', message: result.error })

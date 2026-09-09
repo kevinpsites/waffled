@@ -44,12 +44,37 @@ Create and manage keys in the app (they're minted by a signed-in session, not by
 | `DELETE` | `/api/api-keys/:id` | Revoke one of your keys |
 
 A key resolves to its **owner person**, and requests carry that person's role/capabilities. Keys
-are **scope-limited**: a scope is `<resource>:<read|write>`, and only these resource families are
-reachable with a key — `household`, `persons`/`family` (read), `lists`, `pantry`, `chores`,
-`rewards`/`redemptions`/`balances`/`currencies`, `recipes`/`meals`, `events`, `goals`, `photos`,
-`weather` (read). Everything else (auth, kiosk, permissions, api-keys, powersync, capture, media,
-countdowns, family-night, goal-calendar, Google calendar) always 403s for a key. In-route
-capability checks still apply on top of the scope.
+are **scope-limited**: a scope is `<resource>:<read|write>`, where `:read` covers `GET`/`HEAD`,
+every other method needs `:write`, and holding `:write` implies `:read`. These are the only
+paths a key can reach at all — the live list is also served from `GET /api/api-keys/scopes`:
+
+| Scope resource | Paths it covers |
+|---|---|
+| `family` *(read-only)* | `/api/household` · `/api/persons` · `/api/family` |
+| `lists` | `/api/lists` · `/api/pantry-staples` |
+| `pantry` | `/api/pantry` |
+| `chores` | `/api/chores` · `/api/chore-instances` · `/api/chore-proofs` |
+| `rewards` | `/api/rewards` · `/api/redemptions` · `/api/balances` · `/api/currencies` · `/api/conversions` |
+| `meals` | `/api/recipes` · `/api/meals` |
+| `calendar` | `/api/events` |
+| `goals` | `/api/goals` · `/api/goal-lists` |
+| `photos` | `/api/photos` |
+| `weather` *(read-only)* | `/api/weather` |
+
+A prefix only covers a path on a `/` boundary, which is why the hyphenated siblings
+(`/api/chore-instances`, `/api/chore-proofs`, `/api/goal-lists`, `/api/pantry-staples`) are
+listed in their own right rather than inherited from `/api/chores`, `/api/goals` and
+`/api/pantry`. Note that **`/api/pantry-staples` belongs to `lists`, not `pantry`**: staples are
+part of the grocery board and the route sits behind the `lists` module gate.
+
+Everything else always 403s for a key — auth and self-service account, household creation and
+invites, api-keys, `/api/kiosk` and the `/api/waffled-bites` device routes, permissions,
+powersync, capture, media, countdowns, family-night, goal-calendar, the rest of `/api/calendar`
+(Google + ICS feeds), today-layout, rhythms, health and updates. Writes under a read-only
+resource are refused too, so `POST /api/persons/:id/award` and
+`/saving-toward` stay session-only even though they belong to the rewards feature. In-route
+capability **and** module checks still apply on top of the scope, so a key can never do more
+than its owner person can.
 
 ---
 

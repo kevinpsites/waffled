@@ -101,10 +101,17 @@ func TestAPIRunsTheBundledNodeInProductionOnLoopback(t *testing.T) {
 			t.Errorf("%s was not passed to the api", key)
 		}
 	}
-	// No Docker sidecars natively: don't let System Health nag about a backup service
-	// that does not exist here, and don't phone home for updates the app manages.
-	if e["BACKUP_ENABLED"] != "false" || e["UPDATE_CHECK_ENABLED"] != "false" {
-		t.Errorf("BACKUP_ENABLED=%q UPDATE_CHECK_ENABLED=%q", e["BACKUP_ENABLED"], e["UPDATE_CHECK_ENABLED"])
+	// Backups ARE enabled natively — the runtime takes them itself and writes the same
+	// backup_runs rows the Compose sidecar does. BACKUP_ENABLED=false would make the
+	// api's health check short-circuit to "turned off" and hide those rows, so a nightly
+	// backup failing for a week would look exactly like one succeeding for a week.
+	// Updates stay off: the Mac app owns those.
+	if e["BACKUP_ENABLED"] != "true" {
+		t.Errorf("BACKUP_ENABLED = %q, want true — System Health reads the rows the runtime writes",
+			e["BACKUP_ENABLED"])
+	}
+	if e["UPDATE_CHECK_ENABLED"] != "false" {
+		t.Errorf("UPDATE_CHECK_ENABLED = %q, want false", e["UPDATE_CHECK_ENABLED"])
 	}
 	// Provenance from the manifest, so System Health stops reporting sha "dev".
 	if e["GIT_SHA"] != "a506c352" || e["BUILD_TIME"] != "2026-09-04T23:48:42.438Z" {

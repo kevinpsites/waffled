@@ -9,7 +9,7 @@ import { type Tenant } from '../households/households'
 import { rewardsRoutes, moduleRoutes, tenantRoute as unrestrictedTenantRoute } from '../../platform/route-guards'
 import { assertPersonInHousehold, HouseholdReferenceError } from '../../platform/household-refs'
 import { requireCapability } from '../../platform/permissions'
-import { lockLedgerSubject } from '../../platform/ledger-lock'
+import { lockLedgerSubject, lockSpendableCurrencies } from '../../platform/ledger-lock'
 import { registerRewardCaptureTarget } from './rewards-capture'
 import { listCurrencies, getDefaultCurrencyKey, presentCurrency } from '../currencies/currencies'
 
@@ -504,16 +504,6 @@ async function assertCurrencyInHousehold(householdId: string, currency: string, 
   }
 }
 
-async function lockSpendableCurrency(client: PoolClient, householdId: string, currency: string): Promise<boolean> {
-  const { rowCount } = await client.query(
-    `select 1 from currencies
-      where household_id=$1 and key=$2 and spendable=true and deleted_at is null
-      for share`,
-    [householdId, currency]
-  )
-  return !!rowCount
-}
-
 export async function balanceFor(householdId: string, personId: string, currency = 'stars'): Promise<number> {
   const { rows } = await query<{ balance: string | null }>(
     `select coalesce(sum(amount),0) as balance from ledger_entries
@@ -610,7 +600,8 @@ export async function requestRedemption(tenant: Tenant, rewardId: string, person
   // directly), so prove the redemption subject belongs to the active household
   // before either the pending or auto-approved path can persist a relationship.
   await assertPersonInHousehold(tenant.householdId, personId)
-  if (personId.toLowerCase() !== tenant.personId.toLowerCase()) await requireCapability(tenant, 'reward.manage')
+  // Catalog editing does not authorize spending another member's balance.
+  if (personId.toLowerCase() !== tenant.personId.toLowerCase()) await requireCapability(tenant, 'reward.approve')
   await assertCurrencyInHousehold(tenant.householdId, reward.currency, true)
 
   // This reward needs a parent → a pending request for the approval queue.
@@ -631,7 +622,7 @@ export async function requestRedemption(tenant: Tenant, rewardId: string, person
   try {
     await client.query('begin')
     await lockLedgerSubject(client, tenant.householdId, personId)
-    if (!(await lockSpendableCurrency(client, tenant.householdId, reward.currency))) {
+    if (!(await lockSpendableCurrencies(client, tenant.householdId, [reward.currency]))) {
       await client.query('rollback')
       return { error: 'reward currency is no longer available' }
     }
@@ -698,6 +689,13 @@ export async function decideRedemption(tenant: Tenant, id: string, approve: bool
       return { redemption: upd.rows[0] }
     }
 
+    // A pending reward requires a second person, even when an admin requested
+    // it on a child's behalf. Denial remains available to the requester.
+    if (red.requested_by?.toLowerCase() === tenant.personId.toLowerCase()) {
+      await client.query('rollback')
+      return { error: 'A different person must approve this request' }
+    }
+
     // Keep local history visible and dismissible after a person is archived,
     // but never create a new debit for an inactive person.
     if (red.person_deleted_at) { await client.query('rollback'); return null }
@@ -707,7 +705,7 @@ export async function decideRedemption(tenant: Tenant, id: string, approve: bool
     // A pending request can outlive a catalog change. Re-check at decision time
     // and hold the catalog row through commit, so disabling/deleting a currency
     // cannot race a new debit.
-    if (!(await lockSpendableCurrency(client, tenant.householdId, red.currency))) {
+    if (!(await lockSpendableCurrencies(client, tenant.householdId, [red.currency]))) {
       await client.query('rollback')
       return { error: 'reward currency is no longer available' }
     }

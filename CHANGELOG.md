@@ -39,15 +39,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   do not know how to send, preventing unrelated settings changes from silently
   resetting who can correct reward history.
 
-- **Simultaneous reward spending cannot overdraw a balance.** Reward redemptions and
-  currency conversions now share a household-member balance lock, so overlapping
-  requests are applied one at a time and recheck the latest balance before spending.
+- **Reward spending and chore undo share one balance check.** Redemptions, currency
+  conversions and chore reward reversals lock the family member’s balance and recheck
+  it before debiting. Undo is refused if the reward has already been spent, keeping
+  the completed chore and its proof intact. Conversions also reject disabled currencies.
 
 - **Reward activity stays inside your family.** Redeeming or granting a reward now
-  rejects people and currencies from another household, and a family member can only
-  redeem for someone else when their role can manage rewards. Pending redemptions also
+  rejects people and currencies from another household, and a family member can
+  redeem or convert another person’s balance only with reward-approval rights.
+  Pending rewards require a different person to approve them, including admin requests. Pending redemptions also
   stop safely if their currency is later disabled, while earn-only currencies still work
   for spot awards.
+
+- **API keys can now reach chore instances, chore proofs, goal lists, pantry staples and
+  currency conversions.** Those endpoint families were refused for every key — "This endpoint
+  is not available to API keys" — no matter which scopes the key held. They now answer to the
+  `chores`, `goals`, `lists` and `rewards` scopes, so an integration or a headless client can
+  drive the whole of each resource rather than most of it. Pantry staples count as `lists`
+  (they live on the grocery board), not `pantry`.
 
 - **A failed refresh no longer makes a saved change look lost.** The web event editor
   now offers Retry when recurring-event details cannot load, and iPhone/iPad Countdowns
@@ -59,6 +68,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its last confirmed state when the server rejects a change, preserves work that can be
   retried, and explains what happened. Fast Family Night schedule changes are saved in
   order, and retrying Calendar settings clears an old connection error once it succeeds.
+
+- **Today, Family, approvals, and Photos no longer mistake a connection failure for
+  “nothing here.”** The iPhone and iPad Today and Family dashboards, plus shared Approvals
+  and Photos screens, keep their last confirmed information and show an in-place loading, offline,
+  stale-data, or error notice; empty messages such as “All caught up” now appear only
+  after a successful empty response. Offline sections also report only their own
+  saved-data time instead of borrowing one from another tile. Hidden household modules
+  are excluded from loading, and saved REST values are cleared when the active account
+  or server changes so one household’s data cannot appear in another. Both Today approvals
+  entry points stay visible after a failed fetch. Unreachable-server notices account for
+  self-hosting; expired sessions ask for sign-in instead of offering a fruitless retry.
 
 ## [0.14.3] - 2026-09-02
 

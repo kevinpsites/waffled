@@ -42,7 +42,7 @@ owner can flip any cell per household in **Settings → Family & People**. The m
 | `chore.manage` | Create chores for *others*, edit/delete chores |
 | `chore.approve` | Approve/reject completed chores |
 | `reward.manage` | Manage the rewards catalog, currencies, conversions |
-| `reward.approve` | Approve/deny redemptions |
+| `reward.approve` | Approve/deny redemptions; redeem or convert balances for another person |
 | `reward.grant` | Give a person an ad-hoc spot award |
 | `reward.correct` | Reverse/replace settled reward activity or refund a redemption |
 | `goal.manage` | Log progress *for others*, edit/delete shared or others' goals, manage goal lists |
@@ -52,11 +52,14 @@ Clients never "show, then 403". `/api/household` returns the caller's resolved
 
 ### Carve-outs — you can always act on your own stuff
 
-Gating never blocks acting on *yourself*. These are always allowed regardless of role:
+These actions are allowed for yourself regardless of role:
 
 - **Chores** — complete/claim any chore; create a chore for *yourself* or *up-for-grabs*
   (assigning it to someone else needs `chore.manage`).
-- **Rewards** — redeem a reward for yourself; convert your own balance; cancel a pending redemption you requested.
+- **Rewards** — request a reward for yourself; convert your own balance. A pending
+  redemption still needs a different person with `reward.approve` to approve it.
+  This second-person rule also applies to administrators and requests made on a
+  child’s behalf. The requester can still deny the request if they have approval rights. A requester may cancel their own pending request.
 - **Goals** — log progress *for yourself* (or a family/shared log); create a *personal* goal
   (one with no other participants); tick a checklist step (it's self-attributed); create a
   goal list. Logging attributed to **another person**, or editing/deleting a goal that isn't

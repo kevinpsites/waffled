@@ -38,6 +38,7 @@ function call(method: string, path: string, token?: string, body?: unknown) {
 }
 
 const kevin = mint('dev|kevin')
+const reviewer = mint('dev|independent-reviewer')
 let householdId = ''
 let kevinId = ''
 let foreignPersonId = ''
@@ -76,6 +77,7 @@ beforeAll(async () => {
       [householdId, kevinId]
     )
   )
+  await addMember('Independent adult', 'adult', false, 'dev|independent-reviewer')
   foreignPersonId = await withClient(async (c) => {
     const household = await c.query<{ id: string }>(
       `insert into households (name, timezone) values ('Other rewards','UTC') returning id`
@@ -146,16 +148,21 @@ async function createApprovedRedemption(title: string, cost = 1, personId = kevi
 // visibly waiting for it. This makes the concurrency assertions deterministic:
 // without the production lock, the barrier times out instead of occasionally
 // passing because one request happened to finish before the other started.
-async function waitForLockWaiters(observer: Client, expected: number, patterns: string[]): Promise<void> {
+async function waitForLockWaiters(observer: Client, blockerPid: number, expected: number, patterns: string[]): Promise<void> {
   const deadline = Date.now() + 5_000
   while (true) {
     const { rows } = await observer.query<{ count: string }>(
-      `select count(*)::text as count from pg_stat_activity
-        where datname=current_database()
+      `with recursive blocked(pid) as (
+           select pid from pg_stat_activity where $2 = any(pg_blocking_pids(pid))
+           union
+           select a.pid from pg_stat_activity a join blocked b on b.pid = any(pg_blocking_pids(a.pid))
+         )
+         select count(*)::text as count from pg_stat_activity
+        where pid in (select pid from blocked) and datname=current_database()
           and pid <> pg_backend_pid()
           and wait_event_type='Lock'
           and query ilike all($1::text[])`,
-      [patterns]
+      [patterns, blockerPid]
     )
     if (Number(rows[0]?.count ?? 0) >= expected) return
     if (Date.now() >= deadline) throw new Error('concurrent ledger operations did not reach the expected database lock')
@@ -172,7 +179,8 @@ async function runBehindLedgerLock<T>(personId: string, start: () => Promise<T>[
   const pending = start()
   let barrierError: unknown
   try {
-    await waitForLockWaiters(observer, pending.length, ['%select id from persons%', '%for%update%'])
+    const { rows } = await blocker.query<{ pid: number }>('select pg_backend_pid() as pid')
+    await waitForLockWaiters(observer, rows[0].pid, pending.length, ['%select id from persons%', '%for%update%'])
   } catch (err) {
     barrierError = err
   } finally {
@@ -245,7 +253,8 @@ async function runAfterConcurrentCurrencyDisable<T>(currencyId: string, start: (
   const pending = start()
   let barrierError: unknown
   try {
-    await waitForLockWaiters(observer, 1, ['%from currencies%', '%for share%'])
+    const { rows } = await blocker.query<{ pid: number }>('select pg_backend_pid() as pid')
+    await waitForLockWaiters(observer, rows[0].pid, 1, ['%from currencies%', '%for share%'])
   } catch (err) {
     barrierError = err
   } finally {
@@ -255,6 +264,14 @@ async function runAfterConcurrentCurrencyDisable<T>(currencyId: string, start: (
   const result = await pending
   if (barrierError) throw barrierError
   return result
+}
+
+async function withTeenPermissions(permissions: Record<string, boolean>, run: () => Promise<void>) {
+  const previous = await withClient(async (c) => (await c.query('select settings from households where id=$1', [householdId])).rows[0].settings)
+  await withClient((c) => c.query("update households set settings=jsonb_set(settings,'{permissions}',$2::jsonb) where id=$1", [householdId, JSON.stringify({ teen: permissions })]))
+  try { await run() } finally {
+    await withClient((c) => c.query('update households set settings=$2 where id=$1', [householdId, previous]))
+  }
 }
 
 describe('rewards api', () => {
@@ -287,7 +304,7 @@ describe('rewards api', () => {
     const pending = JSON.parse((await call('GET', '/api/redemptions?status=pending', kevin)).body).redemptions
     expect(pending.some((r: { id: string }) => r.id === redemptionId)).toBe(true)
 
-    const ok = await call('POST', `/api/redemptions/${redemptionId}/approve`, kevin)
+    const ok = await call('POST', `/api/redemptions/${redemptionId}/approve`, reviewer)
     expect(ok.statusCode).toBe(200)
     expect(JSON.parse(ok.body).redemption.status).toBe('approved')
 
@@ -300,7 +317,7 @@ describe('rewards api', () => {
     // costs 5, balance is now 3
     const red = await call('POST', `/api/rewards/${rewardId}/redeem`, kevin, { personId: kevinId })
     const id = JSON.parse(red.body).redemption.id
-    const res = await call('POST', `/api/redemptions/${id}/approve`, kevin)
+    const res = await call('POST', `/api/redemptions/${id}/approve`, reviewer)
     expect(res.statusCode).toBe(409)
     // still 3 — nothing debited
     const me = JSON.parse((await call('GET', '/api/balances', kevin)).body).people.find((p: { personId: string }) => p.personId === kevinId)
@@ -315,8 +332,8 @@ describe('rewards api', () => {
     await grantStars(kevinId, 5)
     const red = await call('POST', `/api/rewards/${rewardId}/redeem`, kevin, { personId: kevinId })
     const id = JSON.parse(red.body).redemption.id
-    expect((await call('POST', `/api/redemptions/${id}/approve`, kevin)).statusCode).toBe(200)
-    expect((await call('POST', `/api/redemptions/${id}/approve`, kevin)).statusCode).toBe(409)
+    expect((await call('POST', `/api/redemptions/${id}/approve`, reviewer)).statusCode).toBe(200)
+    expect((await call('POST', `/api/redemptions/${id}/approve`, reviewer)).statusCode).toBe(409)
   })
 
   it('soft-deletes a reward', async () => {
@@ -416,7 +433,7 @@ describe('reward approval — per-reward flag + household default', () => {
 
     const listed = JSON.parse((await call('GET', '/api/redemptions?status=pending', kevin)).body).redemptions
     expect(listed.some((r: { id: string }) => r.id === redemption.id)).toBe(true)
-    expect((await call('POST', `/api/redemptions/${redemption.id}/approve`, kevin)).statusCode).toBe(404)
+    expect((await call('POST', `/api/redemptions/${redemption.id}/approve`, reviewer)).statusCode).toBe(404)
     const denied = await call('POST', `/api/redemptions/${redemption.id}/deny`, kevin)
     expect(denied.statusCode).toBe(200)
     expect(JSON.parse(denied.body).redemption.status).toBe('denied')
@@ -446,7 +463,7 @@ describe('reward approval — per-reward flag + household default', () => {
       return rows[0].id
     })
 
-    expect((await call('POST', `/api/redemptions/${redemptionId}/approve`, kevin)).statusCode).toBe(404)
+    expect((await call('POST', `/api/redemptions/${redemptionId}/approve`, reviewer)).statusCode).toBe(404)
     expect((await call('POST', `/api/redemptions/${redemptionId}/deny`, kevin)).statusCode).toBe(404)
     const stored = await withClient(async (c) => {
       const redemption = await c.query<{ status: string }>(
@@ -484,7 +501,7 @@ describe('reward approval — per-reward flag + household default', () => {
     )).body).redemption
     expect((await call('PATCH', `/api/currencies/${currency.id}`, kevin, { spendable: false })).statusCode).toBe(200)
 
-    expect((await call('POST', `/api/redemptions/${redemption.id}/approve`, kevin)).statusCode).toBe(409)
+    expect((await call('POST', `/api/redemptions/${redemption.id}/approve`, reviewer)).statusCode).toBe(409)
     const stored = await withClient(async (c) => {
       const row = await c.query<{ status: string }>(`select status from reward_redemptions where id=$1`, [redemption.id])
       const debit = await c.query(`select 1 from ledger_entries where ref_id=$1 and reason='reward_redeemed'`, [redemption.id])
@@ -640,7 +657,7 @@ describe('reward redemption concurrency', () => {
     )).body).redemption
 
     const result = await runAfterConcurrentCurrencyDisable(currency.id, () =>
-      call('POST', `/api/redemptions/${redemption.id}/approve`, kevin)
+      call('POST', `/api/redemptions/${redemption.id}/approve`, reviewer)
     )
 
     expect(result.statusCode).toBe(409)
@@ -687,8 +704,8 @@ describe('reward redemption concurrency', () => {
     const second = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId })).body).redemption
 
     const results = await runBehindLedgerLock(personId, () => [
-      call('POST', `/api/redemptions/${first.id}/approve`, kevin),
-      call('POST', `/api/redemptions/${second.id}/approve`, kevin),
+      call('POST', `/api/redemptions/${first.id}/approve`, reviewer),
+      call('POST', `/api/redemptions/${second.id}/approve`, reviewer),
     ])
 
     expect(results.map((result) => result.statusCode).sort()).toEqual([200, 409])
@@ -1538,7 +1555,7 @@ describe('reward capability gating (non-admin members)', () => {
     expect((await call('POST', '/api/rewards', adultToken, { title: 'Adult reward', cost: 1 })).statusCode).toBe(201)
   })
 
-  it('a member may redeem for self but needs reward.manage to redeem for someone else', async () => {
+  it('a member may redeem for self but needs reward.approve to redeem for someone else', async () => {
     const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
       title: 'Actor-scoped reward',
       cost: 1,
@@ -1693,5 +1710,160 @@ describe('spot-award stars', () => {
       `update households set settings = coalesce(settings,'{}'::jsonb) || jsonb_build_object('chores', jsonb_build_object('rewards', true)) where id=$1`,
       [householdId]
     ))
+  })
+})
+
+describe('review: ledger authority and independent approval', () => {
+  it.each([true, false])('requires approval rights, not catalog rights, for another balance (pending=%s)', async (requiresApproval) => {
+    const sub = `dev|authority-${requiresApproval}`
+    await addMember('Catalog teen', 'teen', false, sub)
+    const subject = await addMember('Sibling', 'kid', false, `${sub}-sibling`)
+    await grantStars(subject, 10)
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Authority test', cost: 1, requiresApproval })).body).reward
+    await withTeenPermissions({ 'reward.manage': true, 'reward.approve': false }, async () => {
+      expect((await call('POST', `/api/rewards/${reward.id}/redeem`, mint(sub), { personId: subject })).statusCode).toBe(403)
+      expect(await starsOf(subject)).toBe(10)
+      const writes = await withClient((c) => c.query('select id from reward_redemptions where reward_id=$1', [reward.id]))
+      expect(writes.rowCount).toBe(0)
+    })
+    await withTeenPermissions({ 'reward.manage': false, 'reward.approve': true }, async () => {
+      expect((await call('POST', `/api/rewards/${reward.id}/redeem`, mint(sub), { personId: subject })).statusCode).toBe(201)
+    })
+  })
+
+  it.each(['teen-self', 'admin-self', 'admin-on-behalf'])('requires a different approver for %s, without partial writes', async (scenario) => {
+    const requesterId = scenario === 'teen-self' ? await addMember('Approver teen', 'teen', false, 'dev|self-approver') : kevinId
+    const requester = scenario === 'teen-self' ? mint('dev|self-approver') : kevin
+    const subject = scenario === 'admin-on-behalf' ? await addMember('Child subject', 'kid', false, 'dev|child-subject') : requesterId
+    const otherSub = `dev|second-approver-${scenario}`
+    await addMember('Second adult', 'adult', false, otherSub)
+    await grantStars(subject, 10)
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: scenario, cost: 2, requiresApproval: true })).body).reward
+    await withTeenPermissions({ 'reward.approve': true }, async () => {
+      const redemption = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, requester, { personId: subject.toUpperCase() })).body).redemption
+      const before = await starsOf(subject)
+      const denied = await call('POST', `/api/redemptions/${redemption.id}/approve`, requester)
+      expect(denied.statusCode).toBe(409)
+      expect(JSON.parse(denied.body).message).toMatch(/different person/i)
+      const stored = await withClient((c) => c.query('select status, ledger_id, decided_by from reward_redemptions where id=$1', [redemption.id]))
+      expect(stored.rows[0]).toEqual({ status: 'pending', ledger_id: null, decided_by: null })
+      expect(await starsOf(subject)).toBe(before)
+      expect((await call('POST', `/api/redemptions/${redemption.id}/approve`, mint(otherSub))).statusCode).toBe(200)
+      expect(await starsOf(subject)).toBe(before - 2)
+    })
+  })
+
+  it('capture returns a 403 when a catalog-only teen names another person', async () => {
+    await addMember('Capture catalog teen', 'teen', false, 'dev|capture-catalog')
+    await addMember('Capture sibling', 'kid', false, 'dev|capture-sibling')
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Capture gate', cost: 1, requiresApproval: false })).body).reward
+    await withTeenPermissions({ 'reward.manage': true, 'reward.approve': false }, async () => {
+      const result = await call('POST', '/api/capture/commit', mint('dev|capture-catalog'), { verb: 'redeem', targetKind: 'reward', targetId: reward.id, args: { personName: 'Capture sibling' } })
+      expect(result.statusCode).toBe(403)
+      expect(JSON.parse(result.body).message).toMatch(/permission/i)
+    })
+  })
+
+  it('rejects PATCH to a local earn-only currency', async () => {
+    const currency = JSON.parse((await call('POST', '/api/currencies', kevin, { label: 'Earn only review', spendable: false })).body).currency
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Keep spendable', cost: 1 })).body).reward
+    expect((await call('PATCH', `/api/rewards/${reward.id}`, kevin, { currency: currency.key })).statusCode).toBe(404)
+    const stored = await withClient((c) => c.query('select currency from rewards where id=$1', [reward.id]))
+    expect(stored.rows[0].currency).toBe('stars')
+  })
+
+  it('conversion accepts an uppercase self UUID and uses approval rights for another person', async () => {
+    const subject = await addMember('Conversion teen', 'teen', false, 'dev|conversion-teen')
+    const sibling = await addMember('Conversion sibling', 'kid', false, 'dev|conversion-sibling')
+    await grantStars(subject, 10); await grantStars(sibling, 10)
+    const currency = JSON.parse((await call('POST', '/api/currencies', kevin, { label: 'Conversion coins', spendable: true })).body).currency
+    const conversion = JSON.parse((await call('POST', '/api/conversions', kevin, { fromCurrency: 'stars', toCurrency: currency.key, fromAmount: 1, toAmount: 1 })).body).conversion
+    const token = mint('dev|conversion-teen')
+    expect((await call('POST', `/api/conversions/${conversion.id}/apply`, token, { personId: subject.toUpperCase() })).statusCode).toBe(200)
+    await withTeenPermissions({ 'reward.manage': true, 'reward.approve': false }, async () => {
+      expect((await call('POST', `/api/conversions/${conversion.id}/apply`, token, { personId: sibling })).statusCode).toBe(403)
+    })
+    await withTeenPermissions({ 'reward.manage': false, 'reward.approve': true }, async () => {
+      expect((await call('POST', `/api/conversions/${conversion.id}/apply`, token, { personId: sibling })).statusCode).toBe(200)
+    })
+  })
+})
+
+describe('review: chore clawbacks and currency locks', () => {
+  async function earnedChore(suffix: string) {
+    const personId = await addMember(`Clawback ${suffix}`, 'kid', false, `dev|clawback-${suffix}`)
+    const instanceId = await withClient(async (c) => {
+      const chore = await c.query(`insert into chores (household_id,title,person_id,reward_amount,reward_currency) values ($1,'Earn ten',$2,10,'stars') returning id`, [householdId, personId])
+      const inst = await c.query(`insert into chore_instances (household_id,chore_id,person_id,due_on,status,awarded,completed_at,reward_amount,reward_currency) values ($1,$2,$3,current_date,'done',true,now(),10,'stars') returning id`, [householdId, chore.rows[0].id, personId])
+      return inst.rows[0].id as string
+    })
+    await grantStars(personId, 10)
+    return { personId, instanceId }
+  }
+
+  it('serializes chore undo against redeem so only one debit can consume the balance', async () => {
+    const { personId, instanceId } = await earnedChore('race')
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Clawback race', cost: 10, requiresApproval: false })).body).reward
+    const results = await runBehindLedgerLock(personId, () => [
+      call('POST', `/api/chore-instances/${instanceId}/uncomplete`, kevin),
+      call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId }),
+    ])
+    expect(results.filter((r) => r.statusCode < 300)).toHaveLength(1)
+    expect(results.filter((r) => r.statusCode === 409)).toHaveLength(1)
+    expect(await starsOf(personId)).toBe(0)
+    const debits = await withClient((c) => c.query('select id from ledger_entries where person_id=$1 and amount<0', [personId]))
+    expect(debits.rowCount).toBe(1)
+  })
+
+  it('refuses undo after spending, preserving completion and proof atomically', async () => {
+    const { personId, instanceId } = await earnedChore('spent')
+    await withClient((c) => c.query("update chore_instances set proof_storage_key='review-proof.jpg',proof_content_type='image/jpeg',had_proof=true where id=$1", [instanceId]))
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Spent chore', cost: 10, requiresApproval: false })).body).reward
+    expect((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId })).statusCode).toBe(201)
+    const result = await call('POST', `/api/chore-instances/${instanceId}/uncomplete`, kevin)
+    expect(result.statusCode).toBe(409)
+    expect(JSON.parse(result.body).message).toMatch(/not enough.*undo/i)
+    const stored = await withClient((c) => c.query('select status,awarded,proof_storage_key,had_proof from chore_instances where id=$1', [instanceId]))
+    expect(stored.rows[0]).toEqual({ status: 'done', awarded: true, proof_storage_key: 'review-proof.jpg', had_proof: true })
+    expect(await starsOf(personId)).toBe(0)
+    const rows = await withClient((c) => c.query("select id from ledger_entries where person_id=$1 and reason='chore_uncompleted'", [personId]))
+    expect(rows.rowCount).toBe(0)
+  })
+
+  it('serializes two decisions on the same redemption row (one 200, one 409)', async () => {
+    const personId = await addMember('Same redemption', 'kid', false, 'dev|same-redemption')
+    await grantStars(personId, 10)
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'One decision', cost: 2, requiresApproval: true })).body).reward
+    const red = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId })).body).redemption
+    const blocker = new Client({ connectionString: url })
+    const observer = new Client({ connectionString: url })
+    await Promise.all([blocker.connect(), observer.connect()])
+    await blocker.query('begin')
+    await blocker.query('select id from reward_redemptions where id=$1 for update', [red.id])
+    const pending = [call('POST', `/api/redemptions/${red.id}/approve`, reviewer), call('POST', `/api/redemptions/${red.id}/approve`, reviewer)]
+    let barrierError: unknown
+    try {
+      const { rows } = await blocker.query<{ pid: number }>('select pg_backend_pid() as pid')
+      await waitForLockWaiters(observer, rows[0].pid, 2, ['%from reward_redemptions%', '%for update%'])
+    } catch (error) { barrierError = error } finally {
+      await blocker.query('commit')
+      await Promise.all([blocker.end(), observer.end()])
+    }
+    const results = await Promise.all(pending)
+    if (barrierError) throw barrierError
+    expect(results.map((r) => r.statusCode).sort()).toEqual([200, 409])
+    expect(await starsOf(personId)).toBe(8)
+  })
+
+  it.each(['from', 'to'])('rechecks a concurrently disabled %s conversion currency under lock', async (side) => {
+    const personId = await addMember(`Conversion disable ${side}`, 'kid', false, `dev|disable-${side}`)
+    const from = JSON.parse((await call('POST', '/api/currencies', kevin, { label: `From ${side}`, spendable: true })).body).currency
+    const to = JSON.parse((await call('POST', '/api/currencies', kevin, { label: `To ${side}`, spendable: true })).body).currency
+    await call('POST', `/api/persons/${personId}/award`, kevin, { currency: from.key, amount: 10 })
+    const conv = JSON.parse((await call('POST', '/api/conversions', kevin, { fromCurrency: from.key, toCurrency: to.key, fromAmount: 1, toAmount: 1 })).body).conversion
+    const result = await runAfterConcurrentCurrencyDisable(side === 'from' ? from.id : to.id, () => call('POST', `/api/conversions/${conv.id}/apply`, kevin, { personId }))
+    expect(result.statusCode).toBe(409)
+    const entries = await withClient((c) => c.query("select id from ledger_entries where person_id=$1 and reason='conversion'", [personId]))
+    expect(entries.rowCount).toBe(0)
   })
 })
