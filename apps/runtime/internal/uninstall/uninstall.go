@@ -630,8 +630,13 @@ func (o Options) sweepOrder() []string {
 	}
 	// Whatever is left — the supervisor's own pidfile, a service added since — in the
 	// order ReadDir gave them.
+	//
+	// Only .pid files: Finder drops a .DS_Store into any folder it displays, and the Mac
+	// app's menu offers "Reveal data folder". Signalling one of those is impossible, and
+	// treating it as a pidfile we could not read failed the entire uninstall and told
+	// the user that .DS_Store might still be running.
 	for _, e := range entries {
-		if present[e.Name()] {
+		if present[e.Name()] && strings.HasSuffix(e.Name(), ".pid") {
 			ordered = append(ordered, e.Name())
 		}
 	}

@@ -1095,3 +1095,24 @@ func TestADryRunWarnsAboutTheRunningServerWithoutDeleteData(t *testing.T) {
 		t.Errorf("the dry run gives no verdict on the running server:\n%s", text)
 	}
 }
+
+// Finder writes .DS_Store into any folder it displays, and the Mac app's menu offers
+// "Reveal data folder" — so a stray file in pids/ is routine. Treating it as a pidfile
+// failed the whole uninstall and told the user that .DS_Store "may still be running".
+func TestAStrayFileInPidsIsNotTakenForAPidfile(t *testing.T) {
+	opts, _, _ := fixture(t)
+	opts.DeleteData = true
+	if err := os.WriteFile(filepath.Join(opts.Layout.Pids, ".DS_Store"), []byte("\x00\x01"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(opts.Layout.Pids, "scratch"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Run(context.Background(), opts); err != nil {
+		t.Fatalf("a stray file in pids/ failed the uninstall: %v", err)
+	}
+	if _, err := os.Stat(opts.Layout.Root); !os.IsNotExist(err) {
+		t.Errorf("--delete-data was blocked by a stray file: %v", err)
+	}
+}
