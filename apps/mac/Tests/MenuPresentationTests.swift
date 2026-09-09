@@ -121,8 +121,6 @@ final class MenuPresentationTests: XCTestCase {
         XCTAssertTrue(m.addressEnabled)
         XCTAssertTrue(m.backupEnabled)
         XCTAssertFalse(m.showLogs)
-        // Present but inert until Phase 3 item 6 ships the appcast.
-        XCTAssertFalse(m.checkForUpdatesEnabled)
     }
 
     func testStartingDisablesTheActionsThatNeedAServer() throws {
@@ -258,6 +256,46 @@ final class MenuPresentationTests: XCTestCase {
 
         let ordinary = MenuPresentation.make(status: s)
         XCTAssertEqual(ordinary.quitTitle, "Quit Waffled")
+        XCTAssertTrue(m.quitEnabled, "nothing is prepared to swap — leaving is a person's call")
+    }
+
+    /// The same refused stop with an update already prepared, which is the one case "Quit
+    /// anyway" cannot be offered for: Sparkle's installer finishes the swap when this
+    /// process exits, whatever the reason for the exit, so quitting would replace the app
+    /// under the server still running the old bundle.
+    func testQuitIsHeldWhenQuittingWouldSwapTheAppOverARunningServer() throws {
+        let s = try RuntimeStatus.decode(Fixtures.data(Fixtures.fullRunning))
+        let install = InstallHandler {}
+        let m = MenuPresentation.make(status: s, stopFailure: "postgres would not shut down",
+                                      canCheckForUpdates: false,
+                                      updatePhase: .armed(handler: install))
+
+        XCTAssertEqual(m.quitTitle,
+                       "Quit — stop the server first (an update will install on quit)")
+        XCTAssertFalse(m.quitEnabled)
+        XCTAssertEqual(m.statusLine, "Could not stop Waffled: postgres would not shut down",
+                       "the reason the item is off is the line above it")
+        XCTAssertEqual(m.checkForUpdatesLabel, "Install the update now",
+                       "the retry is still the way on")
+        XCTAssertTrue(m.checkForUpdatesEnabled)
+    }
+
+    /// `Install on Quit`, and an abort after Sparkle has prepared the installer, both leave
+    /// the app holding no block at all — and Sparkle armed all the same. The item is an
+    /// ordinary check again (the session that was blocking it has ended), but Quit still
+    /// will not offer to leave a running server behind.
+    func testAnArmedInstallerWithNoBlockStillHoldsQuit() throws {
+        let s = try RuntimeStatus.decode(Fixtures.data(Fixtures.fullRunning))
+        let m = MenuPresentation.make(status: s, stopFailure: "postgres would not shut down",
+                                      canCheckForUpdates: true,
+                                      updatePhase: .armed(handler: nil))
+
+        XCTAssertEqual(m.quitTitle,
+                       "Quit — stop the server first (an update will install on quit)")
+        XCTAssertFalse(m.quitEnabled)
+        XCTAssertEqual(m.checkForUpdatesLabel, "Check for updates…",
+                       "there is no block here for `Install the update now` to run")
+        XCTAssertEqual(m.updateAction, .check)
     }
 
     /// While the stop is in flight the status line says so and the actions are off: it
@@ -305,5 +343,70 @@ final class MenuPresentationTests: XCTestCase {
 
         XCTAssertFalse(m.backupEnabled)
         XCTAssertTrue(m.openEnabled, "opening a browser cannot collide with anything")
+    }
+
+    // MARK: the updater
+
+    /// The item follows Sparkle's own `canCheckForUpdates`, and says why when it is off:
+    /// a `.menu`-style `MenuBarExtra` renders no tooltip, so a disabled item that does not
+    /// explain itself explains nothing.
+    func testCheckForUpdatesSaysWhichOfTheTwoStatesItIsIn() throws {
+        let s = try RuntimeStatus.decode(Fixtures.data(Fixtures.fullRunning))
+
+        let ready = MenuPresentation.make(status: s, canCheckForUpdates: true)
+        XCTAssertEqual(ready.checkForUpdatesLabel, "Check for updates…")
+        XCTAssertTrue(ready.checkForUpdatesEnabled)
+
+        let checking = MenuPresentation.make(status: s, canCheckForUpdates: false)
+        XCTAssertEqual(checking.checkForUpdatesLabel, "Checking for updates…")
+        XCTAssertFalse(checking.checkForUpdatesEnabled)
+    }
+
+    /// An update is a stop, so it belongs to the same one-operation-at-a-time rule as
+    /// every other action: a check that lands on top of a running backup cannot stop the
+    /// server, and the app has nowhere honest to put that refusal.
+    func testCheckingForUpdatesIsOffWhileSomethingElseIsRunning() throws {
+        let s = try RuntimeStatus.decode(Fixtures.data(Fixtures.fullRunning))
+        let m = MenuPresentation.make(status: s, busy: true, canCheckForUpdates: true)
+
+        XCTAssertFalse(m.checkForUpdatesEnabled)
+    }
+
+    /// A held update strands Sparkle's session: it handed over its install handler, we
+    /// postponed the relaunch and never ran it, so `sessionInProgress` stays set and
+    /// `canCheckForUpdates` is false — a "check for updates again" that does nothing at
+    /// all. The item becomes the way to run the install we are still holding.
+    func testAHeldUpdateTurnsTheItemIntoTheInstallRatherThanACheck() throws {
+        let s = try RuntimeStatus.decode(Fixtures.data(Fixtures.fullRunning))
+        let install = InstallHandler {}
+        let m = MenuPresentation.make(status: s, stopFailure: "postgres would not shut down",
+                                      canCheckForUpdates: false,
+                                      updatePhase: .armed(handler: install))
+
+        XCTAssertEqual(m.checkForUpdatesLabel, "Install the update now")
+        XCTAssertEqual(m.updateAction, .installNow)
+        XCTAssertTrue(m.checkForUpdatesEnabled,
+                      "Sparkle cannot check while it is holding a session — this is the way on")
+
+        let busy = MenuPresentation.make(status: s, busy: true, canCheckForUpdates: false,
+                                         updatePhase: .armed(handler: install))
+        XCTAssertFalse(busy.checkForUpdatesEnabled, "the retry is a stop, like the first try")
+
+        let ordinary = MenuPresentation.make(status: s, canCheckForUpdates: true)
+        XCTAssertEqual(ordinary.updateAction, .check)
+        XCTAssertEqual(ordinary.checkForUpdatesLabel, "Check for updates…")
+    }
+
+    /// What the menu says after an update installed itself and relaunched — in whichever
+    /// direction it went, since re-installing an older DMG is a supported way back.
+    func testTheUpdateNoteNamesTheVersionItLandedOn() {
+        XCTAssertEqual(MenuPresentation.updateNote(previous: "0.14.3", current: "0.15.0"),
+                       "Updated to 0.15.0")
+        XCTAssertEqual(MenuPresentation.updateNote(previous: "0.15.0", current: "0.14.3"),
+                       "Rolled back to 0.14.3")
+        XCTAssertNil(MenuPresentation.updateNote(previous: "0.15.0", current: "0.15.0"),
+                     "no crossing, nothing to say")
+        XCTAssertNil(MenuPresentation.updateNote(previous: "", current: "0.15.0"),
+                     "a data directory that has never crossed has no news")
     }
 }

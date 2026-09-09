@@ -16,14 +16,14 @@
 # Idempotent: it removes what it is about to write, so a second run replaces the .app rather
 # than nesting a runtime inside the last one.
 #
-# The app is signed ad hoc, by xcodebuild, exactly as `xcodebuild build` signs it today —
-# Developer ID signing and notarization are Phase 3 item 5 (docs/product/native-mac-plan.md
-# §7). Nothing here re-signs the app AFTER embedding, and the distinction matters: a shallow
-# `codesign --force --sign - Waffled.app` would only rewrite Contents/MacOS/Waffled and
-# Contents/_CodeSignature, neither of which the runtime manifest covers, and would be safe.
-# It is `--deep` that rewrites the Mach-O files inside Resources/runtime/ and invalidates
-# every one of their hashes — which is why the packaging order in
-# infra/native/bundle/README.md is sign first, write the manifest second.
+# The app is signed ad hoc — Developer ID signing and notarization are Phase 3 item 5
+# (docs/product/native-mac-plan.md §7) — and it is re-signed AFTER the runtime goes in,
+# because xcodebuild sealed an app that did not contain one yet. That re-sign is deliberately
+# shallow: `codesign --force --sign -` rewrites Contents/MacOS/Waffled and
+# Contents/_CodeSignature, neither of which the runtime manifest covers. It is `--deep` that
+# rewrites the Mach-O files inside Resources/runtime/ and invalidates every one of their
+# hashes — which is why the packaging order in infra/native/bundle/README.md is sign first,
+# write the manifest second.
 #
 # bash 3.2-clean (macOS /bin/bash): no associative arrays, no ${x,,}, no mapfile.
 set -euo pipefail
@@ -68,11 +68,25 @@ fi
 
 # ── 2. build the app ─────────────────────────────────────────────────────────
 # Release, and always -project: apps/ios has a scheme with the same name (apps/mac/CLAUDE.md).
+#
+# WAFFLED_APP_VERSION overrides MARKETING_VERSION for this build alone (project.yml holds
+# the real one, and `./waffled release` bumps it there). It exists so you can build a
+# second, higher-numbered app to feed a test appcast — see "Updates" in README.md.
+#
+# The positional parameters are reused to carry it: both arguments were read into BUNDLE
+# and OUT above, an empty "$@" expands to nothing under `set -u`, and bash 3.2 has no
+# array form that does (an empty array is an unbound variable there).
+set --
+if [ -n "${WAFFLED_APP_VERSION:-}" ]; then
+  set -- "MARKETING_VERSION=$WAFFLED_APP_VERSION"
+  say "→ MARKETING_VERSION=$WAFFLED_APP_VERSION (WAFFLED_APP_VERSION)"
+fi
 say "→ xcodebuild build (Release, ad-hoc signed)"
 mkdir -p "$OUT"
 ( cd "$MAC" && xcodebuild build \
     -project Waffled.xcodeproj -scheme Waffled -configuration Release \
-    -destination 'platform=macOS' -derivedDataPath "$DD" >"$OUT/xcodebuild.log" 2>&1 ) || {
+    -destination 'platform=macOS' -derivedDataPath "$DD" "$@" \
+    >"$OUT/xcodebuild.log" 2>&1 ) || {
   tail -n 40 "$OUT/xcodebuild.log" >&2
   die "xcodebuild failed — full log at $OUT/xcodebuild.log"
 }
@@ -100,7 +114,23 @@ cp_err="$(cp -Rpc "$BUNDLE" "$DEST" 2>&1)" || die "could not copy the bundle int
   Contents/Resources/runtime now holds a partial copy; the next run replaces it."
 ok "embedded into the app ($(hsize "$DEST"))"
 
-# ── 4. verify the EMBEDDED copy, with the EMBEDDED binary ────────────────────
+# ── 4. re-seal the app around what is now inside it ──────────────────────────
+# xcodebuild signed an app with no runtime in it, so its CodeResources seal knows nothing
+# about the 36,478 files that just arrived: `codesign --verify` fails with SecCSResourceAdded
+# for every one of them, and Sparkle's generate_appcast refuses to publish an archive that
+# does not pass Apple's code-signing checks. A signature that does not cover the payload is
+# not a signature.
+#
+# Shallow, never --deep, and the distinction is the whole reason this is safe: without
+# --deep, codesign rewrites Contents/MacOS/Waffled and Contents/_CodeSignature and nothing
+# else, so the Mach-O files inside Resources/runtime keep the hashes their manifest
+# records. Step 5 below re-proves exactly that, with the embedded supervisor, every run.
+say "→ re-signing the app around the embedded runtime (ad hoc)"
+codesign --force --sign - "$APP" >/dev/null 2>&1 || die "could not re-sign $APP"
+codesign --verify --strict "$APP" || die "the re-signed app does not verify"
+ok "sealed — codesign --verify passes over the whole app"
+
+# ── 5. verify the EMBEDDED copy, with the EMBEDDED binary ────────────────────
 # `version` proves the supervisor runs from inside the app and is the build this tree
 # produced. `doctor` then runs the same manifest verification that gates `start` — set
 # equality on files and symlinks, sha256 per file, the exec bit, and that every one of the

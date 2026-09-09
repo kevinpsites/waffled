@@ -111,13 +111,100 @@ final class LifecycleTests: XCTestCase {
     /// swallowed on the way out: the app stays, says why, and the quit item asks a second
     /// question — whose answer is the next click on it.
     func testAFailedStopTurnsQuitIntoAQuestionRatherThanAnExit() {
-        XCTAssertEqual(Lifecycle.outcomeAfterStop(error: nil), .terminate)
+        XCTAssertEqual(Lifecycle.outcomeAfterStop(error: nil), .proceed)
         XCTAssertEqual(Lifecycle.outcomeAfterStop(error: "postgres would not shut down"),
-                       .report("postgres would not shut down"))
+                       .refused("postgres would not shut down"))
 
         XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: false), .confirmThenStop)
-        XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: true), .quitWithoutStopping,
+        XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: true),
+                       .quitWithoutStopping,
                        "the changed menu item is the second confirmation")
+    }
+
+    /// The one case where "Quit anyway" is not a way out. Once Sparkle's installer has
+    /// extracted and validated the new app it listens for this process to exit and finishes
+    /// the swap whenever that happens, whatever the reason (`Autoupdate/AppInstaller.m`) —
+    /// so quitting over a server that would not stop replaces Waffled.app, runtime bundle
+    /// and all, under the old binaries still running it. The item says what has to happen
+    /// first, and `Install the update now` stays the retry.
+    ///
+    /// It turns on the flow's phase rather than on an install block the app happens to be
+    /// holding: `Install on Quit` and an abort after stage 1 both leave the app holding
+    /// nothing while Sparkle is still armed.
+    func testQuitWillNotHandAPreparedUpdateAServerThatIsStillRunning() {
+        for phase in [UpdateFlow.Phase.armed(handler: nil),
+                      .stoppingForInstall(handler: nil),
+                      .restartQueued(handler: nil)] {
+            XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: true, phase: phase),
+                           .stopTheServerFirst, "\(phase) is an armed installer")
+            XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: false, phase: phase),
+                           .confirmThenStop,
+                           "nothing refused: quit stops the server first, and that is what makes the swap safe")
+        }
+
+        XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: true, phase: .handedOff),
+                       .quitWithoutStopping,
+                       "the swap is already Sparkle's, and the server is already down")
+
+        XCTAssertEqual(Lifecycle.QuitAction.confirmThenStop.title, "Quit Waffled")
+        XCTAssertEqual(Lifecycle.QuitAction.quitWithoutStopping.title,
+                       "Quit anyway (server keeps running)")
+        XCTAssertEqual(Lifecycle.QuitAction.stopTheServerFirst.title,
+                       "Quit — stop the server first (an update will install on quit)")
+    }
+
+    /// The relaunch waits for the stop, and a stop that refuses holds it back rather than
+    /// pressing on — why, in `docs/product/native-mac-plan.md` Phase 3 item 6.
+    func testTheUpdateRelaunchWaitsForTheServerToStop() {
+        XCTAssertEqual(Lifecycle.outcomeAfterStop(error: nil), .proceed)
+        XCTAssertEqual(Lifecycle.outcomeAfterStop(error: "postgres would not shut down"),
+                       .refused("postgres would not shut down"),
+                       "the swap would land on a server still running the old bundle")
+    }
+
+    /// The note is said once — but "once" has to mean *once there is something to say*.
+    ///
+    /// The two facts arrive on different polls after an update. `bundle.version` comes from
+    /// the manifest and is there from the first status, while the server is still stopped;
+    /// `previousVersion` is written by the runtime when it **starts** against the existing
+    /// data, which on a relaunched app is the auto-start, several polls later. A latch spent
+    /// on the first status that carried a version would therefore be spent on the one poll
+    /// that could not possibly know about the crossing.
+    func testThePollBeforeTheAutoStartDoesNotSpendTheUpdateNote() {
+        var noted: String?
+
+        // Poll 1: the new bundle, but nothing has started against the data yet.
+        var line = Lifecycle.updateNote(previous: "", current: "0.15.0",
+                                        changedAt: "", lastNoted: noted)
+        XCTAssertNil(line)
+        XCTAssertNil(noted, "nothing was said, so nothing is remembered")
+
+        // The auto-start records the crossing; the next poll carries it.
+        line = Lifecycle.updateNote(previous: "0.14.3", current: "0.15.0",
+                                    changedAt: "2026-09-08T03:00:00Z", lastNoted: noted)
+        XCTAssertEqual(line, "Updated to 0.15.0")
+        noted = "2026-09-08T03:00:00Z"
+
+        XCTAssertNil(Lifecycle.updateNote(previous: "0.14.3", current: "0.15.0",
+                                          changedAt: "2026-09-08T03:00:00Z", lastNoted: noted),
+                     "said once, not on every poll for the rest of the process")
+    }
+
+    /// And once for the life of the data directory, not once per launch. The crossing it
+    /// describes is a permanent fact about that directory — `previousVersion` stays where
+    /// it is until the next update — so the app remembers the moment it announced, and
+    /// every later launch reads the same one and says nothing.
+    func testACrossingIsAnnouncedOnceEvenAcrossLaunches() {
+        XCTAssertNil(Lifecycle.updateNote(previous: "0.14.3", current: "0.15.0",
+                                          changedAt: "2026-09-08T03:00:00Z",
+                                          lastNoted: "2026-09-08T03:00:00Z"),
+                     "this launch was not the one that updated")
+
+        XCTAssertEqual(Lifecycle.updateNote(previous: "0.15.0", current: "0.15.1",
+                                            changedAt: "2026-09-09T03:00:00Z",
+                                            lastNoted: "2026-09-08T03:00:00Z"),
+                       "Updated to 0.15.1",
+                       "a different moment is a different crossing, and news again")
     }
 
     /// The icon is the only thing a person sees without opening the menu, so a failed

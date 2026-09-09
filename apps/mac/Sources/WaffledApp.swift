@@ -9,10 +9,14 @@ import SwiftUI
 struct WaffledApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var model = ServerModel.shared
+    /// Started here rather than from the delegate because Sparkle's own SwiftUI recipe
+    /// starts the updater with the app: it has a scheduled check to arm, and the menu item
+    /// has to know from the first time the menu is opened whether it can check.
+    @State private var updater = Updater(model: ServerModel.shared)
 
     var body: some Scene {
         MenuBarExtra {
-            MenuContent(model: model)
+            MenuContent(model: model, updater: updater)
         } label: {
             // The Waffled mark, drawn in CoreGraphics as a template image: macOS
             // recolours it for light, dark and the menu's own highlight, so the state is
@@ -41,9 +45,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 private struct MenuContent: View {
     @Bindable var model: ServerModel
+    let updater: Updater
 
     var body: some View {
-        let menu = model.presentation
+        let menu = model.presentation(canCheckForUpdates: updater.canCheckForUpdates)
 
         Text("\(menu.statusTint.glyph) \(menu.statusLine)")
 
@@ -80,8 +85,13 @@ private struct MenuContent: View {
         Button("Back up now") { model.backUpNow() }
             .disabled(!menu.backupEnabled)
 
-        Button("Check for updates… (coming with the updater)") {}
-            .disabled(true)
+        Button(menu.checkForUpdatesLabel) {
+            switch menu.updateAction {
+            case .check: updater.checkForUpdates()
+            case .installNow: model.installPendingUpdate()
+            }
+        }
+        .disabled(!menu.checkForUpdatesEnabled)
 
         if menu.showLogs {
             Button("Show logs") { model.revealLogs() }
@@ -90,8 +100,10 @@ private struct MenuContent: View {
         Divider()
 
         // The title carries the second question after a stop that refused, because an
-        // alert cannot ask it: by then the app is staying, not leaving.
+        // alert cannot ask it: by then the app is staying, not leaving. With an update
+        // prepared it carries a refusal instead — see `Lifecycle.QuitAction`.
         Button(menu.quitTitle) { model.confirmAndQuit() }
+            .disabled(!menu.quitEnabled)
     }
 }
 

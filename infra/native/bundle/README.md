@@ -103,7 +103,7 @@ the pinned Node first and every subsequent step (including `npx pnpm@11.0.9`) ru
 *that* Node with its `bin/` prepended to `PATH`, never the runner's own.
 
 The same job then **builds the Mac app around the bundle it just made**: `brew install
-xcodegen`, `xcodebuild test` for `apps/mac` (56 unit tests), then
+xcodegen`, `xcodebuild test` for `apps/mac` (89 unit tests), then
 `apps/mac/Scripts/build-app.sh "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/app"`, which clones this
 tree into `Waffled.app/Contents/Resources/runtime` and makes the *embedded* supervisor verify
 the *embedded* bundle. Finally it boots the assembled app with **no dev-mode environment

@@ -38,7 +38,7 @@
 #     and drives it through every health check. That IS the Phase 2 exit-criterion check
 #     (native-mac-plan.md §7 Phase 2 item 4), not a proxy for it.
 #
-#     The same job then goes on to Phase 3: the Mac app's 56 unit tests, `build-app.sh` to
+#     The same job then goes on to Phase 3: the Mac app's 120 unit tests, `build-app.sh` to
 #     assemble Waffled.app with that bundle embedded under Contents/Resources/runtime, and a
 #     smoke boot of the assembled app with NO dev-mode environment variables — only
 #     WAFFLED_DATA_DIR, pointed at a temp directory. That last step is the one that cannot
@@ -142,7 +142,7 @@ jobs:
     # Mac this was measured on, and the 36k-file/587 MB verify walk is I/O bound.
     #
     # The Phase 3 steps turn out to be the cheap end of this job — measured on a warm run
-    # (34318097623): xcodegen 2s (preinstalled), the 56 unit tests 36s, build-app.sh 35s
+    # (34318097623): xcodegen 2s (preinstalled), the 120 unit tests 36s, build-app.sh 35s
     # (Release build + the APFS clone of 670 MB into the .app + the embedded runtime
     # verifying its own manifest), and the smoke boot 19s, of which 6s was an empty data
     # directory becoming a running server — initdb, 96 migrations, api, PowerSync, Caddy.
@@ -237,8 +237,14 @@ jobs:
           HOMEBREW_NO_INSTALL_CLEANUP: '1'
         run: brew install xcodegen
 
-      # The 56 unit tests. Always -project: apps/ios has a scheme with the same name and a
+      # The 120 unit tests. Always -project: apps/ios has a scheme with the same name and a
       # bare -scheme Waffled from the repo root can resolve to the iOS one.
+      #
+      # This step and build-app.sh each resolve the Sparkle SPM package into their own
+      # derived data — ~20 s and ~29 MB apiece, measured locally on a cold checkout. That is
+      # deliberately not cached: an actions/cache round trip for 29 MB costs about what the
+      # download does, and unlike the 670 MB bundle cache there is nothing to build.
+      # Network on the runner is fine (the bundle step already downloads ~1 GB).
       - name: Mac app unit tests
         working-directory: apps/mac
         run: |

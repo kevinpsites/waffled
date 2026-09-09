@@ -1,4 +1,5 @@
 import Foundation
+@testable import Waffled
 
 /// Fixture documents for the `status --json` contract (apps/runtime/README.md, section
 /// "`status --json`"). They are string literals rather than bundle resources so a test
@@ -167,4 +168,57 @@ enum Fixtures {
     """
 
     static func data(_ json: String) -> Data { Data(json.utf8) }
+}
+
+/// A `waffled-runtime` that never spawns: it answers every subcommand from here, records
+/// what it was asked for, and can hold one open until the test lets it return — which is
+/// how a test gets to be *inside* an operation that has not finished yet.
+///
+/// An actor rather than a class with a lock: `RuntimeClient.run` is a nonisolated `async`
+/// call, so it lands off the main actor while the test is still poking at this from on it.
+actor FakeRuntime: RuntimeProcessRunning {
+    /// What `status` answers with. Stopped, so nothing here looks like a running server
+    /// unless a test says so.
+    var statusDocument = Fixtures.minimalStopped
+
+    private var commands: [String] = []
+    private var held: Set<String> = []
+    private var waiting: [String: CheckedContinuation<Void, Never>] = [:]
+
+    /// What the next `status` answers with — a stack that came up while a test was holding
+    /// something open, say.
+    func answer(status document: String) { statusDocument = document }
+
+    /// Make `command` wait inside `run` until `finish(_:)` is called.
+    func hold(_ command: String) { held.insert(command) }
+
+    func isWaiting(for command: String) -> Bool { waiting[command] != nil }
+
+    func finish(_ command: String) { waiting.removeValue(forKey: command)?.resume() }
+
+    func count(of command: String) -> Int { commands.filter { $0 == command }.count }
+
+    func run(executable: URL, arguments: [String]) async throws -> RuntimeProcessResult {
+        let command = arguments.first ?? ""
+        commands.append(command)
+        if held.contains(command) {
+            await withCheckedContinuation { waiting[command] = $0 }
+        }
+        // A stop really takes it down, so `status` afterwards answers like the real one.
+        if command == "stop" { statusDocument = Fixtures.minimalStopped }
+        return RuntimeProcessResult(
+            exitCode: 0,
+            standardOutput: command == "status" ? Fixtures.data(statusDocument) : Data(),
+            standardError: "")
+    }
+}
+
+/// `UpdateMemory` as a dictionary. Every `ServerModel` a test builds gets one of these:
+/// the real store is the app's own defaults domain, and a suite that wrote it would eat
+/// the update note the household running the tests was owed.
+final class InMemoryDefaults: UpdateMemory {
+    private var values: [String: Any] = [:]
+
+    func string(forKey key: String) -> String? { values[key] as? String }
+    func set(_ value: Any?, forKey key: String) { values[key] = value }
 }

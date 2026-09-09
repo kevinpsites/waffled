@@ -32,12 +32,23 @@ settings:
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGNING_REQUIRED: NO
 
+# Sparkle 2 — the updater (plan §7, Phase 3 item 6). Pinned to an exact version rather than
+# a range: this is the framework that replaces the app on a household's Mac, and the version
+# that ships is the version that was tested. XcodeGen only writes the package reference;
+# `xcodebuild` resolves it (a plain `xcodegen generate` never downloads anything).
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.9.6
+
 targets:
   Waffled:
     type: application
     platform: macOS
     sources:
       - path: Sources
+    dependencies:
+      - package: Sparkle
     info:
       path: Waffled-Info.plist
       properties:
@@ -46,9 +57,32 @@ targets:
         # hardcoded "1.0"/"1" into the generated plist, so bumping MARKETING_VERSION
         # (what `./waffled release` does) would silently do nothing. Same reason as iOS.
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
-        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        # CFBundleVersion follows the marketing version rather than
+        # CURRENT_PROJECT_VERSION, which is a constant "1". Sparkle compares **this** key to
+        # decide whether an update is newer, so a constant here means no release is ever
+        # newer than any other and `Check for updates…` always says you are up to date.
+        CFBundleVersion: "$(MARKETING_VERSION)"
         # Menu-bar only: no Dock icon, no app menu, no window on launch.
         LSUIElement: true
+        # ── Sparkle ────────────────────────────────────────────────────────────────
+        # The trust anchor. An update is installed only if it is signed by the private
+        # half of this key, whatever URL described it — which is why WAFFLED_APPCAST_URL
+        # can be an ordinary test seam. The private half lives in the release manager's
+        # login Keychain and nowhere else: back it up (`generate_keys -x`), because losing
+        # it strands every installed copy on the version it has.
+        SUPublicEDKey: P5KntcLJnziFF2CNZTTupX+DpD3N/ty8kPTI/qTkurU=
+        # GitHub serves the latest release's assets at this stable path, so the feed never
+        # names a version. Item 5's release script uploads appcast.xml beside the DMG.
+        SUFeedURL: https://github.com/kevinpsites/waffled/releases/latest/download/appcast.xml
+        # Checking is on from the first launch. Leaving it unset makes Sparkle ask
+        # permission in a window of its own on first run — which an LSUIElement app with no
+        # Dock icon and a first-run window of its own has nowhere sensible to put.
+        SUEnableAutomaticChecks: true
+        SUScheduledCheckInterval: 86400
+        # Ask before installing, always: the install stops the household's server for as
+        # long as the swap and the migrations take, and that is not a thing to do to a
+        # family's evening without a click.
+        SUAutomaticallyUpdate: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.waffled.mac
