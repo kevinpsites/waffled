@@ -27,9 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Redeeming a reward on iPhone or iPad no longer celebrates a reward you didn't get.**
   The shop played its confetti as soon as you confirmed, whether or not the server
   actually granted the reward — so a redemption refused for any reason still looked like
-  a win until the balance failed to move. It now only celebrates a redemption that went
-  through, and says so when one doesn't. Rewards you can't spend toward show who to ask
-  instead of a button that would be turned down.
+  a win until the balance failed to move. The "Saving toward" jar had the opposite
+  problem — a refused redeem there did nothing at all, with no message. Both now only
+  celebrate a redemption that went through, and say so when one doesn't. Rewards you
+  can't spend toward show who to ask instead of a button that would be turned down.
 
 - **Rewards that need a parent's OK are no longer auto-approved on iPhone or iPad.**
   Redeeming on iOS immediately approved its own request, so a reward the household had

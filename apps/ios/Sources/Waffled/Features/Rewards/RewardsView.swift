@@ -97,6 +97,9 @@ struct SavingTowardCard: View {
     let colorHex: String?
     let symbol: String?
     let canPick: Bool
+    /// Same rule as the shop tile: your own jar is yours to spend, someone else's needs
+    /// reward.manage. Without this the card offered a Redeem the server would refuse.
+    let canRedeem: Bool
     let onChange: () -> Void
     let onRedeem: () -> Void
 
@@ -140,7 +143,7 @@ struct SavingTowardCard: View {
                 }
                 Spacer(minLength: 0)
                 VStack(spacing: 7) {
-                    if ready {
+                    if ready && canRedeem {
                         Button(action: onRedeem) { pill("Redeem", bg: WF.primary, outline: false) }
                             .buttonStyle(.plain)
                     }
