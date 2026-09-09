@@ -12,8 +12,14 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private weak var model: ServerModel?
 
+    /// Called from every poll, so it must be idempotent: a window already on screen is
+    /// left exactly where it is. Ordering it front again twice a second would take the
+    /// keyboard back from whatever a person was doing while the server came up — and,
+    /// because activating pulls the app onto the active Space, would drag the window
+    /// around with them.
     func show(model: ServerModel) {
         self.model = model
+        guard window?.isVisible != true else { return }
         let window = window ?? make(for: model)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)

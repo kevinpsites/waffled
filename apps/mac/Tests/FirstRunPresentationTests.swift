@@ -46,6 +46,19 @@ final class FirstRunPresentationTests: XCTestCase {
                        .starting)
     }
 
+    /// The welcome step waits for a server that nothing has started. Someone who runs
+    /// `waffled-runtime start` in Terminal while it is on screen gets the progress list,
+    /// not a button offering to do what is already happening.
+    func testAStartFromAnywhereElseMovesThePersonOnFromTheWelcome() throws {
+        let starting = try status(Fixtures.firstStartInProgress)
+        XCTAssertEqual(FirstRunPresentation.make(status: starting, isFirstRun: true, setupBegun: false)?.step,
+                       .starting)
+
+        let running = try status(Fixtures.fullRunning)
+        XCTAssertEqual(FirstRunPresentation.make(status: running, isFirstRun: true, setupBegun: false)?.step,
+                       .ready)
+    }
+
     /// A held failure outranks the step it interrupted, at any point — including before
     /// anyone has clicked, which is what a runtime that could not be located looks like.
     func testAFailureOutranksEveryOtherStep() throws {

@@ -80,7 +80,12 @@ struct FirstRunPresentation: Equatable {
                 closeQuitsApp: false)
         }
 
-        guard setupBegun else {
+        // The welcome step is for a data directory where nothing exists and nothing is
+        // happening. A server already on its way up — this app's click, or a
+        // `waffled-runtime start` in Terminal — makes "Set up Waffled" a lie, so the
+        // window follows the server rather than only its own button.
+        let underWay = setupBegun || (status.map { $0.state != .stopped } ?? false)
+        guard underWay else {
             return FirstRunPresentation(
                 step: .welcome,
                 title: "Welcome to Waffled",
