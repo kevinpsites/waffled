@@ -249,16 +249,36 @@ final class ServerModel {
     /// the start is a person saying "I will watch the menu bar", not "start again".
     private func syncFirstRunWindow() {
         guard let presentation = firstRunPresentation, !firstRunDismissed else {
+            cancelReadyClose()
             firstRunWindow.close()
             return
         }
         firstRunWindow.show(model: self)
-        guard let closesAfter = presentation.closesAfter, firstRunCloseTask == nil else { return }
+        // Disarmed the moment the window says something else. Polls carry on during those
+        // two seconds, and the step they arrive at can be one with a button on it.
+        guard Lifecycle.readyCloseStillApplies(step: presentation.step),
+              let closesAfter = presentation.closesAfter else {
+            cancelReadyClose()
+            return
+        }
+        guard firstRunCloseTask == nil else { return }
         firstRunCloseTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(closesAfter))
             guard !Task.isCancelled else { return }
-            self?.dismissFirstRunWindow()
+            self?.closeTheReadyWindow()
         }
+    }
+
+    /// The timer's whole decision, asked again at the moment it fires: cancellation and the
+    /// step can both have moved on while it slept.
+    private func closeTheReadyWindow() {
+        guard Lifecycle.readyCloseStillApplies(step: firstRunPresentation?.step) else { return }
+        dismissFirstRunWindow()
+    }
+
+    private func cancelReadyClose() {
+        firstRunCloseTask?.cancel()
+        firstRunCloseTask = nil
     }
 
     func dismissFirstRunWindow() {

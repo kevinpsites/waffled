@@ -292,6 +292,14 @@ enum Lifecycle {
         error.map { StopOutcome.report($0) } ?? .terminate
     }
 
+    /// Whether the ready step's self-close still means anything when its timer fires. The
+    /// window it was armed on can have been replaced in the meantime — a poll during those
+    /// two seconds can report a stack that fell over — and closing is permanent, so a timer
+    /// that fired blind would shut the `Try again` button away for the rest of the process.
+    static func readyCloseStillApplies(step: FirstRunPresentation.Step?) -> Bool {
+        step == .ready
+    }
+
     /// Polling spawns a process, so it is deliberately unhurried once the answer has
     /// settled — and quicker while it is still changing, which is the only time anyone is
     /// watching the icon.

@@ -145,6 +145,22 @@ final class LifecycleTests: XCTestCase {
                        "a start after a failed stop is a new story")
     }
 
+    /// The ready step takes itself away, and the couple of seconds it waits is long enough
+    /// for a poll to move the window on to something someone still needs — `.failed` carries
+    /// the `Try again` button, and a dismissal latches for the life of the process. So the
+    /// timer asks again before it closes anything.
+    func testTheReadyCloseAppliesOnlyWhileTheWindowIsStillReady() {
+        XCTAssertTrue(Lifecycle.readyCloseStillApplies(step: .ready))
+
+        for step in [FirstRunPresentation.Step.welcome, .starting, .failed] {
+            XCTAssertFalse(Lifecycle.readyCloseStillApplies(step: step),
+                           "\(step) is a window that is still saying something")
+        }
+
+        XCTAssertFalse(Lifecycle.readyCloseStillApplies(step: nil),
+                       "no window at all is nothing to close")
+    }
+
     /// Polling is cheap but not free (it spawns a process), so it slows down once the
     /// answer stops changing.
     func testPollingIsFasterWhileSomethingIsHappening() {
