@@ -15,9 +15,12 @@ apps/mac/
   project.yml            # XcodeGen — the source of truth for the Xcode project
   Scripts/
     build-app.sh         # builds Waffled.app with a runtime bundle embedded
+    make-appcast.sh      # signs a directory of releases into a Sparkle appcast
   Sources/
     WaffledApp.swift     # the MenuBarExtra scene and the menu itself
     ServerModel.swift    # the one observable object: poll, start, back up, quit
+    Updater.swift        # Sparkle: the check, and the stop before the relaunch
+    Updates.swift        # which way a version crossing went; the feed-URL seam
     RuntimeClient.swift  # locating waffled-runtime and running its four subcommands
     RuntimeStatus.swift  # decoding `status --json`
     MenuPresentation.swift # icon + menu as pure functions of the last status
@@ -154,7 +157,7 @@ Two things worth knowing:
    Server address: host:port   click to copy; urls.lan, else the Bonjour host
    Start at login              SMAppService.mainApp
    Back up now                 works while stopped — backup starts Postgres itself
-   Check for updates…          inert until the appcast (item 6)
+   Check for updates…          Sparkle; stops the server before it relaunches
    Show logs                   appears only when something has gone wrong
    ─────────
    Quit Waffled                confirms, stops the server, then quits
@@ -228,6 +231,115 @@ that takes — and if the stop *refuses*, the app stays where it is, says why, a
 quit item into the second question: **Quit anyway (server keeps running)**. Exiting on a
 failed stop would leave the household's server up with no icon left to explain it.
 
+## Updates
+
+Waffled updates as one unit, Plex-style: **Sparkle 2 swaps the whole `Waffled.app`, runtime
+bundle and all** (`docs/product/native-mac-plan.md` §6). There is no separate runtime
+updater, no binary-swap step and no second copy of the old bundle on disk, because **a
+`start` from the newer bundle *is* the update** — the new runtime opens the existing data
+directory, snapshots it, migrates it, gates on health and rolls back if that fails, all of
+which it already does (`apps/runtime/README.md`).
+
+What has to be true for that to work is the one rule this app adds:
+
+```text
+check → download → ask → STOP THE SERVER → swap the .app → relaunch → auto-start migrates
+```
+
+macOS keeps a running process's mapped binaries alive after the files under them are
+replaced. So a relaunch over a *running* server leaves the household on the old runtime,
+and the relaunched app — finding it `running` — stands its one auto-start down and never
+notices. The updater therefore **postpones Sparkle's relaunch until `waffled-runtime stop`
+succeeds**, and if the stop *refuses*, the relaunch is held: the icon slashes, the menu says
+`Could not stop Waffled: …`, and the person can try the update again from the menu. It is
+the same rule as quit, for the same reason. (Quitting Waffled with a downloaded update
+pending is safe for the same reason: quit stops the server first.)
+
+The feed is `https://github.com/kevinpsites/waffled/releases/latest/download/appcast.xml` —
+GitHub serves the latest release's assets at that stable path, so the URL never names a
+version. Checks run daily and on the menu item; **installing always asks**, because it stops
+the household's server for as long as the swap and the migrations take.
+
+**The version Sparkle compares is `CFBundleVersion`**, not the marketing string, so this
+app's `CFBundleVersion` follows `MARKETING_VERSION` (`project.yml`). Two consequences worth
+knowing: it must move on every release, and **`./waffled release` does not bump
+`apps/mac/project.yml` today** — it bumps api, web, compose and iOS. Until item 5 adds it,
+the Mac version is set by hand, and a release that forgets is a release Sparkle cannot see.
+
+After an update the menu says so once — `Updated to 0.15.0`, or `Rolled back to 0.14.3` if
+you re-installed an older DMG, which is the supported way back from a bad release. The
+direction is worked out from `bundle.previousVersion` in `status --json`; the runtime
+deliberately reports no direction of its own.
+
+### The signing key
+
+Updates are trusted by **EdDSA signature, not by URL**: the public half is `SUPublicEDKey`
+in `project.yml`, and the private half lives in one person's login Keychain.
+
+> **Back it up.** `generate_keys -x <file>`, to somewhere outside this repo. Losing that key
+> strands every installed copy of Waffled on the version it already has — the app will
+> refuse anything it cannot verify, and no new key can rescue an app that has shipped.
+
+`generate_keys` and `generate_appcast` ship inside the Sparkle package, so resolving it once
+puts them in DerivedData:
+`~/Library/Developer/Xcode/DerivedData/*/SourcePackages/artifacts/sparkle/Sparkle/bin/`.
+
+### Publishing a release
+
+```sh
+apps/mac/Scripts/make-appcast.sh <dir-of-dmgs-or-zips> [out]
+```
+
+It finds `generate_appcast`, refuses early if the Keychain has no key, and signs every
+archive in the directory into `appcast.xml`. Set `WAFFLED_DOWNLOAD_URL_PREFIX` to the URL
+the archives will live at. Phase 3 item 5's release script is what will call this; nothing
+in CI does.
+
+Two things to expect: it takes **~3 minutes** per release (it extracts and hashes the whole
+671 MB archive), and the first run in a while raises a **Keychain prompt** — macOS asking
+whether `generate_appcast` may use the signing key. Answer it (`Always Allow`) or the tool
+sits there at 0% CPU with nothing in its output; a headless shell cannot get past it.
+
+It also refuses an app that fails Apple's code-signing checks — which is why `build-app.sh`
+**re-signs the app after embedding the runtime**. `xcodebuild` sealed an app that did not
+contain a runtime yet, so its `CodeResources` listed none of those 36,478 files and
+`codesign --verify` failed with `SecCSResourceAdded` for every one. The re-sign is shallow
+on purpose: it rewrites the app's own executable and `_CodeSignature` and leaves the
+Mach-O files inside `Resources/runtime` — and their manifest hashes — alone.
+
+### Trying an update without publishing one
+
+`WAFFLED_APPCAST_URL` overrides the feed for one run. It is honoured in every build, not
+just a debug one, because it is **not** a security boundary — the EdDSA key is, and an
+update from any URL still has to satisfy it.
+
+```sh
+S=/tmp/waffled           # scratch: bundle, both apps, the feed
+infra/native/bundle/build.sh build $S/runtime
+
+apps/mac/Scripts/build-app.sh $S/runtime $S/a                        # version A (current)
+WAFFLED_APP_VERSION=0.15.0 apps/mac/Scripts/build-app.sh $S/runtime $S/b   # version B
+
+mkdir -p $S/feed && ditto -c -k --keepParent $S/b/Waffled.app $S/feed/Waffled-0.15.0.zip
+WAFFLED_DOWNLOAD_URL_PREFIX=http://127.0.0.1:8117/ \
+  apps/mac/Scripts/make-appcast.sh $S/feed
+( cd $S/feed && python3 -m http.server 8117 )   # in another terminal
+
+WAFFLED_APPCAST_URL=http://127.0.0.1:8117/appcast.xml \
+WAFFLED_DATA_DIR=$S/data \
+  $S/a/Waffled.app/Contents/MacOS/Waffled
+```
+
+Then `Check for updates…` in the menu. `Waffled: Sparkle found version 0.15.0 in the
+appcast` in the app's output — and a `GET /appcast.xml` in the http.server log — is the
+check working; the rest is Sparkle's own dialog. Installing from it is the step worth
+watching by hand: the server stops, the app is replaced, and the relaunched app brings the
+*new* runtime up against the *same* data directory.
+
+`WAFFLED_APP_VERSION` is only for this: it overrides `MARKETING_VERSION` for one
+`build-app.sh` run. The real version lives in `project.yml` and is bumped by
+`./waffled release`.
+
 ## What is not here yet
 
 Phase 3 item numbers from `docs/product/native-mac-plan.md` §7:
@@ -235,7 +347,10 @@ Phase 3 item numbers from `docs/product/native-mac-plan.md` §7:
 | missing | item |
 |---|---|
 | Developer ID signing + notarization of every embedded binary, and the DMG | 5 |
-| Sparkle, and a `Check for updates…` that does something | 6 |
+
+Signing is the last piece, and it now has one more rule to obey: `Sparkle.framework`
+carries its own nested `Autoupdate`, `Updater.app` and XPC services, which have to be signed
+**inside-out** before the app that contains them.
 
 ## Building and testing
 
@@ -251,5 +366,10 @@ The destination is the host Mac — there is no simulator. Always pass
 just the binary, use `Scripts/build-app.sh` — a copy-files build phase would re-copy 670 MB
 on every incremental build of an eleven-file app.
 
-No test spawns a process. `RuntimeProcessRunning` is the seam, and the tests assert the argv
-the app would really have used — the piece whose breakage looks exactly like a broken server.
+The **first** build after a clean checkout resolves Sparkle from GitHub (~20 s; XcodeGen
+only writes the package reference — `xcodegen generate` itself downloads nothing). Pass
+`-clonedSourcePackagesDirPath` to share one checkout between several `-derivedDataPath`s.
+
+No test spawns a process, and none of them touch Sparkle. `RuntimeProcessRunning` is the
+seam, and the tests assert the argv the app would really have used — the piece whose
+breakage looks exactly like a broken server.

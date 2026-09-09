@@ -57,6 +57,17 @@ the shape of `status --json`. It must never learn more.
   makes one of those at every boot, and a browser window per reboot is the opposite of the
   quiet relaunch.
 - **`start` has no timeout**, by design: a first `initdb` plus every migration takes minutes.
+- **Never let Sparkle relaunch over a running server.** macOS keeps a running process's
+  mapped binaries alive after the files under them are replaced, so a swap over a live
+  server leaves the household on the old runtime and the relaunched app stands its
+  auto-start down in front of it. `UpdaterDelegate` postpones the relaunch until `stop`
+  succeeds and holds it when `stop` refuses (`Lifecycle.relaunchDecision`). Item 5 must also
+  sign `Sparkle.framework`'s nested `Autoupdate`, `Updater.app` and XPC services
+  **inside-out**, before the app that contains them.
+- **Sign the app AFTER the runtime goes into it.** `xcodebuild` seals an app with no runtime
+  in it, so `codesign --verify` then fails with `SecCSResourceAdded` for all 36,478 embedded
+  files and `generate_appcast` refuses to publish it. `build-app.sh` re-signs at the end —
+  **shallow, never `--deep`**, which is what keeps the runtime's own manifest hashes valid.
 
 ## Everything the menu shows is a pure function
 
