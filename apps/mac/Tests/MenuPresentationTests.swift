@@ -151,6 +151,36 @@ final class MenuPresentationTests: XCTestCase {
         XCTAssertFalse(m.showLogs)
     }
 
+    /// A data directory nobody has set up yet is technically stopped, but "Waffled is
+    /// stopped" reads as something a person switched off. While the welcome window waits
+    /// for its click, the menu says the same thing the window does — and offers the same
+    /// way in, because a person may well start from here instead.
+    func testAFirstRunSaysItIsNotSetUpYetRatherThanStopped() throws {
+        let s = try RuntimeStatus.decode(Fixtures.data(Fixtures.freshDataDirectory))
+        let m = MenuPresentation.make(status: s, awaitingSetup: true)
+
+        XCTAssertEqual(m.statusLine, "Waffled is not set up yet")
+        XCTAssertEqual(m.statusTint, .idle)
+        XCTAssertFalse(m.openEnabled, "there is nothing to open")
+        XCTAssertTrue(m.showStart)
+        XCTAssertTrue(m.startEnabled)
+
+        // The moment the setup starts, the ordinary lines take over again.
+        XCTAssertEqual(MenuPresentation.make(status: s, awaitingSetup: false).statusLine,
+                       "Waffled is stopped")
+    }
+
+    /// A failure is the more urgent fact: it is why nothing is set up.
+    func testAFailureOutranksTheNotSetUpLine() throws {
+        let s = try RuntimeStatus.decode(Fixtures.data(Fixtures.freshDataDirectory))
+        let m = MenuPresentation.make(status: s, failure: "postgres refused to start",
+                                      awaitingSetup: true)
+
+        XCTAssertEqual(m.statusLine, "postgres refused to start")
+        XCTAssertEqual(m.statusTint, .fault)
+        XCTAssertTrue(m.showLogs)
+    }
+
     func testUnhealthyShowsTheRuntimesOwnFirstLineAndOffersTheLogs() throws {
         let s = try RuntimeStatus.decode(Fixtures.data(Fixtures.unhealthy))
         let m = MenuPresentation.make(status: s)

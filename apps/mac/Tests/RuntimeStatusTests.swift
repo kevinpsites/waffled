@@ -79,6 +79,16 @@ final class RuntimeStatusTests: XCTestCase {
         XCTAssertThrowsError(try RuntimeStatus.decode(Fixtures.data(json)))
     }
 
+    /// The first-run question, answered by the runtime because it owns the layout: an app
+    /// that stated PGDATA itself would be a second place that knows where the cluster
+    /// lives. Like every other field it defaults rather than throwing.
+    func testTheFirstRunFlagDecodesAndDefaults() throws {
+        XCTAssertTrue(try RuntimeStatus.decode(Fixtures.data(Fixtures.fullRunning)).initialized)
+        XCTAssertFalse(try RuntimeStatus.decode(Fixtures.data(Fixtures.freshDataDirectory)).initialized)
+        XCTAssertFalse(try RuntimeStatus.decode(Fixtures.data(Fixtures.minimalStopped)).initialized,
+                       "a document without the field must decode, not throw")
+    }
+
     /// The state vocabulary is the one place "added, never renamed" cuts against a
     /// failable enum. A word we do not know is a fault to show, never a crash.
     func testAnUnknownStateReadsAsUnhealthy() throws {

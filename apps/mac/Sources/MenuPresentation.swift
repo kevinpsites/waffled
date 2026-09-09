@@ -94,13 +94,15 @@ struct MenuPresentation: Equatable {
     ///   - stopFailure: a `stop` that refused while quitting. Held apart from `failure`
     ///     because the server it describes is still *running* — so a successful poll must
     ///     not clear it — and because it is what changes the quit item.
+    ///   - awaitingSetup: a first run whose welcome window is still waiting for a click.
     static func make(
         status: RuntimeStatus?,
         failure: String? = nil,
         transient: String? = nil,
         busy: Bool = false,
         runtimeAvailable: Bool = true,
-        stopFailure: String? = nil
+        stopFailure: String? = nil,
+        awaitingSetup: Bool = false
     ) -> MenuPresentation {
         let state = status?.state
         let address = status?.serverAddress
@@ -133,11 +135,12 @@ struct MenuPresentation: Equatable {
             baseLine = "Waffled is starting…"
             tint = .starting
         case (_, .stopped):
-            baseLine = "Waffled is stopped"
+            // A data directory nobody has set up yet is stopped too, but "stopped" reads
+            // as something a person switched off.
+            baseLine = awaitingSetup ? "Waffled is not set up yet" : "Waffled is stopped"
             tint = .idle
         case (_, .unhealthy):
-            // The runtime's own sentence beats any wording invented here.
-            baseLine = status?.lastError.firstLine ?? "Waffled needs attention"
+            baseLine = RuntimeStatus.attentionLine(status)
             tint = .fault
         case (_, nil):
             baseLine = "Checking…"
@@ -183,10 +186,45 @@ enum Lifecycle {
     /// supervisor: someone who runs `waffled-runtime stop` in Terminal would watch the
     /// app start it straight back up. Deciding once means "I found it stopped when I
     /// arrived", which is the only claim this app can honestly make.
-    static func autoStartDecision(state: RuntimeState?, alreadyDecided: Bool) -> AutoStartDecision {
+    ///
+    /// - Parameter awaitingSetup: a first run whose welcome window is on screen. The
+    ///   attempt is held open rather than spent: the button is what starts a first run,
+    ///   and a server that came up while the window was still asking would have answered
+    ///   the question for the person reading it.
+    static func autoStartDecision(state: RuntimeState?, alreadyDecided: Bool,
+                                  awaitingSetup: Bool = false) -> AutoStartDecision {
         guard !alreadyDecided else { return .standDown }
+        guard !awaitingSetup else { return .keepWaiting }
         guard let state else { return .keepWaiting }
         return shouldAutoStart(state) ? .start : .standDown
+    }
+
+    /// What the first status that answers says about the data directory.
+    enum FirstRunDecision: Equatable {
+        /// Nothing has answered yet. `status` can fail before the runtime is ready, and
+        /// that is the ordinary cold start — latching on it would either show the welcome
+        /// window to a household that has run for a year, or never show it at all.
+        case keepWaiting
+        /// Never set up: the one launch that gets a window.
+        case firstRun
+        /// A household already lives here. The app stays out of the way.
+        case established
+    }
+
+    /// Asked once, on each poll until it answers; the model latches what comes back.
+    static func firstRunDecision(initialized: Bool?) -> FirstRunDecision {
+        guard let initialized else { return .keepWaiting }
+        return initialized ? .established : .firstRun
+    }
+
+    /// Who asked for the server that is now running — the input the browser rule turns on.
+    enum StartTrigger: Equatable {
+        /// Nothing this process did: it was already up, or Terminal started it.
+        case notUs
+        /// The one auto-start per launch, which at login happens with nobody watching.
+        case app
+        /// A click: `Set up Waffled` on the first-run window, or `Start Waffled` in the menu.
+        case person
     }
 
     /// Auto-start from `stopped` and from nowhere else.
@@ -199,14 +237,18 @@ enum Lifecycle {
         state == .stopped
     }
 
-    /// Open the web app once, for a start this process began.
+    /// Open the web app once per process, and only when somebody is waiting for it: the
+    /// end of a first run (plan §2 step 3), or a click on `Start Waffled`.
     ///
-    /// Finding a server already running is the relaunch path (plan §2 step 6): re-open the
-    /// existing server, do not take over the screen of someone who just wanted the menu.
+    /// "Any start this app made" is not enough. The login item makes one of those at every
+    /// boot, and a browser window that opens itself every time the Mac starts is the quiet
+    /// relaunch (plan §2 step 6) getting loud. A server that was already running when the
+    /// menu appeared belongs to whoever started it.
     static func shouldOpenBrowser(
-        newState: RuntimeState, startWasAppInitiated: Bool, alreadyOpened: Bool
+        newState: RuntimeState, trigger: StartTrigger, isFirstRun: Bool, alreadyOpened: Bool
     ) -> Bool {
-        newState == .running && startWasAppInitiated && !alreadyOpened
+        guard newState == .running, !alreadyOpened else { return false }
+        return isFirstRun || trigger == .person
     }
 
     /// What a click on the quit item means. The first click asks the alert and stops the
@@ -247,6 +289,40 @@ enum Lifecycle {
 
     static func outcomeAfterStop(error: String?) -> StopOutcome {
         error.map { StopOutcome.report($0) } ?? .terminate
+    }
+
+    /// The failures the app is holding on to between polls, kept apart because they are
+    /// forgotten on opposite rules.
+    struct HeldFailures: Equatable {
+        /// A `start` that refused. It outlives the document that followed it: the refusal
+        /// left nothing running, so the next poll says `stopped`, which on its own looks
+        /// like a server nobody had tried to start.
+        var start: String?
+        /// A poll that could not reach the runtime at all. It describes that poll and
+        /// nothing else, so the next one to answer replaces it.
+        var poll: String?
+
+        /// The one sentence the menu and the window show: the refusal a person provoked
+        /// beats the transport error underneath it.
+        var message: String? { start ?? poll }
+    }
+
+    /// What is still held once a poll comes back.
+    ///
+    /// - Parameters:
+    ///   - reported: the state the poll answered with, or nil when the poll itself threw.
+    ///   - transportError: nil when `status` answered, however grim the answer was.
+    static func failuresAfterPoll(reported: RuntimeState?, startFailure: String?,
+                                  transportError: String?) -> HeldFailures {
+        HeldFailures(start: reported == .running ? nil : startFailure, poll: transportError)
+    }
+
+    /// Whether the ready step's self-close still means anything when its timer fires. The
+    /// window it was armed on can have been replaced in the meantime — a poll during those
+    /// two seconds can report a stack that fell over — and closing is permanent, so a timer
+    /// that fired blind would shut the `Try again` button away for the rest of the process.
+    static func readyCloseStillApplies(step: FirstRunPresentation.Step?) -> Bool {
+        step == .ready
     }
 
     /// Polling spawns a process, so it is deliberately unhurried once the answer has

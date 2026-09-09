@@ -339,8 +339,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   small Go runtime supervisor that is a CLI first (`waffled-runtime start|status|backup`).
   Mac only for now; Windows follows from the same runtime later. Plan, risks and phases in
   [`native-mac-plan.md`](./native-mac-plan.md); the runtime supervisor (Phase 1 spike,
-  Phase 2 build) is done and the menu-bar app now drives it (Phase 3 items 1, 2 and 4), but
-  nothing is signed, notarized or packaged yet — so there is still nothing to download.
+  Phase 2 build) is done and the menu-bar app now drives it, including the first-run window
+  and the MacBook warning (Phase 3 items 1–4), but nothing is signed, notarized or packaged
+  yet — so there is still nothing to download.
 - **Chore due-dates on the calendar.** The last piece of "the calendar as the all-in-one
   dated view": overlay `chore_instances.due_on` onto the calendar as read-only all-day chips,
   tapping through to the chore rather than the event editor. Deliberately chips, not

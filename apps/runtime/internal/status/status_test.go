@@ -34,7 +34,7 @@ func TestJSONShapeIsStable(t *testing.T) {
 	}
 	for _, key := range []string{
 		"schema", "state", "dataDir", "bundleDir", "ports", "services",
-		"versions", "bundle", "supervisor", "urls", "generatedAt",
+		"versions", "bundle", "supervisor", "urls", "generatedAt", "initialized",
 	} {
 		if _, ok := generic[key]; !ok {
 			t.Errorf("status --json lost the %q field — that is a breaking change for the menu-bar app", key)
@@ -146,5 +146,33 @@ func TestLastErrorSurfacesOnTheReport(t *testing.T) {
 	}
 	if r.State != StateUnhealthy {
 		t.Errorf("state = %q", r.State)
+	}
+}
+
+// `initialized` is how the menu-bar app knows a first run from every later one. It is a
+// top-level bool rather than a service field because it is a fact about the DATA, not
+// about anything currently running: an empty data directory reports it false with every
+// service stopped, and the app must never stat the runtime's layout to work it out.
+func TestInitializedIsATopLevelBool(t *testing.T) {
+	r := sample()
+	var generic map[string]any
+	raw, err := json.Marshal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &generic); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := generic["initialized"].(bool); !ok || v {
+		t.Errorf("initialized = %#v on a report that did not set it, want false", generic["initialized"])
+	}
+
+	r.Initialized = true
+	raw, _ = json.Marshal(r)
+	if err := json.Unmarshal(raw, &generic); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := generic["initialized"].(bool); !v {
+		t.Error("initialized did not survive the round trip")
 	}
 }

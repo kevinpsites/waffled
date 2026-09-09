@@ -21,6 +21,9 @@ apps/mac/
     RuntimeClient.swift  # locating waffled-runtime and running its four subcommands
     RuntimeStatus.swift  # decoding `status --json`
     MenuPresentation.swift # icon + menu as pure functions of the last status
+    FirstRunPresentation.swift # the first-run window's four steps, as a value
+    FirstRunWindow.swift # the NSWindow that renders it — the app's only window
+    Hardware.swift       # is this Mac a laptop? (hw.model + IOKit power sources)
     WaffleIronIcon.swift # the Waffled mark, drawn in CoreGraphics as a template
     FirstLine.swift      # the one-line-for-the-menu rule, shared
     LoginItem.swift      # SMAppService.mainApp
@@ -51,9 +54,11 @@ WAFFLED_DATA_DIR=/tmp/waffled/data \
   /tmp/waffled/app/Waffled.app/Contents/MacOS/Waffled
 ```
 
-The icon appears within a second, the server starts, and the browser opens once it is green.
-A first start on an empty data directory runs `initdb` and every migration — measured at
-**18 s** on an M-series Mac, minutes on a slow one.
+The icon appears within a second. An **empty** data directory is a first run, so the setup
+window opens instead of a server (see "First run" below); point it at one you have already
+set up and the server starts by itself, with no window and no browser. A first start runs
+`initdb` and every migration — 5.5 s on an M1 Max, 18 s measured elsewhere, minutes on a
+slow Mac.
 
 The app is **ad-hoc signed**, which is enough here and nowhere else: copy it to another Mac
 and Gatekeeper will refuse to open it, because none of it is signed with a Developer ID or
@@ -64,7 +69,13 @@ runtime invalidates every hash in its manifest. See the packaging note in
 
 CI does exactly this on every PR that touches `apps/mac/`, `apps/runtime/` or the bundle
 script, and then boots the assembled app with no dev-mode variables at all —
-`.github/workflows/native-runtime.yml`, the `runtime-macos` job.
+`.github/workflows/native-runtime.yml`, the `runtime-macos` job. It boots it **twice**,
+because a first run and every launch after it are now different launches. First on an empty
+data directory, where the assertion is that the app starts nothing — the welcome window is
+asking, and a runner has nobody to click — after which the CLI plays the button (`start`)
+and `/healthz` must answer 200 with the app still watching. Then again on that same, now
+set-up directory, where the app's own auto-start has to bring the server back up with no
+`start` of ours.
 
 ## Running against a runtime you are working on (dev mode)
 
@@ -155,6 +166,38 @@ the runtime supervises its own children, and an app that restarted a server some
 just stopped from Terminal would be a second supervisor fighting the first. Everything after
 that one attempt is `Start Waffled`, a click.
 
+## First run
+
+The app has exactly one window, and a household sees it once. When the **first `status` that
+answers** reports `initialized: false` — no database cluster in the data directory yet — the
+window opens in front of everything (an `LSUIElement` app has to activate itself, or it opens
+behind the browser someone was reading) and walks three steps:
+
+1. **Welcome.** What is about to happen and where the data will live, and one button:
+   `Set up Waffled`. The auto-start is **held** while this step is up — the button is what
+   starts a first run, and it spends the one attempt. Closing this window quits the app;
+   nothing has been created yet to leave behind. On a **laptop** there is a plain paragraph
+   here first: closing the lid puts the server to sleep for the whole house, and a Mac mini
+   or a desktop is a better home. It is a warning, not a refusal.
+2. **Starting.** A tick per service as Postgres, the API, Sync and Web come up, the iron
+   cooking at the same cadence as the menu-bar icon, and "First start takes about a minute."
+   Closing the window here stops nothing; the menu keeps showing the same progress.
+3. **Ready.** "Your server is ready", the browser opens on `urls.local`, and the window
+   closes itself two seconds later.
+
+A start that refuses replaces all of it with the error step: the runtime's own sentence,
+`Try again`, and `Show logs`.
+
+**Seeing it again** is a fresh `WAFFLED_DATA_DIR` — that is the whole trigger, so point the
+app at an empty directory and the window is back. Every other launch gets **no window and no
+browser**: the app starts the server if it is down, the icon goes green, and nothing takes
+over the screen. The browser opens once per process and only when somebody is waiting for
+it — the end of a first run, or a click on `Start Waffled` — which is what makes `Start at
+login` bearable: a Mac that reboots at 3 a.m. does not come back with a browser window open.
+
+While the welcome step waits, the menu says **`Waffled is not set up yet`** and offers
+`Start Waffled`; starting from there counts as the same click.
+
 The icon is the Waffled mark: the closed waffle iron from the logo — knob, lid, base — drawn
 in CoreGraphics (`WaffleIronIcon.swift`) rather than shipped as an asset, because a menu-bar
 image is a monochrome template that macOS recolours, so state has to be carried by shape.
@@ -191,7 +234,6 @@ Phase 3 item numbers from `docs/product/native-mac-plan.md` §7:
 
 | missing | item |
 |---|---|
-| the first-run sheet (welcome → starting → ready) and the MacBook warning | 3 |
 | Developer ID signing + notarization of every embedded binary, and the DMG | 5 |
 | Sparkle, and a `Check for updates…` that does something | 6 |
 
@@ -207,7 +249,7 @@ The destination is the host Mac — there is no simulator. Always pass
 `-project Waffled.xcodeproj`: `apps/ios` has a scheme with the same name, and a bare
 `-scheme Waffled` from the repo root can pick the wrong one. For a whole app rather than
 just the binary, use `Scripts/build-app.sh` — a copy-files build phase would re-copy 670 MB
-on every incremental build of a nine-file app.
+on every incremental build of an eleven-file app.
 
 No test spawns a process. `RuntimeProcessRunning` is the seam, and the tests assert the argv
 the app would really have used — the piece whose breakage looks exactly like a broken server.

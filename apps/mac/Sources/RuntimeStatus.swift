@@ -99,6 +99,16 @@ struct RuntimeStatus: Equatable {
 
     var schema = 0
     var state = RuntimeState.stopped
+    /// Whether this data directory has ever been set up; false is a first run, and the
+    /// only launch that shows a window.
+    ///
+    /// It defaults false like everything else here, which means a runtime too old to
+    /// report it reads as a first run: a welcome window in front of a household that has
+    /// one, the auto-start held behind its button, and the browser opened on every launch.
+    /// That is tolerable only because the app and the runtime ship as **one unit**
+    /// (plan §6) — the sole way to meet an older runtime is `WAFFLED_RUNTIME_BIN`, and a
+    /// dev run is where a wrong first-run window costs nothing.
+    var initialized = false
     var dataDir = ""
     var bundleDir = ""
     var urls = URLs()
@@ -114,6 +124,13 @@ struct RuntimeStatus: Equatable {
 
     /// The schema this build understands. Anything else is refused rather than guessed at.
     static let supportedSchema = 1
+
+    /// The one sentence for a stack that needs a person: the runtime's own words whenever
+    /// it gave us any. The menu and the first-run window both show it, and the fallback
+    /// wording is the same in both — so it is derived here rather than at each of them.
+    static func attentionLine(_ status: RuntimeStatus?) -> String {
+        status?.lastError.firstLine ?? "Waffled needs attention"
+    }
 
     static func decode(_ data: Data) throws -> RuntimeStatus {
         let root = try JSONSerialization.jsonObject(with: data)
@@ -132,6 +149,7 @@ struct RuntimeStatus: Equatable {
         var s = RuntimeStatus()
         s.schema = schema
         s.state = RuntimeState(contractValue: object.string("state"))
+        s.initialized = object.bool("initialized")
         s.dataDir = object.string("dataDir")
         s.bundleDir = object.string("bundleDir")
         s.lastError = object.string("lastError")
