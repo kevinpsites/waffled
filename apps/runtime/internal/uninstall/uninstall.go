@@ -731,7 +731,7 @@ func (r Report) Text() string {
 		}
 		fmt.Fprintf(&b, "Your Waffled data %s at %s (%s) — the database, media, backups and config.env.\n",
 			verb, r.DataDir, humanBytes(r.DataSizeBytes))
-		b.WriteString("Delete it too with: waffled-runtime uninstall --delete-data\n")
+		fmt.Fprintf(&b, "Delete it too with: %s\n", r.deleteCommand())
 	default:
 		verb := "was deleted"
 		if r.DryRun {
@@ -747,6 +747,26 @@ func (r Report) Text() string {
 		b.WriteString("The server is running, so the real run will refuse: stop it first, or pass --yes.\n")
 	}
 	return b.String()
+}
+
+// deleteCommand is the command that would delete the directory this report is about.
+//
+// It carries --data whenever that is not the default root: the sentence above it names
+// the directory being kept, and a bare `uninstall --delete-data` would target a
+// different one — on the multi-root machine --data exists for, somebody else's data.
+func (r Report) deleteCommand() string {
+	const base = "waffled-runtime uninstall"
+	def, err := datadir.DefaultRoot()
+	if err == nil && sameDir(def, r.DataDir) {
+		return base + " --delete-data"
+	}
+	return base + " --data " + shellQuote(r.DataDir) + " --delete-data"
+}
+
+// shellQuote makes a path safe to paste into a shell. The default data directory has a
+// space in it, so this is not optional.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'''`) + "'"
 }
 
 // JSON is the --json document.

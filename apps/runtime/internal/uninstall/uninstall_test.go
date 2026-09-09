@@ -1116,3 +1116,22 @@ func TestAStrayFileInPidsIsNotTakenForAPidfile(t *testing.T) {
 		t.Errorf("--delete-data was blocked by a stray file: %v", err)
 	}
 }
+
+// The summary names the directory being kept and then hands over a command to delete it.
+// Without --data that command targets the DEFAULT root — a different household's data on
+// exactly the multi-root machine --data exists for.
+func TestTheDeleteCommandNamesTheSameDirectoryTheSummaryDid(t *testing.T) {
+	opts, _, _ := fixture(t)
+	report, err := Run(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	text := report.Text()
+	if !strings.Contains(text, "--data") {
+		t.Errorf("the delete command targets the default root, not %s:\n%s", opts.Layout.Root, text)
+	}
+	if !strings.Contains(text, opts.Layout.Root) {
+		t.Errorf("the delete command does not name this data directory:\n%s", text)
+	}
+}
