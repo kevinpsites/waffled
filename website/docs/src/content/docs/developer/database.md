@@ -68,7 +68,7 @@ The schema is organized by feature domain, each roughly one migration family:
 
 ## Multi-tenancy
 
-Isolation is enforced at two layers so a bug in one is caught by the other:
+Isolation is enforced at three layers so a bug in one is caught by the others:
 
 1. **API:** the auth gate (`src/app.ts`) resolves a tenant (household + person) from the JWT
    `household_id` claim; [route guards](/concepts/permissions/) re-assert it per handler.
@@ -76,6 +76,33 @@ Isolation is enforced at two layers so a bug in one is caught by the other:
    per household** — `parameters: SELECT request.jwt() ->> 'household_id'`, and each `data:` query
    is `WHERE household_id = bucket.household_id AND deleted_at IS NULL`. A client physically only
    receives its own household's rows.
+3. **Postgres:** every reference to a person is a **composite foreign key** —
+   `foreign key (household_id, person_id) references persons (household_id, id)`, backed by a
+   `unique (household_id, id)` key on `persons` (migration `0101`). A single-column FK proves only
+   that the person exists; the composite one proves they are in the *same household as the row*,
+   so a cross-household reference is rejected by the database even if a handler forgets to check.
+
+### Writing a new person reference
+
+Give the table a `not null household_id` and write the FK as the composite form, never
+`references persons(id)`:
+
+```sql
+person_id uuid references persons(id),  -- ❌ any household's person satisfies this
+...
+foreign key (household_id, person_id) references persons (household_id, id)  -- ✅
+```
+
+A nullable person column stays legal: an FK is `MATCH SIMPLE`, so the check is skipped when the
+person is `NULL` — which is why the `household_id` half must be `NOT NULL`, or the constraint has
+nothing to bite on. If the reference needs `on delete set null`, use the column-list form
+`on delete set null (person_id)`; the bare form would null `household_id` too and turn a person
+delete into a not-null violation.
+
+Three references are deliberately exempt because they have no household column to compose with:
+`refresh_tokens.person_id` and `auth_handoffs.person_id` (auth-internal — the value is the
+authenticated person, never client-supplied) and `meal_recipes.cook_person_id` (a join table keyed
+`(meal_id, recipe_id)`, whose household is reached through `meals`).
 
 ## Direct access
 

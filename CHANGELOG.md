@@ -53,6 +53,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entry points stay visible after a failed fetch. Unreachable-server notices account for
   self-hosting; expired sessions ask for sign-in instead of offering a fruitless retry.
 
+### Security
+
+- **The database now refuses to attach one household's person to another household's
+  data.** Every chore, list item, goal log, photo, calendar feed, reward and ledger entry
+  that names a person now proves in Postgres itself that the person belongs to the same
+  household as the row — 50 references across 37 tables were tightened from "this person
+  exists" to "this person is one of ours". Until now that was guaranteed only by the API
+  remembering to check, and a handful of write paths had forgotten to, which is how one
+  household could nudge a number on another household's kiosk. Those paths are fixed
+  separately; this makes the whole class impossible rather than merely unlikely. On
+  upgrade, any rows a missed check had already let through are cleaned up first: a
+  stranger's name is simply dropped from a chore or list item you keep, while fabricated
+  star awards and redemptions filed against someone outside the household are removed, so
+  balances go back to what the household actually earned.
+
 ## [0.14.3] - 2026-09-02
 
 ### Added
