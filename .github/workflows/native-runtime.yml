@@ -1,0 +1,206 @@
+# Run the native-runtime checks: the Go supervisor's own suite on every PR (fast, any OS),
+# plus a macOS job that assembles the real self-contained bundle and boots the whole stack
+# from an empty data dir the way a fresh Mac would.
+#
+# Scope, same rationale as ci.yml's header: this workflow covers apps/runtime/ (the Go
+# supervisor, `waffled-runtime`), infra/native/bundle/ (the script that assembles the
+# runtime/ directory it drives), and infra/compose/** — Phase 2 of
+# docs/product/native-mac-plan.md. infra/compose is included even though ci.yml never
+# watches it: build_config() in build.sh copies its Caddyfile/00-init.sql/powersync yaml
+# into the bundle VERBATIM and `verify` asserts byte-identity against the repo, and the
+# caddyconf unit test has its own drift alarm against the real Caddyfile (see
+# apps/runtime/README.md "Tests") — an infra/compose edit can fail either job, and today
+# nothing else in the repo watches that path. apps/api/** and apps/web/** deliberately are
+# NOT in the filter below even though build.sh rebuilds both into the bundle: ci.yml already
+# runs their own suites on every change, and gating the (10x-cost) macOS job on them too
+# would fire it on most PRs for no matching bundle-specific coverage. Nothing else in the
+# repo depends on apps/runtime or infra/native/bundle, so a PR that never touches any of
+# these paths gets no run here, same as api/web-only PRs get no run in ci.yml. (Safe for the
+# same reason ci.yml's header gives: main has no required-status-check branch protection.)
+#
+# Two jobs, split for cost as well as speed:
+#   - runtime-go (ubuntu-latest) is the fast gate: gofmt, vet, unit tests. No bundle, no
+#     network beyond the Go toolchain — seconds, on the cheapest runner. runtime-macos
+#     `needs` it, so a formatting or unit failure costs one ubuntu minute, not a macOS run.
+#   - runtime-macos needs an Apple-silicon host because the bundle IS arm64 darwin binaries
+#     (Postgres, Caddy, the built PowerSync service) — there is no cross-build path, and
+#     macOS minutes cost 10x an ubuntu minute. It downloads/builds the ~660 MB bundle
+#     (`build.sh fetch` + `build` + `verify`, the same three commands a person runs
+#     locally — see infra/native/bundle/README.md "How CI does it today"), then runs the Go
+#     integration suite against it, which starts the whole stack — Postgres, api,
+#     PowerSync, Caddy — from an empty temp data dir on free ports and drives it through
+#     every health check. That IS the Phase 2 exit-criterion check (native-mac-plan.md §7
+#     Phase 2 item 4), not a proxy for it.
+#
+# build.sh deliberately needs nothing preinstalled to build the bundle beyond the Xcode
+# command-line tools' base utilities (lipo, rsync, xxd, curl, shasum, tar — present on every
+# GitHub macOS image) — `fetch` downloads the official Node tarball first and then uses
+# *that* Node's bundled npm/npx for everything else, including `npx pnpm@11.0.9` for the
+# PowerSync build. So this job does NOT run actions/setup-node or install pnpm: doing so
+# would set up tooling build.sh never consults (it always prepends the bundled Node's own
+# bin/ to PATH before calling npm/npx — see npm_build() and the pnpm() helper in build.sh)
+# and would misleadingly suggest the runner's system Node is load-bearing when it is not.
+# Confirmed by running fetch/build/verify locally with no pnpm on PATH and only the bundled
+# Node reachable — see the PR description for the dry-run transcript.
+name: Native runtime CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/runtime/**'
+      - 'infra/native/bundle/**'
+      - 'infra/compose/**'
+      - '.github/workflows/native-runtime.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/runtime/**'
+      - 'infra/native/bundle/**'
+      - 'infra/compose/**'
+      - '.github/workflows/native-runtime.yml'
+
+# Cancel superseded runs on the same ref (e.g. rapid pushes to a PR branch) — the macOS job
+# in particular is expensive enough that a stale run should never keep occupying a runner.
+concurrency:
+  group: native-runtime-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-go:
+    name: Go checks (gofmt, vet, unit tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/runtime/go.mod
+
+      - name: gofmt
+        working-directory: apps/runtime
+        run: |
+          fmt_out="$(gofmt -l .)"
+          if [ -n "$fmt_out" ]; then
+            echo "gofmt would reformat:"
+            echo "$fmt_out"
+            exit 1
+          fi
+
+      - name: go vet
+        working-directory: apps/runtime
+        run: go vet ./...
+
+      - name: go test (unit only — no bundle, no -tags integration)
+        working-directory: apps/runtime
+        run: go test ./...
+
+  runtime-macos:
+    name: macOS bundle build + boot from empty data dir
+    # Gate on the cheap job: a gofmt/vet/unit failure should never burn macOS minutes.
+    needs: runtime-go
+    # macos-15 is the current Apple-silicon (arm64) GitHub-hosted runner — confirmed against
+    # actions/runner-images (macos-15 / macos-15-xlarge = arm64; the Intel image is the
+    # differently-labelled macos-15-large/-intel). Pinned to the specific OS version rather
+    # than macos-latest so this job's baseline doesn't shift out from under it the day
+    # -latest moves to a newer image — the same reasoning build.sh applies to every download
+    # it pins.
+    runs-on: macos-15
+    # Measured locally (M-series Mac, warm WAFFLED_BUNDLE_CACHE): fetch ~1s (no-op),
+    # build ~45s, verify ~14s, go build <1s, integration suite (-tags integration -p 1)
+    # ~4m05s. Warm total including checkout/setup overhead: comfortably under 10 minutes.
+    # That's the *warm* number only — not exercised locally: a genuinely cold cache means
+    # fetch_powersync does a fresh `git clone` + `pnpm install --frozen-lockfile` (619 MB
+    # unpacked) + `pnpm build:production` + the prod prune, on top of the Node/Postgres/Caddy
+    # downloads (README "Network cost": ~0.5-1 GB, ~5 min on a fast link) and a networked
+    # `npm ci` for api + web. macos-15 standard runners are ~3 cores and slower than the dev
+    # Mac this was measured on, and the 36k-file/580 MB verify walk is I/O bound. 45 minutes
+    # leaves real headroom for that unmeasured cold path without masking a genuine hang.
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/runtime/go.mod
+
+      # Cache key is the version pins at the top of build.sh, not the whole file, so an
+      # unrelated script edit (a comment, a refactor) doesn't force a ~600 MB re-download —
+      # only bumping NODE_VERSION/PG_*/CADDY_VERSION/POWERSYNC_VERSION/PNPM_SPEC does. Hashed
+      # into a step output rather than a file written into the checkout: build.sh's manifest
+      # records `gitDirty` from `git status --porcelain` on the repo root, and an untracked
+      # file sitting in the workspace during `build` would make every CI bundle claim dirty.
+      - name: Compute bundle cache key
+        id: pins
+        run: |
+          hash="$(grep -E '^(NODE_VERSION|PG_NPM_VERSION|PG_VERSION|PG_CLIENT_VERSION|CADDY_VERSION|POWERSYNC_VERSION|PNPM_SPEC)=' \
+            infra/native/bundle/build.sh | shasum -a 256 | cut -d' ' -f1)"
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
+
+      # Split restore/save (rather than the single actions/cache step) so a failed run still
+      # banks the ~1.3 GB download the moment `fetch` succeeds — actions/cache only saves on a
+      # clean job exit, so without this a red integration run on a cold cache would discard
+      # the whole cache and every retry on the PR would pay the full cold fetch again. A
+      # `fetch` that fails partway deliberately banks nothing (the save step never runs), so a
+      # half-populated cache can never poison this key for the next run.
+      - name: Restore bundle cache (WAFFLED_BUNDLE_CACHE)
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/Library/Caches/WaffledBundle
+          key: waffled-bundle-macos-15-${{ steps.pins.outputs.hash }}
+
+      - name: Bundle fetch (populate cache)
+        run: infra/native/bundle/build.sh fetch
+
+      - name: Save bundle cache
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/Library/Caches/WaffledBundle
+          key: waffled-bundle-macos-15-${{ steps.pins.outputs.hash }}
+
+      - name: Bundle build
+        env:
+          WAFFLED_BUNDLE_NPM_CI: '1'
+        run: infra/native/bundle/build.sh build "$RUNNER_TEMP/runtime"
+
+      - name: Bundle verify
+        run: |
+          set -o pipefail
+          infra/native/bundle/build.sh verify "$RUNNER_TEMP/runtime" 2>&1 | tee "$RUNNER_TEMP/bundle-verify.log"
+
+      - name: go build ./cmd/waffled-runtime
+        working-directory: apps/runtime
+        run: go build ./cmd/waffled-runtime
+
+      # The real stack, from an empty temp data dir on free ports, through every health
+      # check — the Phase 2 exit-criterion check. -p 1: the suite starts multiple stacks in
+      # sequence within a package and two running concurrently would race for the same free
+      # ports (apps/runtime/README.md "Tests").
+      - name: Integration suite (empty data dir → full stack boot)
+        working-directory: apps/runtime
+        env:
+          WAFFLED_BUNDLE: ${{ runner.temp }}/runtime
+        run: |
+          set -o pipefail
+          go test -tags integration -p 1 -v ./... 2>&1 | tee "$RUNNER_TEMP/runtime-integration.log"
+
+      - name: Upload manifest + test logs (failure only)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-macos-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/runtime/manifest.json
+            ${{ runner.temp }}/bundle-verify.log
+            ${{ runner.temp }}/runtime-integration.log
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,5 +1,12 @@
 # Native macOS spike — the whole Waffled stack on one Mac, no Docker
 
+*This is the retired Phase 1 spike's write-up, kept for the reasoning behind the bundle
+(`infra/native/bundle/`) and runtime (`apps/runtime/`) choices in
+`docs/product/native-mac-plan.md`. The spike's throwaway scripts (`infra/native/spike/`)
+were removed in PR #194 once `infra/native/bundle/build.sh` and `apps/runtime` covered
+everything they proved. The "How to run" section below is historical — the commands it
+describes no longer exist in the repo.*
+
 **Throwaway.** This is Phase 1 of `docs/product/native-mac-plan.md`: a bash script that runs
 Postgres 16, the API, PowerSync and Caddy as plain processes on an Apple-silicon Mac so we
 could *learn* whether bundled Postgres and PowerSync-outside-Docker work before writing the
@@ -17,6 +24,9 @@ about **340 MB** for all four services. Everything the plan flagged as "prove fi
 the first path tried; the gotchas below are real but all small.
 
 ## How to run
+
+*(Historical — `infra/native/spike/spike.sh` no longer exists; this records what the
+Phase 1 spike's commands were for anyone reading the findings below.)*
 
 ```sh
 # Node 24 must be first on PATH (the script prepends /opt/homebrew/opt/node@24/bin).

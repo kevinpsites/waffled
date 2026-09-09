@@ -295,8 +295,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   PowerSync, Caddy and web build as Compose — only packaging and supervision differ, via a
   small Go runtime supervisor that is a CLI first (`waffled-runtime start|status|backup`).
   Mac only for now; Windows follows from the same runtime later. Plan, risks and phases in
-  [`native-mac-plan.md`](./native-mac-plan.md); Phase 1 is a throwaway native spike to prove
-  bundled Postgres and PowerSync-outside-Docker before any Swift is written.
+  [`native-mac-plan.md`](./native-mac-plan.md); the runtime supervisor (Phase 1 spike,
+  Phase 2 build) is done — the menu-bar app (Phase 3) hasn't started, so there's still
+  nothing to download.
 - **Chore due-dates on the calendar.** The last piece of "the calendar as the all-in-one
   dated view": overlay `chore_instances.due_on` onto the calendar as read-only all-day chips,
   tapping through to the chore rather than the event editor. Deliberately chips, not

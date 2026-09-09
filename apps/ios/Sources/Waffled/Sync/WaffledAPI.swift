@@ -2295,6 +2295,13 @@ struct WaffledAPI: Sendable {
         _ = try? await deviceSend("POST", "/api/kiosk/heartbeat", body: [:])
     }
 
+    /// The server's error CODE off a failure body (`{ "error": "NoHousehold", … }`).
+    /// Internal, not private, because the rule it feeds is worth a test of its own —
+    /// keying on the status alone would sign a user out for lacking a capability.
+    static func errorCode(_ data: Data) -> String? {
+        ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["error"] as? String
+    }
+
     // device-token request helpers
     private static func intField(_ data: Data, _ key: String) -> Int? {
         ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?[key] as? Int
@@ -4391,7 +4398,18 @@ struct WaffledAPI: Sendable {
     /// `.waffledAuthExpired` (fired by the refresher) sends the user to login.
     private func perform(_ req: URLRequest) async throws -> (Data, URLResponse) {
         let (data, resp) = try await URLSession.shared.data(for: req)
-        guard (resp as? HTTPURLResponse)?.statusCode == 401,
+        let code = (resp as? HTTPURLResponse)?.statusCode
+        // The household this token names is GONE (a restored database, a deleted
+        // household). Refreshing would mint another token for the same hole, so end the
+        // session exactly the way a dead refresh token does — clear the Keychain and let
+        // `Session`'s `.waffledAuthExpired` observer put us back on login. Never on a
+        // bare 403: a permission denial is the app working.
+        if code == 403, Self.errorCode(data) == "NoHousehold" {
+            AuthTokens.clear()
+            await MainActor.run { NotificationCenter.default.post(name: .waffledAuthExpired, object: nil) }
+            return (data, resp)
+        }
+        guard code == 401,
               AuthTokens.refreshToken != nil,
               await TokenRefresher.shared.refresh() else {
             return (data, resp)

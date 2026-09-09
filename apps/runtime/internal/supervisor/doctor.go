@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -143,17 +144,48 @@ func (s *Supervisor) Doctor(ctx context.Context) []Check {
 		}
 	}
 
+	// Discovery: `status` can only report what this Mac asked for, so this is the one
+	// place that asks the network whether the advertisement actually answers.
+	checks = append(checks, s.bonjourCheck(ctx))
+
 	if !s.postgresInitialized() {
 		add("postgres", CheckWarn, "no database cluster yet — it is created on the first start")
 		return checks
 	}
 
+	// Everything from here needs a reachable Postgres, so ONE postmaster is brought up to
+	// serve all of it — started the way `backup` does when the stack is down, and put back
+	// afterwards.
+	//
+	// That is not an optimisation. A bundle too old for the schema is refused by `start`,
+	// so by the time anyone runs `doctor` to ask why, nothing is running — and the checks
+	// below the old "postgres is up" gate were then skipped in exactly the case `doctor`
+	// exists for, while the schema check above it paid for a start and stop of its own.
+	// The command someone runs BECAUSE their server will not start answered fewer
+	// questions than the one they run when it is fine.
+	//
+	// The pid is read FIRST: after ensurePostgres, "is postgres running?" would be
+	// answered by the postmaster this function just started.
 	pid, running := s.postgresPid()
-	if !running {
-		add("postgres", CheckWarn, "not running")
+	stop, err := s.ensurePostgres(ctx)
+	if err != nil {
+		// Nothing below can be asked, and each would otherwise fail separately with its
+		// own version of the same news.
+		add("postgres", CheckFail, "could not start postgres to run the database checks: %v", err)
 		return checks
 	}
-	add("postgres", CheckOK, "running (pid %d) on 127.0.0.1:%d", pid, s.plan.Ports.Postgres)
+	defer stop()
+
+	if running {
+		add("postgres", CheckOK, "running (pid %d) on 127.0.0.1:%d", pid, s.plan.Ports.Postgres)
+	} else {
+		// Not a fault on its own — `doctor` is most useful on a stopped install — but the
+		// distinction has to survive, or the checks below would read as a running server.
+		add("postgres", CheckWarn, "not running; started temporarily so the checks below could run")
+	}
+
+	// Whether this build may serve this data at all.
+	checks = append(checks, s.schemaCheck(ctx))
 
 	if _, err := s.runOneShot(ctx, s.plan.PgIsReady(), 10*time.Second); err != nil {
 		add("postgres connection", CheckFail, "pg_isready failed: %v", err)
@@ -184,6 +216,51 @@ func (s *Supervisor) Doctor(ctx context.Context) []Check {
 	}
 
 	return checks
+}
+
+// schemaCheck reports the database's migration level against this build's, and fails on
+// the state `start` refuses: a schema holding migrations this bundle does not ship.
+//
+// It brings Postgres up if it has to and puts it back, so the answer is the same whether
+// the server is running or not. Everything it reports is what `start` would have found.
+//
+// Doctor already holds a postmaster by the time it calls this, which makes the
+// ensurePostgres below a no-op — it returns early when one is running. The call stays
+// because it is what makes this check answerable on its own terms rather than only as
+// something Doctor sets up for; nesting it costs a pid read.
+func (s *Supervisor) schemaCheck(ctx context.Context) Check {
+	check := func(status, format string, args ...any) Check {
+		return Check{Name: "database schema", Status: status, Detail: fmt.Sprintf(format, args...)}
+	}
+	stop, err := s.ensurePostgres(ctx)
+	if err != nil {
+		return check(CheckWarn, "could not start postgres to compare the database with this build: %v", err)
+	}
+	defer stop()
+
+	if err := s.checkNotDowngraded(ctx); err != nil {
+		var d *backup.Downgrade
+		if errors.As(err, &d) {
+			return check(CheckFail, "%v", err)
+		}
+		return check(CheckWarn, "could not compare the database with this build: %v", err)
+	}
+
+	applied, err := s.appliedMigrations(ctx, s.plan.Env.PostgresDB())
+	if err != nil {
+		return check(CheckWarn, "could not read the applied migrations: %v", err)
+	}
+	bundled, err := s.bundleMigrations()
+	if err != nil {
+		return check(CheckWarn, "%v", err)
+	}
+	pending := backup.Pending(bundled, applied)
+	if len(pending) > 0 {
+		// Not a fault: the next start applies them, taking a snapshot on the way in.
+		return check(CheckOK, "at %s; this build ships up to %s — %d migration(s) will be applied on "+
+			"the next start, after a rollback snapshot", backup.Level(applied), backup.Level(bundled), len(pending))
+	}
+	return check(CheckOK, "at %s, level with this build", backup.Level(bundled))
 }
 
 // DoctorText renders the checks for a terminal and reports whether anything failed.

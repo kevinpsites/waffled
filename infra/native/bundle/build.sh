@@ -11,9 +11,9 @@
 #   ./build.sh clean [--all]    remove ./out (and with --all the cache too)
 #
 # Env: WAFFLED_BUNDLE_CACHE (default ~/Library/Caches/WaffledBundle), WAFFLED_BUNDLE_SEED
-# (default ~/Library/Caches/WaffledSpike — the Phase 1 spike's downloads are reused when
-# present so a rebuild costs no network), WAFFLED_BUNDLE_NO_NETWORK=1 (fail instead of
-# downloading anything), WAFFLED_BUNDLE_NPM_CI=1 (force `npm ci` for api + web).
+# (default ~/Library/Caches/WaffledSpike — an optional second cache dir to copy downloads
+# from, e.g. a previous machine's; unset or missing = no seeding), WAFFLED_BUNDLE_NO_NETWORK=1
+# (fail instead of downloading anything), WAFFLED_BUNDLE_NPM_CI=1 (force `npm ci` for api + web).
 #
 # bash 3.2-clean (macOS /bin/bash): no associative arrays, no ${x,,}, no mapfile.
 set -euo pipefail
@@ -216,7 +216,7 @@ cmd_fetch() {
   need curl; need tar; need shasum; need lipo
   mkdir -p "$CACHE"
   say "cache: $CACHE"
-  [ -d "$SEED" ] && say "seed:  $SEED (spike downloads reused when present)"
+  [ -d "$SEED" ] && say "seed:  $SEED (downloads reused from this cache when present)"
   fetch_node
   fetch_postgres_server
   fetch_postgres_client

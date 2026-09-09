@@ -103,6 +103,11 @@ func TestSidecarRoundTrips(t *testing.T) {
 		Collation:      "en_US.UTF-8",
 		SizeBytes:      4,
 		TakenAt:        "2026-09-03T03:00:00Z",
+		// A snapshot's crossing, recorded beside it as well as in its name: the name is
+		// what a person reads in a directory listing, the sidecar is what a program
+		// reads without parsing filenames.
+		FromVersion: "0.14.3",
+		ToVersion:   "0.15.0",
 	}
 	if err := WriteSidecar(dump, want); err != nil {
 		t.Fatalf("WriteSidecar: %v", err)

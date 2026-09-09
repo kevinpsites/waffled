@@ -366,7 +366,7 @@ func TestRetentionKeepsTheLastNAndLeavesSnapshotsAlone(t *testing.T) {
 	backupsDir := s.Plan().Layout.Backups
 
 	// A snapshot sitting in the same directory, of the kind a previous upgrade left.
-	snapshot := filepath.Join(backupsDir, backup.SnapshotName("0.14.2", time.Now()))
+	snapshot := filepath.Join(backupsDir, backup.SnapshotName("0.14.2", "0.14.3", time.Now()))
 	if err := os.WriteFile(snapshot, []byte("pretend snapshot"), 0o600); err != nil {
 		t.Fatal(err)
 	}

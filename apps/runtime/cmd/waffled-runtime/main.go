@@ -41,7 +41,7 @@ Usage:
   waffled-runtime start [flags]     start the stack (detaches unless --foreground)
   waffled-runtime stop [flags]      stop the stack, in reverse order
   waffled-runtime status [flags]    what is running, on which ports
-  waffled-runtime logs [service]    show a service log (postgres, migrate, api, powersync, caddy, runtime)
+  waffled-runtime logs [service]    show a service log (postgres, migrate, api, powersync, caddy, bonjour, runtime)
   waffled-runtime backup [flags]    dump the database to the backups folder
   waffled-runtime restore FILE      replace the database with a dump (destructive)
   waffled-runtime doctor [flags]    diagnose a stack that will not start
@@ -388,7 +388,7 @@ func cmdLogs(args []string) error {
 	path := layout.LogPath(name)
 	if _, err := os.Stat(path); err != nil {
 		return fmt.Errorf("no log for %q (try: %s, or runtime)", name,
-			strings.Join(append(services.Order, services.Migrate), ", "))
+			strings.Join(append(services.Order, services.Migrate, services.Bonjour), ", "))
 	}
 	return tailFile(path, *lines, *follow)
 }

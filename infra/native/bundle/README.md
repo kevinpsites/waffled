@@ -8,8 +8,8 @@ compose config files, and a `manifest.json` with a sha256 for every file. **Noth
 depends on Homebrew, a system Node, or Docker at run time** — `verify` proves that by
 running every entry point with an empty environment and `PATH=/usr/bin:/bin`.
 
-`build.sh` here is the product-quality successor to the Phase 1 spike
-(`infra/native/spike/`, branch `native-spike`); the spike's README is where the "why" behind
+`build.sh` here is the product-quality successor to the Phase 1 spike; the retired spike's
+findings, kept at `docs/product/native-mac-spike-findings.md`, are where the "why" behind
 each choice was learned. Nothing under `out/` or in the cache is ever committed.
 
 ## Layout
@@ -64,9 +64,9 @@ infra/native/bundle/build.sh clean [--all]         # rm ./out (and the cache wit
   Node (and its npm/npx) for everything — symlink hydration, `npx pnpm@11.0.9`, `npm ci`,
   `npm run build` for api and web, and the manifest.
 - Env: `WAFFLED_BUNDLE_CACHE` (default `~/Library/Caches/WaffledBundle`),
-  `WAFFLED_BUNDLE_SEED` (default `~/Library/Caches/WaffledSpike` — when the Phase 1 spike's
-  cache exists its EDB tgz, Caddy tarball and built `powersync-service` clone are copied instead
-  of downloaded), `WAFFLED_BUNDLE_NO_NETWORK=1` (die instead of downloading),
+  `WAFFLED_BUNDLE_SEED` (default `~/Library/Caches/WaffledSpike` — an optional second cache
+  dir to copy downloads from, e.g. a previous machine's; unset or missing = no seeding),
+  `WAFFLED_BUNDLE_NO_NETWORK=1` (die instead of downloading),
   `WAFFLED_BUNDLE_NPM_CI=1` (force `npm ci` for api/web even if `node_modules` exists), and
   `WAFFLED_{NODE,PG_NPM,PG_CLIENT,CADDY,POWERSYNC}_VERSION` to override a pin.
 - Pins live at the top of `build.sh`: Node **24.19.0** (major must match `.nvmrc`), Postgres
@@ -79,13 +79,23 @@ infra/native/bundle/build.sh clean [--all]         # rm ./out (and the cache wit
   re-runs. `build` always starts from an empty outdir and always rebuilds api + web from the
   checked-out source (so the bundle's `waffledVersion` is whatever the tree says).
 
-**How CI will do it** (Phase 3 packaging job, macOS arm64 runner): `build.sh fetch && build.sh
-build "$RUNNER_TEMP/runtime" && build.sh verify "$RUNNER_TEMP/runtime"`, with
-`WAFFLED_BUNDLE_CACHE` under `actions/cache` keyed on the pins. Then codesign every Mach-O in
-the tree with the Developer ID (Postgres dylibs and Caddy included — EDB's signature does not
-survive our notarization and Caddy ships ad-hoc signed), embed under
-`Resources/runtime/`, and notarize. Signing changes the bytes, so **the manifest must be
-written after signing** — CI should re-run `node manifest.mjs write` (or `build.sh` grows a
+**How CI does it today** (`.github/workflows/native-runtime.yml`, `runtime-macos` job on
+`macos-15`, arm64): exactly the three commands below — `build.sh fetch && build.sh build
+"$RUNNER_TEMP/runtime" && build.sh verify "$RUNNER_TEMP/runtime"` — with
+`WAFFLED_BUNDLE_CACHE` (`~/Library/Caches/WaffledBundle`) restored/saved by `actions/cache`,
+keyed on a hash of just the pin lines at the top of `build.sh` (`NODE_VERSION`,
+`PG_NPM_VERSION`, `PG_VERSION`, `PG_CLIENT_VERSION`, `CADDY_VERSION`, `POWERSYNC_VERSION`,
+`PNPM_SPEC`) rather than the whole file, so an unrelated script edit doesn't force a ~600 MB
+re-download — only bumping a pin does. `WAFFLED_BUNDLE_NPM_CI=1` is set so `build` always runs
+`npm ci` for api/web. No `actions/setup-node`/pnpm step is needed or used: `fetch` downloads
+the pinned Node first and every subsequent step (including `npx pnpm@11.0.9`) runs through
+*that* Node with its `bin/` prepended to `PATH`, never the runner's own.
+
+**Phase 3 will extend the same job** (packaging): codesign every Mach-O in the tree with the
+Developer ID (Postgres dylibs and Caddy included — EDB's signature does not survive our
+notarization and Caddy ships ad-hoc signed), embed under `Resources/runtime/`, and notarize.
+Signing changes the bytes, so **the manifest must be written after signing** — CI should
+re-run `node manifest.mjs write` (or `build.sh` grows a
 `sign` step) after codesign and `verify` once more.
 
 ## Components, sources, sizes (measured build, 2026-09-04, `a506c352`)
