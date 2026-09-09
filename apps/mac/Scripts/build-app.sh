@@ -68,11 +68,25 @@ fi
 
 # ── 2. build the app ─────────────────────────────────────────────────────────
 # Release, and always -project: apps/ios has a scheme with the same name (apps/mac/CLAUDE.md).
+#
+# WAFFLED_APP_VERSION overrides MARKETING_VERSION for this build alone (project.yml holds
+# the real one, and `./waffled release` bumps it there). It exists so you can build a
+# second, higher-numbered app to feed a test appcast — see "Updates" in README.md.
+#
+# The positional parameters are reused to carry it: both arguments were read into BUNDLE
+# and OUT above, an empty "$@" expands to nothing under `set -u`, and bash 3.2 has no
+# array form that does (an empty array is an unbound variable there).
+set --
+if [ -n "${WAFFLED_APP_VERSION:-}" ]; then
+  set -- "MARKETING_VERSION=$WAFFLED_APP_VERSION"
+  say "→ MARKETING_VERSION=$WAFFLED_APP_VERSION (WAFFLED_APP_VERSION)"
+fi
 say "→ xcodebuild build (Release, ad-hoc signed)"
 mkdir -p "$OUT"
 ( cd "$MAC" && xcodebuild build \
     -project Waffled.xcodeproj -scheme Waffled -configuration Release \
-    -destination 'platform=macOS' -derivedDataPath "$DD" >"$OUT/xcodebuild.log" 2>&1 ) || {
+    -destination 'platform=macOS' -derivedDataPath "$DD" "$@" \
+    >"$OUT/xcodebuild.log" 2>&1 ) || {
   tail -n 40 "$OUT/xcodebuild.log" >&2
   die "xcodebuild failed — full log at $OUT/xcodebuild.log"
 }
