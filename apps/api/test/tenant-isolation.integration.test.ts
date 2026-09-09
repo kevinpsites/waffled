@@ -50,6 +50,26 @@ async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
   }
 }
 
+// Plants a row the composite (household_id, person_id) foreign keys refuse.
+// Migration 0104 makes a cross-household person reference structurally impossible, so
+// the read-path tests below can only reach their subject with referential triggers off
+// — the same mechanism `scripts/admin.ts` uses to delete a household in any order. The
+// read hardening is still worth proving: it is what contains a row planted before that
+// migration ran, and what keeps a future missed guard from disclosing a stranger.
+async function seedBypassingForeignKeys(fn: (c: Client) => Promise<void>): Promise<void> {
+  await withClient(async (c) => {
+    await c.query('begin')
+    try {
+      await c.query(`set local session_replication_role = replica`)
+      await fn(c)
+      await c.query('commit')
+    } catch (e) {
+      await c.query('rollback')
+      throw e
+    }
+  })
+}
+
 // Household A — the attacker's side. Owner is an admin (every capability).
 const attacker = mint('dev|a-admin')
 // A non-admin kid in A, for the "acting on behalf of another member" checks.
@@ -142,7 +162,7 @@ describe('spot award cannot reach another household', () => {
     // Independent of the route guard: seed the poisoned row exactly as the bug
     // wrote it (A's household_id, B's person_id) plus a legitimate row in B, so
     // this test still fails if only the write guard were fixed.
-    await withClient(async (c) => {
+    await seedBypassingForeignKeys(async (c) => {
       await c.query(
         `insert into ledger_entries (household_id, person_id, currency, amount, reason)
          values ($1,$2,'stars',999,'spot_award')`,
@@ -183,7 +203,7 @@ describe('reward redemption cannot reach another household', () => {
   it('never discloses a foreign person through the redemptions list', async () => {
     // Independent of the write guard: a row already on file (or written by some
     // future missed guard) must still not resolve a stranger's profile.
-    await withClient(async (c) => {
+    await seedBypassingForeignKeys(async (c) => {
       const reward = await c.query<{ id: string }>(
         `insert into rewards (household_id, title, cost, currency) values ($1,'Poisoned',1,'stars') returning id`,
         [householdA]
@@ -289,11 +309,11 @@ describe('photo attribution cannot reach another household', () => {
   })
 
   it('never discloses a foreign uploader when listing photos', async () => {
-    await withClient((c) =>
+    await seedBypassingForeignKeys((c) =>
       c.query(
         `insert into photos (household_id, emoji, caption, uploaded_by) values ($1,'🖼️','Poisoned',$2)`,
         [householdA, bPersonId]
-      )
+      ).then(() => undefined)
     )
     const res = await call('GET', '/api/photos', attacker)
     expect(res.statusCode).toBe(200)
@@ -338,12 +358,12 @@ describe('calendar feed owners cannot reach another household', () => {
   })
 
   it('never discloses a foreign feed owner when listing feeds', async () => {
-    await withClient((c) =>
+    await seedBypassingForeignKeys((c) =>
       c.query(
         `insert into ics_feeds (household_id, url, name, person_id, visibility)
          values ($1,'https://example.com/poisoned.ics','Poisoned',$2,'family')`,
         [householdA, bPersonId]
-      )
+      ).then(() => undefined)
     )
     const res = await call('GET', '/api/calendar/feeds', attacker)
     expect(res.statusCode).toBe(200)
