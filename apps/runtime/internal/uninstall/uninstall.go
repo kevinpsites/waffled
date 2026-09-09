@@ -220,11 +220,10 @@ func (o Options) remove(ctx context.Context, it Item) error {
 	case KindPidfiles:
 		// Anything still alive here outlived its supervisor: a service orphaned by a
 		// crash, which is precisely the "nothing dead left behind" case.
-		entries, err := os.ReadDir(o.Layout.Pids)
-		if err == nil {
+		{
 			var survivors []error
-			for _, e := range entries {
-				if err := o.terminatePidfile(ctx, filepath.Join(o.Layout.Pids, e.Name())); err != nil {
+			for _, name := range o.sweepOrder() {
+				if err := o.terminatePidfile(ctx, filepath.Join(o.Layout.Pids, name)); err != nil {
 					survivors = append(survivors, err)
 				}
 			}
@@ -403,6 +402,36 @@ func (o Options) terminate(ctx context.Context, pid int, grace time.Duration) er
 		return fmt.Errorf("process %d will not exit", pid)
 	}
 	return nil
+}
+
+// sweepOrder lists the pidfiles in the order they should be signalled: the reverse of the
+// dependency order supervisor.Stop walks, so Postgres goes last and the two services that
+// hold connections to it are already gone. os.ReadDir alone is alphabetical, which puts
+// postgres first — the database killed out from under powersync and caddy.
+func (o Options) sweepOrder() []string {
+	entries, err := os.ReadDir(o.Layout.Pids)
+	if err != nil {
+		return nil
+	}
+	present := map[string]bool{}
+	for _, e := range entries {
+		present[e.Name()] = true
+	}
+	var ordered []string
+	for i := len(services.Order) - 1; i >= 0; i-- {
+		if name := services.Order[i] + ".pid"; present[name] {
+			ordered = append(ordered, name)
+			delete(present, name)
+		}
+	}
+	// Whatever is left — the supervisor's own pidfile, a service added since — in the
+	// order ReadDir gave them.
+	for _, e := range entries {
+		if present[e.Name()] {
+			ordered = append(ordered, e.Name())
+		}
+	}
+	return ordered
 }
 
 // terminatePidfile stops whatever a pidfile names, if it is still alive.

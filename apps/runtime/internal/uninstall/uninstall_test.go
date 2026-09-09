@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -486,5 +487,40 @@ func TestAnOrphanThatWillNotDieFailsTheRun(t *testing.T) {
 	}
 	if _, err := os.Stat(opts.Layout.Root); err != nil {
 		t.Errorf("--delete-data removed the data root under a process that is still running: %v", err)
+	}
+}
+
+// Orphans come down in the reverse of the order they came up, the way supervisor.Stop
+// does it. os.ReadDir is alphabetical, which puts postgres ahead of powersync and caddy
+// — the database killed while the two things reading it are still connected.
+func TestOrphansAreStoppedInReverseDependencyOrder(t *testing.T) {
+	opts, _, _ := fixture(t)
+	pids := map[string]int{"postgres": 5001, "api": 5002, "powersync": 5003, "caddy": 5004}
+	for name, pid := range pids {
+		if err := os.WriteFile(opts.Layout.PidPath(name), []byte(strconv.Itoa(pid)+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dead := map[int]bool{}
+	var order []int
+	opts.grace = 20 * time.Millisecond
+	opts.alive = func(pid int) bool { return pids["postgres"] <= pid && pid <= pids["caddy"] && !dead[pid] }
+	opts.signal = func(pid int, _ syscall.Signal) error {
+		order = append(order, pid)
+		dead[pid] = true
+		return nil
+	}
+
+	if _, err := Run(context.Background(), opts); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	want := []int{pids["caddy"], pids["powersync"], pids["api"], pids["postgres"]}
+	if len(order) != len(want) {
+		t.Fatalf("signalled %v, want the four services once each (%v)", order, want)
+	}
+	for i := range want {
+		if order[i] != want[i] {
+			t.Fatalf("stopped in order %v, want reverse dependency order %v", order, want)
+		}
 	}
 }
