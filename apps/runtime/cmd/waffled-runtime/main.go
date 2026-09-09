@@ -406,9 +406,12 @@ func cmdUninstall(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	report, err := uninstall.Run(ctx, opts)
-	if err != nil {
-		return err
+	report, runErr := uninstall.Run(ctx, opts)
+	// A refusal is raised before anything is attempted, so there is no outcome to print.
+	// Every other failure is partial by nature — some items removed, some not — and the
+	// report is the only way to tell those apart from "nothing happened".
+	if errors.Is(runErr, uninstall.ErrRefused) {
+		return runErr
 	}
 	if *asJSON {
 		doc, err := report.JSON()
@@ -416,10 +419,10 @@ func cmdUninstall(args []string) error {
 			return err
 		}
 		fmt.Println(string(doc))
-		return nil
+	} else {
+		fmt.Print(report.Text())
 	}
-	fmt.Print(report.Text())
-	return nil
+	return runErr
 }
 
 // backupSchedule builds the nightly-backup agent for an uninstall. Only its label and

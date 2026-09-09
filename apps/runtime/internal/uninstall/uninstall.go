@@ -61,6 +61,9 @@ type Item struct {
 	Action    string `json:"action"`
 	Present   bool   `json:"present"`
 	Detail    string `json:"detail,omitempty"`
+	// Error is why this item could not be removed. Its absence on a present item with
+	// action "remove" is what makes "removed" mean removed.
+	Error string `json:"error,omitempty"`
 }
 
 // Report is the whole inventory, and the shape of --json.
@@ -85,6 +88,16 @@ type ScheduleAgent interface {
 	Installed() bool
 	Uninstall() error
 }
+
+// ErrRefused marks an error raised before anything was attempted. Every other failure is
+// partial by nature — some items removed, some not — and leaves a report worth printing;
+// a refusal leaves none, and printing the plan for one reads as a receipt for work that
+// never happened. Callers test for this, not for the individual refusals below.
+var ErrRefused = errors.New("nothing was changed")
+
+// ErrServerRunning is the refusal a caller most needs to tell apart: it is the one the
+// user can clear themselves, by stopping the server or passing --yes.
+var ErrServerRunning = errors.New("the Waffled server is still running")
 
 // Options describe one uninstall.
 type Options struct {
@@ -156,8 +169,9 @@ func Run(ctx context.Context, o Options) (Report, error) {
 	if pid, running := o.supervisorPid(); running && !o.DryRun {
 		if !o.Yes {
 			return report, fmt.Errorf(
-				"the Waffled server is still running (supervisor pid %d) — stop it first with "+
-					"`waffled-runtime stop`, or pass --yes to stop it as part of the uninstall", pid)
+				"%w (supervisor pid %d) — stop it first with `waffled-runtime stop`, "+
+					"or pass --yes to stop it as part of the uninstall; %w",
+				ErrServerRunning, pid, ErrRefused)
 		}
 		fmt.Fprintf(o.Log, "Stopping the running server (pid %d)…\n", pid)
 		if err := o.terminate(ctx, pid, supervisorGrace); err != nil {
@@ -175,11 +189,13 @@ func Run(ctx context.Context, o Options) (Report, error) {
 	if o.DeleteData && report.item(KindData).Present && !o.looksLikeDataDir() {
 		return report, fmt.Errorf(
 			"%s has none of Waffled's own files in it (no config.env, runtime.json or postgres/) — "+
-				"refusing to delete it. Point --data at the right directory", o.Layout.Root)
+				"refusing to delete it. Point --data at the right directory; %w",
+			o.Layout.Root, ErrRefused)
 	}
 
 	var problems []error
-	for _, it := range report.Items {
+	for i := range report.Items {
+		it := &report.Items[i]
 		if !it.Present || it.Action != ActionRemove {
 			continue
 		}
@@ -187,11 +203,12 @@ func Run(ctx context.Context, o Options) (Report, error) {
 		// half-failed cleanup is exactly when os.RemoveAll would run out from under a
 		// live Postgres.
 		if it.Kind == KindData && len(problems) > 0 {
-			problems = append(problems, fmt.Errorf(
-				"left %s in place — something above could not be cleaned up first", o.Layout.Root))
+			it.Error = "left in place — something above could not be cleaned up first"
+			problems = append(problems, fmt.Errorf("left %s in place — %s", o.Layout.Root, it.Error))
 			continue
 		}
-		if err := o.remove(ctx, it); err != nil {
+		if err := o.remove(ctx, *it); err != nil {
+			it.Error = err.Error()
 			problems = append(problems, err)
 		}
 	}
@@ -486,6 +503,8 @@ func (r Report) Text() string {
 	for _, it := range r.Items {
 		state := "removed"
 		switch {
+		case it.Error != "":
+			state = "failed"
 		case !it.Present:
 			state = "absent"
 		case it.Action == ActionKeep:
@@ -499,8 +518,12 @@ func (r Report) Text() string {
 			size = " (" + humanBytes(it.SizeBytes) + ")"
 		}
 		fmt.Fprintf(&b, "  %-8s %-9s %s%s\n", state, it.Kind, it.Path, size)
-		if it.Detail != "" {
-			fmt.Fprintf(&b, "  %-8s %-9s %s\n", "", "", it.Detail)
+		detail := it.Detail
+		if it.Error != "" {
+			detail = it.Error
+		}
+		if detail != "" {
+			fmt.Fprintf(&b, "  %-8s %-9s %s\n", "", "", detail)
 		}
 	}
 

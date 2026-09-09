@@ -2,6 +2,7 @@ package uninstall
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -580,5 +581,56 @@ func TestASocketDirectoryThatContainsTheDataRootIsLeftAlone(t *testing.T) {
 	}
 	if _, err := os.Stat(opts.Layout.Root); err != nil {
 		t.Errorf("the data root's parent was deleted: %v", err)
+	}
+}
+
+// "removed" must mean removed. An item whose removal failed carries the reason, and the
+// text output says so rather than reading the plan back as if it had happened.
+func TestAFailedRemovalIsRecordedOnTheItem(t *testing.T) {
+	opts, _, _ := fixture(t)
+	if err := os.WriteFile(opts.Layout.PidPath("api"), []byte("5555\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	opts.grace = 20 * time.Millisecond
+	opts.alive = func(pid int) bool { return pid == 5555 }
+	opts.signal = func(int, syscall.Signal) error { return nil }
+
+	report, err := Run(context.Background(), opts)
+	if err == nil {
+		t.Fatal("Run succeeded with an orphan it could not kill")
+	}
+	pidfiles := item(t, report, KindPidfiles)
+	if pidfiles.Error == "" {
+		t.Error("the pidfiles item carries no error, so --json cannot tell it apart from a success")
+	}
+	if text := report.Text(); !strings.Contains(text, "failed") {
+		t.Errorf("the text output reports the failed item as done:\n%s", text)
+	}
+}
+
+// The refusal happens before anything is attempted, so it is the one error where there is
+// no outcome to report — main uses this to decide whether to print a document at all.
+func TestTheRefusalIsADistinguishableError(t *testing.T) {
+	opts, _, _ := fixture(t)
+	opts.alive = func(pid int) bool { return pid == 4242 }
+
+	_, err := Run(context.Background(), opts)
+	if !errors.Is(err, ErrServerRunning) {
+		t.Fatalf("the refusal is not ErrServerRunning: %v", err)
+	}
+}
+
+// Both refusals must be recognisable as "nothing was attempted", or the caller prints a
+// report for work that never happened.
+func TestEveryRefusalIsErrRefused(t *testing.T) {
+	running, _, _ := fixture(t)
+	running.alive = func(pid int) bool { return pid == 4242 }
+	if _, err := Run(context.Background(), running); !errors.Is(err, ErrRefused) {
+		t.Errorf("the running-server refusal is not ErrRefused: %v", err)
+	}
+
+	notOurs := Options{Layout: datadir.At(t.TempDir()), DeleteData: true, Log: &strings.Builder{}}
+	if _, err := Run(context.Background(), notOurs); !errors.Is(err, ErrRefused) {
+		t.Errorf("the not-a-data-directory refusal is not ErrRefused: %v", err)
 	}
 }

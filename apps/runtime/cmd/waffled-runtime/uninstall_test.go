@@ -140,3 +140,28 @@ func TestUninstallRefusesWhileTheServerIsRunning(t *testing.T) {
 		t.Errorf("the refusal still removed the pidfile: %v", err)
 	}
 }
+
+// A refusal happens before anything is attempted, so it must print no report at all.
+// Printing the plan there reads as a receipt for work that never happened — the
+// not-a-data-directory refusal announced "your Waffled data … was deleted" and then
+// refused on the next line.
+func TestARefusalPrintsNoReport(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.WriteFile(filepath.Join(home, "taxes.pdf"), []byte("mine"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := captureStdout(t, func() error {
+		return run([]string{"uninstall", "--data", home, "--delete-data"})
+	})
+	if err == nil {
+		t.Fatal("uninstall deleted a directory with nothing of Waffled's in it")
+	}
+	if strings.TrimSpace(out) != "" {
+		t.Errorf("the refusal printed a report:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(home, "taxes.pdf")); err != nil {
+		t.Errorf("the refusal still deleted the contents: %v", err)
+	}
+}
