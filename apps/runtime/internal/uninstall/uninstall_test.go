@@ -678,3 +678,52 @@ func TestAProcessThatDiesOnSIGKILLIsNotReportedAsSurviving(t *testing.T) {
 		t.Errorf("pids/ survived a successful sweep: %v", err)
 	}
 }
+
+// The closing paragraph is the sentence a person actually reads. Telling someone the
+// secrets in config.env are unrecoverably gone, when the deletion failed and the folder
+// is still there, is the exact inverse of this package's contract.
+func TestTheSummaryDoesNotClaimADeletionThatFailed(t *testing.T) {
+	opts, _, _ := fixture(t)
+	opts.DeleteData = true
+	if err := os.WriteFile(opts.Layout.PidPath("api"), []byte("5555\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	opts.grace = 20 * time.Millisecond
+	opts.alive = func(pid int) bool { return pid == 5555 }
+	opts.signal = func(int, syscall.Signal) error { return nil }
+
+	report, err := Run(context.Background(), opts)
+	if err == nil {
+		t.Fatal("Run succeeded with an orphan it could not kill")
+	}
+	if _, err := os.Stat(opts.Layout.Root); err != nil {
+		t.Fatalf("the data root really was deleted, so this test proves nothing: %v", err)
+	}
+	if text := report.Text(); strings.Contains(text, "was deleted") {
+		t.Errorf("the summary claims a deletion that did not happen:\n%s", text)
+	}
+}
+
+// --yes returns before the removal loop when the stop itself fails, so nothing has been
+// touched — and every item defaulted to "removed" in the report that main then printed.
+func TestAFailedStopDoesNotReportItemsAsRemoved(t *testing.T) {
+	opts, _, _ := fixture(t)
+	opts.Yes = true
+	opts.grace = 20 * time.Millisecond
+	opts.alive = func(pid int) bool { return pid == 4242 }
+	opts.signal = func(int, syscall.Signal) error { return syscall.EPERM }
+
+	report, err := Run(context.Background(), opts)
+	if err == nil {
+		t.Fatal("Run succeeded although the server could not be stopped")
+	}
+	if _, err := os.Stat(opts.Layout.BonjourState); err != nil {
+		t.Fatalf("something was removed after the stop failed: %v", err)
+	}
+	if text := report.Text(); strings.Contains(text, "removed") {
+		t.Errorf("items are reported removed although nothing was attempted:\n%s", text)
+	}
+	if item(t, report, KindBonjour).Error == "" {
+		t.Error("an item that was never attempted carries no error")
+	}
+}

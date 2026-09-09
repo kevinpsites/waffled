@@ -177,6 +177,9 @@ func Run(ctx context.Context, o Options) (Report, error) {
 		}
 		fmt.Fprintf(o.Log, "Stopping the running server (pid %d)…\n", pid)
 		if err := o.terminate(ctx, pid, supervisorGrace); err != nil {
+			// Nothing below has run. Without this every item would default to
+			// "removed" in the report main goes on to print.
+			report.markNotAttempted("the server could not be stopped")
 			return report, fmt.Errorf("stop the running server: %w", err)
 		}
 		fmt.Fprintf(o.Log, "Stopped.\n")
@@ -215,6 +218,16 @@ func Run(ctx context.Context, o Options) (Report, error) {
 		}
 	}
 	return report, errors.Join(problems...)
+}
+
+// markNotAttempted records that the run ended before the removals began, so nothing in
+// the report reads back as done.
+func (r *Report) markNotAttempted(why string) {
+	for i := range r.Items {
+		if r.Items[i].Present && r.Items[i].Action == ActionRemove {
+			r.Items[i].Error = "not attempted — " + why
+		}
+	}
 }
 
 func (o Options) remove(ctx context.Context, it Item) error {
@@ -549,6 +562,9 @@ func (r Report) Text() string {
 	switch {
 	case !data.Present:
 		fmt.Fprintf(&b, "There is no Waffled data directory at %s.\n", r.DataDir)
+	case data.Error != "":
+		fmt.Fprintf(&b, "Your Waffled data at %s (%s) was NOT deleted: %s\n",
+			r.DataDir, humanBytes(r.DataSizeBytes), data.Error)
 	case data.Action == ActionKeep:
 		verb := "is kept"
 		if r.dryRun {
