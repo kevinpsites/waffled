@@ -269,11 +269,13 @@ jobs:
               cat "$RUNNER_TEMP/mac-app.log"
               exit 1
             fi
-            # `|| state=""`: GitHub runs each step with `bash -e`, and a status that
-            # cannot answer yet (no data dir, no supervisor) would otherwise end the step
-            # on its exit code instead of going round the loop again.
+            # Parsed, not grepped: every service has a "state" of its own, and the first
+            # one a regex finds need not be the stack's. `|| state=""`: GitHub runs each
+            # step with `bash -e`, and a status that cannot answer yet (no data dir, no
+            # supervisor) would otherwise end the step on its exit code instead of going
+            # round the loop again.
             state="$("$RT" status --json --data "$DATA" 2>/dev/null \
-              | sed -n 's/.*"state": *"\([a-z]*\)".*/\1/p' | head -1)" || state=""
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["state"])')" || state=""
             echo "  $((i * 2))s ${state:-(no status yet)}"
             if [ "$state" = running ]; then break; fi
           done
