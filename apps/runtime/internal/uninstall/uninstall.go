@@ -168,9 +168,11 @@ func (o *Options) applyDefaults() {
 // whatever the caller prints.
 func Inspect(o Options) Report {
 	o.applyDefaults()
-	r := o.inspect()
-	r.DryRun = true
-	return r
+	// Set before inspect(), not after: inspect() chooses its wording from this, so
+	// labelling the report afterwards would leave receipt-tense details inside a
+	// document that says nothing was done.
+	o.DryRun = true
+	return o.inspect()
 }
 
 // Run carries the plan out, and returns the inventory as it stood before it did.
@@ -731,11 +733,12 @@ func (r Report) Text() string {
 		}
 		fmt.Fprintf(&b, "Your Waffled data at %s (%s) %s. The secrets in config.env cannot be recovered.\n",
 			r.DataDir, humanBytes(r.DataSizeBytes), verb)
-		if r.DryRun && r.foundRunning {
-			// The real run refuses over a running server, so the plan must not read as a
-			// promise the command would not keep.
-			b.WriteString("The server is running, so the real run will refuse: stop it first, or pass --yes.\n")
-		}
+	}
+	// The real run refuses over a running server whether or not the data is being
+	// deleted, so this belongs to the plan as a whole: without it the closing paragraph
+	// is a verdict that the command would proceed, and it would not.
+	if r.DryRun && r.foundRunning {
+		b.WriteString("The server is running, so the real run will refuse: stop it first, or pass --yes.\n")
 	}
 	return b.String()
 }

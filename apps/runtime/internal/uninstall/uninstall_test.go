@@ -1063,3 +1063,35 @@ func TestAnUnreadablePidfileIsNotSkipped(t *testing.T) {
 		t.Errorf("--delete-data ran with a pidfile that could not be checked: %v", statErr)
 	}
 }
+
+// Inspect labels its report a plan, so everything in that report has to read as a plan —
+// including the tense inspect() chose before the label was applied.
+func TestInspectReadsAsAPlanThroughout(t *testing.T) {
+	opts, _, _ := fixture(t)
+	opts.alive = func(pid int) bool { return pid == 4242 }
+
+	report := Inspect(opts)
+	if !report.DryRun {
+		t.Fatal("Inspect's report does not say nothing was done")
+	}
+	if detail := item(t, report, KindPidfiles).Detail; !strings.Contains(detail, "is running") {
+		t.Errorf("a document labelled a plan reports the server in the past tense: %q", detail)
+	}
+}
+
+// The real run refuses over a running server whether or not --delete-data was given, so
+// the dry run has to say so either way — the closing paragraph is the verdict a person
+// reads, and "would be kept" alone implies the real run would proceed.
+func TestADryRunWarnsAboutTheRunningServerWithoutDeleteData(t *testing.T) {
+	opts, _, _ := fixture(t)
+	opts.DryRun = true
+	opts.alive = func(pid int) bool { return pid == 4242 }
+
+	report, err := Run(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if text := report.Text(); !strings.Contains(text, "refuse") {
+		t.Errorf("the dry run gives no verdict on the running server:\n%s", text)
+	}
+}
