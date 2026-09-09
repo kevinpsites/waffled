@@ -58,8 +58,12 @@ fi
 # ── the tool ─────────────────────────────────────────────────────────────────
 # Sparkle ships generate_appcast inside the SPM artifact it resolves into DerivedData, so
 # there is nothing to install: the first xcodebuild that resolved the package downloaded
-# it. `find`'s first hit rather than the newest on purpose — project.yml pins Sparkle to an
+# it. The first hit rather than the newest on purpose — project.yml pins Sparkle to an
 # exact version, so every copy under an artifacts directory is the same tool.
+#
+# Globbed, not walked: the path inside an artifacts directory is exact, while `find` over a
+# DerivedData holding every project on the Mac reads gigabytes to answer the same question
+# (4.4 s here). An unmatched glob stays literal in bash, which `-x` then rejects.
 TOOL=""
 MAC="$(cd "$(dirname "$0")/.." && pwd)"
 if [ -n "${SPARKLE_BIN:-}" ] && [ -x "$SPARKLE_BIN/generate_appcast" ]; then
@@ -67,14 +71,14 @@ if [ -n "${SPARKLE_BIN:-}" ] && [ -x "$SPARKLE_BIN/generate_appcast" ]; then
 elif command -v generate_appcast >/dev/null 2>&1; then
   TOOL="$(command -v generate_appcast)"
 else
-  for root in "$HOME/Library/Developer/Xcode/DerivedData" "$MAC/build"; do
-    if [ -d "$root" ]; then
-      TOOL="$(find "$root" -maxdepth 8 -type f -perm -u+x -name generate_appcast \
-                -path '*/artifacts/*/Sparkle/bin/*' -print 2>/dev/null | head -1)"
-      if [ -n "$TOOL" ]; then
-        break
-      fi
-    fi
+  for candidate in \
+    "$HOME/Library/Developer/Xcode/DerivedData"/*/SourcePackages/artifacts/*/Sparkle/bin/generate_appcast \
+    "$MAC/build"/*/SourcePackages/artifacts/*/Sparkle/bin/generate_appcast \
+    "$MAC/build"/SourcePackages/artifacts/*/Sparkle/bin/generate_appcast
+  do
+    [ -x "$candidate" ] || continue
+    TOOL="$candidate"
+    break
   done
 fi
 [ -n "$TOOL" ] || die "generate_appcast not found.
@@ -86,13 +90,15 @@ fi
 # Checked before any work: generate_appcast extracts every archive before it discovers
 # there is nothing to sign with, and extracting a 671 MB app is minutes.
 GENKEYS="$(dirname "$TOOL")/generate_keys"
-if [ -x "$GENKEYS" ]; then
-  if ! "$GENKEYS" -p >/dev/null 2>&1; then
-    die "no private EdDSA key in the login Keychain — this Mac cannot sign a Waffled update.
+[ -x "$GENKEYS" ] || die "generate_keys is not beside $TOOL, so the signing key cannot be
+  checked — and without that check the missing key surfaces minutes later, after every
+  archive has been extracted. The two tools ship together in the Sparkle package: point
+  SPARKLE_BIN at a directory that holds both."
+if ! "$GENKEYS" -p >/dev/null 2>&1; then
+  die "no private EdDSA key in the login Keychain — this Mac cannot sign a Waffled update.
   If the key is backed up, import it:  $GENKEYS -f <the-backup-file>
   Generate a NEW one ($GENKEYS) only if no released build carries the old public key:
   a new key strands every installed copy."
-  fi
 fi
 
 # No delta updates — a cost decision, not a "nobody wants them" one. A 200 MB download that
