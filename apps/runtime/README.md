@@ -722,10 +722,10 @@ the Mac app's **Remove Waffled…** owns its own.
 
 | | Where | Uninstall does what | Who |
 |---|---|---|---|
-| nightly backup schedule | `~/Library/LaunchAgents/app.waffled.backup.plist`, and the loaded launchd job | **removed** — booted out of `gui/$UID`, then the plist deleted. Only when it is really installed: unloading a label we did not install is somebody else's backup to lose | `uninstall` |
+| nightly backup schedule | `~/Library/LaunchAgents/app.waffled.backup.plist`, and the loaded launchd job | **removed** — booted out of `gui/$UID`, then the plist deleted. Only when it is really installed *and* its plist names this `--data` directory: the launchd label is global, so one Mac holds one nightly backup and booting out another data directory's would stop a household's real backups | `uninstall` |
 | pidfiles | `<data>/pids/` | **removed**, and anything still alive in there is SIGTERM'd first — a service orphaned by a crash is the whole "nothing dead left behind" case | `uninstall` |
 | Bonjour registration | `<data>/bonjour.json`, `<data>/pids/bonjour.pid`, and the `dns-sd` process holding the advertisement | **removed** — killing `dns-sd` *is* the deregistration, because mDNSResponder drops a registration when the client that made it goes away | `uninstall` |
-| Postgres socket directory | a `wfl*` temp directory, only when the data path was too long for a unix socket | **removed** — it is outside the data root, so nothing else would ever clean it up | `uninstall` |
+| Postgres socket directory | a `wfl*` temp directory, only when the data path was too long for a unix socket | **removed** — it is outside the data root, so nothing in the data folder's own cleanup reaches it. Kept, with the reason, if it holds anything that is not a `.s.PGSQL*` socket or cannot be read: the path comes out of `runtime.json`, which a person can edit | `uninstall` |
 | the data directory | `~/Library/Application Support/Waffled` — the Postgres cluster, media, backups, logs, secrets, `runtime.json`, PowerSync's `.probes/`, Caddy's state, and the Time Machine exclusion xattr on `postgres/` (which goes with the folder) | **kept**, with its path and size printed. `--delete-data` removes it instead | `uninstall --delete-data` |
 | the login item | registered with `SMAppService.mainApp` — no helper, no plist to find | removed | the Mac app |
 | app preferences | `~/Library/Preferences/app.waffled.mac.plist` | removed | the Mac app |
@@ -778,17 +778,21 @@ nowhere else: `status` is polled by the menu bar and must stay cheap (`apps/mac/
 ### When the app is already in the Trash
 
 The binary ships *inside* the app bundle, so once `Waffled.app` is gone there is nothing
-left to run `uninstall` with. Undo it in Finder and run the command, or do the same three
+left to run `uninstall` with. Undo it in Finder and run the command, or do the same
 things by hand:
 
 ```sh
-launchctl bootout "gui/$UID/app.waffled.backup" 2>/dev/null
-rm -f ~/Library/LaunchAgents/app.waffled.backup.plist
-rm -rf ~/Library/Application\ Support/Waffled          # ← your data. Back it up first.
-defaults delete app.waffled.mac 2>/dev/null            # the app's own preferences
+launchctl bootout "gui/$UID/app.waffled.backup" 2>/dev/null   # stop the nightly backup
+rm -f ~/Library/LaunchAgents/app.waffled.backup.plist         # …and its job file
+rm -rf ~/Library/Application\ Support/Waffled                 # ← your data. Back it up first.
+defaults delete app.waffled.mac 2>/dev/null                   # the app's own preferences
+rm -rf ~/Library/Caches/app.waffled.mac                       # Sparkle's update caches
 ```
 
-A stray `wfl*` socket directory under `/var/folders` is cleaned up by macOS on its own.
+If `runtime.json` recorded a `wfl*` socket directory under `/var/folders`, delete that too
+— read the path out of the file before you remove the data folder. Nothing in the steps
+above reaches it; macOS does eventually clear `/var/folders` itself, but not on any
+schedule worth waiting for.
 
 ## Tests
 

@@ -408,10 +408,11 @@ func (o Options) inspect() Report {
 }
 
 // socketItem describes the fallback directory Postgres put its socket in, when
-// runtime.json records one. The second return is false only when there is no such
-// directory to talk about at all — a directory that is merely gone, or one we have
-// decided not to touch, is still REPORTED, because a directory Waffled made outside the
-// data root and is leaving behind is exactly what a person needs told.
+// runtime.json records a plausible one. The second return is false when the record names
+// nothing this command could have made — absent, relative, or somewhere the guards below
+// rule out. A directory that IS ours is always reported, including when it is merely gone
+// (present: false) or when its contents say to leave it alone: one Waffled made outside
+// the data root and is leaving behind is exactly what a person needs told.
 //
 // runtime.json is the only record of it. Read best-effort: a runtime.json this build
 // cannot parse is not a reason to refuse to uninstall.
@@ -420,11 +421,12 @@ func (o Options) socketItem() (Item, bool) {
 	if err != nil || !existed || st.SocketDir == "" || st.SocketDir == o.Layout.Postgres {
 		return Item{}, false
 	}
-	// Three guards, because this is the one path outside the data root that gets
-	// deleted and it comes out of a file a person can edit: it must not be inside the
-	// data root, it must not CONTAIN it (a "wfl"-named parent would otherwise take the
-	// household's data with it), and the name alone is not enough — what is in there has
-	// to be Postgres's sockets and nothing else.
+	// Four guards, because this is the one path outside the data root that gets deleted
+	// and it comes out of a file a person can edit. Three of them mean "this is not our
+	// directory at all", and drop it: not absolute, inside the data root, or CONTAINING
+	// it (a "wfl"-named parent would otherwise take the household's data with it). The
+	// fourth — what is actually in there — downgrades the item to keep rather than
+	// dropping it, because at that point it IS the directory we recorded.
 	// Relative first: filepath.Rel errors when it compares an absolute root against a
 	// relative path, and within() reads that error as "not contained", so a relative
 	// path would slip past both guards below and be resolved against whatever the
