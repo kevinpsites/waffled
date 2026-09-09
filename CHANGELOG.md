@@ -177,6 +177,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Redeeming a reward on iPhone or iPad no longer celebrates a reward you didn't get.**
+  The shop played its confetti as soon as you confirmed, whether or not the server
+  actually granted the reward — so a redemption refused for any reason still looked like
+  a win until the balance failed to move. The "Saving toward" jar had the opposite
+  problem — a refused redeem there did nothing at all, with no message. Both now only
+  celebrate a redemption that went through, and say so when one doesn't. Rewards you
+  can't spend toward show who to ask instead of a button that would be turned down.
+
+- **Rewards that need a parent's OK are no longer auto-approved on iPhone or iPad.**
+  Redeeming on iOS immediately approved its own request, so a reward the household had
+  set to require approval skipped the approvals queue entirely. It now waits for a
+  parent, the same way the web shop always has.
+
 - **An impossible chore date is refused instead of erroring.** Saving a chore dated to a day
   that doesn't exist (a 31st of February, say) reached the database and came back as a bare
   server error. It is now turned away with a clear message, and a real date still saves.
@@ -206,6 +219,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   retried, and explains what happened. Fast Family Night schedule changes are saved in
   order, and retrying Calendar settings clears an old connection error once it succeeds.
 
+### Security
+
+- **One household can no longer touch or see another household's people.** On a server
+  shared by more than one family, a handful of write paths — spot-awarding stars,
+  redeeming a reward, attributing a photo, assigning a calendar feed or a Family Night
+  slot — accepted a person from a different household, and the screens that read those
+  rows back showed that person's name, emoji and colour. Worst of all, a stray star award
+  landed on the other family's own Today board and kiosk. Every one of those paths now
+  refuses a person who isn't a member, and the reads are scoped too, so a stray row can
+  never resolve a stranger. System Health also stops reporting instance-wide calendar
+  counts to a single household's admin.
+
+- **Spending someone else's stars needs permission.** Redeeming a reward on behalf of
+  another family member now requires the same "manage rewards" permission that trading
+  currencies already asked for — a kid can still redeem their own stars, but not a
+  sibling's. The rule holds wherever you redeem: the reward shop only offers **Get it**
+  on a wallet you may spend, and typing "Sam spent 3 stars on ice cream" into the capture
+  bar is refused the same way rather than quietly emptying Sam's jar.
 - **Today, Family, approvals, and Photos no longer mistake a connection failure for
   “nothing here.”** The iPhone and iPad Today and Family dashboards, plus shared Approvals
   and Photos screens, keep their last confirmed information and show an in-place loading, offline,

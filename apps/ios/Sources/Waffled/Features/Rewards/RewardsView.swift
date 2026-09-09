@@ -97,6 +97,9 @@ struct SavingTowardCard: View {
     let colorHex: String?
     let symbol: String?
     let canPick: Bool
+    /// Same rule as the shop tile: your own jar is yours to spend, someone else's needs
+    /// reward.manage. Without this the card offered a Redeem the server would refuse.
+    let canRedeem: Bool
     let onChange: () -> Void
     let onRedeem: () -> Void
 
@@ -140,7 +143,7 @@ struct SavingTowardCard: View {
                 }
                 Spacer(minLength: 0)
                 VStack(spacing: 7) {
-                    if ready {
+                    if ready && canRedeem {
                         Button(action: onRedeem) { pill("Redeem", bg: WF.primary, outline: false) }
                             .buttonStyle(.plain)
                     }
@@ -521,6 +524,7 @@ struct RewardShopView: View {
     @State private var category = "all"                 // selected category chip
     @State private var redeemFor: WaffledAPI.Reward?     // redeem-confirm sheet
     @State private var celebrate: Celebrated?            // success sheet
+    @State private var redeemError: String?             // a refused/failed redeem
     @State private var giving = false
     @State private var showSavingPicker = false
     @State private var showTrade = false
@@ -572,6 +576,14 @@ struct RewardShopView: View {
                             onCancel: { redeemFor = nil },
                             onConfirm: { Task { await redeem(r) } })
                 .presentationDetents([.height(440)])
+        }
+        .alert("Couldn't redeem", isPresented: Binding(
+            get: { redeemError != nil },
+            set: { if !$0 { redeemError = nil } }
+        )) {
+            Button("OK", role: .cancel) { redeemError = nil }
+        } message: {
+            Text(redeemError ?? "")
         }
         .sheet(item: $celebrate) { c in
             ShopCelebrationView(reward: c.reward, category: ShopCategory.of(c.reward.category),
@@ -770,7 +782,7 @@ struct RewardShopView: View {
             VStack(alignment: .leading, spacing: 7) {
                 Text(r.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
                 Text(cat.label.uppercased()).font(.system(size: 10, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
-                if can {
+                if can && maySpend {
                     Button { redeemFor = r } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "star.fill").font(.system(size: 11, weight: .bold))
@@ -780,6 +792,12 @@ struct RewardShopView: View {
                         .background(WF.primary).clipShape(Capsule())
                     }
                     .buttonStyle(.plain).disabled(giving)
+                } else if can {
+                    // Affordable, but not yours to spend — say who can, rather than
+                    // offering a button the server would refuse. Mirrors the web shop.
+                    Text("Ask a parent to redeem for \(shopFirstName)")
+                        .font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
+                        .padding(.top, 2)
                 } else {
                     VStack(alignment: .leading, spacing: 4) {
                         ZStack(alignment: .leading) {
@@ -806,12 +824,28 @@ struct RewardShopView: View {
         conversions = (try? await api.conversions()) ?? []
     }
 
+    /// Spending your own balance is yours to decide; spending someone else's needs
+    /// reward.manage — the same rule the server enforces, so the shop never offers a
+    /// button that would come back 403.
+    private var maySpend: Bool { canManage || personId == sync.currentPersonId }
+
+    private var shopFirstName: String {
+        (overview?.person.name).flatMap { $0.split(separator: " ").first.map(String.init) } ?? "them"
+    }
+
     private func redeem(_ r: WaffledAPI.Reward) async {
         giving = true
         let before = balance(r.currency)
-        _ = await sync.giveReward(rewardId: r.id, personId: personId)
+        let ok = await sync.giveReward(rewardId: r.id, personId: personId)
         giving = false
         redeemFor = nil
+        // Celebrating regardless of the result meant a refused redeem — no permission,
+        // offline, or the balance moving underneath us — still played the confetti and
+        // told the family they'd got a reward the server never granted.
+        guard ok else {
+            redeemError = "That didn't go through. Check your connection and try again."
+            return
+        }
         try? await Task.sleep(for: .milliseconds(350))   // let the confirm sheet dismiss first
         celebrate = Celebrated(reward: r, pending: r.requiresApproval, balanceBefore: before)
         await reload()

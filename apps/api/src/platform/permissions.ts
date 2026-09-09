@@ -69,6 +69,22 @@ export function resolveCapabilities(memberType: string, isAdmin: boolean, settin
   return CAPABILITIES.filter((cap) => perms[cap])
 }
 
+// Acting on yourself is yours to decide; acting on ANOTHER member needs a capability.
+// That rule is the whole of the reward-redeem / currency-convert / chore-reassign gate,
+// and writing it inline is how it gets forgotten: the capture bar reached the same
+// redeem service without it, so a kid could spend a sibling's balance by naming them.
+// `actingPersonId` is explicit because callers hold it differently — a route has
+// `tenant.personId`, a capture resolver has `ctx.personId`.
+export async function assertSelfOrCapability(
+  tenant: Tenant,
+  actingPersonId: string,
+  targetPersonId: string,
+  cap: Capability
+): Promise<void> {
+  if (targetPersonId === actingPersonId) return
+  await requireCapability(tenant, cap)
+}
+
 // Route guard: admins pass immediately; everyone else is checked against the household's stored
 // matrix for their member_type. Throws 403 on a miss.
 export async function requireCapability(tenant: Tenant, cap: Capability): Promise<void> {

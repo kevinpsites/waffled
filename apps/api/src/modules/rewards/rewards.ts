@@ -9,6 +9,8 @@ import { type Tenant } from '../households/households'
 import { rewardsRoutes, moduleRoutes } from '../../platform/route-guards'
 import { registerRewardCaptureTarget } from './rewards-capture'
 import { listCurrencies, getDefaultCurrencyKey, presentCurrency } from '../currencies/currencies'
+import { assertPersonInHousehold } from '../../platform/household-refs'
+import { requireCapability, assertSelfOrCapability } from '../../platform/permissions'
 
 type Api = ReturnType<typeof createAPI>
 // Rewards is the spend half of the chores economy: these routes require the chores
@@ -375,6 +377,10 @@ export function registerRewardRoutes(api: Api): void {
   api.post('/api/persons/:id/award', choresCapRoute('reward.grant', async (tenant, req: Request, res: Response) => {
     const personId = req.params.id ?? ''
     if (!UUID_RE.test(personId)) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
+    // The ledger row is stamped with the CALLER's household but the id from the URL —
+    // without this, an admin could credit (and so alter the Today board of) a person
+    // in someone else's household.
+    await assertPersonInHousehold(tenant.householdId, personId)
     const body = (req.body ?? {}) as { amount?: number; currency?: string; note?: string }
     const amount = Math.round(Number(body.amount))
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -391,8 +397,11 @@ export function registerRewardRoutes(api: Api): void {
     let where = `r.household_id=$1 and r.deleted_at is null`
     if (status) { params.push(status); where += ` and r.status=$${params.length}` }
     const { rows } = await query<RedemptionRow & { person_name: string | null; avatar_emoji: string | null; color_hex: string | null }>(
+      // The persons join carries the household predicate so a row that somehow
+      // holds a foreign person_id resolves to nulls, never a stranger's profile.
       `select r.*, p.name as person_name, p.avatar_emoji, p.color_hex
-         from reward_redemptions r left join persons p on p.id = r.person_id
+         from reward_redemptions r
+         left join persons p on p.id = r.person_id and p.household_id = r.household_id
         where ${where} order by r.created_at desc limit 100`,
       params
     )
@@ -405,6 +414,10 @@ export function registerRewardRoutes(api: Api): void {
     const body = (req.body ?? {}) as { personId?: string }
     const personId = body.personId?.trim() || tenant.personId
     if (!UUID_RE.test(personId)) return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
+    await assertPersonInHousehold(tenant.householdId, personId)
+    // Spending your own balance is yours to decide; spending someone else's is a
+    // parent action — the same rule POST /api/conversions/:id/apply enforces.
+    await assertSelfOrCapability(tenant, tenant.personId, personId, 'reward.manage')
     const red = await requestRedemption(tenant, id, personId)
     if (red === null) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
     if ('error' in red) return res.status(409).json({ error: 'Conflict', message: red.error })

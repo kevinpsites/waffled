@@ -146,7 +146,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Conversions / "Trade"** (e.g. 10 ⭐ → 1 💵) | ✅ | ✅ | ✅ | ✅ Done |
 | **Saving-toward** a reward — bar/jar progress + inline redeem | ✅ | ✅ | ✅ | ✅ Done |
 | **Spot-award stars** — parent hands out ad-hoc stars (untied to a chore) + optional reason | ✅ | ✅ | ✅ | ✅ Done — gated on `reward.grant`; mobile: **Award** on the person profile **and** a person-picker Award sheet on the Rewards page → `POST /api/persons/:id/award`; the ledger row reads "spot award — {reason}" (person-overview surfaces `ledger_entries.note`) |
-| **Capability gating** — `reward.manage` / `reward.approve` / `reward.grant`; anyone may redeem for self | ✅ | ✅ | ✅ | ✅ Done |
+| **Capability gating** — `reward.manage` / `reward.approve` / `reward.grant`; anyone may redeem for **self**, but redeeming (or converting) on behalf of **another member** needs `reward.manage` — enforced on the REST route and the capture bar alike | ✅ | ✅ | ✅ | ✅ Done |
 | Milestone reward **payouts** | 🚧 | 🚧 | 🚧 | 🚧 Deferred (design done) |
 
 ## Goals

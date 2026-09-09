@@ -58,6 +58,7 @@ extension DemoHooks {
 struct HubDestination: View {
     let route: HubRoute
     @Binding var path: [HubRoute]
+    @Environment(SyncManager.self) private var sync
     let recipes: RecipesModel
     var hub: FamilyHubModel? = nil
 
@@ -79,7 +80,9 @@ struct HubDestination: View {
         case let .person(id):   PersonView(personId: id, path: $path)
         case let .waffledBites(id, name): WaffledBitesView(personId: id, personName: name)
         case .rewards:          RewardsView(path: $path)
-        case let .rewardShop(id): RewardShopView(personId: id)
+        // canManage is load-bearing: RewardShopView only offers Redeem on a wallet you
+        // may spend, so omitting it here would silently deny a parent the kid's shop.
+        case let .rewardShop(id): RewardShopView(personId: id, canManage: sync.can("reward.manage"))
         case .photos:           PhotosView()
         case .settings:         SettingsView(path: $path)
         case .settingsAccount:  AccountSettingsView()

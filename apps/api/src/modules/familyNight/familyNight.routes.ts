@@ -1,6 +1,7 @@
 // Family Night — HTTP routes (/api/family-night). Logic in familyNight.ts.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { moduleRoutes } from '../../platform/route-guards'
+import { assertPersonsInHousehold } from '../../platform/household-refs'
 import { query } from '../../platform/db'
 import {
   getView,
@@ -66,6 +67,13 @@ export function registerFamilyNightRoutes(api: Api): void {
             ...('detail' in a ? { detail: typeof a.detail === 'string' ? a.detail : null } : {}),
           }))
       : undefined
+    // A foreign id currently just renders as an empty slot (names resolve against
+    // the household's own members), but the row would still be written — assert
+    // membership so this stays a non-event if that read path ever changes.
+    await assertPersonsInHousehold(
+      tenant.householdId,
+      (assignments ?? []).map((a) => a.personId).filter((id): id is string => typeof id === 'string')
+    )
 
     // Checked against the household before it is stored: the column is a real FK, so a bad
     // id would 500 rather than 400, and another household's id would link across tenants.
