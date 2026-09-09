@@ -219,6 +219,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   retried, and explains what happened. Fast Family Night schedule changes are saved in
   order, and retrying Calendar settings clears an old connection error once it succeeds.
 
+- **Today, Family, approvals, and Photos no longer mistake a connection failure for
+  “nothing here.”** The iPhone and iPad Today and Family dashboards, plus shared Approvals
+  and Photos screens, keep their last confirmed information and show an in-place loading, offline,
+  stale-data, or error notice; empty messages such as “All caught up” now appear only
+  after a successful empty response. Offline sections also report only their own
+  saved-data time instead of borrowing one from another tile. Hidden household modules
+  are excluded from loading, and saved REST values are cleared when the active account
+  or server changes so one household’s data cannot appear in another. Both Today approvals
+  entry points stay visible after a failed fetch. Unreachable-server notices account for
+  self-hosting; expired sessions ask for sign-in instead of offering a fruitless retry.
+
 ### Security
 
 - **One household can no longer touch or see another household's people.** On a server
@@ -237,27 +248,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sibling's. The rule holds wherever you redeem: the reward shop only offers **Get it**
   on a wallet you may spend, and typing "Sam spent 3 stars on ice cream" into the capture
   bar is refused the same way rather than quietly emptying Sam's jar.
-- **Today, Family, approvals, and Photos no longer mistake a connection failure for
-  “nothing here.”** The iPhone and iPad Today and Family dashboards, plus shared Approvals
-  and Photos screens, keep their last confirmed information and show an in-place loading, offline,
-  stale-data, or error notice; empty messages such as “All caught up” now appear only
-  after a successful empty response. Offline sections also report only their own
-  saved-data time instead of borrowing one from another tile. Hidden household modules
-  are excluded from loading, and saved REST values are cleared when the active account
-  or server changes so one household’s data cannot appear in another. Both Today approvals
-  entry points stay visible after a failed fetch. Unreachable-server notices account for
-  self-hosting; expired sessions ask for sign-in instead of offering a fruitless retry.
-
-### Security
 
 - **The database now refuses to attach one household's person to another household's
-  data.** Every chore, list item, goal log, photo, calendar feed, reward and ledger entry
-  that names a person now proves in Postgres itself that the person belongs to the same
-  household as the row — 50 references across 37 tables were tightened from "this person
-  exists" to "this person is one of ours". Until now that was guaranteed only by the API
-  remembering to check, and a handful of write paths had forgotten to, which is how one
-  household could nudge a number on another household's kiosk. Those paths are fixed
-  separately; this makes the whole class impossible rather than merely unlikely. On
+  data.** Every chore, list item, goal log, photo, calendar feed, reward, planning note
+  and ledger entry that names a person now proves in Postgres itself that the person
+  belongs to the same household as the row — 53 references across 40 tables were tightened
+  from "this person exists" to "this person is one of ours". Until now that was guaranteed
+  only by the API remembering to check, and the write paths above had forgotten to, which
+  is how one household could nudge a number on another household's kiosk. Fixing those
+  paths closes the holes we found; this makes the whole class impossible rather than
+  merely unlikely. On
   upgrade, any rows a missed check had already let through are cleaned up first: a
   stranger's name is simply dropped from a chore or list item you keep, while fabricated
   star awards and redemptions filed against someone outside the household are removed, so

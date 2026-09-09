@@ -1,8 +1,8 @@
 -- Up Migration
 -- Make a cross-household `persons` reference structurally impossible.
 --
--- Every row in Waffled belongs to a household, and 50 foreign keys across
--- 37 tables point at `persons(id)` with a single column. A single-column FK
+-- Every row in Waffled belongs to a household, and 53 foreign keys across
+-- 40 tables point at `persons(id)` with a single column. A single-column FK
 -- proves only that the person EXISTS — not that they belong to the same household as
 -- the referencing row. Isolation was therefore defended entirely in the application
 -- layer, and the 2026-09-08 tenant-isolation audit found five write paths that had
@@ -36,7 +36,7 @@ alter table persons
 --    existing rows, so without this step the upgrade would abort on a live family's
 --    database. Every statement below is a no-op on a clean install.
 --
---    2a. Nullable person columns (41 of 50): the column is an *attribution* —
+--    2a. Nullable person columns (44 of 53): the column is an *attribution* —
 --        who claimed it, who checked it, whose calendar it is. A foreign person id
 --        there is a bogus attribution, not a bogus row, so null the attribution and
 --        keep the household's own data. This is the non-destructive repair and it
@@ -145,6 +145,15 @@ update photos t set created_by = null
 update photos t set uploaded_by = null
  where t.uploaded_by is not null
    and not exists (select 1 from persons p where p.id = t.uploaded_by and p.household_id = t.household_id);
+update planning_parked_items t set created_by = null
+ where t.created_by is not null
+   and not exists (select 1 from persons p where p.id = t.created_by and p.household_id = t.household_id);
+update planning_parked_items t set resolved_by = null
+ where t.resolved_by is not null
+   and not exists (select 1 from persons p where p.id = t.resolved_by and p.household_id = t.household_id);
+update planning_sessions t set driver_person_id = null
+ where t.driver_person_id is not null
+   and not exists (select 1 from persons p where p.id = t.driver_person_id and p.household_id = t.household_id);
 update reward_redemptions t set decided_by = null
  where t.decided_by is not null
    and not exists (select 1 from persons p where p.id = t.decided_by and p.household_id = t.household_id);
@@ -239,7 +248,7 @@ delete from waffled_bite_pairing_codes t
 --    `household_id` here is NOT NULL, so the only way to skip the check is a NULL
 --    person — exactly the "unassigned" case that should be allowed.
 --
---    The four ON DELETE SET NULL constraints use the column-list form
+--    The seven ON DELETE SET NULL constraints use the column-list form
 --    `on delete set null (person_col)` (Postgres 15+; Waffled ships Postgres 16 in
 --    both the compose stack and the native macOS runtime). Without the column list
 --    Postgres would null EVERY column of the key, including the NOT NULL
@@ -403,6 +412,18 @@ alter table photos
   drop constraint photos_uploaded_by_fkey,
   add constraint photos_uploaded_by_fkey
     foreign key (household_id, uploaded_by) references persons (household_id, id);
+alter table planning_parked_items
+  drop constraint planning_parked_items_created_by_fkey,
+  add constraint planning_parked_items_created_by_fkey
+    foreign key (household_id, created_by) references persons (household_id, id) on delete set null (created_by);
+alter table planning_parked_items
+  drop constraint planning_parked_items_resolved_by_fkey,
+  add constraint planning_parked_items_resolved_by_fkey
+    foreign key (household_id, resolved_by) references persons (household_id, id) on delete set null (resolved_by);
+alter table planning_sessions
+  drop constraint planning_sessions_driver_person_id_fkey,
+  add constraint planning_sessions_driver_person_id_fkey
+    foreign key (household_id, driver_person_id) references persons (household_id, id) on delete set null (driver_person_id);
 alter table recipe_views
   drop constraint recipe_views_person_id_fkey,
   add constraint recipe_views_person_id_fkey
@@ -609,6 +630,18 @@ alter table photos
   drop constraint photos_uploaded_by_fkey,
   add constraint photos_uploaded_by_fkey
     foreign key (uploaded_by) references persons (id);
+alter table planning_parked_items
+  drop constraint planning_parked_items_created_by_fkey,
+  add constraint planning_parked_items_created_by_fkey
+    foreign key (created_by) references persons (id) on delete set null;
+alter table planning_parked_items
+  drop constraint planning_parked_items_resolved_by_fkey,
+  add constraint planning_parked_items_resolved_by_fkey
+    foreign key (resolved_by) references persons (id) on delete set null;
+alter table planning_sessions
+  drop constraint planning_sessions_driver_person_id_fkey,
+  add constraint planning_sessions_driver_person_id_fkey
+    foreign key (driver_person_id) references persons (id) on delete set null;
 alter table recipe_views
   drop constraint recipe_views_person_id_fkey,
   add constraint recipe_views_person_id_fkey

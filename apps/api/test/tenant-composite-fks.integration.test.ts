@@ -15,7 +15,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const MIGRATIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
-const THIS_MIGRATION = '0101_persons_household_composite_fks.sql'
+const THIS_MIGRATION = '0104_persons_household_composite_fks.sql'
 
 /** How many migrations sort BEFORE the one under test — i.e. the "just before" state. */
 function countBefore(): number {
@@ -75,6 +75,9 @@ const EXPECTED: Array<{ table: string; col: string; onDelete: 'a' | 'c' | 'n' }>
   { table: 'meals', col: 'created_by', onDelete: 'a' },
   { table: 'photos', col: 'created_by', onDelete: 'a' },
   { table: 'photos', col: 'uploaded_by', onDelete: 'a' },
+  { table: 'planning_parked_items', col: 'created_by', onDelete: 'n' },
+  { table: 'planning_parked_items', col: 'resolved_by', onDelete: 'n' },
+  { table: 'planning_sessions', col: 'driver_person_id', onDelete: 'n' },
   { table: 'recipe_views', col: 'person_id', onDelete: 'c' },
   { table: 'reward_redemptions', col: 'decided_by', onDelete: 'a' },
   { table: 'reward_redemptions', col: 'person_id', onDelete: 'a' },
@@ -339,6 +342,20 @@ describe('composite persons foreign keys — the database refuses cross-househol
         [a, occurrence, pa]
       )
     ).rows[0].id
+    const session = (
+      await client.query<{ id: string }>(
+        `insert into planning_sessions (household_id, week_start, driver_person_id)
+         values ($1,current_date,$2) returning id`,
+        [a, pa]
+      )
+    ).rows[0].id
+    const parked = (
+      await client.query<{ id: string }>(
+        `insert into planning_parked_items (household_id, note, session_id, created_by, resolved_by)
+         values ($1,'Book the dentist',$2,$3,$3) returning id`,
+        [a, session, pa]
+      )
+    ).rows[0].id
     // CASCADE control: this row should disappear entirely, not be nulled.
     const recipe = (
       await client.query<{ id: string }>(
@@ -361,6 +378,9 @@ describe('composite persons foreign keys — the database refuses cross-househol
       ['rhythm_completions', 'person_id', completion],
       ['rhythm_skips', 'skipped_by', skip],
       ['family_night_assignments', 'person_id', assignment],
+      ['planning_sessions', 'driver_person_id', session],
+      ['planning_parked_items', 'created_by', parked],
+      ['planning_parked_items', 'resolved_by', parked],
     ] as const) {
       const { rows } = await client.query<{ person: string | null; household_id: string }>(
         `select ${col} as person, household_id from ${table} where id = $1`,

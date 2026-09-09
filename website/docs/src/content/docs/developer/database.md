@@ -78,7 +78,7 @@ Isolation is enforced at three layers so a bug in one is caught by the others:
    receives its own household's rows.
 3. **Postgres:** every reference to a person is a **composite foreign key** —
    `foreign key (household_id, person_id) references persons (household_id, id)`, backed by a
-   `unique (household_id, id)` key on `persons` (migration `0101`). A single-column FK proves only
+   `unique (household_id, id)` key on `persons` (migration `0104`). A single-column FK proves only
    that the person exists; the composite one proves they are in the *same household as the row*,
    so a cross-household reference is rejected by the database even if a handler forgets to check.
 
