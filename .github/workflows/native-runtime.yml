@@ -12,13 +12,17 @@
 # into the bundle VERBATIM and `verify` asserts byte-identity against the repo, and the
 # caddyconf unit test has its own drift alarm against the real Caddyfile (see
 # apps/runtime/README.md "Tests") — an infra/compose edit can fail either job, and today
-# nothing else in the repo watches that path. apps/api/** and apps/web/** deliberately are
-# NOT in the filter below even though build.sh rebuilds both into the bundle: ci.yml already
-# runs their own suites on every change, and gating the (10x-cost) macOS job on them too
-# would fire it on most PRs for no matching bundle-specific coverage. Nothing else in the
-# repo depends on apps/runtime or infra/native/bundle, so a PR that never touches any of
-# these paths gets no run here, same as api/web-only PRs get no run in ci.yml. (Safe for the
-# same reason ci.yml's header gives: main has no required-status-check branch protection.)
+# nothing else in the repo watches that path. Of apps/api and apps/web — both of which
+# build.sh rebuilds into the bundle — only apps/api/migrations/** is watched, and it is
+# watched because the bundle SHIPS that directory and the update/downgrade tests assert on
+# the migration list: migrations 0101–0103 landed on main through ci.yml, which knows
+# nothing about the bundle, and turned this workflow red on main with no PR having run it.
+# The rest of apps/api/** and all of apps/web/** stay out: ci.yml already runs their suites
+# on every change, and gating the (10x-cost) macOS job on them would fire it on most PRs for
+# no matching bundle-specific coverage. Nothing else in the repo depends on apps/runtime or
+# infra/native/bundle, so a PR that never touches any of these paths gets no run here, same
+# as api/web-only PRs get no run in ci.yml. (Safe for the same reason ci.yml's header gives:
+# main has no required-status-check branch protection.)
 #
 # Two jobs, split for cost as well as speed:
 #   - runtime-go (ubuntu-latest) is the fast gate: gofmt, vet, unit tests. No bundle, no
@@ -63,6 +67,7 @@ on:
       - 'apps/mac/**'
       - 'infra/native/bundle/**'
       - 'infra/compose/**'
+      - 'apps/api/migrations/**'
       - '.github/workflows/native-runtime.yml'
   push:
     branches: [main]
@@ -71,6 +76,7 @@ on:
       - 'apps/mac/**'
       - 'infra/native/bundle/**'
       - 'infra/compose/**'
+      - 'apps/api/migrations/**'
       - '.github/workflows/native-runtime.yml'
 
 # Cancel superseded runs on the same ref (e.g. rapid pushes to a PR branch) — the macOS job
