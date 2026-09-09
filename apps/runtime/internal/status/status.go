@@ -83,20 +83,48 @@ type Service struct {
 	Log       string `json:"log"`
 }
 
+// Backups is what the menu-bar app needs to answer "am I protected?" without opening
+// System Health — and, crucially, without the stack being up.
+//
+// Every field is derived from the backups directory rather than from the backup_runs
+// table: the question is asked exactly when the server is stopped, and a status block
+// that needed Postgres would go blank at the only moment it mattered. backup_runs is the
+// same facts mirrored for the api, which can only be asked when the api is running.
+type Backups struct {
+	Dir string `json:"dir"`
+	// LastBackupAt, LastPath, LastSizeBytes and LastMigration describe the newest
+	// routine dump. Pre-migration snapshots are excluded on purpose: a rollback point is
+	// not a backup, and counting one would mask a nightly schedule that had stopped.
+	LastBackupAt  string `json:"lastBackupAt"`
+	LastPath      string `json:"lastPath"`
+	LastSizeBytes int64  `json:"lastSizeBytes"`
+	LastMigration string `json:"lastMigration"`
+	// Count is how many routine dumps retention is currently holding.
+	Count int `json:"count"`
+	// LastError is the most recent failure, which leaves no dump behind to notice.
+	// Cleared by the next success.
+	LastError   string `json:"lastError"`
+	LastErrorAt string `json:"lastErrorAt"`
+	// ScheduleInstalled reports whether the nightly launchd agent is in place.
+	ScheduleInstalled bool `json:"scheduleInstalled"`
+}
+
 // Report is the whole document.
 type Report struct {
-	Schema      int        `json:"schema"`
-	State       string     `json:"state"`
-	DataDir     string     `json:"dataDir"`
-	BundleDir   string     `json:"bundleDir"`
-	URLs        URLs       `json:"urls"`
-	Ports       Ports      `json:"ports"`
-	Versions    Versions   `json:"versions"`
-	Bundle      Bundle     `json:"bundle"`
-	Supervisor  Supervisor `json:"supervisor"`
-	Services    []Service  `json:"services"`
-	LastError   string     `json:"lastError"`
-	GeneratedAt string     `json:"generatedAt"`
+	Schema     int        `json:"schema"`
+	State      string     `json:"state"`
+	DataDir    string     `json:"dataDir"`
+	BundleDir  string     `json:"bundleDir"`
+	URLs       URLs       `json:"urls"`
+	Ports      Ports      `json:"ports"`
+	Versions   Versions   `json:"versions"`
+	Bundle     Bundle     `json:"bundle"`
+	Supervisor Supervisor `json:"supervisor"`
+	Services   []Service  `json:"services"`
+	// Backups is additive: Schema stays at 1 because no existing field changed meaning.
+	Backups     Backups `json:"backups"`
+	LastError   string  `json:"lastError"`
+	GeneratedAt string  `json:"generatedAt"`
 }
 
 // DeriveState summarises the services into one word for the menu-bar icon.

@@ -3,6 +3,7 @@ package supervisor
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +19,14 @@ import (
 const (
 	pgStartTimeout = 60 * time.Second
 	pgStopTimeout  = 60 * time.Second
+)
+
+// The two tmutil-backed calls go through package-level vars so the tests can count them
+// rather than run tmutil against the machine holding the suite. Always the real
+// functions in production; nothing outside a test ever reassigns them.
+var (
+	isExcludedFromBackup = datadir.IsExcludedFromBackup
+	excludeFromBackup    = datadir.ExcludeFromBackup
 )
 
 // postgresInitialized reports whether PGDATA already holds a cluster.
@@ -67,15 +76,43 @@ func (s *Supervisor) initPostgres(ctx context.Context) error {
 		return fmt.Errorf("write pg_hba.conf: %w", err)
 	}
 
-	// Time Machine restoring a live cluster produces a corrupt one (plan §5). Not being
-	// able to set this is worth telling the operator about, never a reason to fail.
-	if err := datadir.ExcludeFromBackup(s.plan.Layout.Postgres); err != nil {
+	// The Time Machine exclusion is asserted in New(), when the data directory is
+	// created — earlier than here, and on every install rather than only on the run that
+	// happens to initdb. See excludeDataFromTimeMachine.
+	return nil
+}
+
+// excludeDataFromTimeMachine marks PGDATA so Time Machine skips it.
+//
+// Restoring a live Postgres cluster from a file-level backup produces a corrupt one
+// (plan §5), so the cluster is excluded and backups/ — a consistent pg_dump — is what
+// gets backed up. tmutil is the documented interface and sets the
+// com.apple.metadata:com_apple_backup_excludeItem xattr itself; the sticky form needs no
+// admin rights on a path the user owns.
+//
+// It runs when the data directory is created rather than when the cluster is, so an
+// install that predates this, or one where tmutil failed once, is repaired on its next
+// start. Failing is always a warning: a household whose Time Machine is misconfigured
+// should still get a server.
+//
+// The memo in runtime.json is trusted OUTRIGHT rather than verified against tmutil. This
+// runs from New(), and `status` constructs a Supervisor on every poll — so re-asking here
+// would fork /usr/bin/tmutil once a second behind the menu-bar app, which is the exact
+// cost the memo was added to avoid. Someone who removes the exclusion by hand afterwards
+// is caught by `doctor`, which asks tmutil live: re-asking settled questions is what that
+// command is for, and it runs once when a human types it.
+func (s *Supervisor) excludeDataFromTimeMachine() {
+	if s.state.BackupExcluded {
+		return
+	}
+	if err := excludeFromBackup(s.plan.Layout.Postgres); err != nil {
 		s.log.Warnf("could not exclude the database from Time Machine: %v — "+
 			"back up %s instead of restoring the live cluster", err, s.plan.Layout.Backups)
-	} else {
-		s.log.Infof("excluded %s from Time Machine (the backups folder is what gets backed up)", s.plan.Layout.Postgres)
+		return
 	}
-	return nil
+	s.log.Infof("excluded %s from Time Machine (%s is what gets backed up)",
+		s.plan.Layout.Postgres, s.plan.Layout.Backups)
+	s.state.BackupExcluded = true
 }
 
 // reconcilePostgresConf rewrites the managed block on every start, so a port that moved
@@ -220,7 +257,7 @@ func (s *Supervisor) databaseExists(ctx context.Context, name string) (bool, err
 }
 
 // QueryScalar runs a single-value query through the bundled psql and returns the result
-// as text. It is how this package (and `doctor`, and the backup work in task 5) asks the
+// as text. It is how this package (and `doctor`, and backup/restore) asks the
 // database a question without taking on a Postgres driver dependency.
 func (s *Supervisor) QueryScalar(ctx context.Context, database, sql string) (string, error) {
 	out, err := s.runOneShot(ctx, s.plan.PsqlCommand(database, sql), time.Minute)
@@ -259,6 +296,14 @@ func normalizeLocale(s string) string {
 
 // runOneShot runs a command to completion and returns its combined output.
 func (s *Supervisor) runOneShot(ctx context.Context, spec services.Spec, timeout time.Duration) (string, error) {
+	return s.runOneShotStdin(ctx, spec, nil, timeout)
+}
+
+// runOneShotStdin is runOneShot with a script on stdin — how a plain SQL dump is fed to
+// psql without ever materialising the decompressed file on disk. A household's dump
+// expands to many times its compressed size, and writing that out only to read it back
+// would need the space and leave a copy of the whole database in a temp directory.
+func (s *Supervisor) runOneShotStdin(ctx context.Context, spec services.Spec, stdin io.Reader, timeout time.Duration) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -266,6 +311,7 @@ func (s *Supervisor) runOneShot(ctx context.Context, spec services.Spec, timeout
 	cmd.Args = spec.Args
 	cmd.Env = spec.Env
 	cmd.Dir = spec.Dir
+	cmd.Stdin = stdin
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

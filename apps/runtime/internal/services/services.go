@@ -165,8 +165,14 @@ func (p Plan) API() Spec {
 		"POWERSYNC_PORT="+strconv.Itoa(p.Ports.PowerSyncPublic),
 		"LOG_FORMAT=json",
 		"LOG_LEVEL=info",
-		// No backup sidecar and no update notifier natively: the Mac app owns both.
-		"BACKUP_ENABLED=false",
+		// There is no backup SIDECAR natively — but there are backups, and the runtime
+		// writes the same backup_runs rows the sidecar does. BACKUP_ENABLED=false makes
+		// the api's health check short-circuit to "backups are turned off", which would
+		// hide those rows and leave Settings → System Health silent about a nightly
+		// backup that had been failing for a week. True is the honest answer: this
+		// install does back up, just not from a container.
+		"BACKUP_ENABLED=true",
+		// The update notifier stays off: the Mac app owns updates (plan §7 Phase 3).
 		"UPDATE_CHECK_ENABLED=false",
 	)
 	env = append(env, p.provenance()...)
@@ -326,20 +332,17 @@ host    replication  all   ::1/128        scram-sha-256
 // alongside -tAc, and break every caller of PsqlCommand at runtime with no compile error.
 func (p Plan) psqlSpec(database string, verb ...string) Spec {
 	psql := p.PostgresBin("psql")
-	args := []string{
-		psql,
-		"-h", "127.0.0.1",
-		"-p", strconv.Itoa(p.Ports.Postgres),
-		"-U", p.Env.PostgresUser(),
+	args := append([]string{psql}, p.pgConnArgs()...)
+	args = append(args,
 		"-d", database,
 		"-v", "ON_ERROR_STOP=1",
 		"--no-psqlrc",
-	}
+	)
 	return Spec{
 		Name:    "psql",
 		Path:    psql,
 		Args:    append(args, verb...),
-		Env:     append(p.baseEnv(), "PGPASSWORD="+p.Env.Get(configenv.KeyPostgresPassword)),
+		Env:     p.pgEnv(),
 		OneShot: true,
 	}
 }

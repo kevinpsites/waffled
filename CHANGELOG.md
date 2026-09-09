@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Redeeming on iOS immediately approved its own request, so a reward the household had
   set to require approval skipped the approvals queue entirely. It now waits for a
   parent, the same way the web shop always has.
+- **API keys can now reach chore instances, chore proofs, goal lists, pantry staples and
+  currency conversions.** Those endpoint families were refused for every key — "This endpoint
+  is not available to API keys" — no matter which scopes the key held. They now answer to the
+  `chores`, `goals`, `lists` and `rewards` scopes, so an integration or a headless client can
+  drive the whole of each resource rather than most of it. Pantry staples count as `lists`
+  (they live on the grocery board), not `pantry`.
 
 - **A failed refresh no longer makes a saved change look lost.** The web event editor
   now offers Retry when recurring-event details cannot load, and iPhone/iPad Countdowns
@@ -65,6 +71,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sibling's. The rule holds wherever you redeem: the reward shop only offers **Get it**
   on a wallet you may spend, and typing "Sam spent 3 stars on ice cream" into the capture
   bar is refused the same way rather than quietly emptying Sam's jar.
+- **Today, Family, approvals, and Photos no longer mistake a connection failure for
+  “nothing here.”** The iPhone and iPad Today and Family dashboards, plus shared Approvals
+  and Photos screens, keep their last confirmed information and show an in-place loading, offline,
+  stale-data, or error notice; empty messages such as “All caught up” now appear only
+  after a successful empty response. Offline sections also report only their own
+  saved-data time instead of borrowing one from another tile. Hidden household modules
+  are excluded from loading, and saved REST values are cleared when the active account
+  or server changes so one household’s data cannot appear in another. Both Today approvals
+  entry points stay visible after a failed fetch. Unreachable-server notices account for
+  self-hosting; expired sessions ask for sign-in instead of offering a fruitless retry.
 
 ## [0.14.3] - 2026-09-02
 
