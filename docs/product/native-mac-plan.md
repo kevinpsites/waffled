@@ -187,8 +187,12 @@ uses bash because it is throwaway and the point is to learn, not to build.
 - **Boot without login needs a daemon**, which needs an admin prompt to install. A login item
   (`SMAppService.loginItem`) runs only after someone signs in. → Ship the login item first and
   document "Mac mini: enable auto-login"; daemon mode is a later opt-in.
-- **Lid-close sleep cannot be prevented from user space.** A MacBook is not a server. → Detect
-  the model on first run and say so plainly; recommend Mac mini/desktop.
+- **Lid-close sleep cannot be prevented from user space.** A MacBook is not a server.
+  *(done — PR #TBD)* → The first-run window's welcome step says so plainly on a portable and
+  recommends a Mac mini or a desktop, then lets the person carry on. Detection is
+  `Hardware.isPortable`: an internal battery (IOKit power sources) **or** "MacBook" in
+  `hw.model`, because Apple Silicon laptops report models like `Mac14,7` with no MacBook in
+  the string at all.
 - **Time Machine restoring a live PGDATA corrupts it.** *(done — PR #186)* → The runtime
   sets the `com.apple.metadata:com_apple_backup_excludeItem` xattr on `postgres/` (through
   `tmutil addexclusion`, which needs no admin rights) when the **data directory** is
@@ -226,8 +230,9 @@ uses bash because it is throwaway and the point is to learn, not to build.
 **Made**
 
 - Server first, GUI second. No Swift is written until Phase 1 proves the runtime.
-- Web UI is the product UI. The Mac app is a menu-bar manager only, no windows beyond a
-  first-run/error sheet.
+- Web UI is the product UI. The Mac app is a menu-bar manager only, no windows beyond the
+  first-run/error one. (Shipped as a window rather than a sheet: an `LSUIElement` app has no
+  window scene to present a sheet *from*.)
 - Go for the supervisor/CLI; bash only for the Phase 1 spike.
 - Compose is untouched. The native runtime reuses `Caddyfile`, `00-init.sql`, the API bundle,
   the web build, and the migration set verbatim. Any change needed to share them (e.g. a
@@ -354,9 +359,9 @@ Throwaway bash under `infra/native/spike/`. Purpose: **learn**, not build.
 
 ### Phase 3 — Menu-bar app
 
-In progress. The app exists, carries its own runtime and drives a real server from it;
-CI assembles the `.app` and boots it on every change. What is left is the polish and the
-paperwork: the first-run sheet (item 3), and Developer ID signing, notarization and Sparkle
+In progress. The app exists, carries its own runtime, drives a real server from it and now
+walks a household through its first run; CI assembles the `.app` and boots it on every
+change. What is left is the paperwork: Developer ID signing, notarization and Sparkle
 (items 5 and 6), which the user deliberately deferred — so the app is ad-hoc signed and
 Gatekeeper refuses it on any Mac but the one that built it.
 
@@ -371,18 +376,33 @@ Gatekeeper refuses it on any Mac but the one that built it.
    empty data directory. Signing is not a prerequisite for embedding after all: it is a
    later pass over the same tree (item 5), which is why the manifest is written last.
 2. Icon states (stopped / starting / running / error), the menu from §2, "Open Waffled".
-   *(done — PR #195; the first-run sheet is item 3)* → The Waffled mark itself — the closed
+   *(done — PR #195; the first-run window is item 3)* → The Waffled mark itself — the closed
    waffle iron from the logo, drawn in CoreGraphics as a template image (a menu-bar image is
    monochrome, so state cannot be colour): outlined stopped, its six holes cooking one at a
    time while `starting`, solid running, slashed when it needs a person. The §2 menu is
    there including the address-copy, backup, `Start Waffled` and the quit-stops-the-server
    confirmation. On launch it starts a stopped server **once** — the first poll that answers
    spends the attempt, so a server stopped from Terminal later is left alone — and opens the
-   web app in the browser exactly once, for a start *it* began, so a relaunch re-opens the
-   existing server without stealing the screen. A `stop` that refuses during quit keeps the
-   app alive to say so rather than exiting on a server that is still running.
-3. First-run sheet (welcome → starting → "your server is ready, opening…") and the MacBook
-   warning.
+   web app in the browser once per process (the rule was narrowed in item 3). A `stop` that
+   refuses during quit keeps the app alive to say so rather than exiting on a server that is
+   still running.
+3. First-run window (welcome → starting → "your server is ready, opening…") and the MacBook
+   warning. *(done — PR #TBD)* → The runtime answers the question — `status --json` gained
+   an additive `initialized`, a stat of `postgres/PG_VERSION`, so the app never stats a
+   layout the runtime owns — and the window appears only when the first poll that *answers*
+   says false. The welcome step **holds** the auto-start open rather than spending it: the
+   button is what starts a first run, `Start Waffled` in the menu counts as the same click,
+   and closing that step quits without creating anything. Everything the window draws is a
+   pure `FirstRunPresentation`, so the four steps, the service ticks and the copy are tested
+   without a window.
+   - **The relaunch rule.** The browser now opens once per process and only when someone is
+     waiting for it: the end of a first run, or a click on `Start Waffled`. "Any start this
+     app made" included the login item's start at every boot, which would have opened a
+     browser window on every reboot — the opposite of §2 step 6.
+   - **Portable detection.** `Hardware.isPortable` is a pure function over two readings:
+     an internal battery from IOKit power sources, **or** "MacBook" in `hw.model`. The
+     battery is the load-bearing half — Apple Silicon laptops report `Mac14,7` and friends,
+     with no MacBook in the string.
 4. Login item via `SMAppService`. *(done — PR #195)* → Wired to `SMAppService.mainApp`, and
    it works in an **unsigned** build: measured on macOS 15.7, an ad-hoc-signed `LSUIElement`
    app registers from a `DerivedData` path, contrary to the common assumption. The status is

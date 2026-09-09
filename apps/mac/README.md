@@ -21,6 +21,9 @@ apps/mac/
     RuntimeClient.swift  # locating waffled-runtime and running its four subcommands
     RuntimeStatus.swift  # decoding `status --json`
     MenuPresentation.swift # icon + menu as pure functions of the last status
+    FirstRunPresentation.swift # the first-run window's four steps, as a value
+    FirstRunWindow.swift # the NSWindow that renders it — the app's only window
+    Hardware.swift       # is this Mac a laptop? (hw.model + IOKit power sources)
     WaffleIronIcon.swift # the Waffled mark, drawn in CoreGraphics as a template
     FirstLine.swift      # the one-line-for-the-menu rule, shared
     LoginItem.swift      # SMAppService.mainApp
@@ -155,6 +158,38 @@ the runtime supervises its own children, and an app that restarted a server some
 just stopped from Terminal would be a second supervisor fighting the first. Everything after
 that one attempt is `Start Waffled`, a click.
 
+## First run
+
+The app has exactly one window, and a household sees it once. When the **first `status` that
+answers** reports `initialized: false` — no database cluster in the data directory yet — the
+window opens in front of everything (an `LSUIElement` app has to activate itself, or it opens
+behind the browser someone was reading) and walks three steps:
+
+1. **Welcome.** What is about to happen and where the data will live, and one button:
+   `Set up Waffled`. The auto-start is **held** while this step is up — the button is what
+   starts a first run, and it spends the one attempt. Closing this window quits the app;
+   nothing has been created yet to leave behind. On a **laptop** there is a plain paragraph
+   here first: closing the lid puts the server to sleep for the whole house, and a Mac mini
+   or a desktop is a better home. It is a warning, not a refusal.
+2. **Starting.** A tick per service as Postgres, the API, Sync and Web come up, the iron
+   cooking at the same cadence as the menu-bar icon, and "First start takes about a minute."
+   Closing the window here stops nothing; the menu keeps showing the same progress.
+3. **Ready.** "Your server is ready", the browser opens on `urls.local`, and the window
+   closes itself two seconds later.
+
+A start that refuses replaces all of it with the error step: the runtime's own sentence,
+`Try again`, and `Show logs`.
+
+**Seeing it again** is a fresh `WAFFLED_DATA_DIR` — that is the whole trigger, so point the
+app at an empty directory and the window is back. Every other launch gets **no window and no
+browser**: the app starts the server if it is down, the icon goes green, and nothing takes
+over the screen. The browser opens once per process and only when somebody is waiting for
+it — the end of a first run, or a click on `Start Waffled` — which is what makes `Start at
+login` bearable: a Mac that reboots at 3 a.m. does not come back with a browser window open.
+
+While the welcome step waits, the menu says **`Waffled is not set up yet`** and offers
+`Start Waffled`; starting from there counts as the same click.
+
 The icon is the Waffled mark: the closed waffle iron from the logo — knob, lid, base — drawn
 in CoreGraphics (`WaffleIronIcon.swift`) rather than shipped as an asset, because a menu-bar
 image is a monochrome template that macOS recolours, so state has to be carried by shape.
@@ -191,7 +226,6 @@ Phase 3 item numbers from `docs/product/native-mac-plan.md` §7:
 
 | missing | item |
 |---|---|
-| the first-run sheet (welcome → starting → ready) and the MacBook warning | 3 |
 | Developer ID signing + notarization of every embedded binary, and the DMG | 5 |
 | Sparkle, and a `Check for updates…` that does something | 6 |
 
