@@ -61,7 +61,7 @@ the shape of `status --json`. It must never learn more.
   mapped binaries alive after the files under them are replaced, so a swap over a live
   server leaves the household on the old runtime and the relaunched app stands its
   auto-start down in front of it. `UpdaterDelegate` postpones the relaunch until `stop`
-  succeeds and holds it when `stop` refuses (`Lifecycle.relaunchDecision`). Item 5 must also
+  succeeds and holds it when `stop` refuses (`Lifecycle.outcomeAfterStop`). Item 5 must also
   sign `Sparkle.framework`'s nested `Autoupdate`, `Updater.app` and XPC services
   **inside-out**, before the app that contains them.
 - **Sign the app AFTER the runtime goes into it.** `xcodebuild` seals an app with no runtime

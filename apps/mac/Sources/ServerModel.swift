@@ -448,28 +448,13 @@ final class ServerModel {
             note("Waffled is busy — try the update again in a moment")
             return
         }
-        stopFailure = nil
+        // Kept until the swap actually happens: a stop that refuses holds the relaunch,
+        // and this handler is then the only way the update can still go ahead.
         pendingInstall = install
-        note("Stopping for the update…", clearAfter: nil)
-        operationTask = Task { [weak self] in
-            defer { self?.finishOperation() }
-            var stopError: String?
-            do {
-                try await self?.client?.stop()
-            } catch {
-                stopError = Self.describe(error)
-            }
-
-            switch Lifecycle.relaunchDecision(afterStop: stopError) {
-            case .relaunch:
-                self?.pendingInstall = nil
-                self?.stoppedForUpdate = true
-                install()
-            case let .hold(message):
-                // The handler stays with us; the menu item becomes the retry that runs it.
-                self?.recordStopFailure(message)
-                await self?.refresh()
-            }
+        stop(noting: "Stopping for the update…") { [weak self] in
+            self?.pendingInstall = nil
+            self?.stoppedForUpdate = true
+            install()
         }
     }
 
@@ -491,13 +476,20 @@ final class ServerModel {
         }
     }
 
-    /// `stop` can take up to two and a half minutes (a graceful shutdown, then SIGKILL),
-    /// so the menu says `Stopping…` and disables the actions throughout — and if it
-    /// refuses, the app stays where it is and says so. Exiting anyway would leave the
-    /// household's server running with no icon left to explain it.
     private func stopThenQuit() {
+        stop(noting: "Stopping…") { NSApp.terminate(nil) }
+    }
+
+    /// The one stop this app knows how to do, and what to do once the server is really
+    /// down. Quitting and updating differ in that closure and in the line the menu shows
+    /// while it runs; a refusal is the same story for both, and is held the same way (see
+    /// `Lifecycle.outcomeAfterStop`).
+    ///
+    /// `stop` can take up to two and a half minutes (a graceful shutdown, then SIGKILL),
+    /// so the note stays up and the actions stay disabled throughout.
+    private func stop(noting line: String, thenOnceDown proceed: @escaping () -> Void) {
         stopFailure = nil
-        note("Stopping…", clearAfter: nil)
+        note(line, clearAfter: nil)
         operationTask = Task { [weak self] in
             defer { self?.finishOperation() }
             var stopError: String?
@@ -509,9 +501,9 @@ final class ServerModel {
             }
 
             switch Lifecycle.outcomeAfterStop(error: stopError) {
-            case .terminate:
-                NSApp.terminate(nil)
-            case let .report(message):
+            case .proceed:
+                proceed()
+            case let .refused(message):
                 self?.recordStopFailure(message)
                 await self?.refresh()
             }

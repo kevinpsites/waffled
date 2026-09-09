@@ -322,27 +322,20 @@ enum Lifecycle {
         reported == .running || reported == .unhealthy
     }
 
-    /// What to do when `stop` comes back. The alert promised the server would stop, so a
-    /// refusal cannot end in a silent exit that leaves it running with no icon left to
-    /// say so.
+    /// What to do when `stop` comes back — for the two things this app stops the server
+    /// for, quitting and updating, because the answer is the same one. A refusal cannot
+    /// end in a silent exit or a swap over a live server: the app stays, the icon slashes,
+    /// and the menu says which server is still running and why.
     enum StopOutcome: Equatable {
-        case terminate
-        case report(String)
+        /// Nothing of ours is running any more. Quit exits here; an update hands the app
+        /// to Sparkle to swap and relaunch.
+        case proceed
+        /// The server is still up, with the runtime's own reason.
+        case refused(String)
     }
 
     static func outcomeAfterStop(error: String?) -> StopOutcome {
-        error.map { StopOutcome.report($0) } ?? .terminate
-    }
-
-    /// What to do when `stop` comes back during an **update**. Shaped like
-    /// `outcomeAfterStop` and deliberately not folded into it: the success branch is the
-    /// opposite of quitting — the app hands control back to Sparkle to swap and relaunch it.
-    enum RelaunchDecision: Equatable {
-        /// Nothing of ours is running any more: let Sparkle install and relaunch.
-        case relaunch
-        /// The server is still up, so the swap would land on top of it. Held, with the
-        /// runtime's reason, exactly as a failed stop during quit is held.
-        case hold(String)
+        error.map { StopOutcome.refused($0) } ?? .proceed
     }
 
     /// What to do when Sparkle's update cycle ends without installing anything.
@@ -385,16 +378,6 @@ enum Lifecycle {
                            changedAt: String, lastNoted: String?) -> String? {
         guard changedAt != lastNoted else { return nil }
         return MenuPresentation.updateNote(previous: previous, current: current)
-    }
-
-    /// A Sparkle update replaces `Waffled.app` — the runtime bundle inside it included —
-    /// and relaunches. macOS keeps a running process's mapped binaries alive after the
-    /// files under them are replaced, so a swap over a *running* server leaves the
-    /// household on the old runtime; the relaunched app then finds it `running`, stands
-    /// its one auto-start down, and the update never reaches the data at all. The stop is
-    /// what makes the relaunch's ordinary auto-start the update (plan §6).
-    static func relaunchDecision(afterStop error: String?) -> RelaunchDecision {
-        error.map { RelaunchDecision.hold($0) } ?? .relaunch
     }
 
     /// The failures the app is holding on to between polls, kept apart because they are

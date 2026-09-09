@@ -111,9 +111,9 @@ final class LifecycleTests: XCTestCase {
     /// swallowed on the way out: the app stays, says why, and the quit item asks a second
     /// question — whose answer is the next click on it.
     func testAFailedStopTurnsQuitIntoAQuestionRatherThanAnExit() {
-        XCTAssertEqual(Lifecycle.outcomeAfterStop(error: nil), .terminate)
+        XCTAssertEqual(Lifecycle.outcomeAfterStop(error: nil), .proceed)
         XCTAssertEqual(Lifecycle.outcomeAfterStop(error: "postgres would not shut down"),
-                       .report("postgres would not shut down"))
+                       .refused("postgres would not shut down"))
 
         XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: false), .confirmThenStop)
         XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: true), .quitWithoutStopping,
@@ -126,9 +126,9 @@ final class LifecycleTests: XCTestCase {
     /// `running`, stands its auto-start down and never notices. So the relaunch waits for
     /// `stop`, and a `stop` that refuses holds it back rather than pressing on.
     func testTheUpdateRelaunchWaitsForTheServerToStop() {
-        XCTAssertEqual(Lifecycle.relaunchDecision(afterStop: nil), .relaunch)
-        XCTAssertEqual(Lifecycle.relaunchDecision(afterStop: "postgres would not shut down"),
-                       .hold("postgres would not shut down"),
+        XCTAssertEqual(Lifecycle.outcomeAfterStop(error: nil), .proceed)
+        XCTAssertEqual(Lifecycle.outcomeAfterStop(error: "postgres would not shut down"),
+                       .refused("postgres would not shut down"),
                        "the swap would land on a server still running the old bundle")
     }
 
