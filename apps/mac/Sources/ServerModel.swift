@@ -42,6 +42,10 @@ final class ServerModel {
     /// A restart that arrived while the one operation slot was taken. It is the household's
     /// server coming back, so it waits for the slot rather than being dropped.
     private var restartAfterOperation = false
+    /// Which update cycle the stop in flight belongs to. `stop` can take two and a half
+    /// minutes and Sparkle can end a cycle at any point in them, so the closure that
+    /// completes it has to be able to tell that its cycle is gone.
+    private var updateCycle = 0
 
     /// A start, stop or backup is in flight. Derived rather than stored: the two were
     /// set in lockstep at four call sites, which is four chances for a menu stuck at
@@ -468,9 +472,24 @@ final class ServerModel {
         // Kept until the swap actually happens: a stop that refuses holds the relaunch,
         // and this handler is then the only way the update can still go ahead.
         pendingInstall = install
+        // Bumped here rather than at the top of the function: the busy branch above never
+        // asked anything to stop, and moving the token there would strand a stop that is
+        // running and about to succeed.
+        updateCycle &+= 1
+        let cycle = updateCycle
         stop(noting: "Stopping for the update…") { [weak self] in
-            self?.pendingInstall = nil
-            self?.stoppedForUpdate = true
+            guard let self else { return }
+            guard cycle == updateCycle else {
+                // Sparkle ended this cycle while the stop was running, so the handler has
+                // no driver left to install anything and the server is down for nothing.
+                // `pendingInstall` is left alone: a later cycle may already have put its
+                // own handler there.
+                recoverFromAbandonedUpdate(
+                    Lifecycle.recoveryAfterAbort(weStoppedTheServer: true, error: nil))
+                return
+            }
+            pendingInstall = nil
+            stoppedForUpdate = true
             install()
         }
     }
@@ -483,17 +502,24 @@ final class ServerModel {
         // is gone, so the menu goes back to an ordinary check — which works again, because
         // the session that was blocking it has ended with the cycle.
         pendingInstall = nil
-        switch Lifecycle.recoveryAfterAbort(weStoppedTheServer: stoppedForUpdate, error: error) {
-        case .leaveItAlone:
-            return
-        case let .restart(message):
-            stoppedForUpdate = false
-            // Replaces `Stopping for the update…`, which was left up deliberately until
-            // something else said otherwise. Restarting is not a second supervisor: this
-            // is the server this app stopped a moment ago.
-            note(message)
-            restartTheServerWeStopped()
-        }
+        // Any stop still running was asked for by a cycle that no longer exists; its
+        // completion compares this token rather than installing into nothing.
+        updateCycle &+= 1
+        recoverFromAbandonedUpdate(
+            Lifecycle.recoveryAfterAbort(weStoppedTheServer: stoppedForUpdate, error: error))
+    }
+
+    /// The server is down for a swap that is not coming. The two ways that happens — the
+    /// cycle ending after our stop succeeded, and a stop finishing after its cycle has
+    /// gone — end in the same place.
+    private func recoverFromAbandonedUpdate(_ recovery: Lifecycle.AbortRecovery) {
+        guard case let .restart(message) = recovery else { return }
+        stoppedForUpdate = false
+        // Replaces `Stopping for the update…`, which was left up deliberately until
+        // something else said otherwise. Restarting is not a second supervisor: this
+        // is the server this app stopped a moment ago.
+        note(message)
+        restartTheServerWeStopped()
     }
 
     /// The put-it-back start. `startServer` returns at its guard while another operation is

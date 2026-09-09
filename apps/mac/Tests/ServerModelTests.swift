@@ -120,6 +120,35 @@ final class ServerModelTests: XCTestCase {
         await waitUntil("the queued restart fires") { await runtime.count(of: "start") == 1 }
     }
 
+    /// A cycle that ends while our stop is still running. `stop` can take two and a half
+    /// minutes and Sparkle can abort at any point in them, so the handler the closure
+    /// captured had lost its driver by the time it ran: the server was down, "Stopping for
+    /// the update…" stayed on screen, and nothing was left to put either of them right.
+    func testAStopThatOutlivesItsUpdateCycleRestartsInsteadOfInstalling() async {
+        let runtime = FakeRuntime()
+        await runtime.hold("stop")
+        let model = makeModel(runtime)
+        defer { model.end() }
+
+        var installs = 0
+        model.stopBeforeUpdate { installs += 1 }
+        await waitUntil("the stop reaches the runtime") { await runtime.isWaiting(for: "stop") }
+
+        model.updateCycleEnded(error: "You cancelled the update.")
+        await runtime.finish("stop")
+
+        await waitUntil("the server is started again") { await runtime.count(of: "start") == 1 }
+        XCTAssertEqual(installs, 0, "the driver that would have installed it is gone")
+        XCTAssertFalse(model.hasPendingUpdate)
+        await settle(model)
+
+        // We never handed the app over, so there is nothing for a second end of cycle —
+        // Sparkle reports one abort twice — to recover.
+        model.updateCycleEnded(error: nil)
+        let starts = await runtime.count(of: "start")
+        XCTAssertEqual(starts, 1)
+    }
+
     /// Polls a condition until it holds, bounded rather than blocking: everything these
     /// tests drive is deterministic, but it lands across task boundaries.
     private func waitUntil(_ what: String, _ condition: () async -> Bool) async {
