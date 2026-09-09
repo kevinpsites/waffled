@@ -208,17 +208,14 @@ func Run(ctx context.Context, o Options) (Report, error) {
 	// a launchd plist that would not unload cannot be, and refusing over it would leave
 	// someone re-running a command that never gets any further.
 	stillLive := false
+
+	// The data root is deliberately NOT part of this loop. It has to go last — nothing
+	// that may still be running may be left holding it open — and hanging that on
+	// inspect() happening to append it last would be an ordering two hundred lines away
+	// that nothing states and no test protects.
 	for i := range report.Items {
 		it := &report.Items[i]
-		if !it.Present || it.Action != ActionRemove {
-			continue
-		}
-		// Nothing that is still alive may be left holding the data root open: a
-		// half-failed cleanup is exactly when os.RemoveAll would run out from under a
-		// live Postgres.
-		if it.Kind == KindData && stillLive {
-			it.Error = "something that may still be running could not be stopped"
-			problems = append(problems, fmt.Errorf("left %s in place — %s", o.Layout.Root, it.Error))
+		if it.Kind == KindData || !it.Present || it.Action != ActionRemove {
 			continue
 		}
 		if err := o.remove(ctx, *it); err != nil {
@@ -227,6 +224,22 @@ func Run(ctx context.Context, o Options) (Report, error) {
 			if it.Kind == KindPidfiles || it.Kind == KindBonjour {
 				stillLive = true
 			}
+		}
+	}
+
+	for i := range report.Items {
+		it := &report.Items[i]
+		if it.Kind != KindData || !it.Present || it.Action != ActionRemove {
+			continue
+		}
+		if stillLive {
+			it.Error = "something that may still be running could not be stopped"
+			problems = append(problems, fmt.Errorf("left %s in place — %s", o.Layout.Root, it.Error))
+			continue
+		}
+		if err := o.remove(ctx, *it); err != nil {
+			it.Error = err.Error()
+			problems = append(problems, err)
 		}
 	}
 	return report, errors.Join(problems...)
@@ -511,6 +524,11 @@ func (o Options) terminate(ctx context.Context, pid int, grace time.Duration) er
 	// flat 500ms here for the same reason.
 	if o.waitGone(ctx, pid, killGrace) {
 		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		// Out of time, not unkillable — saying otherwise sends someone hunting a process
+		// that was on its way out.
+		return err
 	}
 	return fmt.Errorf("process %d will not exit", pid)
 }
