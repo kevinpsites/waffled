@@ -220,6 +220,10 @@ uses bash because it is throwaway and the point is to learn, not to build.
   build once the pipeline exists. Postgres/Node/Caddy all ship both.
 - **Uninstall.** Dragging the app to the Trash orphans ~/Library/Application Support/Waffled.
   → Menu has "Reveal data folder"; docs explain removal. Never auto-delete.
+  *(runtime half done — PR #N: `waffled-runtime uninstall [--delete-data] [--dry-run] [--json]
+  [--yes]` removes the launchd backup agent, leftover pidfiles, the Bonjour registration and
+  the out-of-root Postgres socket directory, keeps the data unless asked, and prints the whole
+  kept-vs-removed inventory. The app's "Remove Waffled…" follows.)*
 - **Port collisions** (§3) and **Gatekeeper/notarization** (every binary in the bundle needs a
   hardened-runtime signature; `codesign --deep` is not enough for Postgres's dylibs).
 

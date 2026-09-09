@@ -25,6 +25,7 @@ waffled-runtime backup [--out FILE] [--keep N]
 waffled-runtime backup --install-schedule | --uninstall-schedule
 waffled-runtime restore FILE [--yes]
 waffled-runtime doctor [--json]
+waffled-runtime uninstall [--delete-data] [--dry-run] [--json] [--yes]
 waffled-runtime version
 ```
 
@@ -118,7 +119,12 @@ directory.
   caddy/                 XDG_DATA_HOME / XDG_CONFIG_HOME for Caddy's own state
   Caddyfile              generated from the bundle's compose Caddyfile
   bundle-verified.json   memo: this bundle build verified, so warm starts skip the walk
+  bonjour.json           what the running supervisor is advertising, for `status` to read
 ```
+
+One thing the runtime owns lives **outside** this root: when the path above is too long
+for a unix socket, Postgres's socket goes in a `wfl*` temp directory instead and
+`runtime.json` is the only record of where. `uninstall` is what cleans that up.
 
 ### Secrets
 
@@ -682,6 +688,103 @@ the same comparison rather than assume:
 
 Data that has only ever known one version has no crossing and gets no line at all.
 
+## Uninstalling
+
+```sh
+waffled-runtime uninstall                 # remove the runtime's traces, KEEP the data
+waffled-runtime uninstall --dry-run       # print the plan, change nothing
+waffled-runtime uninstall --delete-data   # …and delete the data directory too
+waffled-runtime uninstall --json          # schema 1, for the Mac app
+waffled-runtime uninstall --yes           # stop the server first if it is still running
+```
+
+**Keeping the household's data is the default, and nothing is ever deleted silently.**
+Every run — dry or real — prints the whole inventory with `kept` against what survives
+and its size, so a person reading the output knows exactly what is still on disk. Plan §5
+says never auto-delete; this is that, made explicit.
+
+`uninstall` refuses while a server is running and names the pid, unless `--yes`, which
+runs the ordinary stop first and says that it did. `--dry-run` is the exception: it
+reports a running server rather than refusing over it, because "is it safe to uninstall
+yet" is exactly what a dry run is for. It is idempotent — a second run reports every item
+`present: false` and exits 0 — and it exits non-zero only on a real failure.
+
+It does **not** build a Supervisor, and that is load-bearing: constructing one writes to
+the directory being inventoried (creates the layout, writes `config.env` with fresh
+secrets, `runtime.json`, `bundle-verified.json`, sets the Time Machine xattr). Routed
+through that, `--dry-run` would change what it promised not to and a second run would
+find a data directory it had just recreated.
+
+### What is removed, and what is kept
+
+The two halves add up to a complete uninstall. This command owns the machine-level half;
+the Mac app's **Remove Waffled…** owns its own.
+
+| | Where | Uninstall does what | Who |
+|---|---|---|---|
+| nightly backup schedule | `~/Library/LaunchAgents/app.waffled.backup.plist`, and the loaded launchd job | **removed** — booted out of `gui/$UID`, then the plist deleted. Only when it is really installed: unloading a label we did not install is somebody else's backup to lose | `uninstall` |
+| pidfiles | `<data>/pids/` | **removed**, and anything still alive in there is SIGTERM'd first — a service orphaned by a crash is the whole "nothing dead left behind" case | `uninstall` |
+| Bonjour registration | `<data>/bonjour.json`, `<data>/pids/bonjour.pid`, and the `dns-sd` process holding the advertisement | **removed** — killing `dns-sd` *is* the deregistration, because mDNSResponder drops a registration when the client that made it goes away | `uninstall` |
+| Postgres socket directory | a `wfl*` temp directory, only when the data path was too long for a unix socket | **removed** — it is outside the data root, so nothing else would ever clean it up | `uninstall` |
+| the data directory | `~/Library/Application Support/Waffled` — the Postgres cluster, media, backups, logs, secrets, `runtime.json`, PowerSync's `.probes/`, Caddy's state, and the Time Machine exclusion xattr on `postgres/` (which goes with the folder) | **kept**, with its path and size printed. `--delete-data` removes it instead | `uninstall --delete-data` |
+| the login item | registered with `SMAppService.mainApp` — no helper, no plist to find | removed | the Mac app |
+| app preferences | `~/Library/Preferences/app.waffled.mac.plist` | removed | the Mac app |
+| Sparkle's update caches | `~/Library/Caches/app.waffled.mac/` | removed | the Mac app |
+| `Waffled.app` itself | `/Applications` | dragged to the Trash | you, or the Mac app |
+
+⚠️ **`--delete-data` is unrecoverable.** It takes `config.env` with it, and the secrets in
+there — `LOCAL_JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `POWERSYNC_JWT_PRIVATE_KEY`, any
+Google OAuth client secret you added — exist nowhere else. Take a backup first
+(`waffled-runtime backup --out ~/Desktop/waffled.dump`) and copy `config.env` somewhere
+safe if you might ever come back.
+
+### `uninstall --json`
+
+Schema 1. `action` is what this run does, `present` is what it found — so a first run is
+all `present: true` and a second all `present: false`.
+
+```jsonc
+{
+  "schema": 1,
+  "dataDir": "/Users/…/Application Support/Waffled",
+  "dataSizeBytes": 3900080,
+  "items": [
+    { "kind": "schedule", "path": "/Users/…/LaunchAgents/app.waffled.backup.plist",
+      "sizeBytes": 9, "action": "remove", "present": true,
+      "detail": "the nightly backup launchd agent" },
+    { "kind": "bonjour",  "path": "/Users/…/Waffled/bonjour.json",
+      "sizeBytes": 3, "action": "remove", "present": true, "detail": "…" },
+    { "kind": "pidfiles", "path": "/Users/…/Waffled/pids",
+      "sizeBytes": 5, "action": "remove", "present": true, "detail": "…" },
+    { "kind": "socket",   "path": "/var/folders/…/wflPMyR",
+      "sizeBytes": 0, "action": "remove", "present": true, "detail": "…" },
+    { "kind": "data",     "path": "/Users/…/Application Support/Waffled",
+      "sizeBytes": 3900080, "action": "keep", "present": true,
+      "detail": "your household's database, photos, backups and config.env" }
+  ]
+}
+```
+
+`dataSizeBytes` is a `filepath.WalkDir` over the data root that **does not follow
+symlinks** — a link into somebody's Photos library is not the household's own data, and a
+link back inside the root would be counted twice. That walk lives in this command and
+nowhere else: `status` is polled by the menu bar and must stay cheap (`apps/mac/CLAUDE.md`).
+
+### When the app is already in the Trash
+
+The binary ships *inside* the app bundle, so once `Waffled.app` is gone there is nothing
+left to run `uninstall` with. Undo it in Finder and run the command, or do the same three
+things by hand:
+
+```sh
+launchctl bootout "gui/$UID/app.waffled.backup" 2>/dev/null
+rm -f ~/Library/LaunchAgents/app.waffled.backup.plist
+rm -rf ~/Library/Application\ Support/Waffled          # ← your data. Back it up first.
+defaults delete app.waffled.mac 2>/dev/null            # the app's own preferences
+```
+
+A stray `wfl*` socket directory under `/var/folders` is cleaned up by macOS on its own.
+
 ## Tests
 
 ```sh
@@ -697,9 +800,16 @@ round-trip), port selection against genuinely occupied ports, `runtime.json`
 round-tripping, the Caddyfile rewrite (both `api:3000` occurrences, paths with spaces,
 and a drift alarm that rewrites the repo's *real* `infra/compose/caddy/Caddyfile`),
 manifest verification against tampered/extra/missing/retargeted fixtures, process
-supervision, log rotation, the status contract, and the Bonjour advertisement (which name
+supervision, log rotation, the status contract, the Bonjour advertisement (which name
 wins, what `setup` means, the TXT keys and their byte limits, and the argv handed to
-dns-sd).
+dns-sd), and the uninstall inventory (a dry run that leaves the tree byte-identical, the
+data root surviving without `--delete-data`, the refusal while a supervisor is running,
+and a second run that is a no-op).
+
+The uninstall tests never use a real `schedule.Agent`: `Uninstall` boots out a launchd
+*label*, so pointing one at a temp `AgentsDir` would still unload the nightly backup of
+whoever runs the suite. They inject a fake through the `ScheduleAgent` interface, and the
+command's own test points `HOME` at a temp directory.
 
 The integration tests (build tag `integration`, skipped without `WAFFLED_BUNDLE`) run the
 real bundle into a temp data directory **whose path contains a space**:
