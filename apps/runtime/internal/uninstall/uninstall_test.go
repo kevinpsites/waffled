@@ -424,3 +424,38 @@ func TestDeleteDataRefusesADirectoryThatIsNotAWaffledDataFolder(t *testing.T) {
 		t.Errorf("the refusal still deleted the contents: %v", err)
 	}
 }
+
+// A data root moved to another volume and left as a symlink behind — the documented way
+// to keep a large household off the boot disk. Walking it without following the link
+// measures nothing, and removing it takes the link and leaves every byte of the cluster
+// on the volume while the output claims the data was deleted.
+func TestASymlinkedDataRootIsMeasuredAndDeletedThrough(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "Waffled")
+	if err := os.MkdirAll(filepath.Join(target, "postgres"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "config.env"), []byte(strings.Repeat("s", 700)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "Waffled")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := Options{Layout: datadir.At(link), DeleteData: true, Log: &strings.Builder{}}
+	report, err := Run(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if report.DataSizeBytes < 700 {
+		t.Errorf("dataSizeBytes = %d, want the 700 bytes on the other side of the symlink",
+			report.DataSizeBytes)
+	}
+	if _, err := os.Stat(filepath.Join(target, "config.env")); !os.IsNotExist(err) {
+		t.Errorf("the data behind the symlink survived a run that reported it removed: %v", err)
+	}
+	if _, err := os.Lstat(link); !os.IsNotExist(err) {
+		t.Errorf("the dangling symlink was left behind: %v", err)
+	}
+}

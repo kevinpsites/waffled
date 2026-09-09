@@ -205,10 +205,26 @@ func (o Options) remove(ctx context.Context, it Item) error {
 			}
 		}
 		return removeIfPresent(o.Layout.Pids)
-	case KindSocket, KindData:
+	case KindData:
+		// Through the symlink first, then the link itself: a data root relocated to
+		// another volume is a link, and removing only that would report the household's
+		// data deleted while every byte of it survived.
+		return errors.Join(removeIfPresent(o.dataTarget()), removeIfPresent(it.Path))
+	case KindSocket:
 		return removeIfPresent(it.Path)
 	}
 	return nil
+}
+
+// dataTarget is the directory the data root really is. They differ only when the root is
+// a symlink — a household moved to an external disk — and everything that measures or
+// deletes the data has to work on the far side of it.
+func (o Options) dataTarget() string {
+	target, err := filepath.EvalSymlinks(o.Layout.Root)
+	if err != nil {
+		return o.Layout.Root
+	}
+	return target
 }
 
 // looksLikeDataDir asks whether this directory is one the runtime made. Any one of the
@@ -284,7 +300,7 @@ func (o Options) inspect() Report {
 		})
 	}
 
-	r.DataSizeBytes = dirSize(o.Layout.Root)
+	r.DataSizeBytes = dirSize(o.dataTarget())
 	data := Item{
 		Kind:      KindData,
 		Path:      o.Layout.Root,
