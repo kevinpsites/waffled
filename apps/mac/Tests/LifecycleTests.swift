@@ -132,6 +132,29 @@ final class LifecycleTests: XCTestCase {
                        "the swap would land on a server still running the old bundle")
     }
 
+    /// The other end of the same rule. Once the stop has succeeded the server is down and
+    /// the app is only waiting to be replaced — so an install that then aborts (a bad
+    /// signature, a person cancelling the authorisation) leaves the household with no
+    /// server, no update, and an app whose one auto-start is long spent. The app that
+    /// stopped it is the one that has to start it again.
+    func testAnAbandonedInstallStartsBackTheServerWeStopped() {
+        XCTAssertEqual(
+            Lifecycle.recoveryAfterAbort(weStoppedTheServer: true,
+                                         error: "The update is improperly signed.\nDetail"),
+            .restart("Update not installed: The update is improperly signed."),
+            "one line, because the menu has one line")
+
+        XCTAssertEqual(Lifecycle.recoveryAfterAbort(weStoppedTheServer: true, error: nil),
+                       .restart("Update not installed"))
+
+        XCTAssertEqual(Lifecycle.recoveryAfterAbort(weStoppedTheServer: false, error: "no update"),
+                       .leaveItAlone,
+                       "an ordinary daily check that found nothing stopped nothing")
+        XCTAssertEqual(Lifecycle.recoveryAfterAbort(weStoppedTheServer: false, error: nil),
+                       .leaveItAlone,
+                       "and a held update never got as far as stopping the server")
+    }
+
     /// The note is said once — but "once" has to mean *once there is something to say*.
     ///
     /// The two facts arrive on different polls after an update. `bundle.version` comes from

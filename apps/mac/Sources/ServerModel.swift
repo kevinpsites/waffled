@@ -36,6 +36,9 @@ final class ServerModel {
     /// until then, and a fresh `checkForUpdates` returns without doing anything.
     private var pendingInstall: (() -> Void)?
     var hasPendingUpdate: Bool { pendingInstall != nil }
+    /// Our stop succeeded and Sparkle has the app: what makes an update that then ends
+    /// without installing anything ours to recover from.
+    private var stoppedForUpdate = false
 
     /// A start, stop or backup is in flight. Derived rather than stored: the two were
     /// set in lockstep at four call sites, which is four chances for a menu stuck at
@@ -460,12 +463,31 @@ final class ServerModel {
             switch Lifecycle.relaunchDecision(afterStop: stopError) {
             case .relaunch:
                 self?.pendingInstall = nil
+                self?.stoppedForUpdate = true
                 install()
             case let .hold(message):
                 // The handler stays with us; the menu item becomes the retry that runs it.
                 self?.recordStopFailure(message)
                 await self?.refresh()
             }
+        }
+    }
+
+    /// Sparkle's update cycle ended without replacing anything — including the ordinary
+    /// case of finding no update at all, which is why the decision turns on whether we had
+    /// stopped the server for it.
+    func updateCycleEnded(error: String?) {
+        switch Lifecycle.recoveryAfterAbort(weStoppedTheServer: stoppedForUpdate, error: error) {
+        case .leaveItAlone:
+            return
+        case let .restart(message):
+            stoppedForUpdate = false
+            pendingInstall = nil
+            // Replaces `Stopping for the update…`, which was left up deliberately until
+            // something else said otherwise. Restarting is not a second supervisor: this
+            // is the server this app stopped a moment ago.
+            note(message)
+            startServer(trigger: .app)
         }
     }
 

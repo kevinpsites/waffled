@@ -83,4 +83,23 @@ final class UpdaterDelegate: NSObject, SPUUpdaterDelegate {
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
         NSLog("Waffled: Sparkle found version %@ in the appcast", item.displayVersionString)
     }
+
+    /// An update that will not be installed after all. Sparkle reports the end of a cycle
+    /// twice for one abort (this, then the finish below), and every ordinary check that
+    /// finds nothing arrives here too — `ServerModel` answers both by asking whether it
+    /// had stopped the server for this one.
+    func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
+        updateCycleEnded(error)
+    }
+
+    func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck,
+                 error: Error?) {
+        updateCycleEnded(error)
+    }
+
+    private func updateCycleEnded(_ error: Error?) {
+        let model = model
+        let message = error?.localizedDescription
+        Task { @MainActor in model.updateCycleEnded(error: message) }
+    }
 }

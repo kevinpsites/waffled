@@ -345,6 +345,28 @@ enum Lifecycle {
         case hold(String)
     }
 
+    /// What to do when Sparkle's update cycle ends without installing anything.
+    enum AbortRecovery: Equatable {
+        /// Nothing of ours is down, so nothing of ours needs putting back — every check
+        /// that finds no update ends here.
+        case leaveItAlone
+        /// We stopped the server for a swap that is not coming. Start it again, saying so.
+        case restart(String)
+    }
+
+    /// A stop, a swap and a start — with the swap cancelled. Sparkle can abort after the
+    /// relaunch was postponed and the server is already down (a signature that does not
+    /// check out, an authorisation someone declined), and the app is then sitting there
+    /// alive, with the household's server stopped, its one auto-start long spent and
+    /// `Stopping for the update…` still on screen. Whoever stopped it starts it again.
+    ///
+    /// - Parameter weStoppedTheServer: our stop succeeded and Sparkle was handed the app.
+    static func recoveryAfterAbort(weStoppedTheServer: Bool, error: String?) -> AbortRecovery {
+        guard weStoppedTheServer else { return .leaveItAlone }
+        guard let why = error?.firstLine else { return .restart("Update not installed") }
+        return .restart("Update not installed: \(why)")
+    }
+
     /// The version note, or nil when there is nothing to say.
     ///
     /// - Parameters:

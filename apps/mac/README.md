@@ -256,7 +256,10 @@ tries the stop again with the install Sparkle handed over. (It has to be that it
 than an ordinary check: Sparkle counts the postponed session as still in progress, so
 `Check for updates…` would do nothing until the app relaunches.) It is
 the same rule as quit, for the same reason. (Quitting Waffled with a downloaded update
-pending is safe for the same reason: quit stops the server first.)
+pending is safe for the same reason: quit stops the server first.) If the install aborts
+*after* that stop — a signature that does not check out, an authorisation someone declined —
+the app starts the server back up and says why, rather than leaving the household with
+neither a server nor an update.
 
 The feed is `https://github.com/kevinpsites/waffled/releases/latest/download/appcast.xml` —
 GitHub serves the latest release's assets at that stable path, so the URL never names a

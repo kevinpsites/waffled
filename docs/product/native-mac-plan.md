@@ -433,6 +433,9 @@ nothing to serve until that lands.
      Everything after that is the ordinary auto-start, which is the update. A held update
      keeps Sparkle's install handler and turns the menu item into `Install the update now`,
      because a postponed session leaves `checkForUpdates` a no-op until the app relaunches.
+     And an install that aborts *after* the stop (a bad signature, an authorisation someone
+     declined) leaves the household with no server and no update, so the app starts back the
+     one it stopped and says why.
    - **Known edge, still open:** dragging a newer DMG over a running install has the same
      stale-server problem with nobody to stop the server first — the swapped app keeps
      talking to the runtime already in memory until the next stop/start. Item 5 will either
