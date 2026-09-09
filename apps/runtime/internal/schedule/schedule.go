@@ -8,6 +8,7 @@
 package schedule
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
 	"os"
@@ -134,6 +135,77 @@ func (a *Agent) Loaded() (bool, error) {
 		return false, fmt.Errorf("launchctl print %s: %w\n%s", a.domainTarget(), err, detail)
 	}
 	return false, fmt.Errorf("launchctl print %s: %w", a.domainTarget(), err)
+}
+
+// ScheduledDataDir reports which data directory the installed plist backs up, read out of
+// its own ProgramArguments. Empty when nothing is installed, the file cannot be parsed,
+// or it carries no --data.
+//
+// The label is global: one Mac holds one nightly backup, belonging to whichever data
+// directory installed it. Anything deciding whether that schedule is *theirs* to remove
+// has to ask this rather than trust the plist's presence.
+func (a *Agent) ScheduledDataDir() string {
+	raw, err := os.ReadFile(a.PlistPath())
+	if err != nil {
+		return ""
+	}
+	args := programArguments(raw)
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == "--data" {
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
+// programArguments pulls the ProgramArguments array back out of a plist. It reads the
+// token stream rather than matching strings so that the XML escaping Plist() applies —
+// the whole reason that function marshals instead of concatenating — is undone the same
+// way launchd would undo it.
+func programArguments(raw []byte) []string {
+	dec := xml.NewDecoder(bytes.NewReader(raw))
+	var (
+		out        []string
+		lastKey    string
+		inKey      bool
+		inString   bool
+		collecting bool
+	)
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return out
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			switch t.Name.Local {
+			case "key":
+				inKey, lastKey = true, ""
+			case "array":
+				collecting = lastKey == "ProgramArguments"
+			case "string":
+				inString = true
+			}
+		case xml.CharData:
+			if inKey {
+				lastKey += string(t)
+			}
+			if collecting && inString {
+				out = append(out, string(t))
+			}
+		case xml.EndElement:
+			switch t.Name.Local {
+			case "key":
+				inKey = false
+			case "string":
+				inString = false
+			case "array":
+				if collecting {
+					return out
+				}
+			}
+		}
+	}
 }
 
 // Uninstall unloads the job and removes the plist. Quiet when nothing is installed —

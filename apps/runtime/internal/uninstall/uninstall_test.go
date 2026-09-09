@@ -26,9 +26,12 @@ var _ ScheduleAgent = (*schedule.Agent)(nil)
 // AgentsDir would still unload the nightly backup of whoever runs the suite.
 type fakeAgent struct {
 	path      string
+	dataDir   string
 	uninstall int
 	fail      bool
 }
+
+func (f *fakeAgent) ScheduledDataDir() string { return f.dataDir }
 
 func (f *fakeAgent) PlistPath() string { return f.path }
 
@@ -115,7 +118,7 @@ func fixture(t *testing.T) (Options, *fakeAgent, int64) {
 	}
 	wantBytes += info.Size()
 
-	agent := &fakeAgent{path: filepath.Join(t.TempDir(), schedule.Label+".plist")}
+	agent := &fakeAgent{path: filepath.Join(t.TempDir(), schedule.Label+".plist"), dataDir: root}
 	if err := os.WriteFile(agent.path, []byte("<plist/>\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -815,5 +818,28 @@ func TestAFailedScheduleRemovalDoesNotBlockDeletingTheData(t *testing.T) {
 	}
 	if got := item(t, report, KindData).Error; got != "" {
 		t.Errorf("the data item carries error %q, but it was deleted", got)
+	}
+}
+
+// One Mac holds one nightly backup, and its plist names the data directory it backs up.
+// Uninstalling a DIFFERENT data directory must not boot it out: the household's backups
+// would stop with nothing but a cheerful "removed schedule" to show for it.
+func TestAScheduleBelongingToAnotherDataDirectoryIsKept(t *testing.T) {
+	opts, agent, _ := fixture(t)
+	agent.dataDir = "/Users/sam/Library/Application Support/Waffled"
+
+	report, err := Run(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	sched := item(t, report, KindSchedule)
+	if sched.Action != ActionKeep {
+		t.Errorf("schedule action = %q, want keep — it belongs to another data directory", sched.Action)
+	}
+	if agent.uninstall != 0 {
+		t.Error("another data directory's nightly backup was unloaded")
+	}
+	if !agent.Installed() {
+		t.Error("another data directory's plist was deleted")
 	}
 }

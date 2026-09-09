@@ -280,3 +280,25 @@ func TestInstallLeavesNoTemporaryFileBehind(t *testing.T) {
 		t.Errorf("LaunchAgents holds %v, want only %s.plist", names, Label)
 	}
 }
+
+// The label is global — one Mac holds one nightly backup, for whichever data directory
+// installed it. Anything deciding whether to remove that schedule has to be able to ask
+// which directory that is, and the answer has to survive XML escaping.
+func TestScheduledDataDirReadsTheInstalledPlist(t *testing.T) {
+	a, _ := newAgent(t)
+	a.DataDir = `/Users/sam & jo/Library/Application Support/Waffled`
+	if err := a.Install(); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	if got := a.ScheduledDataDir(); got != a.DataDir {
+		t.Errorf("ScheduledDataDir() = %q, want %q", got, a.DataDir)
+	}
+}
+
+func TestScheduledDataDirIsEmptyWithNoPlist(t *testing.T) {
+	a, _ := newAgent(t)
+	if got := a.ScheduledDataDir(); got != "" {
+		t.Errorf("ScheduledDataDir() = %q with nothing installed, want empty", got)
+	}
+}

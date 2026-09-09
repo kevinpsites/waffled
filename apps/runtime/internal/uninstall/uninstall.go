@@ -86,6 +86,8 @@ type Report struct {
 type ScheduleAgent interface {
 	PlistPath() string
 	Installed() bool
+	// ScheduledDataDir is which data directory the installed plist backs up, or "".
+	ScheduledDataDir() string
 	Uninstall() error
 }
 
@@ -320,16 +322,25 @@ func (o Options) inspect() Report {
 	}
 
 	if o.Agent != nil {
-		r.Items = append(r.Items, Item{
+		it := Item{
 			Kind:    KindSchedule,
 			Path:    o.Agent.PlistPath(),
 			Action:  ActionRemove,
 			Present: o.Agent.Installed(),
 			Detail:  "the nightly backup launchd agent",
-		})
-		if last := len(r.Items) - 1; r.Items[last].Present {
-			r.Items[last].SizeBytes = fileSize(r.Items[last].Path)
 		}
+		if it.Present {
+			it.SizeBytes = fileSize(it.Path)
+			// The launchd label is global: one Mac holds one nightly backup, belonging
+			// to whichever data directory installed it. `Installed()` only says a
+			// schedule exists, so uninstalling some OTHER data directory would boot out
+			// the household's real backups and report it as a job done.
+			if dir := o.Agent.ScheduledDataDir(); dir != "" && !sameDir(dir, o.Layout.Root) {
+				it.Action = ActionKeep
+				it.Detail = "the nightly backup belongs to " + dir + ", not this data directory"
+			}
+		}
+		r.Items = append(r.Items, it)
 	}
 
 	bonjourPid := o.Layout.PidPath(services.Bonjour)
@@ -440,6 +451,21 @@ func notJustSockets(dir string) string {
 		}
 	}
 	return ""
+}
+
+// sameDir compares two directory paths, following symlinks where it can — the plist
+// records the path as it was at install time, which may be a link.
+func sameDir(a, b string) bool {
+	clean := func(p string) string {
+		if abs, err := filepath.Abs(p); err == nil {
+			p = abs
+		}
+		if resolved, err := filepath.EvalSymlinks(p); err == nil {
+			return resolved
+		}
+		return filepath.Clean(p)
+	}
+	return clean(a) == clean(b)
 }
 
 func within(root, path string) bool {

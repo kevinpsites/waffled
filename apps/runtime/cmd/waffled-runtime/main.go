@@ -425,10 +425,11 @@ func cmdUninstall(args []string) error {
 	return runErr
 }
 
-// backupSchedule builds the nightly-backup agent for an uninstall. Only its label and
-// LaunchAgents directory matter here, so a binary or bundle path that cannot be resolved
-// — the app already dragged to the Trash — is not a reason to stop; nil simply means
-// "leave the schedule out of the inventory".
+// backupSchedule builds the nightly-backup agent for an uninstall. Only its label,
+// LaunchAgents directory and the data directory recorded in the installed plist matter
+// here, so a binary or bundle path that cannot be resolved — the app already dragged to
+// the Trash — is not a reason to stop; nil simply means "leave the schedule out of the
+// inventory".
 func backupSchedule(bundle string, layout datadir.Layout) uninstall.ScheduleAgent {
 	exe, err := os.Executable()
 	if err != nil {
