@@ -409,6 +409,13 @@ func (o Options) socketItem() (Item, bool) {
 	// data root, it must not CONTAIN it (a "wfl"-named parent would otherwise take the
 	// household's data with it), and the name alone is not enough — what is in there has
 	// to be Postgres's sockets and nothing else.
+	// Relative first: filepath.Rel errors when it compares an absolute root against a
+	// relative path, and within() reads that error as "not contained", so a relative
+	// path would slip past both guards below and be resolved against whatever the
+	// working directory happened to be. The runtime only ever records an absolute one.
+	if !filepath.IsAbs(st.SocketDir) {
+		return Item{}, false
+	}
 	if within(o.Layout.Root, st.SocketDir) || within(st.SocketDir, o.Layout.Root) {
 		return Item{}, false
 	}

@@ -843,3 +843,24 @@ func TestAScheduleBelongingToAnotherDataDirectoryIsKept(t *testing.T) {
 		t.Error("another data directory's plist was deleted")
 	}
 }
+
+// filepath.Rel errors when it compares an absolute root against a relative path, and
+// within() reads that error as "not contained" — so a relative socketDir slipped past
+// both containment guards and the prefix guard, and would have been RemoveAll'd against
+// whatever the process's working directory happened to be.
+func TestARelativeSocketDirectoryIsNeverTouched(t *testing.T) {
+	opts, _, _ := fixture(t)
+	if err := rtstate.Save(opts.Layout.RuntimeJSON, &rtstate.State{SocketDir: "wflcache"}); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Run(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	for _, it := range report.Items {
+		if it.Kind == KindSocket {
+			t.Errorf("a relative path was taken for a socket directory: %+v", it)
+		}
+	}
+}
