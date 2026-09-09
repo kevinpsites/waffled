@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requester or a reward approver before any balance is spent.
   Refunds preserve the original approval attribution and reject mismatched or
   corrupted redemption-to-ledger links, including during idempotent replay.
+  Scoped API clients can correct ledger entries with `rewards:write` when their
+  owner also has `reward.correct`.
 
 ### Changed
 

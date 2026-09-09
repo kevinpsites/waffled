@@ -54,7 +54,7 @@ paths a key can reach at all — the live list is also served from `GET /api/api
 | `lists` | `/api/lists` · `/api/pantry-staples` |
 | `pantry` | `/api/pantry` |
 | `chores` | `/api/chores` · `/api/chore-instances` · `/api/chore-proofs` |
-| `rewards` | `/api/rewards` · `/api/redemptions` · `/api/balances` · `/api/currencies` · `/api/conversions` |
+| `rewards` | `/api/rewards` · `/api/redemptions` · `/api/balances` · `/api/currencies` · `/api/conversions` · `/api/ledger-entries` |
 | `meals` | `/api/recipes` · `/api/meals` |
 | `calendar` | `/api/events` |
 | `goals` | `/api/goals` · `/api/goal-lists` |
