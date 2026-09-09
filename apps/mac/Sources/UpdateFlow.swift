@@ -40,7 +40,8 @@ struct UpdateFlow {
     ///   the stop has nothing left to invoke when it comes back.
     /// - `handedOff`: the stop succeeded and we invoked the block.
     /// - `restartQueued`: we stopped the server for a swap that is not coming, and owe it
-    ///   a start as soon as the one operation slot is free.
+    ///   a start as soon as the one operation slot is free. It exists only while an
+    ///   operation holds that slot: `ServerModel.send` discharges it the moment it is free.
     ///
     /// There is no cycle token because there is one operation slot: at most one stop can
     /// be in flight, so the phase alone says which stop a completion belongs to. An app
@@ -66,8 +67,6 @@ struct UpdateFlow {
         case cycleEnded(error: String?)
         /// - Parameter serverState: what the last status said, read after the stop.
         case operationSlotFreed(serverState: RuntimeState?)
-        /// A person started the server themselves.
-        case startClicked
         case quitRequested(stopHasFailed: Bool)
     }
 
@@ -125,10 +124,6 @@ struct UpdateFlow {
         case let .operationSlotFreed(serverState):
             guard case let .restartQueued(handler) = phase else { return (phase, []) }
             return (.armed(handler: handler), restart(ifServerIs: serverState))
-
-        case .startClicked:
-            guard case let .restartQueued(handler) = phase else { return (phase, []) }
-            return (.armed(handler: handler), [])
 
         case let .quitRequested(stopHasFailed):
             switch Lifecycle.quitAction(stopHasFailed: stopHasFailed, phase: phase) {

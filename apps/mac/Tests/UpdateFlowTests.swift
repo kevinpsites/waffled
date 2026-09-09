@@ -54,7 +54,7 @@ final class UpdateFlowTests: XCTestCase {
             Row(.armed(handler: h1), .installerArmed(handler: nil, canStopNow: true),
                 .armed(handler: h1), [],
                 "a nil arming never replaces a block we are holding"),
-            Row(.restartQueued(handler: h1), .installerArmed(handler: nil, canStopNow: true),
+            Row(.restartQueued(handler: h1), .installerArmed(handler: nil, canStopNow: false),
                 .restartQueued(handler: h1), [],
                 "and never discharges a restart we owe"),
             Row(.stoppingForInstall(handler: nil),
@@ -77,9 +77,6 @@ final class UpdateFlowTests: XCTestCase {
             Row(.armed(handler: h1), .installerArmed(handler: h1, canStopNow: true),
                 .stoppingForInstall(handler: h1), [.stopServer],
                 "`Install the update now` is the same stop with the block we kept"),
-            Row(.restartQueued(handler: h1), .installerArmed(handler: h1, canStopNow: true),
-                .stoppingForInstall(handler: h1), [.stopServer],
-                "an update that can go ahead beats a restart we were only going to undo"),
         ])
     }
 
@@ -189,15 +186,6 @@ final class UpdateFlowTests: XCTestCase {
         ])
     }
 
-    func testAPersonsOwnStartDischargesTheRestartWeOwed() {
-        check([
-            Row(.restartQueued(handler: h1), .startClicked, .armed(handler: h1), [],
-                "the household's server is back; queueing a second start would slash the icon"),
-            Row(.armed(handler: h1), .startClicked, .armed(handler: h1), [],
-                "an ordinary start changes nothing about a prepared installer"),
-        ])
-    }
-
     // MARK: quitting
 
     /// Quit is the other end of the same rule. Once Sparkle's installer is prepared it
@@ -234,7 +222,6 @@ final class UpdateFlowTests: XCTestCase {
             .cycleEnded(error: nil),
             .cycleEnded(error: "You cancelled the update."),
             .stopFailed("postgres would not shut down"),
-            .startClicked,
             .operationSlotFreed(serverState: .running),
             .quitRequested(stopHasFailed: true),
         ]
@@ -274,9 +261,9 @@ final class UpdateFlowTests: XCTestCase {
                        .stopTheServerFirst)
     }
 
-    /// The abort-then-restart path, with a person getting there first. The restart used to
-    /// fire from the freed slot regardless, and the second `start` hit the runtime's pidfile
-    /// guard and slashed the icon.
+    /// The abort-then-restart path, with a person getting there first. Their own start is
+    /// what the freed slot reads as `running`, and a second one would hit the runtime's
+    /// pidfile guard and slash the icon.
     func testAnAbortThenAPersonsStartDoesNotDoubleStart() {
         var flow = UpdateFlow()
 
@@ -285,7 +272,6 @@ final class UpdateFlowTests: XCTestCase {
         _ = flow.send(.cycleEnded(error: "The update is improperly signed."))
         XCTAssertEqual(flow.phase, .restartQueued(handler: nil))
 
-        _ = flow.send(.startClicked)                        // the person got there first
         XCTAssertEqual(flow.send(.operationSlotFreed(serverState: .running)), [],
                        "the household's server is already back")
     }

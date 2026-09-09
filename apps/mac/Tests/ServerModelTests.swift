@@ -141,6 +141,8 @@ final class ServerModelTests: XCTestCase {
 
         model.updateCycleEnded(error: "The update is improperly signed.")
         XCTAssertEqual(model.transient, "Update not installed: The update is improperly signed.")
+        XCTAssertFalse(model.updatePhase.owesRestart,
+                       "a free slot never leaves a restart queued for a later event to find")
         await waitUntil("the server we stopped comes back") { await runtime.count(of: "start") == 1 }
 
         // Sparkle reports one abort twice; the second has nothing left to put back.

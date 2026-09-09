@@ -340,8 +340,6 @@ final class ServerModel {
     ///   the click also spends the one auto-start attempt.
     func startServer(trigger: Lifecycle.StartTrigger = .person) {
         guard let client, operationTask == nil else { return }
-        // A person putting the server back is the flow's restart, already done.
-        if trigger == .person { send(.startClicked) }
         startTrigger = trigger
         autoStartDecided = true
         failure = nil
