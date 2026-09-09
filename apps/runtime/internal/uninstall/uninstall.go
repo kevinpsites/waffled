@@ -101,6 +101,11 @@ var ErrRefused = errors.New("nothing was changed")
 // user can clear themselves, by stopping the server or passing --yes.
 var ErrServerRunning = errors.New("the Waffled server is still running")
 
+// errStillRunning marks the one failure that may block deleting the data root: something
+// this run signalled and could not kill. A failed unlink from the same item is a
+// filesystem problem, not a live process, and must not be reported as one.
+var errStillRunning = errors.New("a process this run could not stop")
+
 // Options describe one uninstall.
 type Options struct {
 	// Layout is the data directory to inventory. It is never created.
@@ -219,9 +224,9 @@ func Run(ctx context.Context, o Options) (Report, error) {
 			continue
 		}
 		if err := o.remove(ctx, *it); err != nil {
-			it.Error = err.Error()
+			it.Error = unwrapMarker(err)
 			problems = append(problems, err)
-			if it.Kind == KindPidfiles || it.Kind == KindBonjour {
+			if errors.Is(err, errStillRunning) {
 				stillLive = true
 			}
 		}
@@ -268,7 +273,7 @@ func (o Options) remove(ctx context.Context, it Item) error {
 		// Killing dns-sd IS the deregistration — mDNSResponder drops a registration when
 		// the client that made it goes away (see supervisor.stopBonjour).
 		if err := o.terminatePidfile(ctx, o.Layout.PidPath(services.Bonjour)); err != nil {
-			return err
+			return fmt.Errorf("%w: %w", errStillRunning, err)
 		}
 		return errors.Join(
 			removeIfPresent(o.Layout.BonjourState),
@@ -286,7 +291,7 @@ func (o Options) remove(ctx context.Context, it Item) error {
 			}
 			// The pidfiles stay: they are the only handle left on whatever would not go.
 			if len(survivors) > 0 {
-				return errors.Join(survivors...)
+				return fmt.Errorf("%w: %w", errStillRunning, errors.Join(survivors...))
 			}
 		}
 		return removeIfPresent(o.Layout.Pids)
@@ -318,6 +323,11 @@ func (o Options) dataTarget() string {
 // nothing else yet.
 func (o Options) looksLikeDataDir() bool {
 	return exists(o.Layout.ConfigEnv) || exists(o.Layout.RuntimeJSON) || exists(o.Layout.Postgres)
+}
+
+// unwrapMarker drops the internal marker prefix from a message meant for a person.
+func unwrapMarker(err error) string {
+	return strings.TrimPrefix(err.Error(), errStillRunning.Error()+": ")
 }
 
 func removeIfPresent(path string) error {

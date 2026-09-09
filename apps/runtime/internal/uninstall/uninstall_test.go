@@ -884,3 +884,25 @@ func TestDetailsDoNotClaimTheServerIsStillRunningAfterwards(t *testing.T) {
 		t.Errorf("a completed uninstall still reports %q", detail)
 	}
 }
+
+// Only a process that would not die may block --delete-data. An unlink that failed after
+// every orphan was killed cleanly is a filesystem problem, and refusing over it while
+// blaming "something that may still be running" gives the user nothing to act on.
+func TestAFailedUnlinkDoesNotBlockDeletingTheData(t *testing.T) {
+	opts, _, _ := fixture(t)
+	opts.DeleteData = true
+	// Make pids/ impossible to remove by taking write permission off its parent, and
+	// leave nothing alive in it.
+	if err := os.Chmod(opts.Layout.Root, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(opts.Layout.Root, 0o700) })
+
+	report, err := Run(context.Background(), opts)
+	if err == nil {
+		t.Fatal("Run hid a pids/ directory it could not remove")
+	}
+	if got := item(t, report, KindData).Error; strings.Contains(got, "still be running") {
+		t.Errorf("a failed unlink was reported as a live process: %q", got)
+	}
+}
