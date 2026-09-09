@@ -642,7 +642,17 @@ func (o Options) sweepOrder() []string {
 // that is still running would invert this package's whole reason for existing.
 func (o Options) terminatePidfile(ctx context.Context, path string) error {
 	pid, err := readPidfile(path)
-	if err != nil || !o.alive(pid) {
+	if err != nil {
+		// A pidfile that is not there is nothing to stop. One that is there and cannot be
+		// read is a process we cannot rule out, and treating it as nothing would delete
+		// the directory and report "removed" over something possibly still running.
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("%s could not be read (%v) — delete it if nothing is running",
+			filepath.Base(path), err)
+	}
+	if !o.alive(pid) {
 		return nil
 	}
 	if err := o.terminate(ctx, pid, o.grace); err != nil {

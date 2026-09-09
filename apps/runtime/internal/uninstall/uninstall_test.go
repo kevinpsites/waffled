@@ -1041,3 +1041,25 @@ func TestASweepThatCannotSignalNamesThePidfile(t *testing.T) {
 	}
 	_ = report
 }
+
+// A pidfile that is present but unreadable is not "nothing to stop". Skipping it deletes
+// the directory and reports "removed" over something that may well still be running,
+// which is what terminatePidfile's own comment says must never happen.
+func TestAnUnreadablePidfileIsNotSkipped(t *testing.T) {
+	opts, _, _ := fixture(t)
+	opts.DeleteData = true
+	if err := os.WriteFile(opts.Layout.PidPath("api"), []byte("not-a-pid\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Run(context.Background(), opts)
+	if err == nil {
+		t.Fatal("Run reported success over a pidfile it could not read")
+	}
+	if !strings.Contains(err.Error(), "api.pid") {
+		t.Errorf("the failure does not name the pidfile: %v", err)
+	}
+	if _, statErr := os.Stat(opts.Layout.Root); statErr != nil {
+		t.Errorf("--delete-data ran with a pidfile that could not be checked: %v", statErr)
+	}
+}
