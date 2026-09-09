@@ -727,3 +727,17 @@ func TestAFailedStopDoesNotReportItemsAsRemoved(t *testing.T) {
 		t.Error("an item that was never attempted carries no error")
 	}
 }
+
+// The dry run is the safety preview for the destructive flag, so it is the one mode that
+// must not be more permissive than the real thing.
+func TestTheDryRunRefusesADirectoryTheRealRunWouldRefuse(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "taxes.pdf"), []byte("mine"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	opts := Options{Layout: datadir.At(dir), DeleteData: true, DryRun: true, Log: &strings.Builder{}}
+
+	if _, err := Run(context.Background(), opts); !errors.Is(err, ErrRefused) {
+		t.Fatalf("the dry run promised a deletion the real run refuses: %v", err)
+	}
+}

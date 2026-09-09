@@ -166,6 +166,19 @@ func Run(ctx context.Context, o Options) (Report, error) {
 	o.applyDefaults()
 	report := o.inspect()
 
+	// Checked before the dry run returns, not after: the dry run is the safety preview
+	// for this flag, so it must never promise a deletion the real run refuses.
+	//
+	// --delete-data is one flag away from an rm -rf of whatever --data named, so the
+	// directory has to look like ours before it goes. `waffled-runtime uninstall --data ~
+	// --delete-data` is a plausible slip and would otherwise take the home folder with it.
+	if o.DeleteData && report.item(KindData).Present && !o.looksLikeDataDir() {
+		return report, fmt.Errorf(
+			"%s has none of Waffled's own files in it (no config.env, runtime.json or postgres/) — "+
+				"refusing to delete it. Point --data at the right directory; %w",
+			o.Layout.Root, ErrRefused)
+	}
+
 	// A dry run reports a running server rather than refusing over it: it changes
 	// nothing, and "is it safe to uninstall yet" is exactly what it is for.
 	if pid, running := o.supervisorPid(); running && !o.DryRun {
@@ -186,16 +199,6 @@ func Run(ctx context.Context, o Options) (Report, error) {
 	}
 	if o.DryRun {
 		return report, nil
-	}
-
-	// --delete-data is one flag away from an rm -rf of whatever --data named, so the
-	// directory has to look like ours before it goes. `waffled-runtime uninstall --data ~
-	// --delete-data` is a plausible slip and would otherwise take the home folder with it.
-	if o.DeleteData && report.item(KindData).Present && !o.looksLikeDataDir() {
-		return report, fmt.Errorf(
-			"%s has none of Waffled's own files in it (no config.env, runtime.json or postgres/) — "+
-				"refusing to delete it. Point --data at the right directory; %w",
-			o.Layout.Root, ErrRefused)
 	}
 
 	var problems []error
