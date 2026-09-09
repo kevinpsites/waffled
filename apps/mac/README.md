@@ -83,6 +83,26 @@ WAFFLED_DATA_DIR=/tmp/waffled/data \
   /tmp/waffled/dd/Build/Products/Debug/Waffled.app/Contents/MacOS/Waffled
 ```
 
+Two variables is the common case — pointing at a *built bundle's* supervisor. If you are
+iterating on `apps/runtime` itself, **`go build` to a path outside the bundle** and set
+`WAFFLED_RUNTIME_BUNDLE` as well:
+
+```sh
+go build -o /tmp/waffled/bin/waffled-runtime ./cmd/waffled-runtime   # from apps/runtime
+
+WAFFLED_RUNTIME_BIN=/tmp/waffled/bin/waffled-runtime \
+WAFFLED_RUNTIME_BUNDLE=/tmp/waffled/runtime \
+WAFFLED_DATA_DIR=/tmp/waffled/data \
+  /tmp/waffled/dd/Build/Products/Debug/Waffled.app/Contents/MacOS/Waffled
+```
+
+Both halves of that matter. The bundle is verified against its `manifest.json` on every
+command and the manifest has **no exemption for the supervisor's own binary** — it is a
+bundled file like any other — so `go build -o <bundle>/bin/waffled-runtime` breaks the very
+bundle you were testing with (`changed: bin/waffled-runtime`, and nothing starts). And a
+binary built outside a bundle has no bundle above it, so the `--bundle` default has nothing
+to find: `WAFFLED_RUNTIME_BUNDLE` is what tells it which runtime to drive.
+
 | variable | what it is | required |
 |---|---|---|
 | `WAFFLED_RUNTIME_BIN` | path to a `waffled-runtime` — **setting this is what turns dev mode on** | no |
