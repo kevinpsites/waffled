@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode, type FormEven
 import { useNavigate } from 'react-router'
 import { authApi, getAccessToken, isKioskMode, type AuthStatus, type SetupInput } from '../lib/api'
 import { PROBE_FAST_MS, SERVER_REACHABLE_EVENT, isUnansweredError, probeServerNow } from '../lib/api/reachability'
-import { UNREACHABLE_HEADLINE, UNREACHABLE_HINT } from './components/ServerUnreachableBanner'
+import { UNREACHABLE_HEADLINE } from './components/ServerUnreachableBanner'
 import { useOnline } from '../lib/pwa'
 import { ProfilePicker } from './ProfilePicker'
 import { PairDevice } from './PairDevice'
@@ -113,10 +113,11 @@ function AuthShell({ title, sub, children }: { title: string; sub: string; child
   )
 }
 
-// Same story the banner tells, on the screen that would otherwise be a dead login form.
+// The screen that would otherwise be a dead login form. Deliberately just the title
+// and a line: the banner above it carries the Retry and the how-to-start-it hint, and
+// the recheck below is this screen's retry.
 function UnreachableScreen({ onAnswered }: { onAnswered: () => void }) {
   const deviceOnline = useOnline()
-  const [checking, setChecking] = useState(false)
 
   // Ask again on our own cadence. The store's recovery event only fires when the
   // STORE had given up, and a first failed status call is inside its grace window —
@@ -131,16 +132,6 @@ function UnreachableScreen({ onAnswered }: { onAnswered: () => void }) {
     return () => clearInterval(timer)
   }, [deviceOnline, onAnswered])
 
-  async function retry() {
-    setChecking(true)
-    let answer
-    try {
-      answer = await probeServerNow()
-    } finally {
-      setChecking(false)
-    }
-    if (answer === 'answered') onAnswered()
-  }
   // A device with no link fails every request too, and no amount of starting the
   // server would help — so say the true thing instead.
   if (!deviceOnline) {
@@ -150,14 +141,7 @@ function UnreachableScreen({ onAnswered }: { onAnswered: () => void }) {
       </AuthShell>
     )
   }
-  return (
-    <AuthShell title={UNREACHABLE_HEADLINE} sub="It may be stopped or asleep. Retrying…">
-      <div className="auth-sub" style={{ marginTop: 10 }}>{UNREACHABLE_HINT}</div>
-      <button type="button" className="btn btn-primary auth-submit" onClick={() => void retry()} disabled={checking}>
-        {checking ? 'Checking…' : 'Retry'}
-      </button>
-    </AuthShell>
-  )
+  return <AuthShell title={UNREACHABLE_HEADLINE} sub="It may be stopped or asleep. Retrying…">{null}</AuthShell>
 }
 
 function LoginScreen({ status, oidcError }: { status: AuthStatus | null; oidcError: string | null }) {

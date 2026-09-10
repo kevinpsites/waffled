@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, act } from '@testing-library/react'
+import { render, screen, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { AuthGate } from './AuthGate'
 import { resetReachability } from '../lib/api/reachability'
@@ -32,6 +32,10 @@ describe('AuthGate when the server does not answer', () => {
 
     expect(await screen.findByText(/Can’t reach the Waffled server/)).toBeInTheDocument()
     expect(screen.queryByLabelText('Email')).toBeNull()
+    // The banner above this card owns the Retry and the how-to-start-it hint; the
+    // card telling the same story twice was the whole problem.
+    expect(screen.queryByRole('button', { name: /Retry|Checking/ })).toBeNull()
+    expect(screen.queryByText(/menu bar and choose Start Waffled/)).toBeNull()
   })
 
   it('blames the device, not the server, when the device itself is offline', async () => {
@@ -86,21 +90,4 @@ describe('AuthGate when the server does not answer', () => {
     }
   })
 
-  it('re-resolves to the login screen once a retry reaches the server', async () => {
-    globalThis.fetch = vi.fn(async () => {
-      throw new TypeError('Failed to fetch')
-    }) as unknown as typeof fetch
-
-    render(gate())
-    await screen.findByText(/Can’t reach the Waffled server/)
-
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({ initialized: true, methods: ['password'] }),
-    })) as unknown as typeof fetch
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
-
-    expect(await screen.findByLabelText('Email')).toBeInTheDocument()
-  })
 })
