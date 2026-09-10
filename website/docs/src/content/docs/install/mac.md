@@ -209,16 +209,26 @@ directory with your household in it is not something an uninstaller should guess
    General → Login Items).
 2. **Quit Waffled** from the menu. This stops the server — dragging the app to the Trash
    would not.
-3. Drag `/Applications/Waffled.app` to the Trash.
-4. Remove the nightly backup's job, unless you turned it off during setup:
-   `~/Library/LaunchAgents/app.waffled.backup.plist`.
+3. Let the runtime clean up after itself. It removes the nightly backup job, any pidfiles,
+   the Bonjour advertisement and the Postgres socket directory, and **keeps your data**,
+   printing where it is and how big it is:
+
+   ```sh
+   /Applications/Waffled.app/Contents/Resources/runtime/bin/waffled-runtime uninstall
+   ```
+
+   Add `--dry-run` first if you want to read the plan before anything happens.
+4. Drag `/Applications/Waffled.app` to the Trash.
 5. Optional leftovers, both tiny: `~/Library/Preferences/app.waffled.mac.plist` (the
    updater's own settings) and `~/Library/Caches/app.waffled.mac/`.
 6. **Your data is still there**, at `~/Library/Application Support/Waffled/`, and that is
    your household. Copy `backups/` and `media/` somewhere safe if you might want them, then
-   delete the folder.
+   delete the folder — or let step 3 do it by passing `--delete-data`.
 
-*(Removing Waffled from the menu is coming — for now it is the six steps above.)*
+⚠️ **`--delete-data` cannot be undone.** It takes `config.env` with it, and the secrets in
+there exist nowhere else — back up first if you might ever come back.
+
+*(A **Remove Waffled…** item in the menu is still to come; for now step 3 is the command.)*
 
 ## How this relates to the Docker install
 
