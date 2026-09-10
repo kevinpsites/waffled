@@ -31,6 +31,61 @@ enum Setup {
             .appendingPathComponent("Library/Application Support/Waffled")
     }
 
+    /// The folder Waffled makes for itself inside whatever a person picks. It matches the
+    /// runtime's own `datadir.AppName`, so the default path and a chosen one read alike.
+    static let folderName = "Waffled"
+
+    /// The files that mark a folder as already holding a household. Either is enough: a
+    /// data directory that has never been started has `config.env` and no `runtime.json`.
+    static let householdMarkers = ["runtime.json", "config.env"]
+
+    /// Where Waffled's data really goes, given the folder a person picked.
+    ///
+    /// The open panel hands back the folder they clicked, and the runtime writes
+    /// `config.env`, `postgres/` and `media/` straight into whatever it is given — so
+    /// picking `~/Documents` would scatter a database through Documents. Waffled gets a
+    /// folder of its own inside their choice instead.
+    ///
+    /// Unless their choice already IS one: picking the folder Waffled lives in, from
+    /// `Settings…` or a second setup, must not bury it one level deeper each time. The
+    /// evidence is what is inside, never the name — an empty folder called Waffled is
+    /// still just a folder.
+    static func dataDirectory(forChosen url: URL) -> URL {
+        let alreadyOurs = householdMarkers.contains {
+            FileManager.default.fileExists(atPath: url.appendingPathComponent($0).path)
+        }
+        return alreadyOurs ? url : url.appendingPathComponent(folderName)
+    }
+
+    /// Why this folder cannot be Waffled's, asking everything there is to ask about it —
+    /// the volume it sits on, and whether we could write there at all.
+    ///
+    /// One door rather than two, so the panel cannot accept a folder one rule would have
+    /// refused. A folder Waffled cannot write to fails at the first `config set` with a
+    /// message about a path, long after the person who could have picked another has
+    /// stopped looking.
+    /// Writability is asked of the nearest folder that is really there, because the
+    /// answer is wanted about folders that do not exist yet — `<picked>/Waffled` is the
+    /// ordinary case — and `isWritableFile` says no to every path that is missing.
+    static func refusal(for url: URL) -> String? {
+        if let volume = refusal(for: facts(for: url)) { return volume }
+        guard FileManager.default.isWritableFile(atPath: nearestExisting(url).path) else {
+            return "Waffled cannot write to that folder — pick one you own, like a folder "
+                + "in your home folder."
+        }
+        return nil
+    }
+
+    static func nearestExisting(_ url: URL) -> URL {
+        var here = url.standardizedFileURL
+        while !FileManager.default.fileExists(atPath: here.path) {
+            let parent = here.deletingLastPathComponent()
+            if parent.path == here.path { return here }
+            here = parent
+        }
+        return here
+    }
+
     /// What macOS says about the volume a folder sits on. Split out from the folder so
     /// the rule below is a value-to-value function: no test needs a network share or an
     /// unplugged drive to assert what happens on one.

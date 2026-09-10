@@ -398,20 +398,23 @@ private struct SetupOptionRows: View {
         panel.prompt = "Choose"
         panel.directoryURL = model.dataDirectory.deletingLastPathComponent()
         NSApp.activate(ignoringOtherApps: true)
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        // Asked of the folder that was picked, not of a path typed anywhere: the answer
-        // is a fact about the volume it sits on.
-        if let refusal = Setup.refusal(for: Setup.facts(for: url)) {
+        guard panel.runModal() == .OK, let picked = panel.url else { return }
+        // Asked of the folder that was picked, not of a path typed anywhere: the answers
+        // are facts about the volume it sits on and about our access to it.
+        if let refusal = Setup.refusal(for: picked) {
             folderRefusal = refusal
             return
         }
         folderRefusal = nil
+        // Waffled gets a folder of its own inside their choice, so picking Documents does
+        // not scatter a database through Documents.
+        let destination = Setup.dataDirectory(forChosen: picked)
         // Before setup this is only a choice; afterwards it is a copy of everything the
         // household has, which the runtime does with the server stopped.
         if settings == nil {
-            model.chooseDataDirectory(url)
+            model.chooseDataDirectory(destination)
         } else {
-            model.moveDataDirectory(to: url)
+            model.moveDataDirectory(to: destination)
         }
     }
 

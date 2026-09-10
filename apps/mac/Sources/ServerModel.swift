@@ -553,7 +553,7 @@ final class ServerModel {
     /// pointing at the folder the runtime last reported rather than the one it asked for.
     func moveDataDirectory(to destination: URL) {
         guard let client, operationTask == nil, showingSettings else { return }
-        if let refusal = Setup.refusal(for: Setup.facts(for: destination)) {
+        if let refusal = Setup.refusal(for: destination) {
             recordFailure(refusal)
             return
         }
