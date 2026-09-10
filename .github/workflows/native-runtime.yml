@@ -157,6 +157,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The release pipeline is not exercised here — signing needs a certificate, a notarytool
+      # profile and the Sparkle key, all of which live in one person's login Keychain and none
+      # of which belong in CI. What CI can hold is the two ways it breaks silently: an
+      # entitlements plist that no longer parses (codesign reads it at release time, hours
+      # later) and a release-mac.sh that no longer runs at all. First, so a broken plist
+      # fails in seconds rather than after the bundle build.
+      - name: Lint the entitlements and the release script
+        run: |
+          for plist in apps/mac/Entitlements/*.entitlements.plist; do
+            [ -e "$plist" ] || continue
+            plutil -lint "$plist"
+          done
+          test -f apps/mac/Entitlements/node.entitlements.plist
+          apps/mac/Scripts/release-mac.sh --help >/dev/null
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -236,18 +251,6 @@ jobs:
           HOMEBREW_NO_AUTO_UPDATE: '1'
           HOMEBREW_NO_INSTALL_CLEANUP: '1'
         run: brew install xcodegen
-
-      # The release pipeline is not exercised here — signing needs a certificate, a notarytool
-      # profile and the Sparkle key, all of which live in one person's login Keychain and none
-      # of which belong in CI. What CI can hold is the two ways it breaks silently: an
-      # entitlements plist that no longer parses (codesign reads it at release time, hours
-      # later) and a release-mac.sh that no longer runs at all.
-      - name: Lint the entitlements and the release script
-        run: |
-          for plist in apps/mac/Entitlements/*.entitlements.plist; do
-            plutil -lint "$plist"
-          done
-          apps/mac/Scripts/release-mac.sh --help >/dev/null
 
       # The 120 unit tests. Always -project: apps/ios has a scheme with the same name and a
       # bare -scheme Waffled from the repo root can resolve to the iOS one.
