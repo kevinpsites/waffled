@@ -103,7 +103,7 @@ enum RuntimeClientError: Error, Equatable {
     }
 }
 
-/// A thin wrapper over the four subcommands the menu needs. Everything the GUI does is
+/// A thin wrapper over the five subcommands this app needs. Everything the GUI does is
 /// available in Terminal, by construction — this type does not know how to do anything
 /// the CLI cannot.
 struct RuntimeClient {

@@ -120,10 +120,15 @@ struct SetupOptions: Equatable {
     ///   dev run would take the household's real schedule over and point it at /tmp.
     func commandsBeforeFirstStart(isDevMode: Bool = false) -> [RuntimeCommand] {
         guard problems.isEmpty else { return [] }
-        var out: [RuntimeCommand] = [
-            .configSet("WAFFLED_PUBLIC_HOST", publicHost),
-            .configSet("HTTP_PORT", String(Self.portNumber(port) ?? Self.defaultPort)),
-        ]
+        // The address is always written: `name` is a choice even when it is the default
+        // one, and the runtime reads an ABSENT setting as "keep the address this install
+        // has always had" — which is right for an upgrade and wrong for a first run.
+        var out: [RuntimeCommand] = [.configSet("WAFFLED_PUBLIC_HOST", publicHost)]
+        // The port is not. An assignment nobody asked for is a preference on record that a
+        // household never expressed, and the port they end up on is the same either way.
+        if let chosen = Self.portNumber(port), chosen != Self.defaultPort {
+            out.append(.configSet("HTTP_PORT", String(chosen)))
+        }
         let key = providerKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if !key.isEmpty {
             out.append(.configSet(provider.configKey, key))

@@ -1,7 +1,7 @@
 import XCTest
 @testable import Waffled
 
-/// The first-run window is a value: which of the four steps, in what words, with which
+/// The first-run window is a value: which of the five steps, in what words, with which
 /// buttons. Nothing here shows a window, and the window itself renders this and does
 /// nothing else.
 final class FirstRunPresentationTests: XCTestCase {
@@ -22,7 +22,7 @@ final class FirstRunPresentationTests: XCTestCase {
                      "an error on a set-up Mac belongs in the menu, not in a setup window")
     }
 
-    /// The four steps, in the order a first run walks through them.
+    /// The steps, in the order a first run walks through them.
     func testTheStepsFollowTheSetup() throws {
         let fresh = try status(Fixtures.freshDataDirectory)
         let starting = try status(Fixtures.firstStartInProgress)

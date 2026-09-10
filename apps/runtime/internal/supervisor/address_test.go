@@ -43,7 +43,6 @@ func TestPublicURLIsEmptyWhenThereIsNothingToName(t *testing.T) {
 	}{
 		{"no LAN address", "", "", "sam-mac.local", 8082},
 		{"ip mode with no LAN address", PublicHostIP, "", "sam-mac.local", 8082},
-		{"name mode with no multicast name", PublicHostName, "192.168.1.5", "", 8082},
 		{"no port yet", "waffled.home", "192.168.1.5", "sam-mac.local", 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -51,6 +50,18 @@ func TestPublicURLIsEmptyWhenThereIsNothingToName(t *testing.T) {
 				t.Errorf("publicURL = %q, want empty", got)
 			}
 		})
+	}
+}
+
+// The setup screen writes `name` for the household that took the default, so a Mac with
+// no usable multicast name must not be left with no address at all — the address card and
+// the QR code both come from this one string.
+func TestNameModeFallsBackToTheAddressThatAlwaysWorks(t *testing.T) {
+	if got := publicURL(PublicHostName, "192.168.1.5", "", 8082); got != "http://192.168.1.5:8082" {
+		t.Errorf("publicURL = %q, want the LAN address", got)
+	}
+	if got := publicURL(PublicHostName, "", "", 8082); got != "" {
+		t.Errorf("publicURL = %q, want empty — there is nothing honest to show", got)
 	}
 }
 

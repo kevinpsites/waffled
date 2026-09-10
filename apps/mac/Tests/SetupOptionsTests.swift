@@ -47,6 +47,27 @@ final class SetupOptionsTests: XCTestCase {
         ])
     }
 
+    /// A household that never opened this screen has expressed no port preference, and
+    /// writing one on their behalf puts a number on record they never chose.
+    func testTheDefaultPortIsNotWrittenDown() {
+        let untouched = SetupOptions()
+        XCTAssertFalse(untouched.commandsBeforeFirstStart()
+            .contains { $0.trailing.contains { $0.hasPrefix("HTTP_PORT") } })
+
+        var chosen = SetupOptions()
+        chosen.port = "8443"
+        XCTAssertTrue(chosen.commandsBeforeFirstStart()
+            .contains { $0.trailing.contains("HTTP_PORT=8443") })
+    }
+
+    /// The address is written even when it is the default one: the runtime reads an absent
+    /// setting as "keep the address this install has always had", which is right for an
+    /// upgrade and wrong for a Mac that has never run Waffled.
+    func testTheAddressIsAlwaysWrittenDown() {
+        XCTAssertTrue(SetupOptions().commandsBeforeFirstStart()
+            .contains { $0.trailing.contains("WAFFLED_PUBLIC_HOST=name") })
+    }
+
     /// The key is optional and nothing else depends on it: an empty field writes no
     /// assignment at all rather than an empty one the api would then read as configured.
     func testNoProviderKeyWritesNoProviderAssignment() {

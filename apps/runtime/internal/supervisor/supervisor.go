@@ -258,14 +258,11 @@ func (s *Supervisor) settlePorts(firstRun bool) error {
 	if s.state.Ports.Public == 0 {
 		firstRun = true
 	}
-	if !firstRun && preferred != s.state.Ports.Public && s.plan.Env.Get(KeyHTTPPort) != "" {
-		// The household asked for a different port by setting HTTP_PORT. That is the one
-		// thing that may move a published port, because it is a person saying so — and
-		// it still only ever *prefers* it: a busy choice falls forward like any other.
-		if err := s.movePublicPort(preferred); err != nil {
-			return err
-		}
-	}
+	// HTTP_PORT is the preference for the FIRST allocation and nothing after it. Acting on
+	// a later change here would move a port every phone, tablet and bookmark in the house
+	// already points at — and it would do so from `status`, which builds a supervisor on
+	// every menu-bar poll and saves the state it settles. Changing the port on a running
+	// install is a job that has to tell the household first.
 	if firstRun {
 		chosen, err := choosePorts(ports.IsFree, preferred)
 		if err != nil {
@@ -294,34 +291,6 @@ func (s *Supervisor) settlePorts(firstRun bool) error {
 				c.Service, err, s.plan.Layout.RuntimeJSON)
 		}
 	}
-	return nil
-}
-
-// movePublicPort re-picks Caddy's public port after a household changed HTTP_PORT.
-//
-// It is the one thing allowed to move a port other devices remember, because a person
-// asked for it. It still refuses to do so under a running server: our own Caddy is bound
-// to the old port, and rewriting runtime.json underneath it would make `status` report
-// an address nothing is listening on. The change then lands at the next start.
-func (s *Supervisor) movePublicPort(preferred int) error {
-	if s.ownsPort(services.Caddy) {
-		s.log.Warnf("%s is %d, but Waffled is running on %d — the new port takes effect at the next start",
-			KeyHTTPPort, preferred, s.state.Ports.Public)
-		return nil
-	}
-	// Every other port this install already holds is excluded, so the new public port
-	// cannot be handed out on top of one of them.
-	p := s.state.Ports
-	chosen, err := pickWith(ports.IsFree, ports.Public, preferred, portScanWindow,
-		[]int{p.PowerSyncPublic, p.API, p.PowerSync, p.Postgres})
-	if err != nil {
-		return err
-	}
-	if chosen != s.state.Ports.Public {
-		s.log.Infof("public port moves from %d to %d (%s=%d)",
-			s.state.Ports.Public, chosen, KeyHTTPPort, preferred)
-	}
-	s.state.Ports.Public = chosen
 	return nil
 }
 
@@ -773,8 +742,8 @@ func (s *Supervisor) LocalURL() string {
 // localhost, which only ever works here.
 // It is WAFFLED_PUBLIC_HOST that decides which form that address takes — this Mac's IP,
 // its multicast name, or a name the household pointed at it — and this is the one place
-// that decides, so the status document, the Bonjour TXT record and the "green →" line
-// can never disagree about where Waffled is.
+// that decides, so the status document, the Bonjour TXT record and the "other devices on
+// your network" line a start prints can never disagree about where Waffled is.
 func (s *Supervisor) LANURL() string {
 	return publicURL(s.plan.Env.Get(KeyPublicHost), lanIP(), multicastHost(), s.plan.Ports.Public)
 }
