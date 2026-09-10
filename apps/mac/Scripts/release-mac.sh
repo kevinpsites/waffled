@@ -512,6 +512,17 @@ iconutil -c icns "$ICONSET" -o "$STAGING/.VolumeIcon.icns" \
 rm -rf "$ICONSET"
 
 rm -f "$DMG" "$DMGRW"
+# A previous DMG still mounted from the path we are about to write is enough to stop
+# hdiutil dead — and after a release someone has installed from, that is the normal state
+# of the machine rather than an unlucky one. Detached by the image it came from, so a
+# volume of the same name from somewhere else is left alone.
+for attached in $(hdiutil info 2>/dev/null | awk -v img="$DMG" '
+  $1 == "image-path" { mine = ($3 == img) }
+  mine && $1 ~ /^\/dev\/disk/ { print $1 }'); do
+  warn "detaching $attached — the last DMG is still mounted from $DMG"
+  hdiutil detach "$attached" -force -quiet 2>/dev/null || true
+done
+
 # Two passes, not one: the Finder draws .VolumeIcon.icns only when the volume ROOT carries
 # the custom-icon bit, and that bit does not survive `hdiutil create -srcfolder` — it has to
 # be set on a mounted, writable image, which is then compressed into the DMG people download.
