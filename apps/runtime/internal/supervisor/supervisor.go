@@ -74,6 +74,17 @@ type Options struct {
 	// `status --json` emits no JSON for the menu-bar app to read. `start` leaves it
 	// false and still fails hard.
 	TolerateConflicts bool
+	// ReadOnly stops a construction on a data directory that does not exist yet from
+	// becoming that household's first run. `status`, `doctor` and `stop` set it.
+	//
+	// The Mac app polls `status` the instant it launches — before the setup window is on
+	// screen, let alone before anyone has typed a port — and every construction settles
+	// ports and saves them. Without this the first allocation happens before the person
+	// choosing it, so the `HTTP_PORT` the setup screen writes is read on a run that can
+	// never be a first run. `start` stays the writer, which makes the first `start` the
+	// first allocation. An install that already exists is unaffected: its files are
+	// there, so nothing here is skipped.
+	ReadOnly bool
 }
 
 // Supervisor owns one data directory and the processes serving it.
@@ -162,6 +173,10 @@ func New(opts Options) (*Supervisor, error) {
 		log.Infof("bundle verified — %d files + %d symlinks — %s", m.FileCount, m.SymlinkCount, m.VersionSummary())
 	}
 
+	// Asked before anything creates it. A read-only construction may fill config.env in
+	// memory — Validate still has to pass — but must not leave it on disk: those are the
+	// household's secrets, generated before anyone said yes.
+	configExisted := fileExists(layout.ConfigEnv)
 	env, err := configenv.Load(layout.ConfigEnv)
 	if err != nil {
 		return nil, err
@@ -173,8 +188,10 @@ func New(opts Options) (*Supervisor, error) {
 	if len(generated) > 0 {
 		log.Infof("generated %d secret(s) in %s", len(generated), layout.ConfigEnv)
 	}
-	if err := env.Save(layout.ConfigEnv); err != nil {
-		return nil, err
+	if !opts.ReadOnly || configExisted {
+		if err := env.Save(layout.ConfigEnv); err != nil {
+			return nil, err
+		}
 	}
 	if err := env.Validate(); err != nil {
 		return nil, err
@@ -230,10 +247,18 @@ func New(opts Options) (*Supervisor, error) {
 	s.state.SocketDir = socketDir
 	s.state.BundleSHA = m.GitSha
 	s.state.BundleTime = m.BuiltAt
-	s.excludeDataFromTimeMachine()
+	// Not on a household that does not exist yet and is not being created here. The
+	// exclusion is a write, and its "already done" memo lives in runtime.json — which a
+	// read-only construction does not save, so doing it would fork tmutil on every one of
+	// the menu bar's two-second polls and never remember. `start` sets it, once.
+	if !opts.ReadOnly || existed {
+		s.excludeDataFromTimeMachine()
+	}
 
-	if err := rtstate.Save(layout.RuntimeJSON, s.state); err != nil {
-		return nil, err
+	if !opts.ReadOnly || existed {
+		if err := rtstate.Save(layout.RuntimeJSON, s.state); err != nil {
+			return nil, err
+		}
 	}
 	return s, nil
 }

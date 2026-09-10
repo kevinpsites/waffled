@@ -158,9 +158,23 @@ func newSupervisor(c *commonFlags, log *supervisor.Logger) (*supervisor.Supervis
 	return supervisor.New(supervisor.Options{BundleDir: c.bundle, DataDir: c.data, Log: log})
 }
 
-// newInspector is newSupervisor for the read-only commands. They must still work when
-// something has taken one of our ports — that is precisely when someone runs them — so
-// a conflict becomes a reported fault rather than a refusal to start up at all.
+// newReader is for the commands that only ever look: `status`, `doctor`, `stop` and
+// `logs`. On a data directory that does not exist yet they must not become its first run
+// — the Mac app polls `status` before the setup window is even on screen, and a
+// construction that allocated and saved ports there would spend the household's first
+// allocation before anyone had chosen one.
+func newReader(c *commonFlags, log *supervisor.Logger) (*supervisor.Supervisor, error) {
+	return supervisor.New(supervisor.Options{
+		BundleDir: c.bundle, DataDir: c.data, Log: log,
+		TolerateConflicts: true, ReadOnly: true,
+	})
+}
+
+// newInspector is newSupervisor for the tolerant commands that DO write: `backup` and
+// `restore`. They must still work when something has taken one of our ports — that is
+// precisely when someone runs them — so a conflict becomes a reported fault rather than
+// a refusal to start up at all, and a backup taken before the first start still has to
+// bring a server up to take it.
 func newInspector(c *commonFlags, log *supervisor.Logger) (*supervisor.Supervisor, error) {
 	return supervisor.New(supervisor.Options{
 		BundleDir: c.bundle, DataDir: c.data, Log: log, TolerateConflicts: true,
@@ -211,7 +225,7 @@ func cmdStop(args []string) error {
 	// port, refusing to construct would leave `stop` unable to shut down the services
 	// that ARE still running — the command whose whole job is freeing ports, blocked by
 	// a port being occupied.
-	s, err := newInspector(common, supervisor.NewLogger(os.Stderr, false))
+	s, err := newReader(common, supervisor.NewLogger(os.Stderr, false))
 	if err != nil {
 		return err
 	}
@@ -228,7 +242,7 @@ func cmdStatus(args []string) error {
 		return err
 	}
 	// Status must not narrate; it is parsed.
-	s, err := newInspector(common, supervisor.NewLogger(os.Stderr, true))
+	s, err := newReader(common, supervisor.NewLogger(os.Stderr, true))
 	if err != nil {
 		return err
 	}
@@ -381,7 +395,7 @@ func cmdDoctor(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	s, err := newInspector(common, supervisor.NewLogger(os.Stderr, true))
+	s, err := newReader(common, supervisor.NewLogger(os.Stderr, true))
 	if err != nil {
 		return err
 	}
@@ -489,7 +503,7 @@ func cmdLogs(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	s, err := newInspector(common, supervisor.NewLogger(io.Discard, true))
+	s, err := newReader(common, supervisor.NewLogger(io.Discard, true))
 	if err != nil {
 		return err
 	}
