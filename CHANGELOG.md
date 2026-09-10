@@ -196,7 +196,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   server isn't answering, tells you how to start it again (the menu-bar waffle on a Mac,
   `./waffled status` on Docker), and offers a Retry; the sign-in screen says the same thing
   rather than offering a login nobody could complete. Everything refreshes itself the
-  moment the server is back.
+  moment the server is back. An error Waffled itself sent you — a recipe import that
+  failed, a barcode lookup that timed out — is proof it's running, so it never raises the
+  notice; and when it's your device that's offline, you're told that instead of being sent
+  to go and start a server that was never down.
 
 - **Redeeming a reward on iPhone or iPad no longer celebrates a reward you didn't get.**
   The shop played its confetti as soon as you confirmed, whether or not the server
