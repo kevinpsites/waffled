@@ -18,6 +18,9 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 MAC="$(cd "$HERE/.." && pwd)"
 ROOT="$(cd "$MAC/../.." && pwd)"
+# Named, not inferred from the checkout's remote: this uploads a release, and `gh` picking
+# the repo out of the current directory is how a fork's clone publishes to the fork.
+REPO="kevinpsites/waffled"
 
 c_grn=$'\033[32m'; c_red=$'\033[31m'; c_ylw=$'\033[33m'; c_dim=$'\033[2m'; c_reset=$'\033[0m'
 say()  { printf '%s\n' "$*"; }
@@ -156,6 +159,12 @@ else
     [ -n "$NOTARY_PROFILE" ] || die "notarization needs WAFFLED_NOTARY_PROFILE (or --no-notarize)"
     ok "notarytool profile: $NOTARY_PROFILE"
   fi
+fi
+# Asked here rather than at step 13: everything between is an hour of build, signing and
+# notarization round trips, and a logged-out gh fails all of it at the last step.
+if [ "$UPLOAD" = yes ]; then
+  gh auth status >/dev/null 2>&1 || die "gh is not logged in — run: gh auth login (or --no-upload)"
+  ok "gh is logged in"
 fi
 took
 
@@ -497,7 +506,7 @@ step "12. the Sparkle appcast"
 if [ "$NOTARIZE" != yes ]; then
   warn "skipped (--no-notarize): an unnotarized DMG must never be fed to Sparkle"
 else
-  WAFFLED_DOWNLOAD_URL_PREFIX="https://github.com/kevinpsites/waffled/releases/download/v$VERSION/" \
+  WAFFLED_DOWNLOAD_URL_PREFIX="https://github.com/$REPO/releases/download/v$VERSION/" \
     "$HERE/make-appcast.sh" "$RELEASE" "$RELEASE/appcast.xml" || die "make-appcast.sh failed"
   grep -Fq "Waffled-$VERSION.dmg" "$RELEASE/appcast.xml" \
     || die "$RELEASE/appcast.xml does not name Waffled-$VERSION.dmg"
@@ -514,7 +523,7 @@ if [ "$UPLOAD" = yes ]; then
   command -v gh >/dev/null 2>&1 || die "gh is not installed — upload by hand, or --no-upload"
   say "  waiting for release v$VERSION (publish-images.yml creates it from the tag)…"
   waited=0
-  until gh release view "v$VERSION" >/dev/null 2>&1; do
+  until gh release view -R "$REPO" "v$VERSION" >/dev/null 2>&1; do
     [ "$waited" -lt 900 ] || die "release v$VERSION still does not exist after 15 minutes.
   Check the tag was pushed and that publish-images.yml's release job succeeded, then re-run
   this with the same arguments — everything before this step is idempotent."
@@ -522,16 +531,16 @@ if [ "$UPLOAD" = yes ]; then
     waited=$((waited + 15))
     say "${c_dim}    ${waited}s${c_reset}"
   done
-  gh release upload "v$VERSION" "$DMG" "$RELEASE/appcast.xml" --clobber \
+  gh release upload -R "$REPO" "v$VERSION" "$DMG" "$RELEASE/appcast.xml" --clobber \
     || die "gh release upload failed"
   ok "uploaded Waffled-$VERSION.dmg + appcast.xml to v$VERSION"
-  say "${c_dim}  https://github.com/kevinpsites/waffled/releases/latest/download/appcast.xml"
+  say "${c_dim}  https://github.com/$REPO/releases/latest/download/appcast.xml"
   say "  now resolves to this feed — that is the URL every installed copy checks.${c_reset}"
 else
   warn "skipped (--no-upload)"
   if [ "$NOTARIZE" = yes ]; then
     say "${c_dim}  Upload by hand with:"
-    say "    gh release upload v$VERSION '$DMG' '$RELEASE/appcast.xml' --clobber${c_reset}"
+    say "    gh release upload -R $REPO v$VERSION '$DMG' '$RELEASE/appcast.xml' --clobber${c_reset}"
   else
     say "${c_dim}  This DMG is for local testing only: unnotarized, and with no feed, there is"
     say "  nothing here that may be uploaded.${c_reset}"
