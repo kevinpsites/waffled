@@ -40,7 +40,8 @@ apps/mac/
     LoginItem.swift      # SMAppService.mainApp
     Assets.xcassets/     # the app icon — Finder, Dock, NSAlert and Sparkle draw it
                          # (the menu-bar glyph is not from here: see WaffleIronIcon)
-                         # every slot is resampled from resources/waffled.png (1254px)
+                         # every slot is drawn from resources/waffled.png (1254px)
+                         # onto Apple's icon grid — rounded square, inset, shadowed
   Tests/                 # XCTest; no test spawns a process
 ```
 
