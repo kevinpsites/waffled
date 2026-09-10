@@ -188,7 +188,12 @@ func New(opts Options) (*Supervisor, error) {
 	if len(generated) > 0 {
 		log.Infof("generated %d secret(s) in %s", len(generated), layout.ConfigEnv)
 	}
-	if !opts.ReadOnly || configExisted {
+	// Written only when secrets were actually generated — which is once, on a first run.
+	// Every construction used to write it back, and `status` builds one on every poll: a
+	// `config set` landing between this env being loaded and being saved was silently
+	// overwritten by the stale copy. The setup screen writes settings while the app polls
+	// twice a second, so that race is not theoretical.
+	if len(generated) > 0 && (!opts.ReadOnly || configExisted) {
 		if err := env.Save(layout.ConfigEnv); err != nil {
 			return nil, err
 		}
@@ -789,10 +794,6 @@ func (s *Supervisor) lanURLFrom(ip string) string {
 
 // LANIPURL is the address that works on any network, whatever form LANURL takes: the
 // "if a device can't find that name, use this" line the setup window shows.
-func (s *Supervisor) LANIPURL() string {
-	return s.lanIPURLFrom(lanIP())
-}
-
 func (s *Supervisor) lanIPURLFrom(ip string) string {
 	return publicURL(PublicHostIP, ip, "", s.plan.Ports.Public)
 }
@@ -801,10 +802,6 @@ func (s *Supervisor) lanIPURLFrom(ip string) string {
 // from the address that client actually reached it on, so this value is what `status`
 // reports rather than what any device is told — but a status document naming two
 // different hosts for one server is a support call.
-func (s *Supervisor) powerSyncURL() string {
-	return s.powerSyncURLFrom(lanIP())
-}
-
 func (s *Supervisor) powerSyncURLFrom(ip string) string {
 	if url := publicURL(s.plan.Env.Get(KeyPublicHost), ip, multicastHost(),
 		s.plan.Ports.PowerSyncPublic); url != "" {

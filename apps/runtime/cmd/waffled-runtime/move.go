@@ -43,8 +43,14 @@ func cmdMove(args []string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(layout.Root); err != nil {
-		return fmt.Errorf("there is no Waffled data directory at %s", layout.Root)
+	// The same question `uninstall --delete-data` asks, for the same reason: every
+	// read-only command lays the tree out before it knows whether a household lives
+	// there, so a bare skeleton is not one. Moving one would copy nothing, delete the
+	// scaffold, report success, and leave the real data where it was.
+	if !looksLikeAHousehold(layout) {
+		return fmt.Errorf("%s has none of Waffled's own files in it "+
+			"(no config.env, runtime.json or a database) — there is nothing here to move",
+			layout.Root)
 	}
 	target, err := filepath.Abs(*to)
 	if err != nil {
@@ -75,6 +81,20 @@ func cmdMove(args []string) error {
 		return err
 	}
 	return reportMove(plan, *asJSON, false)
+}
+
+// looksLikeAHousehold is uninstall's rule, asked here too: one of our own files, or a
+// postgres directory with a cluster in it. An empty tree is a scaffold every read-only
+// command lays out before it knows whether anybody lives here — not a household.
+func looksLikeAHousehold(layout datadir.Layout) bool {
+	if _, err := os.Stat(layout.ConfigEnv); err == nil {
+		return true
+	}
+	if _, err := os.Stat(layout.RuntimeJSON); err == nil {
+		return true
+	}
+	entries, err := os.ReadDir(layout.Postgres)
+	return err == nil && len(entries) > 0
 }
 
 func reportMove(plan relocate.Plan, asJSON, planned bool) error {
