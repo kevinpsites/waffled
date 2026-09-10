@@ -46,6 +46,26 @@ final class LogTailTests: XCTestCase {
                        "one line only")
     }
 
+    /// When the window holds only the tail of one long line — a stack trace, a long
+    /// Postgres error — that tail is still the most recent thing the runtime wrote.
+    /// Dropping it as "a line the window cut in half" blanks the progress line at exactly
+    /// the moment it would be most useful.
+    func testALastLineLongerThanTheWindowStillShowsItsTail() throws {
+        let huge = String(repeating: "x", count: 140) + "the end"
+        let got = LogTail.lastLine(of: try write("earlier\n\(huge)\n"), window: 64)
+        XCTAssertNotNil(got, "a long last line must not blank the progress line")
+        XCTAssertTrue(huge.hasSuffix(got ?? "?"), "what is shown is the end of that line")
+        XCTAssertTrue(got?.hasSuffix("the end") == true)
+    }
+
+    /// The same, with no earlier line at all: a log whose single line is longer than the
+    /// window still has something to show.
+    func testAWholeLogThatIsOneLongLineStillShowsItsTail() throws {
+        let only = String(repeating: "y", count: 200) + "tail"
+        let got = LogTail.lastLine(of: try write("\(only)\n"), window: 64)
+        XCTAssertTrue(got?.hasSuffix("tail") == true, "got \(got ?? "nil")")
+    }
+
     /// A window that cuts a multi-byte character mid-sequence must not throw the read
     /// away: the runtime logs household names.
     func testACutMultibyteCharacterDoesNotLoseTheLine() throws {
