@@ -168,7 +168,8 @@ fi
 # Asked here rather than at step 13: everything between is an hour of build, signing and
 # notarization round trips, and a logged-out gh fails all of it at the last step.
 if [ "$UPLOAD" = yes ]; then
-  gh auth status >/dev/null 2>&1 || die "gh is not logged in — run: gh auth login (or --no-upload)"
+  gh auth status >/dev/null 2>&1 || die "gh cannot reach GitHub as a logged-in user — check the
+  network, or run: gh auth login (or --no-upload)"
   ok "gh is logged in"
 fi
 took
