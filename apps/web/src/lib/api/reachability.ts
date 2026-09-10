@@ -38,6 +38,9 @@ let consecutiveNoAnswers = 0
 let unreachableSince = 0
 let graceTimer: ReturnType<typeof setTimeout> | undefined
 let probeTimer: ReturnType<typeof setTimeout> | undefined
+// Bumped by every reset. A probe that was in flight across one belongs to the store
+// that asked for it, not the one that exists when it finally answers.
+let generation = 0
 const listeners = new Set<() => void>()
 
 export function isGatewayStatus(status: number): boolean {
@@ -123,6 +126,7 @@ async function fetchWithDeadline(): Promise<Response> {
 // state machine. Returns this probe's own verdict, which a caller may need before the
 // debounced state has caught up (see the AuthGate's Retry).
 async function probe(): Promise<Answer> {
+  const gen = generation
   let answered = false
   try {
     const res = await fetchWithDeadline()
@@ -130,6 +134,7 @@ async function probe(): Promise<Answer> {
   } catch {
     answered = false
   }
+  if (gen !== generation) return answered ? 'answered' : 'no-answer'
   if (answered) {
     becomeReachable()
     return 'answered'
@@ -209,6 +214,7 @@ export function configureReachability(overrides: Partial<Deps>): void {
 }
 
 export function resetReachability(): void {
+  generation += 1
   clearTimers()
   deps = { ...defaults }
   state = 'reachable'

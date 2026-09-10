@@ -152,6 +152,32 @@ describe('server reachability store', () => {
     window.removeEventListener(SERVER_REACHABLE_EVENT, onReachable)
   })
 
+  it('ignores a probe that was still in flight when the store was reset', async () => {
+    let release: (res: Response) => void = () => {}
+    configureReachability({
+      fetch: vi.fn(() => new Promise<Response>((resolve) => { release = resolve })) as unknown as typeof fetch,
+    })
+    const onReachable = vi.fn()
+    window.addEventListener(SERVER_REACHABLE_EVENT, onReachable)
+    reportNetworkFailure()
+    reportNetworkFailure()
+    await vi.advanceTimersByTimeAsync(5000)
+
+    resetReachability()
+    configureReachability({ fetch: vi.fn(() => new Promise<Response>(() => {})) as unknown as typeof fetch })
+    reportNetworkFailure()
+    reportNetworkFailure()
+    expect(getServerReachability()).toBe('unreachable')
+
+    // The old probe finally answers — for a store that no longer exists.
+    release(answered())
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(getServerReachability()).toBe('unreachable')
+    expect(onReachable).not.toHaveBeenCalled()
+    window.removeEventListener(SERVER_REACHABLE_EVENT, onReachable)
+  })
+
   it('probes immediately on Retry instead of waiting for the next tick', async () => {
     const fetchMock = vi.fn(async () => answered())
     configureReachability({ fetch: fetchMock as unknown as typeof fetch })
