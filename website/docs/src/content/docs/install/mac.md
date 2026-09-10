@@ -40,14 +40,14 @@ first-launch question and takes one click.
 ## First run
 
 A menu-bar icon appears within a second — the Waffled iron, outlined while nothing is
-running. Because there is no data yet, a **setup window** opens in front of everything and
-asks before it creates anything.
+running. Because there is no household yet, a **setup window** opens in front of everything
+and asks before it sets one up.
 
 ### 1. Welcome
 
 What Waffled is, which versions of the database, the server, sync and the web app are
 already inside the download, and three ways on: **Set up Waffled**, **Choose where things
-go…**, or **Not on this Mac**. Closing this window quits — nothing has been created. On a
+go…**, or **Not on this Mac**. Closing this window quits — no database, no household. On a
 laptop there is a paragraph about the lid here: close it and the household's server sleeps
 with it.
 
@@ -58,8 +58,8 @@ go…** is how you change any of that first.
 
 ### 2. Where things go
 
-Everything on this screen is applied **before** anything is created, so the first start
-already uses it.
+Everything on this screen is applied **before** the first start, so that start already
+uses it.
 
 - **Waffled's files.** Where the database, your photos and every backup live. It has to be a
   folder on this Mac's own internal disk, formatted APFS or Mac OS Extended — an external

@@ -126,7 +126,8 @@ struct FirstRunPresentation: Equatable {
             port: "Port",
             portHint: """
                 Waffled prefers this port and moves to the next free one if something else \
-                on this Mac already answers there.
+                on this Mac already answers there. Ports below 1024 need an administrator, \
+                so 1024 is the lowest one to choose.
                 """
         )
         static let addressModes: [(SetupOptions.AddressMode, String, String)] = [
@@ -228,8 +229,7 @@ struct FirstRunPresentation: Equatable {
             title: "Welcome to Waffled",
             message: """
                 Waffled keeps your family's calendar, chores, meals and photos on this \
-                Mac — your own hardware, your own network. Nothing is created until you \
-                say so.
+                Mac — your own hardware, your own network. Nothing runs until you say so.
                 """,
             eyebrow: nil,
             promises: [
