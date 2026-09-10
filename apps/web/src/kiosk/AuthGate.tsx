@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { authApi, getAccessToken, isKioskMode, type AuthStatus, type SetupInput } from '../lib/api'
-import { PROBE_FAST_MS, SERVER_REACHABLE_EVENT, isUnansweredError, probeServerNow } from '../lib/api/reachability'
+import { SERVER_PROBE_EVENT, SERVER_REACHABLE_EVENT, ensureProbing, isUnansweredError } from '../lib/api/reachability'
 import { UNREACHABLE_HEADLINE } from './components/ServerUnreachableBanner'
 import { useOnline } from '../lib/pwa'
 import { ProfilePicker } from './ProfilePicker'
@@ -119,17 +119,18 @@ function AuthShell({ title, sub, children }: { title: string; sub: string; child
 function UnreachableScreen({ onAnswered }: { onAnswered: () => void }) {
   const deviceOnline = useOnline()
 
-  // Ask again on our own cadence. The store's recovery event only fires when the
-  // STORE had given up, and a first failed status call is inside its grace window —
-  // so waiting for that event can strand this screen on a server that is back.
+  // Keep the store probing and take the first probe that gets through. The recovery
+  // event alone would strand this screen: a first failed status call is inside the
+  // grace window, so the store never "gave up" and never recovers. A cadence of our
+  // own would instead override the store's backoff, hammering a stopped server.
   useEffect(() => {
     if (!deviceOnline) return
-    const timer = setInterval(() => {
-      void probeServerNow().then((answer) => {
-        if (answer === 'answered') onAnswered()
-      })
-    }, PROBE_FAST_MS)
-    return () => clearInterval(timer)
+    ensureProbing()
+    const onProbe = (e: Event) => {
+      if ((e as CustomEvent<{ answered: boolean }>).detail?.answered) onAnswered()
+    }
+    window.addEventListener(SERVER_PROBE_EVENT, onProbe)
+    return () => window.removeEventListener(SERVER_PROBE_EVENT, onProbe)
   }, [deviceOnline, onAnswered])
 
   // A device with no link fails every request too, and no amount of starting the

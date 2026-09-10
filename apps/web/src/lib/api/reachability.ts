@@ -14,6 +14,13 @@ export type Answer = 'answered' | 'no-answer'
 /** Screens refetch on this (see useLiveRefresh) when the server comes back. */
 export const SERVER_REACHABLE_EVENT = 'waffled:server-reachable'
 
+/**
+ * Every probe's own verdict, `{ answered: boolean }` — dispatched whether or not it
+ * moved the state. A screen that is waiting out an outage inside the grace window
+ * has no transition to listen for, but it does have this.
+ */
+export const SERVER_PROBE_EVENT = 'waffled:server-probe'
+
 /** A lone non-answer this old, or two in a row, is an outage rather than a blip. */
 export const UNREACHABLE_GRACE_MS = 3000
 export const PROBE_FAST_MS = 5000
@@ -95,13 +102,21 @@ function becomeReachable(): void {
 }
 
 function scheduleProbe(): void {
-  if (state !== 'unreachable') return
-  const elapsed = deps.now() - unreachableSince
-  const wait = elapsed >= PROBE_BACKOFF_AFTER_MS ? PROBE_SLOW_MS : PROBE_FAST_MS
+  if (probeTimer !== undefined) return
+  const settledIn = state === 'unreachable' && deps.now() - unreachableSince >= PROBE_BACKOFF_AFTER_MS
   probeTimer = setTimeout(() => {
     probeTimer = undefined
     void probe()
-  }, wait)
+  }, settledIn ? PROBE_SLOW_MS : PROBE_FAST_MS)
+}
+
+/**
+ * Keep the probe loop running for a screen that depends on it (the AuthGate's
+ * outage screen), at this store's cadence rather than a second one of its own.
+ * Changes no state: an answered probe ends the loop by itself.
+ */
+export function ensureProbing(): void {
+  scheduleProbe()
 }
 
 // A probe that never comes back is silence, not a pause: a hung connection would
@@ -142,15 +157,18 @@ async function probe(): Promise<Answer> {
     answered = false
   }
   if (gen !== generation) return answered ? 'answered' : 'no-answer'
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(SERVER_PROBE_EVENT, { detail: { answered } }))
+  }
   if (answered) {
     becomeReachable()
     return 'answered'
   }
-  if (state === 'unreachable') {
-    if (probeTimer === undefined) scheduleProbe()
-  } else {
-    reportNetworkFailure()
-  }
+  // reportNetworkFailure is the no-op it should be once the outage is admitted; the
+  // reschedule is what keeps the loop alive when it hasn't been (a screen probing
+  // through the grace window, or a device the store refuses to blame the server for).
+  reportNetworkFailure()
+  scheduleProbe()
   return 'no-answer'
 }
 
