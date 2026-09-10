@@ -39,7 +39,7 @@ final class SetupOptionsTests: XCTestCase {
         options.providerKey = "sk-abc"
         options.backupAt = "05:00"
 
-        XCTAssertEqual(options.commandsBeforeFirstStart, [
+        XCTAssertEqual(options.commandsBeforeFirstStart(), [
             .configSet("WAFFLED_PUBLIC_HOST", "waffled.home"),
             .configSet("HTTP_PORT", "8443"),
             .configSet("OPENAI_API_KEY", "sk-abc"),
@@ -52,7 +52,7 @@ final class SetupOptionsTests: XCTestCase {
     func testNoProviderKeyWritesNoProviderAssignment() {
         var options = SetupOptions()
         options.providerKey = "   "
-        XCTAssertFalse(options.commandsBeforeFirstStart.contains { $0.trailing.contains { $0.hasPrefix("ANTHROPIC") } })
+        XCTAssertFalse(options.commandsBeforeFirstStart().contains { $0.trailing.contains { $0.hasPrefix("ANTHROPIC") } })
     }
 
     /// Off means "do not install one", not "remove one": this runs once, on a Mac where
@@ -60,14 +60,14 @@ final class SetupOptionsTests: XCTestCase {
     func testTheBackupToggleOffInstallsNothing() {
         var options = SetupOptions()
         options.backupEnabled = false
-        XCTAssertFalse(options.commandsBeforeFirstStart.contains { $0.subcommand == "backup" })
+        XCTAssertFalse(options.commandsBeforeFirstStart().contains { $0.subcommand == "backup" })
     }
 
     func testAScreenThatCannotBeAppliedAsksForNothing() {
         var options = SetupOptions()
         options.port = "not a port"
         XCTAssertFalse(options.problems.isEmpty)
-        XCTAssertEqual(options.commandsBeforeFirstStart, [])
+        XCTAssertEqual(options.commandsBeforeFirstStart(), [])
     }
 
     func testAPortIsANumberInRange() {
@@ -127,6 +127,19 @@ final class SetupOptionsTests: XCTestCase {
             XCTAssertNotNil(Int(parts[0]).map { (0...23).contains($0) })
             XCTAssertNotNil(Int(parts[1]).map { (0...59).contains($0) })
         }
+    }
+
+    /// launchd holds exactly one nightly backup per Mac, under a global label, so a dev
+    /// run would take the household's real schedule over and point it at a scratch folder.
+    /// Its config writes still happen: those land in the scratch data directory it was
+    /// given, which is where they belong.
+    func testADevRunInstallsNoNightlyBackup() {
+        let options = SetupOptions()
+        let dev = options.commandsBeforeFirstStart(isDevMode: true)
+        XCTAssertFalse(dev.contains { $0.subcommand == "backup" })
+        XCTAssertTrue(dev.contains { $0.trailing.contains("WAFFLED_PUBLIC_HOST=name") })
+        XCTAssertTrue(options.commandsBeforeFirstStart().contains { $0.subcommand == "backup" },
+                      "an ordinary first run still installs one")
     }
 
     /// Nothing that describes a command may carry the value: these commands exist to

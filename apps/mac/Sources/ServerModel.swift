@@ -384,12 +384,16 @@ final class ServerModel {
         let options = setupOptions
         guard options.problems.isEmpty else { return }
 
+        let devMode = isDevMode
         setupStartedAt = Date()
         firstRunNow = setupStartedAt ?? Date()
         showingSetupOptions = false
         // The login item is launchd's, not the runtime's, and it is set here for the same
-        // reason as the rest: before the server has ever run.
-        loginItem.setEnabled(options.startAtLogin)
+        // reason as the rest: before the server has ever run. Not in dev mode — that would
+        // register whatever build is running to start the household's Mac at every login.
+        if !isDevMode {
+            loginItem.setEnabled(options.startAtLogin)
+        }
 
         startTrigger = .person
         autoStartDecided = true
@@ -400,7 +404,7 @@ final class ServerModel {
         operationTask = Task { [weak self] in
             defer { self?.finishOperation() }
             do {
-                for command in options.commandsBeforeFirstStart {
+                for command in options.commandsBeforeFirstStart(isDevMode: devMode) {
                     try await client.apply(command)
                 }
                 try await client.start()

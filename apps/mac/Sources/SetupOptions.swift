@@ -113,7 +113,12 @@ struct SetupOptions: Equatable {
     ///
     /// A backup toggle that is off installs nothing rather than uninstalling something:
     /// this runs once, on a Mac where there is nothing of ours to remove.
-    var commandsBeforeFirstStart: [RuntimeCommand] {
+    ///
+    /// - Parameter isDevMode: a run against a runtime this app did not ship with. It
+    ///   writes config into its own scratch data directory happily, but it installs no
+    ///   nightly backup: launchd's label is global, so one Mac holds exactly one, and a
+    ///   dev run would take the household's real schedule over and point it at /tmp.
+    func commandsBeforeFirstStart(isDevMode: Bool = false) -> [RuntimeCommand] {
         guard problems.isEmpty else { return [] }
         var out: [RuntimeCommand] = [
             .configSet("WAFFLED_PUBLIC_HOST", publicHost),
@@ -123,7 +128,7 @@ struct SetupOptions: Equatable {
         if !key.isEmpty {
             out.append(.configSet(provider.configKey, key))
         }
-        if backupEnabled {
+        if backupEnabled, !isDevMode {
             out.append(RuntimeCommand(subcommand: "backup",
                                       flags: ["--install-schedule", "--at", backupAt]))
         }
