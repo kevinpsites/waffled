@@ -60,6 +60,16 @@ describe('server reachability store', () => {
     expect(getServerReachability()).toBe('reachable')
   })
 
+  it('counts a 502 the api answered in its own JSON as an answer', () => {
+    expect(reportStatus(502, 'application/json; charset=utf-8')).toBe('answered')
+    expect(reportStatus(503, 'Application/JSON')).toBe('answered')
+    expect(getServerReachability()).toBe('reachable')
+
+    expect(reportStatus(502, 'text/plain')).toBe('no-answer')
+    expect(reportStatus(504, null)).toBe('no-answer')
+    expect(getServerReachability()).toBe('unreachable')
+  })
+
   it('probes every 5s, backs off to 15s after a minute, and stops once answered', async () => {
     const fetchMock = vi.fn(async (_path: string) => gateway())
     configureReachability({ fetch: fetchMock as unknown as typeof fetch })

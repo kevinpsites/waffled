@@ -43,6 +43,14 @@ export function isGatewayStatus(status: number): boolean {
   return status === 502 || status === 503 || status === 504
 }
 
+// A gateway status is silence only when the body isn't ours. The api itself answers
+// 502 in its JSON envelope when an upstream IT called failed (recipe ingest, Open
+// Food Facts) — it is plainly alive when it does. A proxy's own gateway error is
+// text/plain or empty.
+export function isNoAnswer(status: number, contentType?: string | null): boolean {
+  return isGatewayStatus(status) && !(contentType ?? '').toLowerCase().includes('application/json')
+}
+
 function notify(): void {
   for (const l of [...listeners]) l()
 }
@@ -92,7 +100,7 @@ async function probe(): Promise<Answer> {
   let answered = false
   try {
     const res = await deps.fetch(PROBE_PATH, { method: 'GET', cache: 'no-store' })
-    answered = !isGatewayStatus(res.status)
+    answered = !isNoAnswer(res.status, res.headers?.get('content-type'))
   } catch {
     answered = false
   }
@@ -109,8 +117,8 @@ async function probe(): Promise<Answer> {
 }
 
 /** Record that the server answered with `status`; returns how that was classified. */
-export function reportStatus(status: number): Answer {
-  if (!isGatewayStatus(status)) {
+export function reportStatus(status: number, contentType?: string | null): Answer {
+  if (!isNoAnswer(status, contentType)) {
     becomeReachable()
     return 'answered'
   }

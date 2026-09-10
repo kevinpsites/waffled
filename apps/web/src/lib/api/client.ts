@@ -1,4 +1,4 @@
-import { isGatewayStatus, markUnanswered, reportNetworkFailure, reportStatus } from './reachability'
+import { isNoAnswer, markUnanswered, reportNetworkFailure, reportStatus } from './reachability'
 
 // Shared fetch helpers for the api client. In dev, Vite proxies /api to the api
 // container; in the stack, Caddy does. Auth is a JWT session: a short-lived access
@@ -164,7 +164,7 @@ export function clearSession(): void {
 export async function trackedFetch(path: string, init: RequestInit = {}): Promise<Response> {
   try {
     const res = await fetch(path, init)
-    reportStatus(res.status)
+    reportStatus(res.status, res.headers?.get('content-type'))
     return res
   } catch (err) {
     if (init.signal?.aborted) throw err
@@ -173,10 +173,10 @@ export async function trackedFetch(path: string, init: RequestInit = {}): Promis
   }
 }
 
-// A gateway status means the proxy answered for an api that didn't, so the error
-// carries the same "no answer" tag a rejected fetch gets.
-function tagIfGateway<E>(err: E, status: number): E {
-  return isGatewayStatus(status) ? markUnanswered(err) : err
+// A proxy answering for an api that didn't gets the same "no answer" tag a rejected
+// fetch does — but only when the body isn't the api's own JSON (see isNoAnswer).
+function tagIfGateway<E>(err: E, res: Response): E {
+  return isNoAnswer(res.status, res.headers?.get('content-type')) ? markUnanswered(err) : err
 }
 
 // Single in-flight refresh shared across concurrent 401s.
@@ -305,7 +305,7 @@ export async function deviceFetch(path: string, init: RequestInit): Promise<Resp
 
 export async function apiGet<T>(path: string): Promise<T> {
   const res = await authFetch(path, {})
-  if (!res.ok) throw tagIfGateway(new Error(`${path} -> ${res.status}`), res.status)
+  if (!res.ok) throw tagIfGateway(new Error(`${path} -> ${res.status}`), res)
   return res.json() as Promise<T>
 }
 
@@ -351,7 +351,7 @@ export async function apiSend<T>(method: string, path: string, body?: unknown, s
   })
   if (!res.ok) {
     const errBody = (await res.json().catch(() => ({}))) as Record<string, unknown>
-    throw tagIfGateway(new ApiSendError(method, path, res.status, errBody), res.status)
+    throw tagIfGateway(new ApiSendError(method, path, res.status, errBody), res)
   }
   if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
@@ -359,7 +359,7 @@ export async function apiSend<T>(method: string, path: string, body?: unknown, s
 
 export async function apiDelete(path: string): Promise<void> {
   const res = await authFetch(path, { method: 'DELETE' })
-  if (!res.ok) throw tagIfGateway(new Error(`DELETE ${path} -> ${res.status}`), res.status)
+  if (!res.ok) throw tagIfGateway(new Error(`DELETE ${path} -> ${res.status}`), res)
 }
 
 // Local YYYY-MM-DD (kiosk timezone), used to match "tonight" and window the week.
