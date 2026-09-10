@@ -274,6 +274,13 @@ func (a *Agent) Plist() ([]byte, error) {
 	// The dump can take a while on a large household; launchd should not consider the
 	// job wedged and kill it partway through writing a file.
 	d.boolean("AbandonProcessGroup", false)
+	// Without this, Login Items & Extensions lists the agent as the executable it runs:
+	// "waffled-runtime", a generic exec icon, and no idea what it belongs to. Named only
+	// when the binary really is inside an app — a runtime run from Terminal belongs to no
+	// app, and pointing macOS at one that is not there would be worse than the bare name.
+	if id := a.owningAppIdentifier(); id != "" {
+		d.arr("AssociatedBundleIdentifiers", []string{id})
+	}
 
 	body, err := xml.MarshalIndent(plistDoc{Version: "1.0", Body: d}, "", "\t")
 	if err != nil {
@@ -283,6 +290,59 @@ func (a *Agent) Plist() ([]byte, error) {
 		"<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" " +
 		"\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
 	return append([]byte(header), append(selfCloseBooleans(body), '\n')...), nil
+}
+
+// owningAppIdentifier is the bundle identifier of the .app this binary lives inside, or
+// "" when it does not live inside one.
+//
+// Read from that app's own Info.plist rather than written down here: the runtime ships
+// inside Waffled.app but is a CLI in its own right, and the two must not disagree about
+// which app — if any — a schedule installed from it belongs to.
+func (a *Agent) owningAppIdentifier() string {
+	app := enclosingApp(a.BinaryPath)
+	if app == "" {
+		return ""
+	}
+	raw, err := os.ReadFile(filepath.Join(app, "Contents", "Info.plist"))
+	if err != nil {
+		return ""
+	}
+	return bundleIdentifier(raw)
+}
+
+// enclosingApp walks up from a path to the nearest ".app" directory containing it.
+func enclosingApp(path string) string {
+	for dir := filepath.Dir(path); ; {
+		if strings.HasSuffix(dir, ".app") {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
+// bundleIdentifier pulls CFBundleIdentifier out of an Info.plist. A whole plist parser is
+// not warranted for one string, and a miss is handled the same way an absent app is.
+func bundleIdentifier(plist []byte) string {
+	const key = "<key>CFBundleIdentifier</key>"
+	i := bytes.Index(plist, []byte(key))
+	if i < 0 {
+		return ""
+	}
+	rest := plist[i+len(key):]
+	open := bytes.Index(rest, []byte("<string>"))
+	if open < 0 {
+		return ""
+	}
+	rest = rest[open+len("<string>"):]
+	close := bytes.Index(rest, []byte("</string>"))
+	if close < 0 {
+		return ""
+	}
+	return strings.TrimSpace(string(rest[:close]))
 }
 
 // selfCloseBooleans rewrites `<false></false>` as `<false/>`.
