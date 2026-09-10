@@ -4,7 +4,7 @@
 # This is a thin wrapper over Sparkle's own generate_appcast: it finds the tool, checks the
 # two things that otherwise fail late, and pins the one option a 671 MB app cares about.
 # The private EdDSA key comes from the login Keychain — never a command line, never printed.
-# Phase 3 item 5's release script calls this; nothing in CI does.
+# Scripts/release-mac.sh calls this; nothing in CI does.
 #
 # bash 3.2-clean (macOS /bin/bash): no associative arrays, no ${x,,}, no mapfile.
 set -euo pipefail
@@ -105,7 +105,7 @@ fi
 # is mostly an unchanged runtime bundle is exactly where a delta would help a household on a
 # slow link. It is the release side that cannot afford it: hashing one archive already takes
 # ~3 minutes here, and a delta is built by extracting and diffing this archive against every
-# retained version. Turning them on is item 5's call, with its pipeline's budget in view.
+# retained version. Worth revisiting only with release-mac.sh's whole budget in view.
 set -- "$DIR" --maximum-deltas 0
 if [ -n "$OUT" ]; then
   set -- "$@" -o "$OUT"
