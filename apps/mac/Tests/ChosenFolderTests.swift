@@ -35,6 +35,19 @@ final class ChosenFolderTests: XCTestCase {
         }
     }
 
+    /// The one the panel makes easy to hit: it opens at the data directory's PARENT, so
+    /// the Waffled folder is right there to be picked. By then the app's launch poll has
+    /// created the tree — but not runtime.json or config.env, which are written by the
+    /// first `start` — so the folders it did create have to count as evidence too, or a
+    /// household ends up in Waffled/Waffled.
+    func testAFolderHoldingAnUnstartedDataDirectoryIsUsedAsItIs() throws {
+        let picked = try tempDir()
+        try FileManager.default.createDirectory(
+            at: picked.appendingPathComponent("postgres"), withIntermediateDirectories: true)
+        XCTAssertEqual(Setup.dataDirectory(forChosen: picked), picked,
+                       "the tree the first status poll made is still Waffled's own folder")
+    }
+
     /// A folder already called Waffled but with nothing of ours in it is still just a
     /// folder — the name is not the evidence, what is inside it is.
     func testAnEmptyFolderNamedWaffledStillGetsOneInside() throws {

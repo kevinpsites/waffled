@@ -35,8 +35,15 @@ func (s *Supervisor) BackupAgent() (*schedule.Agent, error) {
 // It tolerates a failure to even look: a missing home directory is not a reason for
 // `status` to produce nothing. The time is empty rather than a guess when there is
 // nothing installed or the plist will not parse, because a time nobody's launchd will
-// honour is worse than no time — and reading it is gated on Installed(), so the common
-// answer costs a stat rather than an XML parse.
+// honour is worse than no time.
+//
+// Reading the time is gated on Installed() — which since the setup screen started
+// installing one is the COMMON case, so most polls really do pay the plist read. That is
+// the price of `status` reporting a time at all; the stat only saves the households who
+// turned the nightly backup off.
+//
+// `scheduleLoaded` deliberately stays separate and builds its own agent: it forks
+// launchctl, so only `doctor` asks it, once, when a person types the command.
 func (s *Supervisor) scheduleFacts() (installed bool, at string) {
 	a, err := s.BackupAgent()
 	if err != nil || !a.Installed() {

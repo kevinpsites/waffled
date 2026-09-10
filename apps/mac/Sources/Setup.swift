@@ -35,9 +35,13 @@ enum Setup {
     /// runtime's own `datadir.AppName`, so the default path and a chosen one read alike.
     static let folderName = "Waffled"
 
-    /// The files that mark a folder as already holding a household. Either is enough: a
-    /// data directory that has never been started has `config.env` and no `runtime.json`.
-    static let householdMarkers = ["runtime.json", "config.env"]
+    /// What marks a folder as already holding a household. Any one is enough, and the
+    /// directories matter as much as the files: the app's launch poll creates the tree
+    /// before anyone has clicked anything, while `config.env` and `runtime.json` are not
+    /// written until the first `start`. Without `postgres` in here, picking the folder
+    /// Waffled is already in — which the panel opens right beside — would nest a second
+    /// one inside it.
+    static let householdMarkers = ["runtime.json", "config.env", "postgres", "media", "backups"]
 
     /// Where Waffled's data really goes, given the folder a person picked.
     ///
@@ -64,6 +68,7 @@ enum Setup {
     /// refused. A folder Waffled cannot write to fails at the first `config set` with a
     /// message about a path, long after the person who could have picked another has
     /// stopped looking.
+    ///
     /// Writability is asked of the nearest folder that is really there, because the
     /// answer is wanted about folders that do not exist yet — `<picked>/Waffled` is the
     /// ordinary case — and `isWritableFile` says no to every path that is missing.
