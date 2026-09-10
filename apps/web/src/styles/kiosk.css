@@ -224,6 +224,40 @@ body {
   flex: none;
 }
 
+/* Server-unreachable strip — the offline banner's tokens and shape, but it is
+   mounted at the app root (so it covers the login/setup screens too) and therefore
+   floats over the chrome instead of sitting in `.kiosk-main`'s flex column. */
+.unreachable-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  background: var(--offline);
+  color: var(--offline-fg);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  padding: 7px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 12px;
+  box-shadow: var(--sh-1);
+}
+.unreachable-hint {
+  flex-basis: 100%;
+  font-weight: 500;
+  opacity: 0.85;
+}
+.unreachable-retry.btn {
+  padding: 3px 14px;
+  font-size: 13px;
+  background: color-mix(in srgb, var(--offline-fg) 18%, transparent);
+  color: var(--offline-fg);
+}
+
 /* Stalled-sync strip — the same quiet shape as the offline banner, shown only
    while the sync watchdog is restarting a wedged engine (REST keeps data fresh
    meanwhile, so this is an explanation, not a warning). */
