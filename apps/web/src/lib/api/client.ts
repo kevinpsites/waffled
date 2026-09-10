@@ -175,7 +175,7 @@ export async function trackedFetch(path: string, init: RequestInit = {}): Promis
 
 // A proxy answering for an api that didn't gets the same "no answer" tag a rejected
 // fetch does — but only when the body isn't the api's own JSON (see isNoAnswer).
-function tagIfGateway<E>(err: E, res: Response): E {
+export function tagIfGateway<E>(err: E, res: Response): E {
   return isNoAnswer(res.status, res.headers?.get('content-type')) ? markUnanswered(err) : err
 }
 
