@@ -11,6 +11,30 @@ final class SettingsWindowTests: XCTestCase {
                     resourceURL: nil, memory: InMemoryDefaults(), runner: SubprocessRunner())
     }
 
+    /// The bug a real install hit. `isFirstRun` is latched for the whole process, so once
+    /// setup had finished and the ready window was dismissed the app still believed a
+    /// first-run window held the app's one window — and `Settings…` stayed greyed out for
+    /// the rest of that launch. A dismissed window is not an occupied one.
+    func testSettingsIsUsableOnceTheFirstRunWindowHasBeenDismissed() throws {
+        let model = makeModel()
+        defer { model.end() }
+
+        model.pretendFirstRunForTesting(
+            try RuntimeStatus.decode(Fixtures.data(Fixtures.fullRunning)))
+        XCTAssertNotNil(model.windowPresentation, "precondition: the ready step is on screen")
+        XCTAssertFalse(model.presentation(canCheckForUpdates: false).settingsEnabled,
+                       "while it is up, the window is taken")
+
+        model.dismissFirstRunWindow()
+
+        XCTAssertTrue(model.presentation(canCheckForUpdates: false).settingsEnabled,
+                      "the window is free once it has been dismissed")
+        model.openSettings()
+        guard case .settings = model.windowPresentation else {
+            return XCTFail("Settings should own the window now, not the finished first run")
+        }
+    }
+
     func testNoWindowUntilSomethingAsksForOne() {
         let model = makeModel()
         defer { model.end() }

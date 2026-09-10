@@ -151,10 +151,16 @@ final class ServerModel {
         MenuPresentation.make(status: status, failure: heldFailure, transient: transient,
                               busy: busy, runtimeAvailable: client != nil,
                               stopFailure: stopFailure, awaitingSetup: awaitingSetup,
-                              windowTaken: firstRunPresentation != nil,
+                              windowTaken: firstRunWindowIsUp,
                               canCheckForUpdates: canCheckForUpdates,
                               updatePhase: flow.phase)
     }
+
+    /// Whether the first-run window is really on screen — which is not the same as there
+    /// being a first-run presentation. `isFirstRun` is latched for the whole process, so
+    /// after setup finishes the presentation goes on describing the ready step forever;
+    /// dismissing the window is what ends it.
+    var firstRunWindowIsUp: Bool { !firstRunDismissed && firstRunPresentation != nil }
 
     /// The first-run window's whole content, or nil on every launch that gets no window.
     var firstRunPresentation: FirstRunPresentation? {
@@ -336,7 +342,7 @@ final class ServerModel {
     /// there is not, and never comes back once it has been dismissed — closing it during
     /// the start is a person saying "I will watch the menu bar", not "start again".
     private func syncFirstRunWindow() {
-        guard let content = windowPresentation, !firstRunDismissed else {
+        guard let content = windowPresentation else {
             stopFirstRunTicker()
             firstRunWindow.close()
             return
@@ -387,6 +393,16 @@ final class ServerModel {
     /// The close button, whichever screen is in the window. Settings is simply closed —
     /// it is reopened from the menu — while a first run is dismissed for the rest of the
     /// launch: closing that one is a person saying "I will watch the menu bar".
+    /// Puts the model in the state a finished first run leaves it in, for the tests that
+    /// are about what happens AFTER one. Nothing in the app calls it.
+    func pretendFirstRunForTesting(_ status: RuntimeStatus) {
+        isFirstRun = true
+        firstRunDecided = true
+        self.status = status
+        startTrigger = .setup
+        setupStartedAt = .distantPast
+    }
+
     func dismissFirstRunWindow() {
         showingSettings = false
         firstRunDismissed = true
@@ -493,7 +509,9 @@ final class ServerModel {
     /// that gets one, and `Settings…` is refused while it is up — so this is a preference
     /// order rather than a choice.
     var windowPresentation: WindowContent? {
-        if let firstRun = firstRunPresentation { return .firstRun(firstRun) }
+        // Only while it has not been dismissed: a finished first run must not go on
+        // claiming the window for the rest of the launch, or Settings can never have it.
+        if !firstRunDismissed, let firstRun = firstRunPresentation { return .firstRun(firstRun) }
         guard showingSettings else { return nil }
         return .settings(SettingsPresentation.make(options: setupOptions, saved: appliedOptions,
                                                    dataDirectory: dataDirectory,
@@ -510,11 +528,12 @@ final class ServerModel {
     /// blank: it is never read back out of config.env, and a blank field reads as "I did
     /// not change it" rather than as a deletion.
     func openSettings() {
-        guard !isFirstRun else { return }
+        // Refused only while the first-run window is actually up. A first run that has
+        // finished and been dismissed is over, whatever the latched flag still says.
+        guard !firstRunWindowIsUp else { return }
         setupOptions = appliedOptions
         setupOptions.providerKey = ""
         showingSettings = true
-        firstRunDismissed = false
         syncFirstRunWindow()
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -640,6 +659,27 @@ final class ServerModel {
         guard let local = (status ?? self.status)?.urls.local,
               let url = URL(string: local) else { return }
         NSWorkspace.shared.open(url)
+    }
+
+    /// The address as a QR code, in an `NSAlert` — an `LSUIElement` app has one window
+    /// and the first run owns it, so a second one is not available to borrow. The alert is
+    /// enough: this is a thing to hold a phone up to and then dismiss.
+    func showAddressCode() {
+        guard let url = MenuPresentation.shareURL(status) else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Point a phone at this"
+        alert.informativeText = url
+        if let code = QRCode.image(for: url, side: 220) {
+            alert.accessoryView = NSImageView(image: code)
+        }
+        alert.addButton(withTitle: "Done")
+        alert.addButton(withTitle: "Copy address")
+        if alert.runModal() == .alertSecondButtonReturn {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(url, forType: .string)
+            note("Copied \(url)")
+        }
     }
 
     func copyServerAddress() {
