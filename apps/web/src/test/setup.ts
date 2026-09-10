@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom/vitest'
-import { vi, beforeEach } from 'vitest'
+import { vi, beforeEach, afterEach } from 'vitest'
+import { resetReachability } from '../lib/api/reachability'
 
 class TestStorage implements Storage {
   private readonly values = new Map<string, string>()
@@ -44,7 +45,11 @@ Object.defineProperty(window, 'localStorage', {
 
 // Default: no network — empty family + empty grocery list. Tests that exercise
 // data override globalThis.fetch themselves.
+// The reachability store is a module singleton with real timers: a spec whose fetch
+// rejects flips it and arms a probe that would fire inside a later, unrelated spec.
+afterEach(() => resetReachability())
 beforeEach(() => {
+  resetReachability()
   testLocalStorage.clear()
   globalThis.fetch = vi.fn(async () => ({
     ok: true,

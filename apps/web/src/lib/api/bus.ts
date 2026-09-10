@@ -3,6 +3,7 @@
 // the Today grocery card; planning a dinner refreshes the grocery board's "this
 // week's dinners"). Mutations `emit(topic)`; data hooks `useRefetchOn(topics, …)`.
 import { useEffect, useRef } from 'react'
+import { SERVER_REACHABLE_EVENT } from './reachability'
 
 export type Topic = 'grocery' | 'meals' | 'chores' | 'rewards' | 'goals' | 'currencies' | 'recipes' | 'countdowns' | 'familyNight' | 'waffledBites' | 'rhythms' | 'weeklyPlanning'
 
@@ -37,7 +38,9 @@ export function useRefetchOn(topics: Topic[], refetch: () => void): void {
 // visible, and refetch immediately when the tab regains focus/visibility. The event
 // bus (`useRefetchOn`) only syncs surfaces in the SAME tab, so without this a family
 // member's check on another device wouldn't show until a manual reload. Polling pauses
-// while hidden (no point fetching a backgrounded tab) and fires once on re-show.
+// while hidden (no point fetching a backgrounded tab) and fires once on re-show. A
+// server that just came back is the same situation as a tab regaining focus: whatever
+// this view fetched during the outage is missing.
 export function useLiveRefresh(refetch: () => void, intervalMs = 20000): void {
   const ref = useRef(refetch)
   ref.current = refetch
@@ -56,10 +59,12 @@ export function useLiveRefresh(refetch: () => void, intervalMs = 20000): void {
     if (document.visibilityState === 'visible') start()
     document.addEventListener('visibilitychange', onVisible)
     window.addEventListener('focus', onFocus)
+    window.addEventListener(SERVER_REACHABLE_EVENT, onFocus)
     return () => {
       stop()
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('focus', onFocus)
+      window.removeEventListener(SERVER_REACHABLE_EVENT, onFocus)
     }
   }, [intervalMs])
 }

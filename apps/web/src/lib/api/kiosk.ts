@@ -9,7 +9,7 @@
 //   apps/ios/Sources/Nook/Sync/KioskMode.swift     (gate state machine)
 //   apps/ios/Sources/Nook/Sync/NookAPI.swift        (kiosk endpoints)
 //   apps/ios/Sources/Nook/Features/Kiosk/KioskProfilePickerView.swift  (picker + PIN pad)
-import { apiGet, apiSend, apiDelete, deviceFetch, getAccessToken, setKioskDevice, enterKioskMode, setSession } from './client'
+import { apiGet, apiSend, apiDelete, deviceFetch, getAccessToken, setKioskDevice, enterKioskMode, setSession, trackedFetch } from './client'
 
 export interface DisplayConfig {
   screensaverMinutes: number
@@ -62,7 +62,7 @@ export const kioskApi = {
   // Public: claim a pairing code → store the device secret (does NOT navigate yet, so
   // the pairing screen can run its "name this kiosk" step; call enterKioskMode after).
   async pair(code: string): Promise<void> {
-    const res = await fetch('/api/kiosk/pair', {
+    const res = await trackedFetch('/api/kiosk/pair', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ code: code.trim() }),

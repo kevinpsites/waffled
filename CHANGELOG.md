@@ -189,6 +189,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The web app now says when it can't reach your server, instead of showing empty
+  screens.** With Waffled stopped — the Mac app quit, or the Docker stack down — the page
+  still loaded from its offline cache and then sat there with every list blank and no
+  explanation, because the device itself was online. A strip along the top now says the
+  server isn't answering, tells you how to start it again (the menu-bar waffle on a Mac,
+  `./waffled status` on Docker), and offers a Retry; the sign-in screen says the same thing
+  rather than offering a login nobody could complete. Everything refreshes itself the
+  moment the server is back. An error Waffled itself sent you — a recipe import that
+  failed, a barcode lookup that timed out — is proof it's running, so it never raises the
+  notice; and when it's your device that's offline, you're told that instead of being sent
+  to go and start a server that was never down.
+
 - **Redeeming a reward on iPhone or iPad no longer celebrates a reward you didn't get.**
   The shop played its confetti as soon as you confirmed, whether or not the server
   actually granted the reward — so a redemption refused for any reason still looked like

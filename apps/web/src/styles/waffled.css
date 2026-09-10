@@ -324,6 +324,8 @@
   /* portal'd to <body> (outside .wf), so set the sans stack explicitly — otherwise
      `font: inherit` falls back to the browser default serif. */
   font-family: var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
+/* Below the outage strip (z 300): start under it, not behind it. */
+.server-unreachable .cap-overlay { top: var(--unreachable-h, 56px); }
 .cap-composer { width: min(680px, 94vw); background: var(--card); border-radius: 22px;
   box-shadow: 0 28px 70px rgba(0,0,0,.30); border: 1px solid var(--hair-2); padding: 16px 18px; }
 .cap-comp-row { display: flex; align-items: flex-start; gap: 12px; }

@@ -134,6 +134,13 @@ body {
     visibility: visible;
   }
 
+  /* Both are fixed at the top of the viewport, under the outage strip's z 300; the
+     drawer's first nav item would sit behind it. Same offset as .modal-overlay. */
+  .server-unreachable .mobile-nav-scrim,
+  .server-unreachable .rail {
+    top: var(--unreachable-h, 56px);
+  }
+
   .rail-logo {
     width: 44px;
     height: 44px;
@@ -222,6 +229,63 @@ body {
   text-align: center;
   padding: 7px 14px;
   flex: none;
+}
+
+/* Server-unreachable strip — the offline banner's tokens and shape, but it is
+   mounted at the app root (so it covers the login/setup screens too) and therefore
+   floats over the chrome instead of sitting in `.kiosk-main`'s flex column. */
+.unreachable-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* Over the mobile header (100) and the rail + its scrim (210/220). */
+  z-index: 300;
+  background: var(--offline);
+  color: var(--offline-fg);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  padding: 7px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 12px;
+  box-shadow: var(--sh-1);
+}
+.unreachable-hint {
+  flex-basis: 100%;
+  font-weight: 500;
+  opacity: 0.85;
+}
+.unreachable-retry.btn {
+  padding: 3px 14px;
+  font-size: 13px;
+  background: color-mix(in srgb, var(--offline-fg) 18%, transparent);
+  color: var(--offline-fg);
+}
+
+/* While the strip is up the app is given room under it rather than covered — the
+   banner sets --unreachable-h from its measured height (it wraps on a phone). The
+   shell then fills what the padding leaves of #root; its usual 100dvh would overflow
+   by the strip's height, and subtracting from dvh would double-count on a phone,
+   where dvh and #root's 100% are not the same box. */
+.server-unreachable #root {
+  box-sizing: border-box;
+  padding-top: var(--unreachable-h, 56px);
+}
+.server-unreachable .wf-kiosk {
+  height: 100%;
+}
+/* Same correction for the pre-app screens: their 100vh is the whole viewport, which
+   under the strip's padding is one strip-height taller than the box they sit in. */
+.server-unreachable .auth-screen,
+.server-unreachable .kp-screen {
+  min-height: 100%;
+}
+.server-unreachable .modal-overlay {
+  top: var(--unreachable-h, 56px);
 }
 
 /* Stalled-sync strip — the same quiet shape as the offline banner, shown only
