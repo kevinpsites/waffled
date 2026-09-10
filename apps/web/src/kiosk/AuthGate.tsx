@@ -100,6 +100,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
   )
 }
 
+// What a form says when its submit went unanswered: the raw error is the proxy's
+// ("Request failed (502)"), and it blames the credentials for the server's absence.
+const SUBMIT_UNREACHABLE = 'Can’t reach the Waffled server right now — try again in a moment.'
+const submitError = (err: unknown) => (isUnansweredError(err) ? SUBMIT_UNREACHABLE : (err as Error).message)
+
 function AuthShell({ title, sub, children }: { title: string; sub: string; children: ReactNode }) {
   return (
     <div className="auth-screen">
@@ -172,7 +177,7 @@ function LoginScreen({ status, oidcError }: { status: AuthStatus | null; oidcErr
       await authApi.login(email.trim(), password)
       // setSession fires 'waffled:auth-changed' → gate flips to the app.
     } catch (err) {
-      setError((err as Error).message)
+      setError(submitError(err))
       setBusy(false)
     }
   }
@@ -278,7 +283,7 @@ function SetupWizard() {
       // The post-setup "Getting started" onboarding is armed server-side at provision
       // time (households.settings.onboarding), so there's nothing to flip here.
     } catch (err) {
-      setError((err as Error).message)
+      setError(submitError(err))
       setBusy(false)
     }
   }

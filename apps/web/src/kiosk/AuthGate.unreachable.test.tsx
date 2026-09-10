@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, act, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { AuthGate } from './AuthGate'
 import { SERVER_PROBE_EVENT, resetReachability } from '../lib/api/reachability'
@@ -174,5 +174,41 @@ describe('AuthGate when the server does not answer', () => {
       window.dispatchEvent(new CustomEvent(SERVER_PROBE_EVENT, { detail: { answered: true } }))
     })
     expect(await screen.findByLabelText('Email')).toBeInTheDocument()
+  })
+
+  // A login POST that the proxy answered for carries no message a family can act on
+  // ("Request failed (502)"); a login the server actually refused carries the only
+  // one that matters.
+  describe('a login submitted into an outage', () => {
+    const res = (status: number, contentType: string, body: unknown = {}) => ({
+      ok: status >= 200 && status < 300,
+      status,
+      headers: { get: (k: string) => (k.toLowerCase() === 'content-type' ? contentType : null) },
+      json: async () => body,
+    })
+
+    async function signIn(loginResponse: () => unknown) {
+      globalThis.fetch = vi.fn(async (path: string) =>
+        String(path).includes('/api/auth/login')
+          ? loginResponse()
+          : res(200, 'application/json', { initialized: true, methods: ['password'] }),
+      ) as unknown as typeof fetch
+
+      render(gate())
+      fireEvent.change(await screen.findByLabelText('Email'), { target: { value: 'alex@example.com' } })
+      fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'hunter22' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+      return screen.findByRole('alert')
+    }
+
+    it('says the server is unreachable when nothing answered the login', async () => {
+      const error = await signIn(() => res(502, 'text/plain'))
+      expect(error).toHaveTextContent('Can’t reach the Waffled server right now — try again in a moment.')
+    })
+
+    it('still shows what the server said when it did answer', async () => {
+      const error = await signIn(() => res(401, 'application/json', { message: 'Email or password is incorrect.' }))
+      expect(error).toHaveTextContent('Email or password is incorrect.')
+    })
   })
 })
