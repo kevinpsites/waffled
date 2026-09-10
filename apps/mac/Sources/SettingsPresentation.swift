@@ -15,6 +15,9 @@ struct SettingsPresentation: Equatable {
     /// `Move…` is a stop, a copy and a start, so it is refused while anything else is in
     /// flight rather than queued behind it.
     var moveEnabled: Bool
+    /// Why the folder cannot be moved, when it cannot — nil when it can. A disabled
+    /// button with no reason is the thing this branch keeps taking out.
+    var moveRefusal: String?
     /// The public port, read-only. `HTTP_PORT` is the first allocation's preference and
     /// nothing after it, so a field here would be a control that did nothing.
     var portValue: String
@@ -57,7 +60,11 @@ struct SettingsPresentation: Equatable {
             address. Restart when it suits you — nothing is lost by waiting, and anything \
             already pointed at this Mac keeps working.
             """
-        static let applied = "Settings applied." 
+        static let applied = "Settings applied."
+        static let pinnedFolder = """
+            WAFFLED_DATA_DIR is set, so this run does not decide where Waffled's files \
+            live and cannot move them.
+            """ 
         static let movedNote = "Waffled's files are here now. The server was restarted to use them."
         static let portReadOnly = """
             Waffled picked this port at setup and every device in the house points at it, \
@@ -79,6 +86,8 @@ struct SettingsPresentation: Equatable {
     ///     to be — a move that failed must not leave the row claiming it worked.
     ///   - status: the last document, for the port actually in use.
     ///   - busy: a start, stop, backup or move is in flight.
+    ///   - pinned: `WAFFLED_DATA_DIR` decides where the data lives, so this run may not
+    ///     move it — see `ServerModel.dataDirectoryIsPinned`.
     ///   - awaitingRestart: a setting the server only reads at start has been written
     ///     since it started. Held by the model, because once Apply has run the form and
     ///     what was saved agree — and comparing those two was what made the warning
@@ -90,6 +99,7 @@ struct SettingsPresentation: Equatable {
         dataDirectory: URL,
         status: RuntimeStatus?,
         busy: Bool = false,
+        pinned: Bool = false,
         awaitingRestart: Bool = false,
         applied: Bool = false
     ) -> SettingsPresentation {
@@ -108,7 +118,8 @@ struct SettingsPresentation: Equatable {
             title: Copy.title,
             message: Copy.message,
             dataDirectoryPath: dataDirectory.path,
-            moveEnabled: !busy,
+            moveEnabled: !busy && !pinned,
+            moveRefusal: pinned ? Copy.pinnedFolder : nil,
             portValue: port > 0 ? String(port) : "—",
             portNote: Copy.portReadOnly,
             problems: problems,

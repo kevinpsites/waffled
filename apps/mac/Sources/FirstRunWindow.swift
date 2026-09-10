@@ -124,7 +124,10 @@ struct FirstRunView: View {
                 tertiary: step.tertiaryButton.map { ($0, { model.showSetupOptions() }) },
                 secondary: step.secondaryButton.map { ($0, { NSApp.terminate(nil) }) },
                 primary: step.primaryButton.map { ($0, { model.beginSetup() }) },
-                primaryEnabled: !model.busy)
+                // The same condition the options step uses. `Back` does not discard what
+                // was typed, so an invalid port left there makes `beginSetup` a no-op —
+                // and a live button that does nothing is the bug this branch keeps fixing.
+                primaryEnabled: !model.busy && model.setupOptions.problems.isEmpty)
         case .options:
             SetupFooter(
                 tertiary: step.tertiaryButton.map { ($0, { model.hideSetupOptions() }) },
@@ -395,6 +398,11 @@ private struct SetupOptionRows: View {
                 if settings == nil, folderIsSettled {
                     Text(Copy.files.settled).font(SetupTheme.small)
                         .foregroundStyle(SetupTheme.inkTertiary)
+                }
+                if let refusal = settings?.moveRefusal {
+                    Text(refusal).font(SetupTheme.small)
+                        .foregroundStyle(SetupTheme.inkTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if let refusal = folderRefusal {
                     Text(refusal).font(SetupTheme.small).foregroundStyle(SetupTheme.primary)

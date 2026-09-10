@@ -73,8 +73,13 @@ enum Setup {
     /// answer is wanted about folders that do not exist yet — `<picked>/Waffled` is the
     /// ordinary case — and `isWritableFile` says no to every path that is missing.
     static func refusal(for url: URL) -> String? {
-        if let volume = refusal(for: facts(for: url)) { return volume }
-        guard FileManager.default.isWritableFile(atPath: nearestExisting(url).path) else {
+        // Both questions are asked of the nearest folder that exists, for the same reason:
+        // `<picked>/Waffled` has not been made yet, and `resourceValues` on a path that is
+        // not there fails — which `facts(for:)` reads as the ordinary case, so an
+        // unplugged drive or a network share would pass every volume check.
+        let here = nearestExisting(url)
+        if let volume = refusal(for: facts(for: here)) { return volume }
+        guard FileManager.default.isWritableFile(atPath: here.path) else {
             return "Waffled cannot write to that folder — pick one you own, like a folder "
                 + "in your home folder."
         }

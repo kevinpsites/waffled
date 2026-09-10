@@ -195,6 +195,13 @@ final class ServerModel {
 
     var isDevMode: Bool { location?.isDevMode ?? false }
 
+    /// `WAFFLED_DATA_DIR` decides where the data lives, so nothing here may move it.
+    /// `chooseDataDirectory` deliberately refuses to repoint an environment-pinned
+    /// location — the environment always wins — which means a move would copy the
+    /// household, delete the original, and leave this app pointing at the folder it
+    /// just deleted.
+    var dataDirectoryIsPinned: Bool { location?.dataDirIsFromEnvironment ?? false }
+
     /// Where `Show logs` reveals. `status` knows best, but the whole point of that item is
     /// that something went wrong — possibly before any status came back — so the resolved
     /// location and then the documented default stand in.
@@ -524,6 +531,7 @@ final class ServerModel {
         return .settings(SettingsPresentation.make(options: setupOptions, saved: appliedOptions,
                                                    dataDirectory: dataDirectory,
                                                    status: status, busy: busy,
+                                                   pinned: dataDirectoryIsPinned,
                                                    awaitingRestart: addressAwaitingRestart,
                                                    applied: settingsApplied))
     }
@@ -596,6 +604,12 @@ final class ServerModel {
     /// pointing at the folder the runtime last reported rather than the one it asked for.
     func moveDataDirectory(to destination: URL) {
         guard let client, operationTask == nil, showingSettings else { return }
+        // Refused rather than half-done: the copy would work, the original would go, and
+        // this app would keep pointing at the deleted folder.
+        guard !dataDirectoryIsPinned else {
+            recordFailure(SettingsPresentation.Copy.pinnedFolder)
+            return
+        }
         if let refusal = Setup.refusal(for: destination) {
             recordFailure(refusal)
             return
