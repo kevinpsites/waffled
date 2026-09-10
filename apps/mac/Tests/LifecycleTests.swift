@@ -84,9 +84,9 @@ final class LifecycleTests: XCTestCase {
             newState: .running, trigger: .person, isFirstRun: false, alreadyOpened: false),
             "a person clicked Start Waffled and is waiting for something to happen")
 
-        XCTAssertTrue(Lifecycle.shouldOpenBrowser(
-            newState: .running, trigger: .app, isFirstRun: true, alreadyOpened: false),
-            "the end of a first run is the web app opening (plan §2 step 3)")
+        XCTAssertFalse(Lifecycle.shouldOpenBrowser(
+            newState: .running, trigger: .person, isFirstRun: true, alreadyOpened: false),
+            "a first run ends on the ready step, whose Open Waffled button is the click")
 
         XCTAssertFalse(Lifecycle.shouldOpenBrowser(
             newState: .running, trigger: .app, isFirstRun: false, alreadyOpened: false),
@@ -259,20 +259,18 @@ final class LifecycleTests: XCTestCase {
         XCTAssertNil(Lifecycle.HeldFailures().message)
     }
 
-    /// The ready step takes itself away, and the couple of seconds it waits is long enough
-    /// for a poll to move the window on to something someone still needs — `.failed` carries
-    /// the `Try again` button, and a dismissal latches for the life of the process. So the
-    /// timer asks again before it closes anything.
-    func testTheReadyCloseAppliesOnlyWhileTheWindowIsStillReady() {
-        XCTAssertTrue(Lifecycle.readyCloseStillApplies(step: .ready))
+    /// The setting-up step has a floor under it: a first start here took under five
+    /// seconds, and a checklist that appears and vanishes is a window that "never showed".
+    func testTheSettingUpDisplayHasAFloorUnderIt() {
+        let clicked = Date()
+        XCTAssertFalse(Lifecycle.startingDisplayHasElapsed(
+            since: clicked, now: clicked.addingTimeInterval(1)))
+        XCTAssertTrue(Lifecycle.startingDisplayHasElapsed(
+            since: clicked,
+            now: clicked.addingTimeInterval(FirstRunPresentation.minimumStartingDisplay)))
 
-        for step in [FirstRunPresentation.Step.welcome, .starting, .failed] {
-            XCTAssertFalse(Lifecycle.readyCloseStillApplies(step: step),
-                           "\(step) is a window that is still saying something")
-        }
-
-        XCTAssertFalse(Lifecycle.readyCloseStillApplies(step: nil),
-                       "no window at all is nothing to close")
+        XCTAssertTrue(Lifecycle.startingDisplayHasElapsed(since: nil, now: clicked),
+                      "a start nobody clicked has no floor to wait out")
     }
 
     /// Polling is cheap but not free (it spawns a process), so it slows down once the

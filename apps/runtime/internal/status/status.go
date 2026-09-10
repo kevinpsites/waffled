@@ -79,8 +79,13 @@ type Bundle struct {
 // URLs are the addresses to hand a person. Local works on this Mac; LAN is what a phone
 // or the kiosk tablet needs.
 type URLs struct {
-	Local     string `json:"local"`
-	LAN       string `json:"lan"`
+	Local string `json:"local"`
+	LAN   string `json:"lan"`
+	// LANIP is the same address in its always-dependable form — this Mac's IP — whatever
+	// form LAN took. It exists so that a client showing "if a device can't find that
+	// name, use this instead" never has to work an IP out for itself. Equal to LAN when
+	// the address is already an IP, and empty when this Mac is on no network.
+	LANIP     string `json:"lanIp"`
 	PowerSync string `json:"powersync"`
 }
 

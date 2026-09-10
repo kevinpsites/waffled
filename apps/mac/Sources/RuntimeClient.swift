@@ -21,6 +21,10 @@ struct RuntimeLocation: Equatable {
     var binary: URL
     var bundleDir: URL?
     var dataDir: URL?
+    /// True when `WAFFLED_DATA_DIR` named the directory. The setup screen may not move a
+    /// data directory the environment pinned: that is the dev-mode recipe, and a choice
+    /// saved on a household's Mac must never redirect it.
+    var dataDirIsFromEnvironment = false
     /// True when the environment pointed us somewhere, which the menu says out loud —
     /// a dev run against a scratch data directory should never be mistaken for the
     /// household's real server.
@@ -40,14 +44,20 @@ enum RuntimeLocator {
     static let bundleVariable = "WAFFLED_RUNTIME_BUNDLE"
     static let dataVariable = "WAFFLED_DATA_DIR"
 
-    static func locate(environment: [String: String], resourceURL: URL?) -> RuntimeLocation? {
-        let dataDir = environment[dataVariable].flatMap(directory)
+    /// - Parameter chosenDataDirectory: a folder the household picked on the setup screen,
+    ///   used only when the environment named none.
+    static func locate(environment: [String: String], resourceURL: URL?,
+                       chosenDataDirectory: URL? = nil) -> RuntimeLocation? {
+        let fromEnvironment = environment[dataVariable].flatMap(directory)
+        let dataDir = fromEnvironment ?? chosenDataDirectory
+        let pinned = fromEnvironment != nil
 
         if let binary = environment[binaryVariable], !binary.isEmpty {
             return RuntimeLocation(
                 binary: URL(fileURLWithPath: binary),
                 bundleDir: environment[bundleVariable].flatMap(directory),
                 dataDir: dataDir,
+                dataDirIsFromEnvironment: pinned,
                 isDevMode: true)
         }
 
@@ -62,7 +72,8 @@ enum RuntimeLocator {
         guard let resourceURL else { return nil }
         let bundleDir = resourceURL.appendingPathComponent("runtime")
         let binary = bundleDir.appendingPathComponent("bin/waffled-runtime")
-        return RuntimeLocation(binary: binary, bundleDir: bundleDir, dataDir: dataDir, isDevMode: false)
+        return RuntimeLocation(binary: binary, bundleDir: bundleDir, dataDir: dataDir,
+                               dataDirIsFromEnvironment: pinned, isDevMode: false)
     }
 
     private static func directory(_ path: String) -> URL? {
@@ -130,14 +141,23 @@ struct RuntimeClient {
         return out.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// One of the setup screen's writes — a `config set`, or the nightly schedule. They
+    /// are values (`RuntimeCommand`) rather than methods so the argv the app would really
+    /// have used is asserted without spawning anything, and so nothing that logs a
+    /// failure can reach the value a `config set` carried.
+    func apply(_ command: RuntimeCommand) async throws {
+        _ = try await run(command.subcommand, extra: command.flags, trailing: command.trailing)
+    }
+
     // MARK: -
 
-    private func run(_ command: String, extra: [String] = []) async throws -> RuntimeProcessResult {
+    private func run(_ command: String, extra: [String] = [],
+                     trailing: [String] = []) async throws -> RuntimeProcessResult {
         let result: RuntimeProcessResult
         do {
             result = try await runner.run(
                 executable: location.binary,
-                arguments: arguments(for: command, extra: extra))
+                arguments: arguments(for: command, extra: extra, trailing: trailing))
         } catch {
             throw RuntimeClientError.cannotRunRuntime(
                 path: location.binary.path,
@@ -152,9 +172,10 @@ struct RuntimeClient {
         return result
     }
 
-    /// The subcommand, then its own flags, then the common ones. Go's `flag` package stops
-    /// parsing at the first non-flag argument, so the subcommand has to come first.
-    func arguments(for command: String, extra: [String] = []) -> [String] {
+    /// The subcommand, then its own flags, then the common ones, then any positional
+    /// argument. Go's `flag` package stops parsing at the first non-flag argument, so the
+    /// subcommand has to come first and `config set`'s assignment has to come last.
+    func arguments(for command: String, extra: [String] = [], trailing: [String] = []) -> [String] {
         var argv = [command] + extra
         if let bundleDir = location.bundleDir {
             argv += ["--bundle", bundleDir.path]
@@ -162,7 +183,7 @@ struct RuntimeClient {
         if let dataDir = location.dataDir {
             argv += ["--data", dataDir.path]
         }
-        return argv
+        return argv + trailing
     }
 
     /// The runtime prefixes its refusals with "✗ ". That mark is for a terminal; in a

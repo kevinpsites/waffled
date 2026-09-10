@@ -71,7 +71,7 @@ final class FirstRunPresentationTests: XCTestCase {
             XCTAssertEqual(p?.message, "No Waffled runtime is bundled with this build",
                            "the runtime's own sentence, not one invented here")
             XCTAssertEqual(p?.primaryButton, "Try again")
-            XCTAssertEqual(p?.secondaryButton, "Show logs")
+            XCTAssertEqual(p?.tertiaryButton, "Show logs")
         }
     }
 
@@ -88,7 +88,7 @@ final class FirstRunPresentationTests: XCTestCase {
         XCTAssertEqual(p.step, .failed)
         XCTAssertEqual(p.message, "powersync exited: replication slot is gone")
         XCTAssertEqual(p.primaryButton, "Try again")
-        XCTAssertEqual(p.secondaryButton, "Show logs")
+        XCTAssertEqual(p.tertiaryButton, "Show logs")
         XCTAssertEqual(MenuPresentation.make(status: unhealthy).statusLine, p.message,
                        "one sentence, derived once, wherever it is shown")
 
@@ -129,7 +129,8 @@ final class FirstRunPresentationTests: XCTestCase {
         let welcome = FirstRunPresentation.make(status: fresh, isFirstRun: true, setupBegun: false)
 
         XCTAssertEqual(welcome?.primaryButton, "Set up Waffled")
-        XCTAssertNil(welcome?.secondaryButton)
+        XCTAssertEqual(welcome?.secondaryButton, "Not on this Mac",
+                       "the close box's meaning, said out loud")
         XCTAssertTrue(welcome?.closeQuitsApp ?? false)
 
         // Once the server is on its way up, the window is only a window: closing it
@@ -148,7 +149,11 @@ final class FirstRunPresentationTests: XCTestCase {
 
         XCTAssertEqual(p.services.map(\.label), ["Postgres", "API", "Sync", "Web"])
         XCTAssertEqual(p.services.map(\.isReady), [true, false, false, false])
-        XCTAssertEqual(p.message, "First start takes about a minute.")
+        XCTAssertEqual(p.services.map(\.detail),
+                       ["Database ready", "Starting the Waffled server",
+                        "Getting phones and tablets ready to sync", "Opening Waffled on your network"],
+                       "present-tense while it is coming, done-tense once it is there")
+        XCTAssertEqual(p.progress, 0.25)
 
         // Nothing is up yet on the welcome step, and the ready step is a goodbye rather
         // than a screen — neither needs the list.
@@ -171,20 +176,130 @@ final class FirstRunPresentationTests: XCTestCase {
         XCTAssertEqual(p.services.map(\.label), ["Postgres", "API", "Sync", "Web"])
     }
 
-    /// "Your server is ready" is a sentence, not a screen: the browser is already opening
-    /// behind it, so the window takes itself away.
-    func testTheReadyStepClosesItself() throws {
+    /// "Your server is ready" is a screen a person acts on — the address they came for,
+    /// and the click that opens it — not a sentence that takes itself away.
+    func testTheReadyStepIsAScreenAPersonActsOn() throws {
         let running = try status(Fixtures.fullRunning)
-        let ready = try XCTUnwrap(FirstRunPresentation.make(status: running, isFirstRun: true, setupBegun: true))
+        let ready = try XCTUnwrap(FirstRunPresentation.make(status: running, isFirstRun: true,
+                                                            setupBegun: true))
 
-        XCTAssertEqual(ready.closesAfter, 2)
-        XCTAssertNil(ready.primaryButton, "there is nothing left to do")
+        XCTAssertEqual(ready.step, .ready)
+        XCTAssertEqual(ready.primaryButton, "Open Waffled")
+        XCTAssertEqual(ready.secondaryButton, "Copy address")
+        XCTAssertEqual(ready.address?.host, "192.168.1.5:8080")
+        XCTAssertEqual(ready.address?.url, "http://192.168.1.5:8080")
+        XCTAssertNotNil(ready.menuBarNote)
+        XCTAssertFalse(ready.closeQuitsApp, "the server is up; closing this stops nothing")
+    }
 
+    /// The runtime beat the window: a first start here took under five seconds, and a
+    /// checklist that appears and vanishes is what "nothing showed" was reported about.
+    func testTheSettingUpStepStaysUpForItsMinimum() throws {
+        let running = try status(Fixtures.fullRunning)
+        let clicked = Date()
+
+        let early = try XCTUnwrap(FirstRunPresentation.make(
+            status: running, isFirstRun: true, setupBegun: true,
+            setupStartedAt: clicked, now: clicked.addingTimeInterval(1)))
+        XCTAssertEqual(early.step, .starting, "a start that beat the floor keeps the checklist up")
+        XCTAssertEqual(early.progress, 1, "every row it knows about is ticked by then")
+
+        let late = try XCTUnwrap(FirstRunPresentation.make(
+            status: running, isFirstRun: true, setupBegun: true,
+            setupStartedAt: clicked,
+            now: clicked.addingTimeInterval(FirstRunPresentation.minimumStartingDisplay)))
+        XCTAssertEqual(late.step, .ready)
+    }
+
+    /// A launch that finds a server someone else started has no click to measure from,
+    /// and must not sit on a checklist waiting for a floor nobody is under.
+    func testAStartNobodyClickedGoesStraightToReady() throws {
+        let running = try status(Fixtures.fullRunning)
+        let p = try XCTUnwrap(FirstRunPresentation.make(status: running, isFirstRun: true,
+                                                        setupBegun: false, setupStartedAt: nil))
+        XCTAssertEqual(p.step, .ready)
+    }
+
+    /// The port a household asked for and the port Caddy took can differ, and the runtime
+    /// falls forward rather than failing — so the ready step says so, once, quietly.
+    func testTheReadyStepSaysWhenThePortMoved() throws {
+        let running = try status(Fixtures.fullRunning)
+
+        let moved = FirstRunPresentation.addressCard(running, preferredPort: 8000)
+        XCTAssertEqual(moved?.portNote, "Using port 8080 because 8000 was busy on this Mac.")
+
+        let asAsked = FirstRunPresentation.addressCard(running, preferredPort: 8080)
+        XCTAssertNil(asAsked?.portNote, "the port that was asked for is not news")
+    }
+
+    /// The IP line is the runtime's own answer, and it is only worth a line when it says
+    /// something the address above it does not.
+    func testTheAlternateAddressIsOnlyShownWhenItIsDifferent() throws {
+        let named = try status(Fixtures.readyOnAName)
+        XCTAssertEqual(FirstRunPresentation.addressCard(named, preferredPort: 8080)?.host,
+                       "kevins-mac-mini.local:8080")
+        XCTAssertEqual(FirstRunPresentation.addressCard(named, preferredPort: 8080)?.alternate,
+                       "192.168.1.5:8080")
+
+        let onAnIP = try status(Fixtures.fullRunning)
+        XCTAssertNil(FirstRunPresentation.addressCard(onAnIP, preferredPort: 8080)?.alternate,
+                     "the same address twice is not an alternative")
+    }
+
+    /// The welcome step lists what is really in this bundle, from the runtime's manifest —
+    /// which `status` answers with every service stopped, so the numbers are real on the
+    /// one screen shown before anything has ever run.
+    func testTheWelcomeStepListsTheVersionsThatReallyShipped() throws {
         let fresh = try status(Fixtures.freshDataDirectory)
-        XCTAssertNil(FirstRunPresentation.make(status: fresh, isFirstRun: true, setupBegun: false)?.closesAfter,
-                     "a window waiting for a person must not close itself")
-        XCTAssertNil(FirstRunPresentation.make(status: fresh, isFirstRun: true, setupBegun: true,
-                                               failure: "boom")?.closesAfter)
+        let welcome = try XCTUnwrap(FirstRunPresentation.make(status: fresh, isFirstRun: true,
+                                                              setupBegun: false))
+        XCTAssertEqual(welcome.components.map(\.name),
+                       ["Postgres", "Waffled server", "Sync", "Web"])
+        XCTAssertEqual(welcome.components.map(\.version).filter { !$0.isEmpty }.count, 4,
+                       "every row carries the version from the bundle manifest")
+        XCTAssertEqual(welcome.promises.count, 3)
+        XCTAssertEqual(welcome.tertiaryButton, "Choose where things go…")
+        XCTAssertEqual(welcome.secondaryButton, "Not on this Mac")
+        XCTAssertTrue(welcome.closeQuitsApp)
+    }
+
+    /// The options step is still a person deciding whether Waffled belongs on this Mac:
+    /// nothing has been created, so closing it means the same thing the welcome does.
+    func testTheOptionsStepIsReachedBeforeAnythingExists() throws {
+        let fresh = try status(Fixtures.freshDataDirectory)
+        let options = try XCTUnwrap(FirstRunPresentation.make(status: fresh, isFirstRun: true,
+                                                              setupBegun: false, showingOptions: true))
+        XCTAssertEqual(options.step, .options)
+        XCTAssertEqual(options.title, "Where things go")
+        XCTAssertEqual(options.primaryButton, "Set up Waffled")
+        XCTAssertEqual(options.tertiaryButton, "Back")
+        XCTAssertTrue(options.closeQuitsApp)
+
+        // Once something is coming up, the options screen is no longer a thing to show:
+        // every setting on it is applied before the start it is now behind.
+        let starting = try status(Fixtures.firstStartInProgress)
+        XCTAssertEqual(FirstRunPresentation.make(status: starting, isFirstRun: true,
+                                                 setupBegun: true, showingOptions: true)?.step,
+                       .starting)
+    }
+
+    /// The clock is a reassurance that something is happening, not a countdown that could
+    /// be wrong.
+    func testTheElapsedClockCountsWholeUnits() {
+        let start = Date()
+        XCTAssertEqual(FirstRunPresentation.elapsedLabel(since: start, now: start), "0 seconds")
+        XCTAssertEqual(FirstRunPresentation.elapsedLabel(since: start,
+                                                         now: start.addingTimeInterval(1)), "1 second")
+        XCTAssertEqual(FirstRunPresentation.elapsedLabel(since: start,
+                                                         now: start.addingTimeInterval(45)), "45 seconds")
+        XCTAssertEqual(FirstRunPresentation.elapsedLabel(since: start,
+                                                         now: start.addingTimeInterval(60)), "1 minute")
+        XCTAssertEqual(FirstRunPresentation.elapsedLabel(since: start,
+                                                         now: start.addingTimeInterval(81)),
+                       "1 minute 21 seconds")
+        XCTAssertEqual(FirstRunPresentation.elapsedLabel(since: start,
+                                                         now: start.addingTimeInterval(-5)), "0 seconds",
+                       "a clock that went backwards is not a negative duration")
     }
 
     /// A laptop is a server that goes off the network when a lid closes (plan §5). It is

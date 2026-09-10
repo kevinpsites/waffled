@@ -297,7 +297,10 @@ enum Lifecycle {
         newState: RuntimeState, trigger: StartTrigger, isFirstRun: Bool, alreadyOpened: Bool
     ) -> Bool {
         guard newState == .running, !alreadyOpened else { return false }
-        return isFirstRun || trigger == .person
+        // A first run ends on the ready step, which offers `Open Waffled` — the click is
+        // the person waiting for it, and a browser thrown in front of the address they
+        // still need to copy is the window they never got to read.
+        return !isFirstRun && trigger == .person
     }
 
     /// What a click on the quit item means. The first click asks the alert and stops the
@@ -418,8 +421,12 @@ enum Lifecycle {
     /// window it was armed on can have been replaced in the meantime — a poll during those
     /// two seconds can report a stack that fell over — and closing is permanent, so a timer
     /// that fired blind would shut the `Try again` button away for the rest of the process.
-    static func readyCloseStillApplies(step: FirstRunPresentation.Step?) -> Bool {
-        step == .ready
+    /// The setting-up step must stay on screen for a moment even when the runtime beats
+    /// it: a first start here took under five seconds, and a checklist that flashes is
+    /// what "nothing showed" was reported about.
+    static func startingDisplayHasElapsed(since: Date?, now: Date) -> Bool {
+        guard let since else { return true }
+        return now.timeIntervalSince(since) >= FirstRunPresentation.minimumStartingDisplay
     }
 
     /// Polling spawns a process, so it is deliberately unhurried once the answer has

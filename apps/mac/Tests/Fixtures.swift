@@ -141,12 +141,41 @@ enum Fixtures {
       "schema": 1, "state": "stopped", "initialized": false,
       "dataDir": "/tmp/waffled-fresh", "bundleDir": "/tmp/bundle",
       "urls": { "local": "", "lan": "", "powersync": "" },
+      "versions": { "waffled": "0.14.3", "node": "24.19.0", "postgres": "16.14",
+                    "caddy": "2.11.4", "powersync": "1.22.0", "api": "0.14.3", "web": "0.14.3" },
       "services": [
         { "name": "postgres", "state": "stopped", "pid": 0, "port": 5432, "log": "/tmp/logs/postgres.log" },
         { "name": "api", "state": "stopped", "pid": 0, "port": 3000, "log": "/tmp/logs/api.log" },
         { "name": "powersync", "state": "stopped", "pid": 0, "port": 8082, "log": "/tmp/logs/powersync.log" },
         { "name": "caddy", "state": "stopped", "pid": 0, "port": 8080, "log": "/tmp/logs/caddy.log" }
       ]
+    }
+    """
+
+    /// A household that chose "This Mac's name": the runtime composed the address from
+    /// the multicast name and reports the IP form beside it.
+    static let readyOnAName = """
+    {
+      "schema": 1, "state": "running", "initialized": true,
+      "dataDir": "/tmp/waffled-fresh", "bundleDir": "/tmp/bundle",
+      "urls": { "local": "http://127.0.0.1:8080",
+                "lan": "http://kevins-mac-mini.local:8080",
+                "lanIp": "http://192.168.1.5:8080",
+                "powersync": "http://kevins-mac-mini.local:8081" },
+      "ports": { "public": 8080, "powersyncPublic": 8081, "api": 3000,
+                 "powersync": 8082, "postgres": 5432 },
+      "services": [
+        { "name": "postgres", "state": "running", "pid": 101, "port": 5432, "health": "ok",
+          "log": "/tmp/logs/postgres.log" },
+        { "name": "api", "state": "running", "pid": 102, "port": 3000, "health": "ok",
+          "log": "/tmp/logs/api.log" },
+        { "name": "powersync", "state": "running", "pid": 103, "port": 8082, "health": "ok",
+          "log": "/tmp/logs/powersync.log" },
+        { "name": "caddy", "state": "running", "pid": 104, "port": 8080, "health": "ok",
+          "log": "/tmp/logs/caddy.log" }
+      ],
+      "bonjour": { "advertised": true, "name": "The Seinfelds", "service": "_waffled._tcp",
+                   "port": 8080, "host": "kevins-mac-mini.local", "error": "" }
     }
     """
 

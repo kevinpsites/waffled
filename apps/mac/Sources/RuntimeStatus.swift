@@ -25,6 +25,10 @@ struct RuntimeStatus: Equatable {
     struct URLs: Equatable {
         var local = ""
         var lan = ""
+        /// The same address in its always-dependable form, this Mac's IP, whatever form
+        /// `lan` took. The runtime reports it so that nothing here has to work an address
+        /// out for itself.
+        var lanIp = ""
         var powersync = ""
     }
 
@@ -158,6 +162,7 @@ struct RuntimeStatus: Equatable {
         let urls = object.object("urls")
         s.urls = URLs(local: urls.string("local"),
                       lan: urls.string("lan"),
+                      lanIp: urls.string("lanIp"),
                       powersync: urls.string("powersync"))
 
         let ports = object.object("ports")

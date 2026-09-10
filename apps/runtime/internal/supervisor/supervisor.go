@@ -664,7 +664,8 @@ func (s *Supervisor) Status(ctx context.Context) *status.Report {
 			Public: s.plan.Ports.Public, PowerSyncPublic: s.plan.Ports.PowerSyncPublic,
 			API: s.plan.Ports.API, PowerSync: s.plan.Ports.PowerSync, Postgres: s.plan.Ports.Postgres,
 		},
-		URLs: status.URLs{Local: s.LocalURL(), LAN: s.LANURL(), PowerSync: s.powerSyncURL()},
+		URLs: status.URLs{Local: s.LocalURL(), LAN: s.LANURL(), LANIP: s.LANIPURL(),
+			PowerSync: s.powerSyncURL()},
 	}
 	if m := s.manifest; m != nil {
 		c := m.Components

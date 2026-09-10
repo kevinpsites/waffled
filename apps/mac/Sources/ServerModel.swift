@@ -41,10 +41,15 @@ final class ServerModel {
     /// "busy" forever, or never busy at all.
     var busy: Bool { operationTask != nil }
 
-    let location: RuntimeLocation?
+    /// Where the runtime is and which directories it is handed. Not a `let`: the setup
+    /// screen may move the data directory, and every call after that has to carry it.
+    private(set) var location: RuntimeLocation?
     let loginItem = LoginItem()
 
-    private let client: RuntimeClient?
+    private var client: RuntimeClient?
+    /// Kept so the client can be rebuilt around a new data directory without reaching for
+    /// a `Process` — the seam every runtime call goes through stays injected.
+    private let runner: RuntimeProcessRunning
     private var pollTask: Task<Void, Never>?
     private var animationTask: Task<Void, Never>?
     private var operationTask: Task<Void, Never>?
@@ -63,12 +68,23 @@ final class ServerModel {
     /// through the first start.
     private(set) var isFirstRun = false
     private var firstRunDecided = false
+    /// What the "Where things go" screen holds. Bound straight to its controls, and read
+    /// once when the button is clicked.
+    var setupOptions = SetupOptions()
+    private(set) var showingSetupOptions = false
+    /// When the setup click happened: the elapsed clock, and the floor under the
+    /// setting-up step.
+    private(set) var setupStartedAt: Date?
+    /// Ticked once a second while the window is up, so the elapsed clock moves, the log
+    /// line refreshes, and the step re-decides the moment the floor is reached.
+    private(set) var firstRunNow = Date()
+    private(set) var lastLogLine: String?
+    private var firstRunTicker: Task<Void, Never>?
     /// Something has started this run: a click on the window, a click on `Start Waffled`,
     /// or the one auto-start. Derived from the trigger the start recorded, because the two
     /// were only ever written together.
     var setupBegun: Bool { startTrigger != .notUs }
     private var firstRunDismissed = false
-    private var firstRunCloseTask: Task<Void, Never>?
     private let firstRunWindow = FirstRunWindow()
     let isPortable: Bool
 
@@ -82,8 +98,15 @@ final class ServerModel {
          memory: UpdateMemory = UserDefaults.standard,
          runner: RuntimeProcessRunning = SubprocessRunner()) {
         self.memory = memory
-        location = RuntimeLocator.locate(environment: environment, resourceURL: resourceURL)
-        client = location.map { RuntimeClient(location: $0, runner: runner) }
+        self.runner = runner
+        // A folder chosen on a previous launch's setup screen. `WAFFLED_DATA_DIR` is not
+        // read from here: the environment always wins, so a dev run against a scratch
+        // directory can never be overridden by a choice the household made.
+        let chosen = memory.string(forKey: Setup.dataDirectoryKey).map { URL(fileURLWithPath: $0) }
+        let located = RuntimeLocator.locate(environment: environment, resourceURL: resourceURL,
+                                            chosenDataDirectory: chosen)
+        location = located
+        client = located.map { RuntimeClient(location: $0, runner: runner) }
         // Read once: neither the model of this Mac nor its battery changes while the app
         // is running, and the answer is only ever asked for one paragraph.
         isPortable = Hardware.isPortable(hardware)
@@ -119,8 +142,13 @@ final class ServerModel {
     /// The first-run window's whole content, or nil on every launch that gets no window.
     var firstRunPresentation: FirstRunPresentation? {
         FirstRunPresentation.make(status: status, isFirstRun: isFirstRun,
-                                  setupBegun: setupBegun, failure: heldFailure,
-                                  isPortable: isPortable, busy: busy)
+                                  setupBegun: setupBegun, showingOptions: showingSetupOptions,
+                                  failure: heldFailure,
+                                  isPortable: isPortable, busy: busy,
+                                  setupStartedAt: setupStartedAt, now: firstRunNow,
+                                  lastLogLine: lastLogLine,
+                                  preferredPort: SetupOptions.portNumber(setupOptions.port)
+                                      ?? SetupOptions.defaultPort)
     }
 
     /// A first run whose welcome step is still waiting for a person. It holds the
@@ -195,7 +223,7 @@ final class ServerModel {
         animationTask?.cancel()
         operationTask?.cancel()
         transientTask?.cancel()
-        firstRunCloseTask?.cancel()
+        stopFirstRunTicker()
     }
 
     private var pollInterval: TimeInterval { Lifecycle.pollInterval(for: status?.state) }
@@ -292,42 +320,137 @@ final class ServerModel {
     /// there is not, and never comes back once it has been dismissed — closing it during
     /// the start is a person saying "I will watch the menu bar", not "start again".
     private func syncFirstRunWindow() {
-        guard let presentation = firstRunPresentation, !firstRunDismissed else {
-            cancelReadyClose()
+        guard firstRunPresentation != nil, !firstRunDismissed else {
+            stopFirstRunTicker()
             firstRunWindow.close()
             return
         }
         firstRunWindow.show(model: self)
-        // Disarmed the moment the window says something else. Polls carry on during those
-        // two seconds, and the step they arrive at can be one with a button on it.
-        guard Lifecycle.readyCloseStillApplies(step: presentation.step),
-              let closesAfter = presentation.closesAfter else {
-            cancelReadyClose()
+        startFirstRunTicker()
+    }
+
+    /// One second, three jobs: the elapsed clock moves, the last log line refreshes, and
+    /// the setting-up step re-decides itself the moment its minimum display is up. The
+    /// poll loop cannot do any of them — it is two seconds apart and reads a process.
+    private func startFirstRunTicker() {
+        guard firstRunTicker == nil else { return }
+        firstRunTicker = Task { [weak self] in
+            while !Task.isCancelled {
+                self?.tickFirstRun()
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+    }
+
+    private func stopFirstRunTicker() {
+        firstRunTicker?.cancel()
+        firstRunTicker = nil
+    }
+
+    private func tickFirstRun() {
+        firstRunNow = Date()
+        // Only while something is coming up: the welcome step has no log to show, and the
+        // ready step's job is done.
+        guard firstRunPresentation?.step == .starting else {
+            lastLogLine = nil
             return
         }
-        guard firstRunCloseTask == nil else { return }
-        firstRunCloseTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(closesAfter))
-            guard !Task.isCancelled else { return }
-            self?.closeTheReadyWindow()
-        }
-    }
-
-    /// The timer's whole decision, asked again at the moment it fires: cancellation and the
-    /// step can both have moved on while it slept.
-    private func closeTheReadyWindow() {
-        guard Lifecycle.readyCloseStillApplies(step: firstRunPresentation?.step) else { return }
-        dismissFirstRunWindow()
-    }
-
-    private func cancelReadyClose() {
-        firstRunCloseTask?.cancel()
-        firstRunCloseTask = nil
+        lastLogLine = LogTail.lastLine(of: logsDirectory.appendingPathComponent("runtime.log"))
     }
 
     func dismissFirstRunWindow() {
         firstRunDismissed = true
+        stopFirstRunTicker()
         firstRunWindow.close()
+    }
+
+    // MARK: the setup screen
+
+    func showSetupOptions() {
+        showingSetupOptions = true
+        syncFirstRunWindow()
+    }
+
+    func hideSetupOptions() {
+        showingSetupOptions = false
+        syncFirstRunWindow()
+    }
+
+    /// The setup click. Everything the screen collected is applied BEFORE the start, so
+    /// the first boot already uses the chosen folder, port and name — and a `config set`
+    /// that refuses stops the start rather than being started around.
+    func beginSetup() {
+        guard let client, operationTask == nil else { return }
+        let options = setupOptions
+        guard options.problems.isEmpty else { return }
+
+        setupStartedAt = Date()
+        firstRunNow = setupStartedAt ?? Date()
+        showingSetupOptions = false
+        // The login item is launchd's, not the runtime's, and it is set here for the same
+        // reason as the rest: before the server has ever run.
+        loginItem.setEnabled(options.startAtLogin)
+
+        startTrigger = .person
+        autoStartDecided = true
+        failure = nil
+        pollFailure = nil
+        stopFailure = nil
+        syncFirstRunWindow()
+        operationTask = Task { [weak self] in
+            defer { self?.finishOperation() }
+            do {
+                for command in options.commandsBeforeFirstStart {
+                    try await client.apply(command)
+                }
+                try await client.start()
+            } catch {
+                self?.recordFailure(Self.describe(error))
+            }
+            await self?.refresh()
+        }
+    }
+
+    /// The ready step's two buttons. `Open Waffled` is the click a first run waits for —
+    /// nothing opens a browser on its own at the end of one.
+    func openWaffledFromSetup() {
+        alreadyOpenedBrowser = true
+        openWebApp()
+        dismissFirstRunWindow()
+    }
+
+    func copySetupAddress() {
+        guard let address = firstRunPresentation?.address?.host else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(address, forType: .string)
+        note("Copied \(address)")
+    }
+
+    /// The folder picker's answer. Remembered, and carried as `--data` on every runtime
+    /// call from here on — including the `config set`s the setup click is about to make,
+    /// which is why the client is rebuilt now rather than at the start.
+    ///
+    /// `WAFFLED_DATA_DIR` in the environment still wins: a dev run against a scratch
+    /// directory is never overridden by a choice made here.
+    func chooseDataDirectory(_ url: URL?) {
+        setupOptions.dataDirectory = url
+        memory.set(url?.path, forKey: Setup.dataDirectoryKey)
+        guard var location else { return }
+        if !location.dataDirIsFromEnvironment {
+            location.dataDir = url
+            self.location = location
+            client = RuntimeClient(location: location, runner: runner)
+        }
+    }
+
+    /// Where the data directory is, for the row that shows it. The runtime's own answer
+    /// once it has given one, then the resolved location, then the documented default.
+    var dataDirectory: URL {
+        if let dataDir = status?.dataDir, !dataDir.isEmpty {
+            return URL(fileURLWithPath: dataDir)
+        }
+        if let dataDir = location?.dataDir { return dataDir }
+        return Setup.defaultDataDirectory
     }
 
     // MARK: actions
