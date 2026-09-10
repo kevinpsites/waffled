@@ -64,11 +64,12 @@ set up and the server starts by itself, with no window and no browser. A first s
 `initdb` and every migration — 5.5 s on an M1 Max, 18 s measured elsewhere, minutes on a
 slow Mac.
 
-The app is **ad-hoc signed**, which is enough here and nowhere else: copy it to another Mac
-and Gatekeeper will refuse to open it, because none of it is signed with a Developer ID or
-notarized. That is Phase 3 item 5. Nothing re-signs the app after the bundle goes in, and
-the order matters — signing rewrites Mach-O files, so a `codesign --deep` over an embedded
-runtime invalidates every hash in its manifest. See the packaging note in
+That app is **ad-hoc signed**, which is enough here and nowhere else: copy it to another Mac
+and Gatekeeper will refuse to open it. A release is `Scripts/release-mac.sh` (see
+[Releasing](#releasing)), which signs the same tree with a Developer ID and notarizes it.
+Either way the app is re-signed **after** the bundle goes in, and the order matters —
+signing rewrites Mach-O files, so a `codesign --deep` over an embedded runtime invalidates
+every hash in its manifest. See the packaging note in
 [`infra/native/bundle/README.md`](../../infra/native/bundle/README.md).
 
 CI does exactly this on every PR that touches `apps/mac/`, `apps/runtime/` or the bundle
@@ -286,10 +287,11 @@ version. Checks run daily and on the menu item; **installing always asks**, beca
 the household's server for as long as the swap and the migrations take.
 
 **The version Sparkle compares is `CFBundleVersion`**, not the marketing string, so this
-app's `CFBundleVersion` follows `MARKETING_VERSION` (`project.yml`). Two consequences worth
-knowing: it must move on every release, and **`./waffled release` does not bump
-`apps/mac/project.yml` today** — it bumps api, web, compose and iOS. Until item 5 adds it,
-the Mac version is set by hand, and a release that forgets is a release Sparkle cannot see.
+app's `CFBundleVersion` follows `MARKETING_VERSION` (`project.yml`), which `./waffled
+release` bumps along with api, web, compose and iOS. It refuses to release while any of
+them disagree, and `release-mac.sh` refuses to build a DMG whose name does not match this
+file — a release Sparkle cannot tell from the last one is the failure both of those exist
+to prevent.
 
 After an update the menu says so once — `Updated to 0.15.0`, or `Rolled back to 0.14.3` if
 you re-installed an older DMG, which is the supported way back from a bad release. The
@@ -309,7 +311,7 @@ in `project.yml`, and the private half lives in one person's login Keychain.
 puts them in DerivedData:
 `~/Library/Developer/Xcode/DerivedData/*/SourcePackages/artifacts/sparkle/Sparkle/bin/`.
 
-### Publishing a release
+### The appcast itself
 
 ```sh
 apps/mac/Scripts/make-appcast.sh <dir-of-dmgs-or-zips> [out]
@@ -317,8 +319,8 @@ apps/mac/Scripts/make-appcast.sh <dir-of-dmgs-or-zips> [out]
 
 It finds `generate_appcast`, refuses early if the Keychain has no key, and signs every
 archive in the directory into `appcast.xml`. Set `WAFFLED_DOWNLOAD_URL_PREFIX` to the URL
-the archives will live at. Phase 3 item 5's release script is what will call this; nothing
-in CI does.
+the archives will live at. `Scripts/release-mac.sh` calls this with the release's own
+GitHub download prefix; nothing in CI does.
 
 Expect **~3 minutes** per release: it extracts and hashes the whole 671 MB archive. Two
 things that happened while it was first used here, in case they happen to you:
@@ -371,17 +373,42 @@ watching by hand: the server stops, the app is replaced, and the relaunched app 
 `build-app.sh` run. The real version lives in `project.yml` and is bumped by
 `./waffled release`.
 
-## What is not here yet
+## Releasing
 
-Phase 3 item numbers from `docs/product/native-mac-plan.md` §7:
+Two commands, in this order, and the second only runs on the Mac that holds the keys.
 
-| missing | item |
-|---|---|
-| Developer ID signing + notarization of every embedded binary, and the DMG | 5 |
+```sh
+./waffled release 0.15.0                 # anywhere: versions, changelog, tag, push
+apps/mac/Scripts/release-mac.sh 0.15.0   # the signing Mac: DMG, notarization, upload
+```
 
-Signing is the last piece, and it now has one more rule to obey: `Sparkle.framework`
-carries its own nested `Autoupdate`, `Updater.app` and XPC services, which have to be signed
-**inside-out** before the app that contains them.
+`./waffled release` bumps `project.yml`'s `MARKETING_VERSION` (which `CFBundleVersion`
+follows, which is what Sparkle compares) alongside api, web, compose and iOS, and refuses to
+release while any of them disagree. Then `release-mac.sh` asserts that version against
+`project.yml`, builds the runtime bundle and the app, signs everything, notarizes and
+staples the app **and** the DMG, generates the appcast, and uploads both to the GitHub
+Release the tag created — waiting for that Release to exist, since the tag push is what
+makes it. Options: `--no-upload`, `--no-notarize`, and `--adhoc` for an unsigned DMG you
+can only test locally. `--help` lists them.
+
+Signing settings come from **`~/.config/waffled/signing.conf`** — see
+[`signing.example.conf`](signing.example.conf). It holds names only (the identity, the team,
+the notarytool profile); the certificate's private key, the notarization password and the
+Sparkle EdDSA key all live in the login Keychain, which is why this is a local command and
+not a workflow. Environment variables of the same name override the file, and with neither
+the build is ad hoc — which is what CI does, deliberately.
+
+**The first `codesign` of a session may raise a Keychain dialog.** A headless shell cannot
+answer one, so a run that appears to hang at 0% CPU is a dialog waiting on the screen. Click
+*Always Allow* once.
+
+`dist/` (gitignored) holds `runtime/` (the bundle this release was built from), `app/`
+(the signed, notarized, stapled `Waffled.app` and its DerivedData) and `release/` — the two
+files that get uploaded, `Waffled-<version>.dmg` and `appcast.xml`. Every step replaces what
+it wrote last time, so a run that failed at notarization can simply be run again.
+
+The signing order is not adjustable; the reasoning is in
+[`CLAUDE.md`](CLAUDE.md#signing-a-release).
 
 ## Building and testing
 

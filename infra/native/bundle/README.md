@@ -103,7 +103,7 @@ the pinned Node first and every subsequent step (including `npx pnpm@11.0.9`) ru
 *that* Node with its `bin/` prepended to `PATH`, never the runner's own.
 
 The same job then **builds the Mac app around the bundle it just made**: `brew install
-xcodegen`, `xcodebuild test` for `apps/mac` (89 unit tests), then
+xcodegen`, `xcodebuild test` for `apps/mac` (120 unit tests), then
 `apps/mac/Scripts/build-app.sh "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/app"`, which clones this
 tree into `Waffled.app/Contents/Resources/runtime` and makes the *embedded* supervisor verify
 the *embedded* bundle. Finally it boots the assembled app with **no dev-mode environment
@@ -112,11 +112,13 @@ variables** — only `WAFFLED_DATA_DIR`, pointed at a temp directory — and wai
 stopping it again. The 671 MB `.app` is uploaded (zipped with `ditto -c -k`, which keeps the
 1,338 symlinks) only on push to `main`, for three days; PRs skip it.
 
-**Phase 3 item 5 will extend the same job again** (signing): codesign every Mach-O in the tree
-with the Developer ID (Postgres dylibs and Caddy included — EDB's signature does not survive
-our notarization and Caddy ships ad-hoc signed), then notarize. Signing changes the bytes, so
-**the manifest must be written after signing** — CI should re-run `node manifest.mjs write`
-(or `build.sh` grows a `sign` step) after codesign and `verify` once more. Note what this does
+**Signing happens outside this script and outside CI**, in `apps/mac/Scripts/release-mac.sh`:
+it codesigns every Mach-O in the tree with the Developer ID (Postgres dylibs and Caddy
+included — EDB's signature does not survive our notarization and Caddy ships ad-hoc signed),
+then notarizes. 124 files in the 0.14.3 bundle, found by Mach-O magic rather than extension.
+Signing changes the bytes, so **the manifest must be written after signing** — that script
+re-runs `manifest.mjs write` with the metadata carried over from the build's own manifest,
+and then makes the embedded supervisor verify it. Note what this does
 *not* constrain: embedding needs no signature, and a **shallow** re-sign of the app
 (`codesign --force --sign - Waffled.app`) touches only `Contents/MacOS/Waffled` and
 `_CodeSignature/`, neither of which the runtime manifest covers. It is `--deep` that rewrites
@@ -128,7 +130,7 @@ the embedded Mach-O files and invalidates their hashes.
 |---|---|---|---|---|
 | Node | `https://nodejs.org/dist/v24.19.0/node-v24.19.0-darwin-arm64.tar.gz` | 24.19.0 | **116 MB** | One static binary. Homebrew's node is a 49 KB stub linked to `/opt/homebrew/...` dylibs — never bundle it. |
 | Postgres server | npm `@embedded-postgres/darwin-arm64@16.14.0-beta.17` (EDB's build, Developer ID signed, universal) | 16.14 | **69 MB** (bin 10, lib 54, share 5) | 131 MB unpacked → 69 MB after `lipo -thin arm64` on 112 fat Mach-O files. ICU data alone is 27 MB (was 55). 17 lib symlinks recreated from the package's `pg-symlinks.json`. |
-| Postgres client tools | `https://github.com/theseus-rs/postgresql-binaries/releases/download/16.14.0/postgresql-16.14.0-aarch64-apple-darwin.tar.gz` | 16.14.0 | (in the 69 MB, ~1.5 MB) | `pg_dump`, `pg_restore`, `pg_isready`, `psql` — the npm repack ships none of them, EDB's full zip is ~300 MB. theseus is a complete arm64 build of the *same minor*; its tools link `@loader_path/../lib/libpq.5.dylib` (+ `libcrypto.3.dylib`), which EDB's `lib/` provides, so they drop into the same `bin/`. Ad-hoc signed (re-signed in Phase 3 anyway). |
+| Postgres client tools | `https://github.com/theseus-rs/postgresql-binaries/releases/download/16.14.0/postgresql-16.14.0-aarch64-apple-darwin.tar.gz` | 16.14.0 | (in the 69 MB, ~1.5 MB) | `pg_dump`, `pg_restore`, `pg_isready`, `psql` — the npm repack ships none of them, EDB's full zip is ~300 MB. theseus is a complete arm64 build of the *same minor*; its tools link `@loader_path/../lib/libpq.5.dylib` (+ `libcrypto.3.dylib`), which EDB's `lib/` provides, so they drop into the same `bin/`. Ad-hoc signed (re-signed for a release anyway). |
 | Caddy | `https://github.com/caddyserver/caddy/releases/download/v2.11.4/caddy_2.11.4_mac_arm64.tar.gz` | 2.11.4 | **45 MB** | Ad-hoc signed upstream. |
 | waffled-runtime | `apps/runtime` (`go build -trimpath -ldflags "-s -w -X main.version=…"`) | 0.14.3 | **7 MB** | The supervisor, built before the manifest so it is *in* it. `-s -w` drops the symbol and DWARF tables; the `-X` stamps the version `waffled-runtime version` prints, which `verify` then asserts — so a stale binary from an earlier build fails the check instead of passing it. |
 | api | `apps/api` (esbuild, `npm run build`) | 0.14.3 | **11 MB** | dist 10 MB incl. sourcemaps (server.js ≈ 3 MB), 92 migrations 0.4 MB. |
@@ -348,7 +350,7 @@ reference implementation (~60 lines) for the Go port.
 - **`@napi-rs/snappy`** must be the darwin-arm64 prebuild → `--ignore-scripts` is fine (prebuilt),
   and `verify` loads the `.node` file.
 - Caddy ships **ad-hoc signed**; EDB binaries carry EDB's Developer ID — both get re-signed by
-  us in Phase 3, which is also why the manifest has to be regenerated after signing.
+  us at release time, which is also why the manifest has to be regenerated after signing.
 
 New gotchas found while writing this script:
 
@@ -379,9 +381,9 @@ New gotchas found while writing this script:
 - **Postgres could come entirely from theseus** (a complete arm64 PG 16.14 in 40 MB, no lipo, no
   symlink hydration, all tools). Not switched because the spike verified EDB's build end to end
   (logical replication, pgcrypto, scram) and this task only adds client tools; worth a
-  spike-level check before Phase 3 since it would also remove the mixed-signer question.
-- **Signing / notarization** is Phase 3 item 5; `build.sh` has no `sign` step yet (see "How CI
-  does it today" for the ordering constraint with the manifest).
+  spike-level check one day, though release-mac.sh re-signing every binary has already settled the mixed-signer question.
+- **Signing / notarization** lives in `apps/mac/Scripts/release-mac.sh`, not here; `build.sh` has
+  no `sign` step (see "How CI does it today" for the ordering constraint with the manifest).
 - **Universal (x86_64) bundle** — out of scope (plan §7 "Later"); `ARCH` is a constant, the
   theseus and Node sources both publish x86_64 artifacts, EDB's are universal already.
 - `manifest.json` is 8.5 MB because PowerSync has 35k files. Acceptable; if it ever matters,
