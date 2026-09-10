@@ -376,6 +376,8 @@ bump_line() { # bump_line <file> <sed-expression>
   if cmp -s "$f" "$tmp"; then
     rm -f "$tmp"
     echo "${c_red}$f is unchanged — nothing matched: $expr${c_reset}" >&2
+    echo "Nothing was committed or tagged. Earlier version sites may already be bumped;" >&2
+    echo "discard them with: git checkout -- apps infra" >&2
     exit 1
   fi
   mv "$tmp" "$f"

@@ -509,7 +509,7 @@ took
 # it; the EdDSA signature is made in the Keychain and never leaves it.
 step "12. the Sparkle appcast"
 if [ "$NOTARIZE" != yes ]; then
-  warn "skipped (--no-notarize): an unnotarized DMG must never be fed to Sparkle"
+  warn "skipped: an unnotarized DMG must never be fed to Sparkle, so it gets no feed"
 else
   WAFFLED_DOWNLOAD_URL_PREFIX="https://github.com/$REPO/releases/download/v$VERSION/" \
     "$HERE/make-appcast.sh" "$RELEASE" "$RELEASE/appcast.xml" || die "make-appcast.sh failed"
