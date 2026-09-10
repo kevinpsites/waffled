@@ -167,7 +167,7 @@ struct RuntimeClient {
             throw RuntimeClientError.commandFailed(
                 command: command,
                 exitCode: result.exitCode,
-                message: Self.cleaned(result.standardError))
+                message: Self.failureMessage(result.standardError))
         }
         return result
     }
@@ -186,18 +186,43 @@ struct RuntimeClient {
         return argv + trailing
     }
 
-    /// The runtime prefixes its refusals with "✗ ". That mark is for a terminal; in a
-    /// menu it is noise in front of the sentence someone needs to read.
-    private static func cleaned(_ stderr: String) -> String {
-        stderr
+    /// What a failed command actually said, out of everything it wrote to stderr.
+    ///
+    /// The runtime narrates as it works and prints its refusal to the same stream, so the
+    /// raw text opens with "bundle verified …" and buries the reason below. Taken whole,
+    /// the error window and the menu both led with an INFO line.
+    ///
+    /// The refusal is marked with "✗ " and its detail follows underneath, so that mark is
+    /// the cut. Without one — a panic, or a bundled tool's own stderr — the narration is
+    /// dropped by shape instead. A stream that is nothing BUT narration is kept as it is:
+    /// a blank window says even less than the wrong line.
+    static func failureMessage(_ stderr: String) -> String {
+        let lines = stderr
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { line -> String in
-                var line = String(line)
-                if line.hasPrefix("✗ ") { line.removeFirst(2) }
-                return line.trimmingCharacters(in: .whitespaces)
-            }
-            .joined(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+
+        if let mark = lines.firstIndex(where: { $0.hasPrefix("\u{2717} ") }) {
+            var kept = Array(lines[mark...])
+            kept[0].removeFirst(2)
+            return kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let withoutNarration = lines.filter { !Self.isLogLine($0) }
+        guard withoutNarration.contains(where: { !$0.isEmpty }) else {
+            return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return withoutNarration.joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The runtime's own log shape: `2026-09-10 09:33:11 info  …`. Matched rather than
+    /// parsed — this only has to decide whether a line is narration.
+    private static func isLogLine(_ line: String) -> Bool {
+        let parts = line.split(separator: " ", maxSplits: 3, omittingEmptySubsequences: true)
+        guard parts.count >= 3 else { return false }
+        return parts[0].count == 10 && parts[0].filter { $0 == "-" }.count == 2
+            && parts[1].contains(":")
+            && ["info", "warn", "error", "debug"].contains(String(parts[2]))
     }
 }
 
