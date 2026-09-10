@@ -282,7 +282,20 @@ func (a *Agent) Plist() ([]byte, error) {
 	header := xml.Header +
 		"<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" " +
 		"\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
-	return append([]byte(header), append(body, '\n')...), nil
+	return append([]byte(header), append(selfCloseBooleans(body), '\n')...), nil
+}
+
+// selfCloseBooleans rewrites `<false></false>` as `<false/>`.
+//
+// Not cosmetic: launchd refuses the long spelling. `launchctl bootstrap` answers
+// "Bootstrap failed: 5: Input/output error" and loads nothing, so the nightly backup is
+// never scheduled — measured on macOS 15.7 against two dictionaries that `plutil -lint`
+// and every plist reader here call identical. encoding/xml always writes the long form
+// for an empty element and offers no way to ask for the short one, so this is done to the
+// bytes. `<true>`/`<false>` are the only empty elements this plist has.
+func selfCloseBooleans(body []byte) []byte {
+	body = bytes.ReplaceAll(body, []byte("<false></false>"), []byte("<false/>"))
+	return bytes.ReplaceAll(body, []byte("<true></true>"), []byte("<true/>"))
 }
 
 // The minimum of the plist XML grammar this one job needs. Property lists are an ordered
