@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/kevinpsites/waffled/apps/runtime/internal/backup"
+	"github.com/kevinpsites/waffled/apps/runtime/internal/bonjour"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/caddyconf"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/configenv"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/datadir"
@@ -250,11 +251,23 @@ func (s *Supervisor) Manifest() *manifest.Manifest { return s.manifest }
 // tablet and bookmark in the household points at it, so silently moving would look like
 // the server had vanished.
 func (s *Supervisor) settlePorts(firstRun bool) error {
+	preferred, err := preferredPublicPort(s.plan.Env)
+	if err != nil {
+		return err
+	}
 	if s.state.Ports.Public == 0 {
 		firstRun = true
 	}
+	if !firstRun && preferred != s.state.Ports.Public && s.plan.Env.Get(KeyHTTPPort) != "" {
+		// The household asked for a different port by setting HTTP_PORT. That is the one
+		// thing that may move a published port, because it is a person saying so — and
+		// it still only ever *prefers* it: a busy choice falls forward like any other.
+		if err := s.movePublicPort(preferred); err != nil {
+			return err
+		}
+	}
 	if firstRun {
-		chosen, err := choosePorts(ports.IsFree)
+		chosen, err := choosePorts(ports.IsFree, preferred)
 		if err != nil {
 			return err
 		}
@@ -281,6 +294,34 @@ func (s *Supervisor) settlePorts(firstRun bool) error {
 				c.Service, err, s.plan.Layout.RuntimeJSON)
 		}
 	}
+	return nil
+}
+
+// movePublicPort re-picks Caddy's public port after a household changed HTTP_PORT.
+//
+// It is the one thing allowed to move a port other devices remember, because a person
+// asked for it. It still refuses to do so under a running server: our own Caddy is bound
+// to the old port, and rewriting runtime.json underneath it would make `status` report
+// an address nothing is listening on. The change then lands at the next start.
+func (s *Supervisor) movePublicPort(preferred int) error {
+	if s.ownsPort(services.Caddy) {
+		s.log.Warnf("%s is %d, but Waffled is running on %d — the new port takes effect at the next start",
+			KeyHTTPPort, preferred, s.state.Ports.Public)
+		return nil
+	}
+	// Every other port this install already holds is excluded, so the new public port
+	// cannot be handed out on top of one of them.
+	p := s.state.Ports
+	chosen, err := pickWith(ports.IsFree, ports.Public, preferred, portScanWindow,
+		[]int{p.PowerSyncPublic, p.API, p.PowerSync, p.Postgres})
+	if err != nil {
+		return err
+	}
+	if chosen != s.state.Ports.Public {
+		s.log.Infof("public port moves from %d to %d (%s=%d)",
+			s.state.Ports.Public, chosen, KeyHTTPPort, preferred)
+	}
+	s.state.Ports.Public = chosen
 	return nil
 }
 
@@ -729,19 +770,39 @@ func (s *Supervisor) LocalURL() string {
 // LANURL is the address to give a phone or the kiosk tablet. Empty when this Mac has no
 // routable address — the menu should then say "not on a network" rather than show
 // localhost, which only ever works here.
+// It is WAFFLED_PUBLIC_HOST that decides which form that address takes — this Mac's IP,
+// its multicast name, or a name the household pointed at it — and this is the one place
+// that decides, so the status document, the Bonjour TXT record and the "green →" line
+// can never disagree about where Waffled is.
 func (s *Supervisor) LANURL() string {
-	ip := lanIP()
-	if ip == "" {
-		return ""
-	}
-	return fmt.Sprintf("http://%s:%d", ip, s.plan.Ports.Public)
+	return publicURL(s.plan.Env.Get(KeyPublicHost), lanIP(), multicastHost(), s.plan.Ports.Public)
 }
 
+// LANIPURL is the address that works on any network, whatever form LANURL takes: the
+// "if a device can't find that name, use this" line the setup window shows.
+func (s *Supervisor) LANIPURL() string {
+	return publicURL(PublicHostIP, lanIP(), "", s.plan.Ports.Public)
+}
+
+// powerSyncURL follows the same setting. The api derives each client's sync endpoint
+// from the address that client actually reached it on, so this value is what `status`
+// reports rather than what any device is told — but a status document naming two
+// different hosts for one server is a support call.
 func (s *Supervisor) powerSyncURL() string {
-	if ip := lanIP(); ip != "" {
-		return fmt.Sprintf("http://%s:%d", ip, s.plan.Ports.PowerSyncPublic)
+	if url := publicURL(s.plan.Env.Get(KeyPublicHost), lanIP(), multicastHost(),
+		s.plan.Ports.PowerSyncPublic); url != "" {
+		return url
 	}
 	return fmt.Sprintf("http://127.0.0.1:%d", s.plan.Ports.PowerSyncPublic)
+}
+
+// multicastHost is this Mac's `<hostname>.local`, or empty when it has no usable one.
+func multicastHost() string {
+	host, err := os.Hostname()
+	if err != nil {
+		return ""
+	}
+	return bonjour.Host(host)
 }
 
 // lanIP finds this Mac's address on the local network by asking the routing table which
