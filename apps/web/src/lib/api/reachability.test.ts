@@ -66,6 +66,36 @@ describe('server reachability store', () => {
     expect(getServerReachability()).toBe('reachable')
   })
 
+  it('drops a grace flip that comes due after the device has gone offline', () => {
+    reportNetworkFailure() // armed while the Wi-Fi was still up
+    setDeviceOnline(false)
+    vi.advanceTimersByTime(UNREACHABLE_GRACE_MS)
+    expect(getServerReachability()).toBe('reachable')
+
+    // …and the dropped flip left no half-counted outage behind: back online, one
+    // failure is a blip again, not the second of two.
+    setDeviceOnline(true)
+    reportNetworkFailure()
+    expect(getServerReachability()).toBe('reachable')
+  })
+
+  it('probes at once when the device comes back, instead of waiting out the backoff', async () => {
+    const fetchMock = vi.fn(async () => gateway())
+    configureReachability({ fetch: fetchMock as unknown as typeof fetch })
+    reportNetworkFailure()
+    reportNetworkFailure()
+    await vi.advanceTimersByTimeAsync(70_000) // long enough to be on the 15s cadence
+    const beforeReconnect = fetchMock.mock.calls.length
+
+    window.dispatchEvent(new Event('online'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fetchMock).toHaveBeenCalledTimes(beforeReconnect + 1)
+
+    // The backoff clock restarted with the reconnection, so it's 5s again, not 15s.
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(fetchMock).toHaveBeenCalledTimes(beforeReconnect + 2)
+  })
+
   it('flips on a lone non-answer that is still unanswered after the grace window', () => {
     reportNetworkFailure()
     vi.advanceTimersByTime(2999)

@@ -68,6 +68,13 @@ function clearTimers(): void {
 
 function becomeUnreachable(): void {
   if (state === 'unreachable') return
+  // A flip armed before the Wi-Fi dropped must not land during the offline window:
+  // it would stamp `unreachableSince`, and the backoff would still be counting when
+  // the link returns — up to 15s of outage strip over a server that never stopped.
+  if (deviceOffline()) {
+    consecutiveNoAnswers = 0
+    return
+  }
   state = 'unreachable'
   unreachableSince = deps.now()
   clearTimers()
@@ -193,6 +200,16 @@ export function probeServerNow(): Promise<Answer> {
     probeTimer = undefined
   }
   return probe()
+}
+
+// The link is back: ask straight away rather than sitting out a backoff step that
+// was counting through a window in which nothing could have answered anyway.
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    if (state !== 'unreachable') return
+    unreachableSince = deps.now()
+    void probeServerNow()
+  })
 }
 
 export function useServerReachability(): Reachability {
