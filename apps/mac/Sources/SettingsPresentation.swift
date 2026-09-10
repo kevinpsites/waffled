@@ -22,6 +22,15 @@ struct SettingsPresentation: Equatable {
     /// The reasons Apply is off, in the same words the first-run screen uses.
     var problems: [String]
     var applyEnabled: Bool
+    /// What the primary button does when it is clicked. Apply going dead the moment it
+    /// worked left the only way forward — a restart — in a menu the person was not
+    /// looking at, under a note they had to scroll to find.
+    var primaryAction: Action
+
+    enum Action: Equatable {
+        case apply
+        case restart
+    }
     /// A change the running server will not notice until it is restarted. Saying so is the
     /// difference between "that did not work" and "that is waiting for you".
     var needsRestart: Bool
@@ -40,11 +49,13 @@ struct SettingsPresentation: Equatable {
             so before you apply it.
             """
         static let apply = "Apply"
+        static let restart = "Restart Waffled"
         static let close = "Close"
         static let move = "Move…"
         static let restartNote = """
-            Waffled is still running on the old address. Choose Restart Waffled in the menu \
-            bar to use the new one — nothing is lost by waiting.
+            Phones and tablets that find Waffled on their own are still being handed the old \
+            address. Restart when it suits you — nothing is lost by waiting, and anything \
+            already pointed at this Mac keeps working.
             """
         static let applied = "Settings applied." 
         static let movedNote = "Waffled's files are here now. The server was restarted to use them."
@@ -85,6 +96,13 @@ struct SettingsPresentation: Equatable {
         let problems = options.problems
         let changed = !options.commandsForChange(from: saved).isEmpty
         let port = status?.ports.public ?? 0
+        // Only the address is read at start. The nightly backup is installed into launchd
+        // there and then, and a provider key is read per request by the api.
+        let restartPending = (options.publicHost != saved.publicHost || awaitingRestart)
+            && status?.state == .running
+        // Nothing left to apply, but something left to do: the button becomes that thing
+        // rather than greying out and leaving the person to find it in the menu.
+        let offerRestart = !changed && restartPending
 
         return SettingsPresentation(
             title: Copy.title,
@@ -94,15 +112,11 @@ struct SettingsPresentation: Equatable {
             portValue: port > 0 ? String(port) : "—",
             portNote: Copy.portReadOnly,
             problems: problems,
-            applyEnabled: changed && problems.isEmpty && !busy,
-            // Only the address is read at start. The nightly backup is installed into
-            // launchd there and then, and a provider key is read per request by the api.
-            // Either a change waiting to be applied, or one applied and not yet picked up
-            // — and neither matters unless a server is actually running on the old value.
-            needsRestart: (options.publicHost != saved.publicHost || awaitingRestart)
-                && status?.state == .running,
+            applyEnabled: (offerRestart || changed) && problems.isEmpty && !busy,
+            primaryAction: offerRestart ? .restart : .apply,
+            needsRestart: restartPending,
             confirmation: applied ? Copy.applied : nil,
-            primaryButton: Copy.apply,
+            primaryButton: offerRestart ? Copy.restart : Copy.apply,
             secondaryButton: Copy.close)
     }
 }

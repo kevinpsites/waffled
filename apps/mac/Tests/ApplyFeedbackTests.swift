@@ -35,8 +35,9 @@ final class ApplyFeedbackTests: XCTestCase {
         let after = screen(options: changed, saved: changed, status: try running(),
                            awaitingRestart: true)
         XCTAssertTrue(after.needsRestart,
-                      "the server is still running on the old address — that is when it matters")
-        XCTAssertFalse(after.applyEnabled, "there is nothing left to apply")
+                      "discovery is still handing out the old address — that is when it matters")
+        XCTAssertEqual(after.primaryAction, .restart,
+                       "nothing left to apply, so the button becomes the thing that is left")
     }
 
     func testNoRestartNoteOnceTheServerHasBeenRestarted() throws {
@@ -52,6 +53,43 @@ final class ApplyFeedbackTests: XCTestCase {
         let stopped = try RuntimeStatus.decode(Fixtures.data(Fixtures.minimalStopped))
         XCTAssertFalse(screen(options: settled, saved: settled, status: stopped,
                               awaitingRestart: true).needsRestart)
+    }
+
+    /// The fix for what a real install ran into: Apply greyed itself out the moment it
+    /// worked, so the only way forward — a restart — was in a menu the person was not
+    /// looking at, under a note they had to scroll to reach. The button becomes the next
+    /// thing to do instead.
+    func testTheButtonBecomesTheRestartOnceThereIsNothingLeftToApply() throws {
+        var changed = SetupOptions()
+        changed.addressMode = .ip
+
+        let pending = screen(options: changed, saved: SetupOptions(), status: try running())
+        XCTAssertEqual(pending.primaryAction, .apply, "there is still something to apply")
+        XCTAssertEqual(pending.primaryButton, "Apply")
+
+        let applied = screen(options: changed, saved: changed, status: try running(),
+                             awaitingRestart: true)
+        XCTAssertEqual(applied.primaryAction, .restart)
+        XCTAssertEqual(applied.primaryButton, "Restart Waffled")
+        XCTAssertTrue(applied.applyEnabled, "and it has to be clickable to be any use")
+    }
+
+    /// With nothing pending and nothing to restart, the button is Apply and it is off.
+    func testTheButtonIsAQuietApplyWhenThereIsNothingToDo() throws {
+        let settled = SetupOptions()
+        let quiet = screen(options: settled, saved: settled, status: try running())
+        XCTAssertEqual(quiet.primaryAction, .apply)
+        XCTAssertFalse(quiet.applyEnabled)
+    }
+
+    /// A change still outstanding wins: applying it is the next thing, not restarting for
+    /// an earlier one.
+    func testAnOutstandingChangeIsAppliedBeforeAnyRestartIsOffered() throws {
+        var changed = SetupOptions()
+        changed.backupAt = "01:00"
+        let both = screen(options: changed, saved: SetupOptions(), status: try running(),
+                          awaitingRestart: true)
+        XCTAssertEqual(both.primaryAction, .apply)
     }
 
     /// The window has to say Apply worked. The menu-bar note it used to post is invisible

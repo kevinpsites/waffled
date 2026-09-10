@@ -95,7 +95,12 @@ struct FirstRunView: View {
         case let .settings(screen):
             SetupFooter(
                 secondary: (screen.secondaryButton, { model.closeSettings() }),
-                primary: (screen.primaryButton, { model.applySettings() }),
+                primary: (screen.primaryButton, {
+                    switch screen.primaryAction {
+                    case .apply: model.applySettings()
+                    case .restart: model.restartServer()
+                    }
+                }),
                 primaryEnabled: screen.applyEnabled)
         }
     }
