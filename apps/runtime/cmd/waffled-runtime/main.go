@@ -7,6 +7,7 @@
 //	waffled-runtime logs [service] [-f] [-n N]
 //	waffled-runtime doctor [--json]
 //	waffled-runtime uninstall [--delete-data] [--dry-run] [--json] [--yes]
+//	waffled-runtime move --to DIR [--dry-run] [--json]
 //	waffled-runtime version
 //
 // It is a CLI first, deliberately: everything the menu-bar app does, support can ask
@@ -51,6 +52,7 @@ Usage:
   waffled-runtime doctor [flags]    diagnose a stack that will not start
   waffled-runtime uninstall [flags] remove what the runtime put on this Mac (keeps your data)
   waffled-runtime config set KEY=VALUE   write one setting into config.env
+  waffled-runtime move [flags]      move the data directory to another folder
   waffled-runtime version
 
 Common flags:
@@ -77,6 +79,12 @@ restore:
 config set:
   KEY=VALUE      the setting to write; the key is upper case and the value is never
                  printed back. Creates the data directory and config.env if needed.
+move:
+  --to DIR       the folder to move the data directory to; it must be empty, on this
+                 Mac, and not inside the folder being moved. Refuses while the server
+                 is running — stop it first.
+  --dry-run      print what would happen and change nothing
+  --json         machine-readable output
 uninstall:
   --delete-data  also delete the data directory — the database, media, backups and the
                  secrets in config.env, which cannot be recovered (default: keep it)
@@ -116,6 +124,8 @@ func run(args []string) error {
 		return cmdUninstall(args[1:])
 	case "config":
 		return cmdConfig(args[1:])
+	case "move":
+		return cmdMove(args[1:])
 	case "version", "--version", "-v":
 		fmt.Printf("waffled-runtime %s\n", version)
 		return nil

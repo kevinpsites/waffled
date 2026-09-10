@@ -827,18 +827,7 @@ func dirSize(root string) int64 {
 	return total
 }
 
-func humanBytes(n int64) string {
-	const unit = 1024
-	if n < unit {
-		return fmt.Sprintf("%d B", n)
-	}
-	div, exp := int64(unit), 0
-	for rest := n / unit; rest >= unit; rest /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
-}
+func humanBytes(n int64) string { return datadir.HumanBytes(n) }
 
 func readPidfile(path string) (int, error) {
 	raw, err := os.ReadFile(path)

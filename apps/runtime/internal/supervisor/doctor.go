@@ -7,10 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/kevinpsites/waffled/apps/runtime/internal/backup"
+	"github.com/kevinpsites/waffled/apps/runtime/internal/datadir"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/ports"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/schedule"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/services"
@@ -300,10 +300,4 @@ func writableCheck(dir string) error {
 	return os.Remove(probe)
 }
 
-func freeDiskBytes(path string) (uint64, error) {
-	var st syscall.Statfs_t
-	if err := syscall.Statfs(path, &st); err != nil {
-		return 0, err
-	}
-	return st.Bavail * uint64(st.Bsize), nil
-}
+func freeDiskBytes(path string) (uint64, error) { return datadir.FreeBytes(path) }
