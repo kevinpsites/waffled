@@ -569,9 +569,22 @@ final class ServerModel {
                 self?.note("Waffled's files are in \(destination.lastPathComponent) now")
             } catch {
                 self?.recordFailure(Self.describe(error))
+                // A move that refused leaves the household in the old folder, whole — but
+                // the stop that came first really happened. Bring the server back, or a
+                // full disk costs a household their server as well as their move.
+                if wasRunning { await self?.restartAfterFailedMove() }
             }
             await self?.refresh()
         }
+    }
+
+    /// Putting back what the move took down. `client` is read again rather than captured,
+    /// because a move that got as far as the data directory has already rebuilt it — and
+    /// the failure being reported is the move's, so a start that also fails must not
+    /// replace the sentence explaining why.
+    private func restartAfterFailedMove() async {
+        guard let client else { return }
+        try? await client.start()
     }
 
     private func rememberApplied(_ options: SetupOptions) {
