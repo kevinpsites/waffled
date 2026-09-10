@@ -154,11 +154,4 @@ struct RuntimeCommand: Equatable {
     static func configSet(_ key: String, _ value: String) -> RuntimeCommand {
         RuntimeCommand(subcommand: "config", flags: ["set"], trailing: ["\(key)=\(value)"])
     }
-
-    /// What the menu may show about a command that failed, with no value in it: these
-    /// carry provider keys.
-    var describedForPeople: String {
-        trailing.first.flatMap { $0.split(separator: "=").first.map(String.init) }
-            ?? ([subcommand] + flags).joined(separator: " ")
-    }
 }

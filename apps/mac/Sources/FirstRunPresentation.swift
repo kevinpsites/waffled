@@ -212,8 +212,9 @@ struct FirstRunPresentation: Equatable {
                               lastLogLine: lastLogLine)
         guard status?.state == .running else { return coming }
         // A start that beat the floor keeps the checklist up, every row ticked, until it
-        // is reached. The step is a person's only sight of what was installed.
-        if let setupStartedAt, now.timeIntervalSince(setupStartedAt) < minimumStartingDisplay {
+        // is reached. The step is a person's only sight of what was installed, and the
+        // rule lives in `Lifecycle` with the app's other timing decisions.
+        guard Lifecycle.startingDisplayHasElapsed(since: setupStartedAt, now: now) else {
             return coming
         }
         return ready(status: status, preferredPort: preferredPort)

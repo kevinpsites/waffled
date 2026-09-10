@@ -320,12 +320,19 @@ final class ServerModel {
     /// there is not, and never comes back once it has been dismissed — closing it during
     /// the start is a person saying "I will watch the menu bar", not "start again".
     private func syncFirstRunWindow() {
-        guard firstRunPresentation != nil, !firstRunDismissed else {
+        guard let presentation = firstRunPresentation, !firstRunDismissed else {
             stopFirstRunTicker()
             firstRunWindow.close()
             return
         }
         firstRunWindow.show(model: self)
+        // Only the setting-up step has anything that moves. The welcome step is waiting for
+        // a person and the ready step is finished, and a timer re-rendering either of them
+        // once a second for as long as it sits open is work nobody asked for.
+        guard presentation.step == .starting else {
+            stopFirstRunTicker()
+            return
+        }
         startFirstRunTicker()
     }
 
@@ -347,12 +354,13 @@ final class ServerModel {
         firstRunTicker = nil
     }
 
+    /// The tick that moves the clock is also the one that can end the step, so it stops
+    /// itself rather than waiting up to a poll for `syncFirstRunWindow` to notice.
     private func tickFirstRun() {
         firstRunNow = Date()
-        // Only while something is coming up: the welcome step has no log to show, and the
-        // ready step's job is done.
         guard firstRunPresentation?.step == .starting else {
             lastLogLine = nil
+            stopFirstRunTicker()
             return
         }
         lastLogLine = LogTail.lastLine(of: logsDirectory.appendingPathComponent("runtime.log"))
@@ -385,17 +393,12 @@ final class ServerModel {
         guard options.problems.isEmpty else { return }
 
         let devMode = isDevMode
-        setupStartedAt = Date()
-        firstRunNow = setupStartedAt ?? Date()
+        let clicked = Date()
+        setupStartedAt = clicked
+        firstRunNow = clicked
         showingSetupOptions = false
-        // The login item is launchd's, not the runtime's, and it is set here for the same
-        // reason as the rest: before the server has ever run. Not in dev mode — that would
-        // register whatever build is running to start the household's Mac at every login.
-        if !isDevMode {
-            loginItem.setEnabled(options.startAtLogin)
-        }
 
-        startTrigger = .person
+        startTrigger = .setup
         autoStartDecided = true
         failure = nil
         pollFailure = nil
@@ -406,6 +409,14 @@ final class ServerModel {
             do {
                 for command in options.commandsBeforeFirstStart(isDevMode: devMode) {
                     try await client.apply(command)
+                }
+                // After the config writes and before the start, so a screen that could not
+                // be applied does not leave a login item registered for a Waffled that was
+                // never set up — the one thing here that `Try again` would not redo. Never
+                // in dev mode: that would register whichever build is running to start the
+                // household's Mac at every login.
+                if !devMode {
+                    self?.loginItem.setEnabled(options.startAtLogin)
                 }
                 try await client.start()
             } catch {

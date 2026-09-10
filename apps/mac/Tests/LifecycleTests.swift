@@ -85,8 +85,15 @@ final class LifecycleTests: XCTestCase {
             "a person clicked Start Waffled and is waiting for something to happen")
 
         XCTAssertFalse(Lifecycle.shouldOpenBrowser(
-            newState: .running, trigger: .person, isFirstRun: true, alreadyOpened: false),
+            newState: .running, trigger: .setup, isFirstRun: true, alreadyOpened: false),
             "a first run ends on the ready step, whose Open Waffled button is the click")
+
+        // `isFirstRun` is latched for the whole process, so it must not be what suppresses
+        // this: a Stop then Start from the menu, in the same session as the setup, is a
+        // person waiting for something to happen like any other.
+        XCTAssertTrue(Lifecycle.shouldOpenBrowser(
+            newState: .running, trigger: .person, isFirstRun: true, alreadyOpened: false),
+            "a later click in the first run's own session still opens the browser")
 
         XCTAssertFalse(Lifecycle.shouldOpenBrowser(
             newState: .running, trigger: .app, isFirstRun: false, alreadyOpened: false),
@@ -271,6 +278,13 @@ final class LifecycleTests: XCTestCase {
 
         XCTAssertTrue(Lifecycle.startingDisplayHasElapsed(since: nil, now: clicked),
                       "a start nobody clicked has no floor to wait out")
+
+        // An NTP correction backwards mid-start — ordinary on a Mac that just woke — would
+        // otherwise strand the window on a finished start until the clock caught up. The
+        // floor is a courtesy, not a guarantee.
+        XCTAssertTrue(Lifecycle.startingDisplayHasElapsed(
+            since: clicked, now: clicked.addingTimeInterval(-30)),
+            "a clock that moved backwards is not a reason to wait")
     }
 
     /// Polling is cheap but not free (it spawns a process), so it slows down once the

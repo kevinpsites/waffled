@@ -163,12 +163,4 @@ final class SetupOptionsTests: XCTestCase {
                       "an ordinary first run still installs one")
     }
 
-    /// Nothing that describes a command may carry the value: these commands exist to
-    /// carry provider keys, and the menu shows what it is told.
-    func testACommandDescribesItselfWithoutItsValue() {
-        XCTAssertEqual(RuntimeCommand.configSet("ANTHROPIC_API_KEY", "sk-secret").describedForPeople,
-                       "ANTHROPIC_API_KEY")
-        XCTAssertFalse(RuntimeCommand.configSet("ANTHROPIC_API_KEY", "sk-secret")
-            .describedForPeople.contains("sk-secret"))
-    }
 }

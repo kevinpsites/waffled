@@ -272,8 +272,12 @@ enum Lifecycle {
         case notUs
         /// The one auto-start per launch, which at login happens with nobody watching.
         case app
-        /// A click: `Set up Waffled` on the first-run window, or `Start Waffled` in the menu.
+        /// A click on `Start Waffled` in the menu — someone waiting for a browser.
         case person
+        /// A click on `Set up Waffled`. Held apart from `person` because a first run ends
+        /// on the ready step, which offers the browser itself: this is the one start whose
+        /// success must not open one. Every later click in the same session still does.
+        case setup
     }
 
     /// Auto-start from `stopped` and from nowhere else.
@@ -297,10 +301,12 @@ enum Lifecycle {
         newState: RuntimeState, trigger: StartTrigger, isFirstRun: Bool, alreadyOpened: Bool
     ) -> Bool {
         guard newState == .running, !alreadyOpened else { return false }
-        // A first run ends on the ready step, which offers `Open Waffled` — the click is
-        // the person waiting for it, and a browser thrown in front of the address they
-        // still need to copy is the window they never got to read.
-        return !isFirstRun && trigger == .person
+        // `isFirstRun` is latched for the whole process, so it cannot be what suppresses
+        // this: a Stop then Start from the menu an hour later is a person waiting. It is
+        // the setup start itself that must not open one — the ready step it lands on is
+        // the address someone still has to copy, and a browser in front of it is the
+        // window they never got to read.
+        return trigger == .person
     }
 
     /// What a click on the quit item means. The first click asks the alert and stops the
@@ -421,12 +427,17 @@ enum Lifecycle {
     /// window it was armed on can have been replaced in the meantime — a poll during those
     /// two seconds can report a stack that fell over — and closing is permanent, so a timer
     /// that fired blind would shut the `Try again` button away for the rest of the process.
-    /// The setting-up step must stay on screen for a moment even when the runtime beats
-    /// it: a first start here took under five seconds, and a checklist that flashes is
-    /// what "nothing showed" was reported about.
+    /// Whether the setting-up step has been on screen long enough to move on. A first
+    /// start can finish in under five seconds, and a checklist that appears and vanishes
+    /// inside one animation frame is a window that "never showed".
+    ///
+    /// A negative interval is a clock that moved backwards under us — an NTP correction on
+    /// a Mac that just woke — and the floor is a courtesy, not a guarantee: waiting it out
+    /// would strand the window on a finished start until the clock caught up.
     static func startingDisplayHasElapsed(since: Date?, now: Date) -> Bool {
         guard let since else { return true }
-        return now.timeIntervalSince(since) >= FirstRunPresentation.minimumStartingDisplay
+        let elapsed = now.timeIntervalSince(since)
+        return elapsed < 0 || elapsed >= FirstRunPresentation.minimumStartingDisplay
     }
 
     /// Polling spawns a process, so it is deliberately unhurried once the answer has
