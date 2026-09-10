@@ -69,6 +69,10 @@ struct MenuPresentation: Equatable {
     var openEnabled: Bool
     var addressLine: String
     var addressEnabled: Bool
+    /// `Show QR code…`. The ready step shows one on the single launch a household ever
+    /// sees it; every phone that arrives after that is somebody reading an address off
+    /// this menu and typing it in.
+    var shareEnabled: Bool
     var backupEnabled: Bool
     /// A way back. Auto-start is one attempt per launch, so a stopped server — or a start
     /// that refused — has to be startable by hand.
@@ -186,6 +190,7 @@ struct MenuPresentation: Equatable {
             openEnabled: running && !(status?.urls.local.isEmpty ?? true),
             addressLine: "Server address: \(address ?? "—")",
             addressEnabled: running && address != nil,
+            shareEnabled: running && shareURL(status) != nil,
             // Enabled while stopped on purpose: `backup` starts Postgres for itself, and
             // "am I protected?" is asked exactly when nothing is up.
             backupEnabled: status != nil && !busy,
@@ -209,6 +214,16 @@ struct MenuPresentation: Equatable {
             updateAction: canInstallNow ? .installNow : .check,
             quitTitle: quit.title,
             quitEnabled: quit != .stopTheServerFirst)
+    }
+
+    /// What the shared code encodes: the whole URL, which is what a phone's camera can
+    /// open. The ready step's card is built from the same value, so the code in the menu
+    /// and the code at the end of setup are the same code.
+    static func shareURL(_ status: RuntimeStatus?) -> String? {
+        guard let card = FirstRunPresentation.addressCard(status, preferredPort: 0) else {
+            return nil
+        }
+        return card.url
     }
 
     /// The line the menu shows once after an update installed itself and relaunched the

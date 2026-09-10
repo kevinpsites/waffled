@@ -67,6 +67,11 @@ private struct MenuContent: View {
         Button(menu.addressLine) { model.copyServerAddress() }
             .disabled(!menu.addressEnabled)
 
+        // The address as something a phone's camera can read, for every device that
+        // arrives after the one launch the ready step's code appeared on.
+        Button("Show QR code…") { model.showAddressCode() }
+            .disabled(!menu.shareEnabled)
+
         // Any reason goes in the label: a .help(_:) tooltip does not render on an item in
         // a .menu-style MenuBarExtra, and an unexplained control is worse than none. Only
         // the two statuses that a click here genuinely cannot change stop being a toggle.
