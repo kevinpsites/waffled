@@ -218,7 +218,8 @@ if [ -n "$SIGN_ID" ] && [ -d "$SPARKLE" ]; then
     say "  $nested"
   done
   # Prove it, rather than trust it: this is the check that a 690 MB notarization round trip
-  # would otherwise be.
+  # would otherwise be. Counted, because a loop that skipped all four would "pass".
+  verified=0
   for nested in \
     "Versions/B/Autoupdate" \
     "Versions/B/Updater.app" \
@@ -232,8 +233,14 @@ if [ -n "$SIGN_ID" ] && [ -d "$SPARKLE" ]; then
       *) die "Sparkle's $nested is signed '${authority:-ad hoc}', not with the Developer ID —
   notarization would reject the whole app for it." ;;
     esac
+    verified=$((verified + 1))
   done
+  [ "$verified" -eq 4 ] || die "only $verified of Sparkle's 4 nested items were there to verify.
+  Autoupdate, Updater.app, Downloader.xpc and Installer.xpc all have to carry the Developer ID;
+  a missing one means the framework layout changed — update the nested paths above."
   ok "Autoupdate, Updater.app and both XPC services carry the Developer ID"
+elif [ -n "$SIGN_ID" ]; then
+  die "Sparkle.framework not at $SPARKLE — the layout changed; update the nested paths"
 else
   say "${c_dim}  --adhoc: left as built${c_reset}"
 fi
