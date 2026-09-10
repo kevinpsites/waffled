@@ -87,16 +87,18 @@ func ClearFailure(dir string) error {
 	return nil
 }
 
-// Describe builds the `backups` block of `status --json`.
+// Describe builds the `backups` block of `status --json`. `scheduleAt` is the nightly
+// time the installed launchd agent names, empty when there is none to read.
 //
 // It reads the filesystem, never the database. "When did it last back up?" is asked
 // exactly when the stack is down — and `status` is the one command that must answer with
 // Postgres stopped. backup_runs remains the api-facing mirror of the same facts, for
 // System Health, which can only be reached when the api is up anyway.
-func Describe(dir string, scheduleInstalled bool) status.Backups {
+func Describe(dir string, scheduleInstalled bool, scheduleAt string) status.Backups {
 	out := status.Backups{
 		Dir:               dir,
 		ScheduleInstalled: scheduleInstalled,
+		ScheduleAt:        scheduleAt,
 	}
 	// Snapshots are deliberately not considered: a pre-migration rollback point is not a
 	// backup anyone should be told to rely on, and it would otherwise mask a nightly

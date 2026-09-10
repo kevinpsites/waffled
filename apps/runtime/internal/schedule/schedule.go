@@ -22,13 +22,6 @@ import (
 // Label is the launchd job label. The plist filename must match it.
 const Label = "app.waffled.backup"
 
-// The nightly hour. 03:00 local, an hour after the Compose sidecar's 02:00 default so a
-// household running both during a migration does not have them collide.
-const (
-	Hour   = 3
-	Minute = 0
-)
-
 // Agent is one installable schedule. Every path is explicit rather than derived at
 // install time so the tests can point it at a temp directory: nothing here may write
 // into the real ~/Library/LaunchAgents or run launchctl during `go test`.
@@ -41,6 +34,10 @@ type Agent struct {
 	BundleDir  string
 	DataDir    string
 	LogPath    string
+	// At is the local 24-hour time the nightly backup runs, "HH:MM". Empty means
+	// DefaultHour:DefaultMinute — a string rather than two ints so that a household
+	// choosing midnight is not read as one that chose nothing.
+	At string
 	// UID is the user's, for the gui/<uid> domain launchctl bootstraps into.
 	UID int
 
@@ -263,7 +260,11 @@ func (a *Agent) Plist() ([]byte, error) {
 	// RunAtLoad false: installing the schedule must not kick off a dump on the spot, and
 	// neither should every login.
 	d.boolean("RunAtLoad", false)
-	d.raw("StartCalendarInterval", dict{}.intPair("Hour", Hour, "Minute", Minute))
+	hour, minute, err := a.at()
+	if err != nil {
+		return nil, err
+	}
+	d.raw("StartCalendarInterval", dict{}.intPair("Hour", hour, "Minute", minute))
 	if a.LogPath != "" {
 		// Both streams go to one file. A nightly backup that fails silently is the whole
 		// failure mode this schedule exists to avoid.

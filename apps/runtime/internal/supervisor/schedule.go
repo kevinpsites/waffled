@@ -39,6 +39,21 @@ func (s *Supervisor) scheduleInstalled() bool {
 	return a.Installed()
 }
 
+// scheduleAt reports the nightly time the installed plist actually names, for the status
+// block. It reads one small file — the same cost as scheduleInstalled's stat — and stays
+// empty rather than guessing when there is nothing installed or the file will not parse.
+func (s *Supervisor) scheduleAt() string {
+	a, err := s.BackupAgent()
+	if err != nil {
+		return ""
+	}
+	at, err := a.ScheduledAt()
+	if err != nil {
+		return ""
+	}
+	return at
+}
+
 // scheduleLoaded asks launchd whether the installed job is really loaded — the question
 // scheduleInstalled cannot answer, because a plist on disk and a job launchd holds are
 // different facts and a failed bootstrap leaves only the first.

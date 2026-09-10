@@ -126,6 +126,10 @@ type Backups struct {
 	LastErrorAt string `json:"lastErrorAt"`
 	// ScheduleInstalled reports whether the nightly launchd agent is in place.
 	ScheduleInstalled bool `json:"scheduleInstalled"`
+	// ScheduleAt is the local 24-hour time that agent runs, "HH:MM", read out of the
+	// installed plist itself. Empty when nothing is installed — or when the plist is
+	// there and unreadable, which is a schedule nobody should be told the time of.
+	ScheduleAt string `json:"scheduleAt"`
 }
 
 // Bonjour is the advertisement on the local network — how a phone that has never been

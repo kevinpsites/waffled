@@ -169,7 +169,7 @@ func TestBackupWaitsForALockSomeoneElseHolds(t *testing.T) {
 	}
 	// A backup that never started must not be recorded as one that failed: the nightly
 	// job colliding with a manual click would otherwise turn System Health red.
-	if d := backup.Describe(s.plan.Layout.Backups, false); d.LastError != "" {
+	if d := backup.Describe(s.plan.Layout.Backups, false, ""); d.LastError != "" {
 		t.Errorf("waiting for the lock was recorded as a backup failure: %q", d.LastError)
 	}
 }

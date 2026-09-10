@@ -69,7 +69,8 @@ logs:
 backup:
   --out FILE            write here instead of the backups folder (retention is then skipped)
   --keep N              how many backups to keep (default 14)
-  --install-schedule    install a nightly 03:00 backup as a launchd agent
+  --install-schedule    install a nightly backup as a launchd agent
+  --at HH:MM            the time it runs, 24-hour local (default 03:00)
   --uninstall-schedule  remove it
 restore:
   --yes          skip the typed confirmation (required when there is no terminal)
@@ -241,11 +242,22 @@ func cmdBackup(args []string) error {
 	keep := fs.Int("keep", 0, "how many backups to keep (default 14)")
 	install := fs.Bool("install-schedule", false, "install the nightly backup launchd agent")
 	uninstall := fs.Bool("uninstall-schedule", false, "remove the nightly backup launchd agent")
+	at := fs.String("at", "", "the nightly time to back up, HH:MM in 24-hour form (default 03:00)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *install && *uninstall {
 		return errors.New("--install-schedule and --uninstall-schedule are opposites; pick one")
+	}
+	// Both checks come before the supervisor is built: a mistyped time should be answered
+	// in the words of the time, not of a bundle this command had to verify to say so.
+	if *at != "" {
+		if !*install {
+			return errors.New("--at sets the nightly time, so it only means anything with --install-schedule")
+		}
+		if _, _, err := schedule.ParseAt(*at); err != nil {
+			return err
+		}
 	}
 
 	// Tolerant, like status and doctor. Backing up needs Postgres and nothing else, so a
@@ -268,11 +280,21 @@ func cmdBackup(args []string) error {
 			fmt.Printf("Removed the nightly backup (%s)\n", agent.PlistPath())
 			return nil
 		}
+		// One Mac holds one nightly backup: the launchd label is global, so installing
+		// from a second data directory takes the schedule over. Said out loud rather than
+		// refused — the person running this command is the one asking for it.
+		if previous, err := agent.ScheduledDataDir(); err == nil && previous != agent.DataDir {
+			fmt.Printf("Note: this replaces the nightly backup of %s\n", previous)
+		}
+		agent.At = *at
 		if err := agent.Install(); err != nil {
 			return err
 		}
-		fmt.Printf("Waffled will back up nightly at %02d:%02d → %s\n",
-			schedule.Hour, schedule.Minute, s.Plan().Layout.Backups)
+		scheduled, err := agent.ScheduledAt()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Waffled will back up nightly at %s → %s\n", scheduled, s.Plan().Layout.Backups)
 		fmt.Printf("  agent: %s\n", agent.PlistPath())
 		fmt.Printf("  log:   %s\n", s.Plan().Layout.LogPath("backup"))
 		return nil
