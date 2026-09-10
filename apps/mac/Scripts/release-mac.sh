@@ -111,6 +111,10 @@ APP="$APPOUT/Waffled.app"
 RELEASE="$DIST/release/v$VERSION"
 DMG="$RELEASE/Waffled-$VERSION.dmg"
 STAGING="$DIST/staging"
+# The DMG's volume icon, built from the app's own AppIcon slots so there is one master.
+ICONSET="$DIST/Waffled.iconset"
+ICONMASTER="$MAC/Sources/Assets.xcassets/AppIcon.appiconset/icon_512x512@2x.png"
+DMGRW="$DIST/staging.dmg"
 ENTITLEMENTS="$MAC/Entitlements"
 # codesign narrates every file it touches on stderr ("replacing existing signature"), which
 # over 124 runtime binaries plus Sparkle is a screen of nothing. It goes here, and is printed
@@ -473,12 +477,39 @@ took
 # Mac user knows, and the whole of it. No create-dmg, no background image, no AppleScript
 # window geometry: a 690 MB app is what people are here for.
 step "10. build the DMG"
-rm -rf "$STAGING"; mkdir -p "$STAGING" "$RELEASE"
+rm -rf "$STAGING" "$ICONSET"; rm -f "$DMGRW"; mkdir -p "$STAGING" "$ICONSET" "$RELEASE"
 cp -Rpc "$APP" "$STAGING/Waffled.app" || die "could not stage the app"
 ln -s /Applications "$STAGING/Applications"
-rm -f "$DMG"
+
+[ -f "$ICONMASTER" ] || die "no icon master at $ICONMASTER"
+for spec in 16x16:16 16x16@2x:32 32x32:32 32x32@2x:64 128x128:128 128x128@2x:256 \
+            256x256:256 256x256@2x:512 512x512:512 512x512@2x:1024; do
+  sips -s format png -z "${spec##*:}" "${spec##*:}" "$ICONMASTER" \
+    --out "$ICONSET/icon_${spec%:*}.png" >/dev/null 2>&1 \
+    || die "sips could not make the ${spec##*:}px volume icon"
+done
+iconutil -c icns "$ICONSET" -o "$STAGING/.VolumeIcon.icns" \
+  || die "iconutil could not build the volume icon"
+rm -rf "$ICONSET"
+
+rm -f "$DMG" "$DMGRW"
+# Two passes, not one: the Finder draws .VolumeIcon.icns only when the volume ROOT carries
+# the custom-icon bit, and that bit does not survive `hdiutil create -srcfolder` — it has to
+# be set on a mounted, writable image, which is then compressed into the DMG people download.
 hdiutil create -volname "Waffled $VERSION" -srcfolder "$STAGING" -ov -quiet \
-  -format UDZO "$DMG" || die "hdiutil could not build the DMG"
+  -format UDRW "$DMGRW" || die "hdiutil could not build the DMG"
+MOUNT="$(hdiutil attach "$DMGRW" -nobrowse | awk -F'\t' 'END { print $NF }')"
+[ -d "$MOUNT" ] || die "the writable DMG did not mount"
+if command -v SetFile >/dev/null 2>&1 && SetFile -a C "$MOUNT" 2>/dev/null; then
+  ok "volume icon"
+else
+  warn "SetFile is unavailable (Xcode command line tools) — the DMG will mount with the generic disk icon"
+fi
+hdiutil detach "$MOUNT" -quiet || hdiutil detach "$MOUNT" -force -quiet \
+  || die "could not unmount $MOUNT"
+hdiutil convert "$DMGRW" -format UDZO -ov -o "$DMG" -quiet \
+  || die "hdiutil could not compress the DMG"
+rm -f "$DMGRW"
 rm -rf "$STAGING"
 ok "$DMG ($(hsize "$DMG"))"
 if [ -n "$SIGN_ID" ]; then
