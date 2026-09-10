@@ -320,7 +320,6 @@ final class ServerModel {
 
     private func openBrowserIfAnyoneIsWaiting(_ fresh: RuntimeStatus) {
         guard Lifecycle.shouldOpenBrowser(newState: fresh.state, trigger: startTrigger,
-                                          isFirstRun: isFirstRun,
                                           alreadyOpened: alreadyOpenedBrowser) else { return }
         alreadyOpenedBrowser = true
         openWebApp(fresh)

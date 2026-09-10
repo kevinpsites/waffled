@@ -308,15 +308,15 @@ enum Lifecycle {
     /// boot, and a browser window that opens itself every time the Mac starts is the quiet
     /// relaunch (plan §2 step 6) getting loud. A server that was already running when the
     /// menu appeared belongs to whoever started it.
+    /// A first run is deliberately NOT a parameter. It is latched for the whole process,
+    /// so suppressing on it would suppress every later `Start Waffled` click too. The
+    /// setup start is its own trigger instead: the ready step it lands on is the address
+    /// someone still has to copy, and a browser in front of it is the window they never
+    /// got to read.
     static func shouldOpenBrowser(
-        newState: RuntimeState, trigger: StartTrigger, isFirstRun: Bool, alreadyOpened: Bool
+        newState: RuntimeState, trigger: StartTrigger, alreadyOpened: Bool
     ) -> Bool {
         guard newState == .running, !alreadyOpened else { return false }
-        // `isFirstRun` is latched for the whole process, so it cannot be what suppresses
-        // this: a Stop then Start from the menu an hour later is a person waiting. It is
-        // the setup start itself that must not open one — the ready step it lands on is
-        // the address someone still has to copy, and a browser in front of it is the
-        // window they never got to read.
         return trigger == .person
     }
 

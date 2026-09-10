@@ -81,35 +81,35 @@ final class LifecycleTests: XCTestCase {
     /// Phase 3 item 3, "The relaunch rule".
     func testTheBrowserOpensForAFirstRunOrAClickAndNothingElse() {
         XCTAssertTrue(Lifecycle.shouldOpenBrowser(
-            newState: .running, trigger: .person, isFirstRun: false, alreadyOpened: false),
+            newState: .running, trigger: .person, alreadyOpened: false),
             "a person clicked Start Waffled and is waiting for something to happen")
 
         XCTAssertFalse(Lifecycle.shouldOpenBrowser(
-            newState: .running, trigger: .setup, isFirstRun: true, alreadyOpened: false),
+            newState: .running, trigger: .setup, alreadyOpened: false),
             "a first run ends on the ready step, whose Open Waffled button is the click")
 
         // `isFirstRun` is latched for the whole process, so it must not be what suppresses
         // this: a Stop then Start from the menu, in the same session as the setup, is a
         // person waiting for something to happen like any other.
         XCTAssertTrue(Lifecycle.shouldOpenBrowser(
-            newState: .running, trigger: .person, isFirstRun: true, alreadyOpened: false),
+            newState: .running, trigger: .person, alreadyOpened: false),
             "a later click in the first run's own session still opens the browser")
 
         XCTAssertFalse(Lifecycle.shouldOpenBrowser(
-            newState: .running, trigger: .app, isFirstRun: false, alreadyOpened: false),
+            newState: .running, trigger: .app, alreadyOpened: false),
             "the auto-start at login must not pop a browser at every boot")
 
         XCTAssertFalse(Lifecycle.shouldOpenBrowser(
-            newState: .running, trigger: .notUs, isFirstRun: false, alreadyOpened: false),
+            newState: .running, trigger: .notUs, alreadyOpened: false),
             "already running when we launched — do not steal the screen")
 
         XCTAssertFalse(Lifecycle.shouldOpenBrowser(
-            newState: .running, trigger: .person, isFirstRun: true, alreadyOpened: true),
+            newState: .running, trigger: .person, alreadyOpened: true),
             "once per process, not once per poll")
 
         for state in [RuntimeState.stopped, .starting, .unhealthy] {
             XCTAssertFalse(Lifecycle.shouldOpenBrowser(
-                newState: state, trigger: .person, isFirstRun: true, alreadyOpened: false),
+                newState: state, trigger: .person, alreadyOpened: false),
                 "\(state) is not a server anyone can open yet")
         }
     }
