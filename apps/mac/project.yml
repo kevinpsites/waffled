@@ -94,11 +94,11 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.waffled.mac
         ENABLE_TESTABILITY: YES              # @testable import Waffled from the tests
-        # Sources/Assets.xcassets rides in on `sources: - path: Sources` above. Its
-        # 1024px slot is upscaled from apps/web/public/icon-512.png, and the art is a
-        # full-bleed square with no rounded-corner margin — placeholder on both counts
-        # until a real 1024 master exists. The menu-bar glyph is unaffected: that stays
-        # drawn in Sources/WaffleIronIcon.swift.
+        # Sources/Assets.xcassets rides in on `sources: - path: Sources` above. Every slot
+        # is resampled from resources/waffled.png, the 1254px brand master, so even the
+        # 1024 is a downscale. The art is still a full-bleed square with no rounded-corner
+        # margin, so it reads as a square tile beside other apps. The menu-bar glyph is
+        # unaffected: that stays drawn in Sources/WaffleIronIcon.swift.
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # Deliberately NO App Sandbox and no entitlements for the app: it spawns
         # waffled-runtime, which runs Postgres against a real filesystem outside any

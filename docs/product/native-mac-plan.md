@@ -249,8 +249,8 @@ uses bash because it is throwaway and the point is to learn, not to build.
 - PG 16 pinned for the life of the 1.x line.
 - **The menu-bar glyph stays a template.** The app has a colour icon — Finder, the Dock,
   `NSAlert` and Sparkle's dialogs all draw the bundle icon, and the DMG carries a volume
-  icon — built from the web app's own `icon-512.png` so the Mac and the tablet show one
-  mark. The menu bar is the exception and stays the monochrome waffle iron drawn in
+  icon — resampled from `resources/waffled.png`, the 1254px brand master the web app's own
+  `icon-512.png` also comes from, so the Mac and the tablet show one mark. The menu bar is the exception and stays the monochrome waffle iron drawn in
   `WaffleIronIcon.swift`: a menu-bar image is a template, and colour there is the one thing
   the HIG rules out.
 - **No custom `.local` name.** `WAFFLED_PUBLIC_HOST` offers three forms of address and
