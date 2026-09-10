@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { authApi, getAccessToken, isKioskMode, type AuthStatus, type SetupInput } from '../lib/api'
 import { SERVER_REACHABLE_EVENT, isUnansweredError, probeServerNow } from '../lib/api/reachability'
 import { UNREACHABLE_HEADLINE, UNREACHABLE_HINT } from './components/ServerUnreachableBanner'
+import { useOnline } from '../lib/pwa'
 import { ProfilePicker } from './ProfilePicker'
 import { PairDevice } from './PairDevice'
 import '../styles/auth.css'
@@ -111,6 +112,7 @@ function AuthShell({ title, sub, children }: { title: string; sub: string; child
 
 // Same story the banner tells, on the screen that would otherwise be a dead login form.
 function UnreachableScreen({ onAnswered }: { onAnswered: () => void }) {
+  const deviceOnline = useOnline()
   const [checking, setChecking] = useState(false)
   async function retry() {
     setChecking(true)
@@ -121,6 +123,15 @@ function UnreachableScreen({ onAnswered }: { onAnswered: () => void }) {
       setChecking(false)
     }
     if (answer === 'answered') onAnswered()
+  }
+  // A device with no link fails every request too, and no amount of starting the
+  // server would help — so say the true thing instead.
+  if (!deviceOnline) {
+    return (
+      <AuthShell title="Your device is offline" sub="Reconnect to Wi-Fi and Waffled will pick up where it left off.">
+        {null}
+      </AuthShell>
+    )
   }
   return (
     <AuthShell title={UNREACHABLE_HEADLINE} sub="It may be stopped or asleep. Retrying…">

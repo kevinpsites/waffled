@@ -156,8 +156,14 @@ export function reportStatus(status: number, contentType?: string | null): Answe
   return reportNetworkFailure()
 }
 
+/** The device's own link is down — nothing a request fails at is the server's fault. */
+function deviceOffline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false
+}
+
 /** Record that a request never got an answer (fetch rejected, or a gateway status). */
 export function reportNetworkFailure(): Answer {
+  if (deviceOffline()) return 'no-answer'
   if (state === 'unreachable') return 'no-answer'
   consecutiveNoAnswers += 1
   if (consecutiveNoAnswers >= 2) {

@@ -9,6 +9,8 @@ import { resetReachability } from '../lib/api/reachability'
 describe('AuthGate when the server does not answer', () => {
   beforeEach(() => resetReachability())
   afterEach(() => {
+    // A leaked offline device would disable outage detection for every later spec.
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
     resetReachability()
     vi.restoreAllMocks()
   })
@@ -30,6 +32,18 @@ describe('AuthGate when the server does not answer', () => {
 
     expect(await screen.findByText(/Can’t reach the Waffled server/)).toBeInTheDocument()
     expect(screen.queryByLabelText('Email')).toBeNull()
+  })
+
+  it('blames the device, not the server, when the device itself is offline', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    globalThis.fetch = vi.fn(async () => {
+      throw new TypeError('Failed to fetch')
+    }) as unknown as typeof fetch
+
+    render(gate())
+
+    expect(await screen.findByText(/Your device is offline/)).toBeInTheDocument()
+    expect(screen.queryByText(/menu bar and choose Start Waffled/)).toBeNull()
   })
 
   it('falls back to the login screen when the server answers with an error', async () => {

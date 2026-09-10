@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useSustainedOffline } from '../../lib/pwa'
+import { useOnline } from '../../lib/pwa'
 import { probeServerNow, useServerReachability } from '../../lib/api/reachability'
 
 // One copy, two surfaces: this strip and the AuthGate's pre-login screen.
@@ -15,9 +15,11 @@ export const UNREACHABLE_HINT =
 // the bottom of the viewport.
 export function ServerUnreachableBanner() {
   const reachability = useServerReachability()
-  const deviceOffline = useSustainedOffline()
+  // The device's link, not the debounced version of it: while the device is offline
+  // this banner has nothing true to say, and it must stop saying it at once.
+  const deviceOnline = useOnline()
   const [checking, setChecking] = useState(false)
-  if (reachability === 'reachable' || deviceOffline) return null
+  if (reachability === 'reachable' || !deviceOnline) return null
 
   async function retry() {
     setChecking(true)

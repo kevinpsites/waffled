@@ -4,8 +4,8 @@ import { ServerUnreachableBanner } from './ServerUnreachableBanner'
 import { configureReachability, reportNetworkFailure, resetReachability } from '../../lib/api/reachability'
 
 // The device's own link is the other banner's job; stub it per test.
-let deviceOffline = false
-vi.mock('../../lib/pwa', () => ({ useSustainedOffline: () => deviceOffline }))
+let deviceOnline = true
+vi.mock('../../lib/pwa', () => ({ useOnline: () => deviceOnline }))
 
 function goUnreachable() {
   act(() => {
@@ -16,7 +16,7 @@ function goUnreachable() {
 
 describe('ServerUnreachableBanner', () => {
   beforeEach(() => {
-    deviceOffline = false
+    deviceOnline = true
     resetReachability()
     configureReachability({ fetch: vi.fn(async () => ({ status: 503 }) as Response) as unknown as typeof fetch })
   })
@@ -36,7 +36,7 @@ describe('ServerUnreachableBanner', () => {
   })
 
   it('stays hidden when the device itself is offline — that banner wins', () => {
-    deviceOffline = true
+    deviceOnline = false
     render(<ServerUnreachableBanner />)
     goUnreachable()
     expect(screen.queryByRole('status')).toBeNull()

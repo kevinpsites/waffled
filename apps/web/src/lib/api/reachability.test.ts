@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   PROBE_PATH,
+  UNREACHABLE_GRACE_MS,
   SERVER_REACHABLE_EVENT,
   configureReachability,
   getServerReachability,
@@ -15,12 +16,17 @@ import {
 const answered = (status = 200) => ({ status }) as Response
 const gateway = () => ({ status: 502 }) as Response
 
+function setDeviceOnline(online: boolean) {
+  Object.defineProperty(navigator, 'onLine', { configurable: true, value: online })
+}
+
 describe('server reachability store', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     resetReachability()
   })
   afterEach(() => {
+    setDeviceOnline(true) // a leaked false would disable outage detection everywhere
     resetReachability()
     vi.useRealTimers()
   })
@@ -36,6 +42,16 @@ describe('server reachability store', () => {
     reportNetworkFailure()
     reportStatus(200)
     reportNetworkFailure()
+    expect(getServerReachability()).toBe('reachable')
+  })
+
+  it('blames nothing on the server while the device itself is offline', () => {
+    setDeviceOnline(false)
+    reportNetworkFailure()
+    reportNetworkFailure()
+    expect(getServerReachability()).toBe('reachable')
+
+    vi.advanceTimersByTime(UNREACHABLE_GRACE_MS)
     expect(getServerReachability()).toBe('reachable')
   })
 
