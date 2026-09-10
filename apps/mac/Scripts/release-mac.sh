@@ -346,12 +346,10 @@ if [ -n "$SIGN_ID" ]; then
   # Everything else, in parallel. -P 8 is well inside Apple's timestamp service's tolerance
   # and turns the slowest step of the pipeline into one of the quicker ones.
   PLAIN="$DIST/machos-plain.txt"
-  if [ -n "$ENTITLED" ]; then
-    printf '%s' "$ENTITLED" | sort > "$DIST/machos-entitled.txt"
-    sort "$MACHOS" | comm -23 - "$DIST/machos-entitled.txt" > "$PLAIN"
-  else
-    cp "$MACHOS" "$PLAIN"
-  fi
+  [ -n "$ENTITLED" ] || die "no entitlements plist applied to anything — node needs allow-jit, so
+  $ENTITLEMENTS must hold at least node.entitlements.plist"
+  printf '%s' "$ENTITLED" | sort > "$DIST/machos-entitled.txt"
+  sort "$MACHOS" | comm -23 - "$DIST/machos-entitled.txt" > "$PLAIN"
   ( cd "$RT" && tr '\n' '\0' < "$PLAIN" | xargs -0 -P 8 -n 1 \
       codesign --force --options runtime --timestamp --sign "$SIGN_ID" ) >>"$SIGNLOG" 2>&1 \
     || { tail -n 30 "$SIGNLOG" >&2; die "signing the runtime failed — full log at $SIGNLOG"; }
