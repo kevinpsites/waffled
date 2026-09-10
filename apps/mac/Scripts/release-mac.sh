@@ -304,15 +304,23 @@ if [ -n "$SIGN_ID" ]; then
   for plist in "$ENTITLEMENTS"/*.entitlements.plist; do
     [ -f "$plist" ] || continue
     name="$(basename "$plist" .entitlements.plist)"
+    matched=0
     while IFS= read -r rel; do
       [ "$(basename "$rel")" = "$name" ] || continue
       say "  $rel + $(basename "$plist")"
       codesign --force --options runtime --timestamp --entitlements "$plist" \
         --sign "$SIGN_ID" "$RT/$rel" >>"$SIGNLOG" 2>&1 \
         || { tail -n 20 "$SIGNLOG" >&2; die "could not sign $rel with $plist"; }
+      matched=$((matched + 1))
       ENTITLED="$ENTITLED$rel
 "
     done < "$MACHOS"
+    # An entitlement that silently applied to nothing is how node loses allow-jit: the
+    # binary moves or is renamed, every signature still succeeds, and V8 aborts at launch
+    # on the notarized build.
+    [ "$matched" -gt 0 ] || die "$(basename "$plist") matched no binary named '$name' under $RT.
+  Entitlements are matched by file name — rename the plist to the binary it belongs to, or
+  remove it."
   done
   # Everything else, in parallel. -P 8 is well inside Apple's timestamp service's tolerance
   # and turns the slowest step of the pipeline into one of the quicker ones.
