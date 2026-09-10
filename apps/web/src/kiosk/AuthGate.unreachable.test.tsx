@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { AuthGate } from './AuthGate'
 import { resetReachability } from '../lib/api/reachability'
@@ -53,6 +53,37 @@ describe('AuthGate when the server does not answer', () => {
 
     expect(await screen.findByLabelText('Email')).toBeInTheDocument()
     expect(screen.queryByText(/Can’t reach the Waffled server/)).toBeNull()
+  })
+
+  it('keeps checking on its own and leaves as soon as the server answers', async () => {
+    vi.useFakeTimers()
+    try {
+      let answering = false
+      globalThis.fetch = vi.fn(async () => {
+        if (!answering) throw new TypeError('Failed to fetch')
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => 'application/json' },
+          json: async () => ({ initialized: true, methods: ['password'] }),
+        }
+      }) as unknown as typeof fetch
+
+      render(gate())
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(screen.getByText(/Can’t reach the Waffled server/)).toBeInTheDocument()
+
+      // Nobody touched Retry — the screen asks again by itself.
+      answering = true
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000)
+      })
+      expect(screen.getByLabelText('Email')).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('re-resolves to the login screen once a retry reaches the server', async () => {

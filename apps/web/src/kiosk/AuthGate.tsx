@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { authApi, getAccessToken, isKioskMode, type AuthStatus, type SetupInput } from '../lib/api'
-import { SERVER_REACHABLE_EVENT, isUnansweredError, probeServerNow } from '../lib/api/reachability'
+import { PROBE_FAST_MS, SERVER_REACHABLE_EVENT, isUnansweredError, probeServerNow } from '../lib/api/reachability'
 import { UNREACHABLE_HEADLINE, UNREACHABLE_HINT } from './components/ServerUnreachableBanner'
 import { useOnline } from '../lib/pwa'
 import { ProfilePicker } from './ProfilePicker'
@@ -70,6 +70,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
     if (phase === 'loading') void resolve()
   }, [phase, resolve])
 
+  // Stable, so the unreachable screen's own recheck isn't torn down every render.
+  const backToLoading = useCallback(() => setPhase('loading'), [])
+
   // A probe that gets through re-runs the resolve that failed.
   useEffect(() => {
     if (phase !== 'unreachable') return
@@ -89,7 +92,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (phase === 'setup') return <SetupWizard />
   if (phase === 'picker') return <ProfilePicker />
   if (phase === 'login') return <LoginScreen status={status} oidcError={oidcError} />
-  if (phase === 'unreachable') return <UnreachableScreen onAnswered={() => setPhase('loading')} />
+  if (phase === 'unreachable') return <UnreachableScreen onAnswered={backToLoading} />
   return (
     <div className="auth-screen">
       <div className="auth-loading">Loading…</div>
@@ -114,6 +117,20 @@ function AuthShell({ title, sub, children }: { title: string; sub: string; child
 function UnreachableScreen({ onAnswered }: { onAnswered: () => void }) {
   const deviceOnline = useOnline()
   const [checking, setChecking] = useState(false)
+
+  // Ask again on our own cadence. The store's recovery event only fires when the
+  // STORE had given up, and a first failed status call is inside its grace window —
+  // so waiting for that event can strand this screen on a server that is back.
+  useEffect(() => {
+    if (!deviceOnline) return
+    const timer = setInterval(() => {
+      void probeServerNow().then((answer) => {
+        if (answer === 'answered') onAnswered()
+      })
+    }, PROBE_FAST_MS)
+    return () => clearInterval(timer)
+  }, [deviceOnline, onAnswered])
+
   async function retry() {
     setChecking(true)
     let answer
