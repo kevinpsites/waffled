@@ -11,6 +11,20 @@ enum QRCode {
     /// box, so a quarter of the modules spent on damage recovery buys nothing.
     static let correctionLevel = "M"
 
+    /// The code as something `NSAlert` will actually draw.
+    ///
+    /// An accessory view with no frame is laid out at zero size and renders nothing —
+    /// NSAlert sizes itself around the frame it is given rather than around the view's
+    /// intrinsic content. The alert then shows its own app icon and no code, which looks
+    /// exactly like a code that failed to generate.
+    static func accessoryView(for text: String, side: CGFloat) -> NSImageView? {
+        guard let image = image(for: text, side: side) else { return nil }
+        let view = NSImageView(image: image)
+        view.frame = NSRect(x: 0, y: 0, width: side, height: side)
+        view.imageScaling = .scaleNone
+        return view
+    }
+
     static func image(for text: String, side: CGFloat) -> NSImage? {
         guard let cgImage = cgImage(for: text, side: side) else { return nil }
         return NSImage(cgImage: cgImage, size: NSSize(width: side, height: side))

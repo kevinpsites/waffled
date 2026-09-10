@@ -670,9 +670,7 @@ final class ServerModel {
         let alert = NSAlert()
         alert.messageText = "Point a phone at this"
         alert.informativeText = url
-        if let code = QRCode.image(for: url, side: 220) {
-            alert.accessoryView = NSImageView(image: code)
-        }
+        alert.accessoryView = QRCode.accessoryView(for: url, side: 220)
         alert.addButton(withTitle: "Done")
         alert.addButton(withTitle: "Copy address")
         if alert.runModal() == .alertSecondButtonReturn {
