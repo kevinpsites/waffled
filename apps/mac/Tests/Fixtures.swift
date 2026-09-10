@@ -38,7 +38,8 @@ enum Fixtures {
         "lastMigration": "0099_rhythm_book_within",
         "count": 14,
         "lastError": "", "lastErrorAt": "",
-        "scheduleInstalled": true
+        "scheduleInstalled": true,
+        "scheduleAt": "03:00"
       },
       "bonjour": {
         "advertised": true,

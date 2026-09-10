@@ -90,6 +90,9 @@ struct RuntimeStatus: Equatable {
         var lastError = ""
         var lastErrorAt = ""
         var scheduleInstalled = false
+        /// The local 24-hour time that schedule runs, "HH:MM", read from the plist launchd
+        /// holds. Empty when nothing is installed.
+        var scheduleAt = ""
     }
 
     struct Bonjour: Equatable {
@@ -215,7 +218,8 @@ struct RuntimeStatus: Equatable {
                             count: backups.int("count"),
                             lastError: backups.string("lastError"),
                             lastErrorAt: backups.string("lastErrorAt"),
-                            scheduleInstalled: backups.bool("scheduleInstalled"))
+                            scheduleInstalled: backups.bool("scheduleInstalled"),
+                            scheduleAt: backups.string("scheduleAt"))
 
         let bonjour = object.object("bonjour")
         s.bonjour = Bonjour(advertised: bonjour.bool("advertised"),

@@ -34,6 +34,7 @@ final class RuntimeStatusTests: XCTestCase {
         XCTAssertEqual(s.backups.lastSizeBytes, 4_823_104)
         XCTAssertEqual(s.backups.lastMigration, "0099_rhythm_book_within")
         XCTAssertTrue(s.backups.scheduleInstalled)
+        XCTAssertEqual(s.backups.scheduleAt, "03:00")
 
         XCTAssertTrue(s.bonjour.advertised)
         XCTAssertEqual(s.bonjour.name, "The Seinfelds")

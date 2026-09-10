@@ -116,7 +116,10 @@ func (s *Supervisor) Doctor(ctx context.Context) []Check {
 			"no nightly backup is scheduled — install one with `waffled-runtime backup --install-schedule`")
 	default:
 		if loaded, err := s.scheduleLoaded(); loaded {
-			add("backup schedule", CheckOK, "a nightly backup is installed and loaded (%s)", schedule.Label)
+			// The time comes from the plist launchd is holding, so "it is scheduled" and
+			// "it runs then" are one answer rather than two that can drift.
+			add("backup schedule", CheckOK, "a nightly backup is installed and loaded, at %s (%s)",
+				b.ScheduleAt, schedule.Label)
 		} else {
 			add("backup schedule", CheckWarn,
 				"%s is installed but launchd does not have the job loaded, so no backup will run — "+

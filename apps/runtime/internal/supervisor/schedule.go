@@ -40,11 +40,15 @@ func (s *Supervisor) scheduleInstalled() bool {
 }
 
 // scheduleAt reports the nightly time the installed plist actually names, for the status
-// block. It reads one small file — the same cost as scheduleInstalled's stat — and stays
-// empty rather than guessing when there is nothing installed or the file will not parse.
+// block. Empty rather than a guess when there is nothing installed or the file will not
+// parse — a time nobody's launchd will honour is worse than no time.
+//
+// Gated on Installed() so the common answer costs a stat: `status` is polled once or twice
+// a second by the menu-bar app, and reading and XML-parsing a plist on every one of those
+// is not what "status is built to be cheap" means.
 func (s *Supervisor) scheduleAt() string {
 	a, err := s.BackupAgent()
-	if err != nil {
+	if err != nil || !a.Installed() {
 		return ""
 	}
 	at, err := a.ScheduledAt()
