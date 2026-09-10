@@ -78,6 +78,11 @@ struct MenuPresentation: Equatable {
     /// that refused — has to be startable by hand.
     var showStart: Bool
     var startEnabled: Bool
+    /// `Restart Waffled`. The way to make a setting the server only reads at start take
+    /// effect, without quitting the app — which stops the server and leaves the household
+    /// with nothing until somebody opens it again.
+    var showRestart: Bool
+    var restartEnabled: Bool
     /// Appears only when there is something in `logs/` worth reading.
     var showLogs: Bool
     /// `Settings…`, which opens the app's one window on the options screen again. Off
@@ -196,6 +201,10 @@ struct MenuPresentation: Equatable {
             backupEnabled: status != nil && !busy,
             showStart: startable,
             startEnabled: startable && !busy,
+            // Only while there is something to restart: `Start Waffled` covers a server
+            // that is down, and offering both would be two items for one job.
+            showRestart: running,
+            restartEnabled: running && !busy,
             showLogs: faulted,
             // Available while stopped, unlike `Start Waffled`: the address and the backup
             // time are exactly what a person fixes before starting again.

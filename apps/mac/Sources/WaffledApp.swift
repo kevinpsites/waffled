@@ -62,6 +62,13 @@ private struct MenuContent: View {
                 .disabled(!menu.startEnabled)
         }
 
+        // A stop and a start in one click, for the settings a running server only reads
+        // when it starts. Quitting would do it too, and leave the household with nothing.
+        if menu.showRestart {
+            Button("Restart Waffled") { model.restartServer() }
+                .disabled(!menu.restartEnabled)
+        }
+
         Divider()
 
         Button(menu.addressLine) { model.copyServerAddress() }

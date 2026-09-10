@@ -80,6 +80,14 @@ final class ServerModel {
     /// What was applied last, so Settings can show it and work out what changed. Read
     /// from the injected memory, never from config.env — `config set` is write-only.
     private(set) var appliedOptions: SetupOptions
+    /// A setting the server only reads at start has been written since it started, so the
+    /// running server is still on the old value. Held here rather than derived from the
+    /// form: once Apply has run the form and what was saved agree, and comparing those two
+    /// made the warning disappear at the very moment it became true.
+    private(set) var addressAwaitingRestart = false
+    /// The last Apply succeeded and this window has not been closed since — so the window
+    /// can say so. The menu's own note is behind it and cannot be read.
+    private(set) var settingsApplied = false
     /// When the setup click happened, for the floor under the setting-up step.
     private(set) var setupStartedAt: Date?
     /// Ticked once a second while the window is up, so the log line refreshes and the
@@ -515,7 +523,9 @@ final class ServerModel {
         guard showingSettings else { return nil }
         return .settings(SettingsPresentation.make(options: setupOptions, saved: appliedOptions,
                                                    dataDirectory: dataDirectory,
-                                                   status: status, busy: busy))
+                                                   status: status, busy: busy,
+                                                   awaitingRestart: addressAwaitingRestart,
+                                                   applied: settingsApplied))
     }
 
     /// Which of the two screens the window is showing.
@@ -533,6 +543,7 @@ final class ServerModel {
         guard !firstRunWindowIsUp else { return }
         setupOptions = appliedOptions
         setupOptions.providerKey = ""
+        settingsApplied = false
         showingSettings = true
         syncFirstRunWindow()
         NSApp.activate(ignoringOtherApps: true)
@@ -562,6 +573,12 @@ final class ServerModel {
                     self?.loginItem.setEnabled(options.startAtLogin)
                 }
                 self?.rememberApplied(options)
+                // The address is the one setting a running server will not pick up, so
+                // this is what keeps the restart note on screen after the form settles.
+                if options.publicHost != previous.publicHost, self?.status?.state == .running {
+                    self?.addressAwaitingRestart = true
+                }
+                self?.settingsApplied = true
                 self?.note("Settings applied")
             } catch {
                 self?.recordFailure(Self.describe(error))
@@ -599,6 +616,31 @@ final class ServerModel {
                 // the stop that came first really happened. Bring the server back, or a
                 // full disk costs a household their server as well as their move.
                 if wasRunning { await self?.restartAfterFailedMove() }
+            }
+            await self?.refresh()
+        }
+    }
+
+    /// `Restart Waffled`: a stop and a start, so a setting the server only reads at start
+    /// takes effect without quitting the app — which would stop the server and leave the
+    /// household with nothing until somebody opened it again.
+    func restartServer() {
+        guard let client, operationTask == nil, status?.state == .running else { return }
+        startTrigger = .person
+        failure = nil
+        pollFailure = nil
+        stopFailure = nil
+
+        operationTask = Task { [weak self] in
+            defer { self?.finishOperation() }
+            do {
+                try await client.stop()
+                try await client.start()
+                // Whatever it was running on the old value of, it is not any more.
+                self?.addressAwaitingRestart = false
+                self?.note("Waffled restarted")
+            } catch {
+                self?.recordFailure(Self.describe(error))
             }
             await self?.refresh()
         }

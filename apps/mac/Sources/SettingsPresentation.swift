@@ -25,6 +25,9 @@ struct SettingsPresentation: Equatable {
     /// A change the running server will not notice until it is restarted. Saying so is the
     /// difference between "that did not work" and "that is waiting for you".
     var needsRestart: Bool
+    /// What the window says once Apply has worked. The menu bar's own note is invisible
+    /// while this window is the thing in front of the person who clicked.
+    var confirmation: String?
     var primaryButton: String
     var secondaryButton: String
 
@@ -40,9 +43,10 @@ struct SettingsPresentation: Equatable {
         static let close = "Close"
         static let move = "Move…"
         static let restartNote = """
-            The address changes the next time Waffled starts. Stop and start it from the \
-            menu bar when it suits you — nothing is lost by waiting.
+            Waffled is still running on the old address. Choose Restart Waffled in the menu \
+            bar to use the new one — nothing is lost by waiting.
             """
+        static let applied = "Settings applied." 
         static let movedNote = "Waffled's files are here now. The server was restarted to use them."
         static let portReadOnly = """
             Waffled picked this port at setup and every device in the house points at it, \
@@ -64,12 +68,19 @@ struct SettingsPresentation: Equatable {
     ///     to be — a move that failed must not leave the row claiming it worked.
     ///   - status: the last document, for the port actually in use.
     ///   - busy: a start, stop, backup or move is in flight.
+    ///   - awaitingRestart: a setting the server only reads at start has been written
+    ///     since it started. Held by the model, because once Apply has run the form and
+    ///     what was saved agree — and comparing those two was what made the warning
+    ///     disappear at the moment it became true.
+    ///   - applied: the last Apply succeeded, and this window has not been closed since.
     static func make(
         options: SetupOptions,
         saved: SetupOptions,
         dataDirectory: URL,
         status: RuntimeStatus?,
-        busy: Bool = false
+        busy: Bool = false,
+        awaitingRestart: Bool = false,
+        applied: Bool = false
     ) -> SettingsPresentation {
         let problems = options.problems
         let changed = !options.commandsForChange(from: saved).isEmpty
@@ -86,7 +97,11 @@ struct SettingsPresentation: Equatable {
             applyEnabled: changed && problems.isEmpty && !busy,
             // Only the address is read at start. The nightly backup is installed into
             // launchd there and then, and a provider key is read per request by the api.
-            needsRestart: options.publicHost != saved.publicHost && status?.state == .running,
+            // Either a change waiting to be applied, or one applied and not yet picked up
+            // — and neither matters unless a server is actually running on the old value.
+            needsRestart: (options.publicHost != saved.publicHost || awaitingRestart)
+                && status?.state == .running,
+            confirmation: applied ? Copy.applied : nil,
             primaryButton: Copy.apply,
             secondaryButton: Copy.close)
     }

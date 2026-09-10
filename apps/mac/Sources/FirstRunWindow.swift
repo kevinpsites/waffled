@@ -290,6 +290,11 @@ private struct SettingsStep: View {
                 SetupOptionRows(model: model, settings: screen)
                     .padding(.top, 8)
 
+                if let confirmation = screen.confirmation {
+                    Label(confirmation, systemImage: "checkmark.circle")
+                        .font(SetupTheme.small)
+                        .foregroundStyle(SetupTheme.green)
+                }
                 if screen.needsRestart {
                     WarningNote(text: SettingsPresentation.Copy.restartNote)
                 }
