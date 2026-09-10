@@ -37,8 +37,9 @@ xcodebuild test -project Waffled.xcodeproj -scheme Waffled -destination 'platfor
 
 ## The runtime is a black box behind `status --json`
 
-The app knows three things about `waffled-runtime`: where it is, its four subcommands, and
-the shape of `status --json`. It must never learn more.
+The app knows three things about `waffled-runtime`: where it is, the four subcommands it
+calls (`start`, `stop`, `status`, `backup` — the runtime has more), and the shape of
+`status --json`. It must never learn more.
 
 - **Never poll anything heavier than `status`.** It is built to be cheap —
   `bonjour.advertised` is a pidfile check, `backups.scheduleInstalled` is a `stat`. `doctor`,
