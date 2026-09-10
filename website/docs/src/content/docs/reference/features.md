@@ -398,7 +398,7 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 | Build **provenance** (git sha + build time on /healthz + /api/health) | ✅ | — | — | ✅ Done |
 | **OpenTelemetry** traces+metrics (OTLP, **off by default**) | ✅ | — | — | ✅ Done |
 | All-local **Grafana/OTEL stack** (`./waffled observability up`, profile) | ✅ | — | — | ✅ Done |
-| **Waffled for Mac** — a downloadable, notarized menu-bar app that runs the whole server natively (no Docker): first run, start-at-login, backups, and self-updating | ✅ | — | — | ✅ Done — Apple silicon, macOS 14+. The app is a server manager, not a second UI: the interface stays the web app it serves. Same api, migrations, PowerSync and web build as Compose, which remains the way to run Waffled on Linux/NAS/Pi/VPS. See [Mac install](/install/mac/) |
+| **Waffled for Mac** — a downloadable, notarized menu-bar app that runs the whole server natively (no Docker): a guided first run that settles the data folder, nightly backup, network address and port before anything is created, plus start-at-login, backups, and self-updating | ✅ | — | — | ✅ Done — Apple silicon, macOS 14+. The app is a server manager, not a second UI: the interface stays the web app it serves. Same api, migrations, PowerSync and web build as Compose, which remains the way to run Waffled on Linux/NAS/Pi/VPS. See [Mac install](/install/mac/) |
 
 > **PowerSync scope note.** Offline-first currently covers the **calendar/events** domain
 > on every surface (local-first reads + queued writes). The iOS app mirrors

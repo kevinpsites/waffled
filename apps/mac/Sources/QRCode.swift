@@ -18,6 +18,11 @@ enum QRCode {
 
     /// The bitmap, kept separate so a test can decode what was really drawn.
     static func cgImage(for text: String, side: CGFloat) -> CGImage? {
+        // ISO-8859-1 because that is QR byte mode's own default charset: a reader decodes
+        // these bytes as Latin-1 unless an ECI header says otherwise, so encoding them as
+        // anything else is how a code scans to the wrong string. A host outside Latin-1
+        // therefore gets no code rather than a wrong one — and cannot arise anyway, since
+        // every address here is an IP, an ASCII-checked name, or this Mac's own hostname.
         guard !text.isEmpty, let data = text.data(using: .isoLatin1),
               let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
         filter.setValue(data, forKey: "inputMessage")

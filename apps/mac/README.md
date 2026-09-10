@@ -7,8 +7,9 @@ tells you it is running, and opens it. Plex, not Photoshop.
 Everything it does, `waffled-runtime` already does from Terminal — that is deliberate
 (plan §3), and it is why support can always say "open Terminal and run
 `waffled-runtime status`". This app polls `status --json`, draws an icon, and shells out for
-the four verbs the menu offers. It holds no state of its own and knows nothing about
-Postgres, PowerSync, or migrations.
+the five subcommands the menu and the setup window need — `start`, `stop`, `status`,
+`backup`, `config`. It holds no state of its own and knows nothing about Postgres,
+PowerSync, or migrations.
 
 ```text
 apps/mac/
@@ -22,15 +23,22 @@ apps/mac/
     Updater.swift        # Sparkle: the check, and the stop before the relaunch
     UpdateFlow.swift     # the update state machine — armed until we hand the app over
     Updates.swift        # which way a version crossing went; the feed-URL seam
-    RuntimeClient.swift  # locating waffled-runtime and running its four subcommands
+    RuntimeClient.swift  # locating waffled-runtime and running its five subcommands
     RuntimeStatus.swift  # decoding `status --json`
     MenuPresentation.swift # icon + menu as pure functions of the last status
-    FirstRunPresentation.swift # the first-run window's four steps, as a value
+    FirstRunPresentation.swift # the first-run window's five steps, as a value
     FirstRunWindow.swift # the NSWindow that renders it — the app's only window
+    SetupOptions.swift   # what "Where things go" collects, and the argv it owes
+    Setup.swift          # which volumes may hold a household's data
+    SetupTheme.swift     # the setup window's palette and type
+    QRCode.swift         # the ready step's code, via CoreImage
+    LogTail.swift        # the last line of a log, for the setting-up step
     Hardware.swift       # is this Mac a laptop? (hw.model + IOKit power sources)
     WaffleIronIcon.swift # the Waffled mark, drawn in CoreGraphics as a template
     FirstLine.swift      # the one-line-for-the-menu rule, shared
     LoginItem.swift      # SMAppService.mainApp
+    Assets.xcassets/     # the app icon — Finder, Dock, NSAlert and Sparkle draw it
+                         # (the menu-bar glyph is not from here: see WaffleIronIcon)
   Tests/                 # XCTest; no test spawns a process
 ```
 
@@ -125,13 +133,19 @@ to find: `WAFFLED_RUNTIME_BUNDLE` is what tells it which runtime to drive.
 | `WAFFLED_RUNTIME_BUNDLE` | a runtime bundle directory, passed as `--bundle` | no — defaults to the directory above the binary, which is right when the binary is in a bundle |
 | `WAFFLED_DATA_DIR` | passed as `--data`; omit to use `~/Library/Application Support/Waffled` | no |
 
-Two things worth knowing:
+Three things worth knowing:
 
 - **`WAFFLED_DATA_DIR` is not a dev-mode variable.** It moves the data, not the code, and it
   applies to an embedded runtime too — which is how the assembled app is tested without
   writing into the household's real data directory.
 - **The port will not be 8080** if you have the Compose stack up. The runtime takes the next
   free one and reports it. That is the runtime working, not a fault.
+- **A dev run installs no login item and no nightly backup**, whatever the setup screen's
+  toggles say. launchd holds exactly one nightly backup per Mac under a global label, so a
+  run against a scratch data directory would take the household's real schedule over and
+  point it at `/tmp`; a login item would register whichever build happens to be running to
+  start the Mac at every login. The `config set` writes still happen — they land in the
+  scratch data directory the run was given, which is where they belong.
 
 ## The contract it depends on
 
@@ -178,29 +192,58 @@ that one attempt is `Start Waffled`, a click.
 The app has exactly one window, and a household sees it once. When the **first `status` that
 answers** reports `initialized: false` — no database cluster in the data directory yet — the
 window opens in front of everything (an `LSUIElement` app has to activate itself, or it opens
-behind the browser someone was reading) and walks three steps:
+behind the browser someone was reading) and walks five steps:
 
-1. **Welcome.** What is about to happen and where the data will live, and one button:
-   `Set up Waffled`. The auto-start is **held** while this step is up — the button is what
-   starts a first run, and it spends the one attempt. Closing this window quits the app;
-   nothing has been created yet to leave behind. On a **laptop** there is a plain paragraph
-   here first: closing the lid puts the server to sleep for the whole house, and a Mac mini
-   or a desktop is a better home. It is a warning, not a refusal.
-2. **Starting.** A tick per service as Postgres, the API, Sync and Web come up, the iron
-   cooking at the same cadence as the menu-bar icon, and "First start takes about a minute."
-   Closing the window here stops nothing; the menu keeps showing the same progress.
-3. **Ready.** "Your server is ready", the browser opens on `urls.local`, and the window
-   closes itself two seconds later.
+1. **Welcome.** The three promises, the versions of Postgres, the server, Sync and the web
+   build that are **really inside this app** — read from the bundle's own manifest by way of
+   `status`, which answers with everything stopped — and three actions: `Set up Waffled`,
+   `Not on this Mac`, and `Choose where things go…`. The auto-start is **held** while this
+   step is up: the button is what starts a first run, and it spends the one attempt. Closing
+   this window quits the app; nothing has been created yet to leave behind. On a **laptop**
+   there is a plain paragraph here first: closing the lid puts the server to sleep for the
+   whole house, and a Mac that stays awake is a better home. It is a warning, not a refusal.
+2. **Where things go.** Everything on this screen is applied **before** the first `start`, so
+   the first boot already uses the folder, the port and the name that were chosen.
+   - **Waffled's files** — a folder picker, restricted to this Mac's own **internal** disk
+     and to APFS or Mac OS Extended. A removable drive, a network folder or an ExFAT volume
+     is refused in the row itself, with the reason. Once a data directory has been
+     initialized the row stops offering `Change…` and offers `Reveal in Finder` instead:
+     moving it afterwards is a migration, and that is not in this release.
+   - **Nightly backup** — on or off, and one of four times. Off installs nothing rather than
+     uninstalling something (this runs on a Mac with nothing of ours on it yet), and
+     `Back up now` in the menu still works.
+   - **Address on your network** — this Mac's name, its IP address, or a name the household
+     set up themselves, plus the preferred port. The address is always written as
+     `WAFFLED_PUBLIC_HOST`, because an absent one means "keep the address this install has
+     always had" and a first run has none. `HTTP_PORT` is written only when someone chose a
+     port that is not the default: it is the preference for the first allocation, so an
+     assignment nobody asked for would put a number on record they never chose.
+   - **Smart suggestions** — an optional Anthropic or OpenAI key, written to that provider's
+     own variable.
+   - **Start Waffled when this Mac starts up** — the login item.
+3. **Setting up.** A tick per service as Postgres, the API, Sync and Web come up, each under
+   a two-line label, with a progress bar, an elapsed clock and the last line the runtime
+   wrote so that a slow start shows something moving. `Show logs` is here. The step stays up
+   for **at least three seconds** even when the start beats it — a first start can finish in
+   under five seconds, and a checklist that appears and vanishes inside one animation frame
+   is how "nothing showed" gets reported about a setup that worked. Closing the window stops
+   nothing; the menu keeps showing the same progress.
+4. **Ready.** The address the runtime composed, the IP form beside it when that is something
+   different to say, a QR code of the URL for a phone's camera, and — quietly, when the two
+   differ — `Using port N because M was busy on this Mac`. Two buttons: `Copy address`, and
+   `Open Waffled`, which is the click that opens the browser.
+5. **The error sheet.** A start that refuses replaces all of it: the runtime's own sentence,
+   `Try again`, and `Show logs`.
 
-A start that refuses replaces all of it with the error step: the runtime's own sentence,
-`Try again`, and `Show logs`.
-
-**Seeing it again** is a fresh `WAFFLED_DATA_DIR` — that is the whole trigger, so point the
-app at an empty directory and the window is back. Every other launch gets **no window and no
+**Seeing it again** is an uninitialized data directory and nothing else, so point the app at
+an empty one with `WAFFLED_DATA_DIR` and the window is back. (The environment always wins
+over the folder a setup screen chose and remembered, which is what keeps a dev run off the
+household's real directory.) Every other launch gets **no window and no
 browser**: the app starts the server if it is down, the icon goes green, and nothing takes
 over the screen. The browser opens once per process and only when somebody is waiting for
-it — the end of a first run, or a click on `Start Waffled` — which is what makes `Start at
-login` bearable: a Mac that reboots at 3 a.m. does not come back with a browser window open.
+it — a click on `Open Waffled` on the ready step, or on `Start Waffled` in the menu — which
+is what makes `Start at login` bearable: a Mac that reboots at 3 a.m. does not come back
+with a browser window open.
 
 While the welcome step waits, the menu says **`Waffled is not set up yet`** and offers
 `Start Waffled`; starting from there counts as the same click.

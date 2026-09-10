@@ -178,7 +178,7 @@ app's setup screen, or by hand with `config set`.
 | | `ip` | the same, chosen deliberately |
 | | `name` | this Mac's `<hostname>.local`, which is the name Bonjour advertises |
 | | a hostname | a name the household has pointed at this Mac — a router DNS entry, or a real domain aimed at the LAN address |
-| `HTTP_PORT` | a port number | the **preferred** public port, default 8080 — the same key `infra/compose/.env` uses for the same thing |
+| `HTTP_PORT` | a port number | the **preferred** public port for a first run, default 8080 — the same key `infra/compose/.env` uses for the same thing |
 
 One function composes that address, which is why `urls.lan`, the Bonjour TXT record's `url`
 and the `other devices on your network: …` line a start ends with can never disagree about
@@ -195,10 +195,13 @@ resolve to this Mac on the household's network before anything can use it.
 free port like any other (see [Ports](#ports)) — and a value that is not a number between 1
 and 65535 fails the start rather than quietly reverting to 8080. `status` and `doctor`
 tolerate it the way they tolerate a stolen port: reported in `lastError`, not refused, since
-they are the commands someone runs *because* something is wrong. Changing it later is the
-one thing allowed to move a port other devices remember, because a person asked for it, and
-it takes effect at the **next start**: our own Caddy is bound to the old port, and rewriting
-`runtime.json` underneath it would make `status` report an address nothing is listening on.
+they are the commands someone runs *because* something is wrong.
+
+It is read when the ports are **first chosen**, and never again. Once an install has a
+public port, `runtime.json` is the record of it and changing `HTTP_PORT` does nothing:
+every phone, tablet and bookmark in the household points at the port already published, and
+moving it is a job that has to tell them first. To move it deliberately, stop the server and
+edit `ports.public` in `runtime.json`.
 
 **PowerSync follows the same address with nothing to configure.** The api derives each
 client's sync endpoint from the `Host` (or `X-Forwarded-Host`) header that client actually
