@@ -396,10 +396,16 @@ probe="$(mktemp -d)"
 cleanup() {
   if [ -n "$MOUNT" ]; then
     hdiutil detach "$MOUNT" -force -quiet 2>/dev/null || true
+    # Cleared so the EXIT run after an interrupt does not detach a second time.
+    MOUNT=""
   fi
   rm -rf "$probe"
 }
-trap cleanup EXIT INT TERM
+# INT/TERM exit rather than falling through: a handler RETURNS, and bash then carries on
+# from where the signal arrived — so a ^C during notarization would have gone on to
+# publish, having just unmounted the image it was working with.
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT TERM
 doctor_out="$("$RT/bin/waffled-runtime" doctor --json --data "$probe" 2>&1 || true)"
 detail="$(printf '%s' "$doctor_out" | "$RT/bin/node" -e '
   const NAME = "bundle manifest";  // supervisor.CheckBundleManifest
