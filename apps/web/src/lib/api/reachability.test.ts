@@ -93,6 +93,46 @@ describe('server reachability store', () => {
     expect(fetchMock).toHaveBeenCalledTimes(13)
   })
 
+  // A hung connection: the socket stays open until the probe's own deadline aborts it.
+  const hangingFetch = () =>
+    vi.fn(
+      (_path: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')))
+        }),
+    )
+
+  it('gives up on a probe that never answers and schedules the next one', async () => {
+    const fetchMock = hangingFetch()
+    configureReachability({ fetch: fetchMock as unknown as typeof fetch })
+    reportNetworkFailure()
+    reportNetworkFailure()
+
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    // Nothing more happens while it hangs…
+    await vi.advanceTimersByTimeAsync(3999)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    // …the deadline makes it a non-answer, and the usual cadence resumes.
+    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(getServerReachability()).toBe('unreachable')
+  })
+
+  it('lets Retry finish on a probe that never answers', async () => {
+    configureReachability({ fetch: hangingFetch() as unknown as typeof fetch })
+    reportNetworkFailure()
+    reportNetworkFailure()
+
+    const verdict = probeServerNow()
+    await vi.advanceTimersByTimeAsync(4000)
+
+    await expect(verdict).resolves.toBe('no-answer')
+  })
+
   it('restores reachable and fires the refetch event when a probe answers', async () => {
     const fetchMock = vi.fn(async () => answered())
     configureReachability({ fetch: fetchMock as unknown as typeof fetch })

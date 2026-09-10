@@ -19,6 +19,7 @@ export const UNREACHABLE_GRACE_MS = 3000
 export const PROBE_FAST_MS = 5000
 export const PROBE_SLOW_MS = 15_000
 export const PROBE_BACKOFF_AFTER_MS = 60_000
+export const PROBE_TIMEOUT_MS = 4000
 
 // Not the api's own `/healthz`: Caddy answers that itself (`respond /healthz "ok"`)
 // and only forwards `/api/*`, so it would report "reachable" with the api stopped —
@@ -93,13 +94,38 @@ function scheduleProbe(): void {
   }, wait)
 }
 
+// A probe that never comes back is silence, not a pause: a hung connection would
+// otherwise leave Retry spinning with no next probe scheduled. The abort tears the
+// socket down; the race is what makes the deadline hold even when it doesn't.
+// (Deliberately our own timer rather than AbortSignal.timeout, which fake timers in
+// the specs cannot drive.)
+async function fetchWithDeadline(): Promise<Response> {
+  const control = new AbortController()
+  let expire!: (reason: Error) => void
+  const timedOut = new Promise<never>((_resolve, reject) => {
+    expire = reject
+  })
+  const timer = setTimeout(() => {
+    control.abort()
+    expire(new Error('probe timed out'))
+  }, PROBE_TIMEOUT_MS)
+  try {
+    return await Promise.race([
+      deps.fetch(PROBE_PATH, { method: 'GET', cache: 'no-store', signal: control.signal }),
+      timedOut,
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 // A probe is just another request: it answers or it doesn't, and it feeds the same
 // state machine. Returns this probe's own verdict, which a caller may need before the
 // debounced state has caught up (see the AuthGate's Retry).
 async function probe(): Promise<Answer> {
   let answered = false
   try {
-    const res = await deps.fetch(PROBE_PATH, { method: 'GET', cache: 'no-store' })
+    const res = await fetchWithDeadline()
     answered = !isNoAnswer(res.status, res.headers?.get('content-type'))
   } catch {
     answered = false
