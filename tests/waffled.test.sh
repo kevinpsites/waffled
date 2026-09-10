@@ -225,6 +225,41 @@ t "release_repository_ready rejects a Mac version left behind" '
   esac
 '
 
+# --- 8c. bump_line rewrites the version site, or says it could not --------------------
+# The bump is a `sed` whose expression and target file are written apart from each other.
+# An expression that matches nothing leaves the file byte-identical, and the release then
+# commits and tags with that site left behind — the exact drift the checks above reject.
+t "bump_line rewrites exactly the Mac MARKETING_VERSION line" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  cp "$ROOT/apps/mac/project.yml" "$tmp/project.yml"
+
+  bump_line "$tmp/project.yml" "s/^([[:space:]]*MARKETING_VERSION:[[:space:]]*).*/\\1\"9.9.9\"/"
+
+  count="$(grep -c "MARKETING_VERSION: \"9.9.9\"" "$tmp/project.yml" || true)"
+  [ "$count" -eq 1 ] || { echo "FAIL: expected one bumped line, got $count"; exit 0; }
+  changed="$(diff "$ROOT/apps/mac/project.yml" "$tmp/project.yml" | grep -c "^[<>]" || true)"
+  [ "$changed" -eq 2 ] || { echo "FAIL: $changed diff lines, so more than one line moved"; exit 0; }
+  echo "PASS"
+'
+
+t "bump_line fails loudly when the pattern matches nothing" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  printf "%s\n" "name: Waffled" > "$tmp/project.yml"
+
+  set +e
+  out="$(bump_line "$tmp/project.yml" "s/^([[:space:]]*MARKETING_VERSION:[[:space:]]*).*/\\1\"9.9.9\"/" 2>&1)"
+  rc=$?
+  set -e
+
+  [ "$rc" -ne 0 ] || { echo "FAIL: an unmatched pattern was accepted"; exit 0; }
+  case "$out" in
+    *"$tmp/project.yml"*MARKETING_VERSION*) echo "PASS" ;;
+    *) echo "FAIL: the failure names neither the file nor the pattern: $out" ;;
+  esac
+'
+
 # --- 9. backup verification restores only into a disposable Postgres container ------
 t "verify_backup_restore exercises the dump and removes its disposable database" '
   source "$WAFFLED" help >/dev/null 2>&1

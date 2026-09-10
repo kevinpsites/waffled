@@ -360,6 +360,27 @@ EOF
   }
 }
 
+# Portable in-place edit (BSD/macOS + GNU sed): rewrite to a temp file, then move. An
+# expression that matches nothing leaves the file identical, and `sed` reports that as
+# success — during a release that is a version site left behind, committed and tagged. The
+# release gate only ever asks for a version strictly newer than the current one, so an
+# unchanged file always means the edit missed.
+bump_line() { # bump_line <file> <sed-expression>
+  local f="$1" expr="$2" tmp
+  tmp="$(mktemp)"
+  if ! sed -E "$expr" "$f" > "$tmp"; then
+    rm -f "$tmp"
+    echo "${c_red}Could not rewrite $f with: $expr${c_reset}" >&2
+    exit 1
+  fi
+  if cmp -s "$f" "$tmp"; then
+    rm -f "$tmp"
+    echo "${c_red}$f is unchanged — nothing matched: $expr${c_reset}" >&2
+    exit 1
+  fi
+  mv "$tmp" "$f"
+}
+
 # Verify release metadata and prove this checkout is exactly the reviewed main branch.
 # `git fetch` updates remote refs, but no worktree files, commits, or tags are changed.
 release_repository_ready() {
@@ -1253,8 +1274,6 @@ case "$cmd" in
         '') [ "$n" -gt 0 ] && break ;;
       esac
     done
-    # Portable in-place edit (BSD/macOS + GNU sed): rewrite to a temp file, then move.
-    bump_line() { local f="$1" expr="$2" tmp; tmp="$(mktemp)"; sed -E "$expr" "$f" > "$tmp" && mv "$tmp" "$f"; }
     echo "${c_dim}Bumping to ${ver}…${c_reset}"
     ( cd "$ROOT/apps/api" && npm version "$ver" --no-git-tag-version --allow-same-version >/dev/null )
     ( cd "$ROOT/apps/web" && npm version "$ver" --no-git-tag-version --allow-same-version >/dev/null )
