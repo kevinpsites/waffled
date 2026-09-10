@@ -640,7 +640,7 @@ final class ServerModel {
     /// household with nothing until somebody opened it again.
     func restartServer() {
         guard let client, operationTask == nil, status?.state == .running else { return }
-        startTrigger = .person
+        startTrigger = .restart
         failure = nil
         pollFailure = nil
         stopFailure = nil

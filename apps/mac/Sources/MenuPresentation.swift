@@ -313,6 +313,11 @@ enum Lifecycle {
         /// on the ready step, which offers the browser itself: this is the one start whose
         /// success must not open one. Every later click in the same session still does.
         case setup
+        /// A click on `Restart Waffled`, from the menu or from Settings. A person asking
+        /// for the server back is not a person asking for the web app — they are usually
+        /// in Settings, and a browser landing on top of it is the window they never got
+        /// to read.
+        case restart
     }
 
     /// Auto-start from `stopped` and from nowhere else.
