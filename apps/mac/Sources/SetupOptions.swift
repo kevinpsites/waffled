@@ -8,16 +8,16 @@ import Foundation
 ///
 /// Everything here is applied BEFORE the first `start`, so the first boot already uses
 /// the folder, the port and the name that were chosen.
-struct SetupOptions: Equatable {
+struct SetupOptions: Equatable, Codable {
     /// How other devices address this Mac. The two reserved words are the runtime's
     /// (`WAFFLED_PUBLIC_HOST`); `custom` carries a name the household set up themselves.
-    enum AddressMode: String, CaseIterable, Equatable {
+    enum AddressMode: String, CaseIterable, Equatable, Codable {
         case name, ip, custom
     }
 
     /// Which provider the optional smart suggestions use. The key goes into config.env
     /// under that provider's own variable, which is what the api already reads.
-    enum Provider: String, CaseIterable, Equatable {
+    enum Provider: String, CaseIterable, Equatable, Codable {
         case anthropic, openai
 
         var configKey: String {
@@ -45,6 +45,14 @@ struct SetupOptions: Equatable {
     var addressMode = AddressMode.name
     var customHost = ""
     var port = String(SetupOptions.defaultPort)
+
+    /// What is written down between launches, so `Settings…` knows what it is comparing
+    /// against. Two are deliberately absent: `providerKey`, because a secret belongs in
+    /// owner-only config.env and not in the app's preferences file, and `dataDirectory`,
+    /// which already has a key of its own and would only get a chance to disagree with it.
+    private enum CodingKeys: String, CodingKey {
+        case backupEnabled, backupAt, provider, startAtLogin, addressMode, customHost, port
+    }
 
     static let defaultBackupAt = "03:00"
     static let defaultPort = 8080
@@ -139,6 +147,46 @@ struct SetupOptions: Equatable {
         }
         return out
     }
+
+    /// What `Settings…` owes the runtime: only what actually changed.
+    ///
+    /// The difference rather than the whole screen, because writing every setting on every
+    /// Apply puts preferences on record that nobody expressed — which is exactly how
+    /// `HTTP_PORT` came to move a published port. The port is not here at all for the same
+    /// reason: it is the preference for the FIRST allocation and nothing after it, so a
+    /// value written now would be a setting that silently did nothing.
+    ///
+    /// The data folder is not here either. That one is `waffled-runtime move`, which needs
+    /// the server stopped, so it is its own button rather than part of Apply.
+    ///
+    /// - Parameter isDevMode: as on the first run, a dev run leaves the nightly backup
+    ///   alone in BOTH directions — launchd's label is global, so uninstalling from here
+    ///   would take the household's real schedule away.
+    func commandsForChange(from previous: SetupOptions, isDevMode: Bool = false) -> [RuntimeCommand] {
+        guard problems.isEmpty else { return [] }
+        var out: [RuntimeCommand] = []
+
+        if publicHost != previous.publicHost {
+            out.append(.configSet("WAFFLED_PUBLIC_HOST", publicHost))
+        }
+        // An empty field means "I did not change it", never "delete my key": the key is
+        // never read back out of config.env, so the field starts empty every time this
+        // screen opens, and treating that as a deletion would turn the suggestions off for
+        // anyone who came to change the backup time.
+        let key = providerKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !key.isEmpty, key != previous.providerKey || provider != previous.provider {
+            out.append(.configSet(provider.configKey, key))
+        }
+        if !isDevMode {
+            if backupEnabled, !previous.backupEnabled || backupAt != previous.backupAt {
+                out.append(RuntimeCommand(subcommand: "backup",
+                                          flags: ["--install-schedule", "--at", backupAt]))
+            } else if !backupEnabled, previous.backupEnabled {
+                out.append(RuntimeCommand(subcommand: "backup", flags: ["--uninstall-schedule"]))
+            }
+        }
+        return out
+    }
 }
 
 /// One `waffled-runtime` invocation, split where the runtime's own parser splits it.
@@ -153,5 +201,12 @@ struct RuntimeCommand: Equatable {
 
     static func configSet(_ key: String, _ value: String) -> RuntimeCommand {
         RuntimeCommand(subcommand: "config", flags: ["set"], trailing: ["\(key)=\(value)"])
+    }
+
+    /// Moving the data directory. The destination is a flag rather than a trailing word
+    /// because the runtime's own parser reads it as one, and `--data` still names the
+    /// folder being moved FROM — the app rebuilds its client on the new one afterwards.
+    static func move(to destination: URL) -> RuntimeCommand {
+        RuntimeCommand(subcommand: "move", flags: ["--to", destination.path])
     }
 }

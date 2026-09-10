@@ -76,6 +76,10 @@ struct MenuPresentation: Equatable {
     var startEnabled: Bool
     /// Appears only when there is something in `logs/` worth reading.
     var showLogs: Bool
+    /// `Settings…`, which opens the app's one window on the options screen again. Off
+    /// while the first-run window already has that window, and off while an operation
+    /// holds the slot Apply would need.
+    var settingsEnabled: Bool
     /// The updater's item. The label carries the reason it is off, because a
     /// `.menu`-style `MenuBarExtra` renders no tooltip on an item.
     var checkForUpdatesLabel: String
@@ -112,6 +116,9 @@ struct MenuPresentation: Equatable {
     ///     because the server it describes is still *running* — so a successful poll must
     ///     not clear it — and because it is what changes the quit item.
     ///   - awaitingSetup: a first run whose welcome window is still waiting for a click.
+    ///   - windowTaken: the first-run window is on screen. An `LSUIElement` app has one
+    ///     window, so `Settings…` has nowhere to open until that one is finished with —
+    ///     and it stays taken through the setting-up and ready steps, not only the wait.
     ///   - canCheckForUpdates: Sparkle's own answer, observed on the updater.
     ///   - updatePhase: where the update flow has got to. It decides two separate things:
     ///     whether the app holds an install block it can run (the item becomes the install),
@@ -124,6 +131,7 @@ struct MenuPresentation: Equatable {
         runtimeAvailable: Bool = true,
         stopFailure: String? = nil,
         awaitingSetup: Bool = false,
+        windowTaken: Bool = false,
         canCheckForUpdates: Bool = false,
         updatePhase: UpdateFlow.Phase = .idle
     ) -> MenuPresentation {
@@ -184,6 +192,9 @@ struct MenuPresentation: Equatable {
             showStart: startable,
             startEnabled: startable && !busy,
             showLogs: faulted,
+            // Available while stopped, unlike `Start Waffled`: the address and the backup
+            // time are exactly what a person fixes before starting again.
+            settingsEnabled: runtimeAvailable && !windowTaken && !busy,
             // A held update comes first: Sparkle reports `canCheckForUpdates` false for
             // the whole of the session it is still holding open, so the ordinary label
             // would sit there disabled and the update would never happen. Otherwise the

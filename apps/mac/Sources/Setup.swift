@@ -6,6 +6,26 @@ enum Setup {
     /// injected memory, so no test reads UserDefaults.
     static let dataDirectoryKey = "waffled.setup.dataDirectory"
 
+    /// What the setup screen last applied, so `Settings…` can show it and work out what
+    /// changed. config.env cannot answer this — `config set` is write-only by design, and
+    /// the provider key must never be read back out of it anyway.
+    static let appliedOptionsKey = "waffled.setup.appliedOptions"
+
+    static func remember(_ options: SetupOptions, in memory: UpdateMemory) {
+        guard let data = try? JSONEncoder().encode(options),
+              let json = String(data: data, encoding: .utf8) else { return }
+        memory.set(json, forKey: appliedOptionsKey)
+    }
+
+    /// Anything unreadable reads as the defaults: a preferences file someone edited, or one
+    /// written by a version that spelled these differently, must not stop Settings opening.
+    static func appliedOptions(in memory: UpdateMemory) -> SetupOptions {
+        guard let json = memory.string(forKey: appliedOptionsKey),
+              let decoded = try? JSONDecoder().decode(SetupOptions.self, from: Data(json.utf8))
+        else { return SetupOptions() }
+        return decoded
+    }
+
     static var defaultDataDirectory: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/Waffled")

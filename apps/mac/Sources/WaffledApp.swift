@@ -85,6 +85,11 @@ private struct MenuContent: View {
         Button("Back up now") { model.backUpNow() }
             .disabled(!menu.backupEnabled)
 
+        // The options screen again, on a Mac where Waffled already lives. It borrows the
+        // app's one window, so it is off while the first-run window has it.
+        Button("Settings…") { model.openSettings() }
+            .disabled(!menu.settingsEnabled)
+
         Button(menu.checkForUpdatesLabel) {
             switch menu.updateAction {
             case .check: updater.checkForUpdates()

@@ -72,6 +72,12 @@ final class ServerModel {
     /// once when the button is clicked.
     var setupOptions = SetupOptions()
     private(set) var showingSetupOptions = false
+    /// `Settings…` is open. It uses the same window and the same rows as the first run;
+    /// only what is done with them differs, so the two can never be up at once.
+    private(set) var showingSettings = false
+    /// What was applied last, so Settings can show it and work out what changed. Read
+    /// from the injected memory, never from config.env — `config set` is write-only.
+    private(set) var appliedOptions: SetupOptions
     /// When the setup click happened: the elapsed clock, and the floor under the
     /// setting-up step.
     private(set) var setupStartedAt: Date?
@@ -99,6 +105,11 @@ final class ServerModel {
          runner: RuntimeProcessRunning = SubprocessRunner()) {
         self.memory = memory
         self.runner = runner
+        // Bound to a local first: reading back the property would be `self` before every
+        // stored property has one.
+        let applied = Setup.appliedOptions(in: memory)
+        appliedOptions = applied
+        setupOptions = applied
         // A folder chosen on a previous launch's setup screen. `WAFFLED_DATA_DIR` is not
         // read from here: the environment always wins, so a dev run against a scratch
         // directory can never be overridden by a choice the household made.
@@ -135,6 +146,7 @@ final class ServerModel {
         MenuPresentation.make(status: status, failure: heldFailure, transient: transient,
                               busy: busy, runtimeAvailable: client != nil,
                               stopFailure: stopFailure, awaitingSetup: awaitingSetup,
+                              windowTaken: firstRunPresentation != nil,
                               canCheckForUpdates: canCheckForUpdates,
                               updatePhase: flow.phase)
     }
@@ -320,16 +332,17 @@ final class ServerModel {
     /// there is not, and never comes back once it has been dismissed — closing it during
     /// the start is a person saying "I will watch the menu bar", not "start again".
     private func syncFirstRunWindow() {
-        guard let presentation = firstRunPresentation, !firstRunDismissed else {
+        guard let content = windowPresentation, !firstRunDismissed else {
             stopFirstRunTicker()
             firstRunWindow.close()
             return
         }
         firstRunWindow.show(model: self)
         // Only the setting-up step has anything that moves. The welcome step is waiting for
-        // a person and the ready step is finished, and a timer re-rendering either of them
-        // once a second for as long as it sits open is work nobody asked for.
-        guard presentation.step == .starting else {
+        // a person, the ready step is finished, and the settings screen is a form — a timer
+        // re-rendering any of them once a second for as long as it sits open is work nobody
+        // asked for.
+        guard case let .firstRun(presentation) = content, presentation.step == .starting else {
             stopFirstRunTicker()
             return
         }
@@ -358,7 +371,8 @@ final class ServerModel {
     /// itself rather than waiting up to a poll for `syncFirstRunWindow` to notice.
     private func tickFirstRun() {
         firstRunNow = Date()
-        guard firstRunPresentation?.step == .starting else {
+        guard case .firstRun(let presentation) = windowPresentation,
+              presentation.step == .starting else {
             lastLogLine = nil
             stopFirstRunTicker()
             return
@@ -366,7 +380,11 @@ final class ServerModel {
         lastLogLine = LogTail.lastLine(of: logsDirectory.appendingPathComponent("runtime.log"))
     }
 
+    /// The close button, whichever screen is in the window. Settings is simply closed —
+    /// it is reopened from the menu — while a first run is dismissed for the rest of the
+    /// launch: closing that one is a person saying "I will watch the menu bar".
     func dismissFirstRunWindow() {
+        showingSettings = false
         firstRunDismissed = true
         stopFirstRunTicker()
         firstRunWindow.close()
@@ -418,6 +436,10 @@ final class ServerModel {
                 if !devMode {
                     self?.loginItem.setEnabled(options.startAtLogin)
                 }
+                // What Settings compares against from here on. Written after the config
+                // succeeded and before the start, which is the point at which these are
+                // really what is on disk.
+                self?.rememberApplied(options)
                 try await client.start()
             } catch {
                 self?.recordFailure(Self.describe(error))
@@ -456,6 +478,105 @@ final class ServerModel {
             self.location = location
             client = RuntimeClient(location: location, runner: runner)
         }
+    }
+
+    // MARK: the settings screen
+
+    /// The one window's content. A first run owns it outright — it is the only launch
+    /// that gets one, and `Settings…` is refused while it is up — so this is a preference
+    /// order rather than a choice.
+    var windowPresentation: WindowContent? {
+        if let firstRun = firstRunPresentation { return .firstRun(firstRun) }
+        guard showingSettings else { return nil }
+        return .settings(SettingsPresentation.make(options: setupOptions, saved: appliedOptions,
+                                                   dataDirectory: dataDirectory,
+                                                   status: status, busy: busy))
+    }
+
+    /// Which of the two screens the window is showing.
+    enum WindowContent: Equatable {
+        case firstRun(FirstRunPresentation)
+        case settings(SettingsPresentation)
+    }
+
+    /// The menu item. The working copy starts from what was applied, with the provider key
+    /// blank: it is never read back out of config.env, and a blank field reads as "I did
+    /// not change it" rather than as a deletion.
+    func openSettings() {
+        guard !isFirstRun else { return }
+        setupOptions = appliedOptions
+        setupOptions.providerKey = ""
+        showingSettings = true
+        firstRunDismissed = false
+        syncFirstRunWindow()
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func closeSettings() {
+        showingSettings = false
+        syncFirstRunWindow()
+    }
+
+    /// Apply. Only what changed is sent — see `commandsForChange` — and the login item is
+    /// this app's own business rather than the runtime's, so it is set separately.
+    func applySettings() {
+        guard let client, operationTask == nil, showingSettings else { return }
+        let options = setupOptions
+        guard options.problems.isEmpty else { return }
+        let previous = appliedOptions
+        let devMode = isDevMode
+
+        operationTask = Task { [weak self] in
+            defer { self?.finishOperation() }
+            do {
+                for command in options.commandsForChange(from: previous, isDevMode: devMode) {
+                    try await client.apply(command)
+                }
+                if !devMode, options.startAtLogin != previous.startAtLogin {
+                    self?.loginItem.setEnabled(options.startAtLogin)
+                }
+                self?.rememberApplied(options)
+                self?.note("Settings applied")
+            } catch {
+                self?.recordFailure(Self.describe(error))
+            }
+            await self?.refresh()
+        }
+    }
+
+    /// Moving Waffled's files. Three steps, in this order and no other: the runtime
+    /// refuses to move a running cluster, the `--data` the move is told about is the OLD
+    /// folder, and the start afterwards has to be pointed at the new one.
+    ///
+    /// The old folder is only removed by the runtime once the copy has arrived, so a
+    /// failure at any point here leaves the household where it was — and the app keeps
+    /// pointing at the folder the runtime last reported rather than the one it asked for.
+    func moveDataDirectory(to destination: URL) {
+        guard let client, operationTask == nil, showingSettings else { return }
+        if let refusal = Setup.refusal(for: Setup.facts(for: destination)) {
+            recordFailure(refusal)
+            return
+        }
+        let wasRunning = status?.state == .running
+
+        operationTask = Task { [weak self] in
+            defer { self?.finishOperation() }
+            do {
+                if wasRunning { try await client.stop() }
+                try await client.apply(.move(to: destination))
+                self?.chooseDataDirectory(destination)
+                if wasRunning { try await self?.client?.start() }
+                self?.note("Waffled's files are in \(destination.lastPathComponent) now")
+            } catch {
+                self?.recordFailure(Self.describe(error))
+            }
+            await self?.refresh()
+        }
+    }
+
+    private func rememberApplied(_ options: SetupOptions) {
+        appliedOptions = options
+        Setup.remember(options, in: memory)
     }
 
     /// Where the data directory is, for the row that shows it. The runtime's own answer
