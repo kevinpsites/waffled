@@ -3,10 +3,9 @@ import XCTest
 
 /// What Apply says once it has worked, and how the server gets to use it.
 ///
-/// All three of these were reported from a real install at once: the address was written
-/// to config.env correctly, and every sign of that went somewhere the person could not
-/// see. Apply greyed itself out, the window said nothing, and the "needs a restart" note
-/// vanished at the exact moment it became true.
+/// Everything that answers "did that work?" has to be somewhere the person who clicked
+/// can see: in the window rather than the menu bar behind it, and still there once the
+/// form has settled.
 final class ApplyFeedbackTests: XCTestCase {
 
     private func running() throws -> RuntimeStatus {
@@ -21,9 +20,9 @@ final class ApplyFeedbackTests: XCTestCase {
                                   status: status, awaitingRestart: awaitingRestart)
     }
 
-    /// The bug: `needsRestart` compared the pending edits with what was saved, so applying
-    /// them made the two equal and the warning disappeared. It has to follow what the
-    /// RUNNING server is missing, not what the form still has outstanding.
+    /// `needsRestart` follows what the RUNNING server is missing, not what the form still
+    /// has outstanding — those two become equal the moment Apply succeeds, which is
+    /// exactly when the warning matters most.
     func testTheRestartNoteSurvivesTheApplyThatCausedIt() throws {
         var changed = SetupOptions()
         changed.addressMode = .ip
@@ -55,10 +54,9 @@ final class ApplyFeedbackTests: XCTestCase {
                               awaitingRestart: true).needsRestart)
     }
 
-    /// The fix for what a real install ran into: Apply greyed itself out the moment it
-    /// worked, so the only way forward — a restart — was in a menu the person was not
-    /// looking at, under a note they had to scroll to reach. The button becomes the next
-    /// thing to do instead.
+    /// The primary button is always the next thing to do. Greying it out the moment Apply
+    /// succeeds leaves the only way forward — a restart — in a menu the person is not
+    /// looking at, under a note below the fold.
     func testTheButtonBecomesTheRestartOnceThereIsNothingLeftToApply() throws {
         var changed = SetupOptions()
         changed.addressMode = .ip
@@ -92,7 +90,7 @@ final class ApplyFeedbackTests: XCTestCase {
         XCTAssertEqual(both.primaryAction, .apply)
     }
 
-    /// The window has to say Apply worked. The menu-bar note it used to post is invisible
+    /// The window has to say Apply worked: a note posted to the menu bar is invisible
     /// while this window is the thing in front of the person who clicked.
     func testTheWindowSaysWhenSettingsWereApplied() throws {
         let settled = SetupOptions()

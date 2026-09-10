@@ -56,8 +56,8 @@ final class ReviewFindingsTests: XCTestCase {
     // MARK: 3 · a button that cannot do anything is not offered
 
     /// `Back` from the options screen does not discard what was typed, so an invalid port
-    /// left there makes `beginSetup` a no-op. The welcome step's button used to stay lit
-    /// through that — the same dead-control bug this branch keeps taking out.
+    /// left there makes `beginSetup` a no-op — and a button that is lit while the click
+    /// behind it does nothing is worse than one that is greyed.
     func testTheWelcomeButtonIsOffWhileTheOptionsScreenHasAProblem() {
         let model = ServerModel(
             environment: [RuntimeLocator.binaryVariable: "/nonexistent/waffled-runtime"],
@@ -74,9 +74,9 @@ final class ReviewFindingsTests: XCTestCase {
     // MARK: 4 · volume facts about a folder that is really there
 
     /// `<picked>/Waffled` does not exist yet, and `resourceValues` on a path that is not
-    /// there fails — which `facts(for:)` reads as the ordinary case. Asked of the raw URL,
-    /// every volume check silently passed, so a removable drive or a network share would
-    /// have been accepted.
+    /// there fails — which `facts(for:)` reads as the ordinary case. So the volume rules
+    /// have to be asked of a folder that really exists, or a removable drive and a network
+    /// share both pass every one of them.
     func testVolumeRulesApplyToAFolderThatHasNotBeenMadeYet() throws {
         let parent = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("waffled-facts-\(UUID().uuidString)")
