@@ -44,7 +44,9 @@ final class ServerModel {
     /// Where the runtime is and which directories it is handed. Not a `let`: the setup
     /// screen may move the data directory, and every call after that has to carry it.
     private(set) var location: RuntimeLocation?
-    let loginItem = LoginItem()
+    /// Injected for the same reason the runner is: the setup click registers one, and no
+    /// test may put the test runner into the household's real Login Items.
+    let loginItem: LoginItem
 
     private var client: RuntimeClient?
     /// Kept so the client can be rebuilt around a new data directory without reaching for
@@ -102,9 +104,13 @@ final class ServerModel {
          resourceURL: URL? = Bundle.main.resourceURL,
          hardware: HardwareProbe = SystemHardware(),
          memory: UpdateMemory = UserDefaults.standard,
-         runner: RuntimeProcessRunning = SubprocessRunner()) {
+         runner: RuntimeProcessRunning = SubprocessRunner(),
+         loginItem: LoginItem? = nil) {
         self.memory = memory
         self.runner = runner
+        // Built here rather than as a default argument: LoginItem is main-actor isolated,
+        // and a default argument is evaluated outside that isolation.
+        self.loginItem = loginItem ?? LoginItem()
         // Bound to a local first: reading back the property would be `self` before every
         // stored property has one.
         let applied = Setup.appliedOptions(in: memory)
@@ -455,11 +461,14 @@ final class ServerModel {
         dismissFirstRunWindow()
     }
 
+    /// The whole URL, which is what the QR code beside it encodes and what a person
+    /// pastes into a browser. `host:port` on its own is what a browser turns into a
+    /// search.
     func copySetupAddress() {
-        guard let address = firstRunPresentation?.address?.host else { return }
+        guard let address = firstRunPresentation?.address else { return }
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(address, forType: .string)
-        note("Copied \(address)")
+        NSPasteboard.general.setString(address.url, forType: .string)
+        note("Copied \(address.host)")
     }
 
     /// The folder picker's answer. Remembered, and carried as `--data` on every runtime

@@ -186,8 +186,14 @@ final class FirstRunPresentationTests: XCTestCase {
         XCTAssertEqual(ready.step, .ready)
         XCTAssertEqual(ready.primaryButton, "Open Waffled")
         XCTAssertEqual(ready.secondaryButton, "Copy address")
+        // Two different strings for two different jobs, and the ready step uses both:
+        // `host` is what the card shows, `url` is what the QR code encodes AND what
+        // `Copy address` puts on the pasteboard — a browser turns a bare host:port into
+        // a search.
         XCTAssertEqual(ready.address?.host, "192.168.1.5:8080")
         XCTAssertEqual(ready.address?.url, "http://192.168.1.5:8080")
+        XCTAssertTrue(ready.address?.url.hasPrefix("http://") == true,
+                      "the copied string has to be something a browser will open")
         XCTAssertNotNil(ready.menuBarNote)
         XCTAssertFalse(ready.closeQuitsApp, "the server is up; closing this stops nothing")
     }
