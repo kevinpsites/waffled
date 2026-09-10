@@ -289,25 +289,6 @@ final class FirstRunPresentationTests: XCTestCase {
                        .starting)
     }
 
-    /// The clock is a reassurance that something is happening, not a countdown that could
-    /// be wrong.
-    func testTheElapsedClockCountsWholeUnits() {
-        let start = Date()
-        XCTAssertEqual(FirstRunPresentation.elapsedLabel(since: start, now: start), "0 seconds")
-        XCTAssertEqual(FirstRunPresentation.elapsedLabel(since: start,
-                                                         now: start.addingTimeInterval(1)), "1 second")
-        XCTAssertEqual(FirstRunPresentation.elapsedLabel(since: start,
-                                                         now: start.addingTimeInterval(45)), "45 seconds")
-        XCTAssertEqual(FirstRunPresentation.elapsedLabel(since: start,
-                                                         now: start.addingTimeInterval(60)), "1 minute")
-        XCTAssertEqual(FirstRunPresentation.elapsedLabel(since: start,
-                                                         now: start.addingTimeInterval(81)),
-                       "1 minute 21 seconds")
-        XCTAssertEqual(FirstRunPresentation.elapsedLabel(since: start,
-                                                         now: start.addingTimeInterval(-5)), "0 seconds",
-                       "a clock that went backwards is not a negative duration")
-    }
-
     /// A laptop is a server that goes off the network when a lid closes (plan §5). It is
     /// said once, plainly, on the step where a person can still choose a different Mac —
     /// and never again after that, because by then it would only be nagging.

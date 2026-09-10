@@ -80,11 +80,10 @@ final class ServerModel {
     /// What was applied last, so Settings can show it and work out what changed. Read
     /// from the injected memory, never from config.env — `config set` is write-only.
     private(set) var appliedOptions: SetupOptions
-    /// When the setup click happened: the elapsed clock, and the floor under the
-    /// setting-up step.
+    /// When the setup click happened, for the floor under the setting-up step.
     private(set) var setupStartedAt: Date?
-    /// Ticked once a second while the window is up, so the elapsed clock moves, the log
-    /// line refreshes, and the step re-decides the moment the floor is reached.
+    /// Ticked once a second while the window is up, so the log line refreshes and the
+    /// step re-decides the moment the floor is reached.
     private(set) var firstRunNow = Date()
     private(set) var lastLogLine: String?
     private var firstRunTicker: Task<Void, Never>?
@@ -354,9 +353,9 @@ final class ServerModel {
         startFirstRunTicker()
     }
 
-    /// One second, three jobs: the elapsed clock moves, the last log line refreshes, and
-    /// the setting-up step re-decides itself the moment its minimum display is up. The
-    /// poll loop cannot do any of them — it is two seconds apart and reads a process.
+    /// One second, two jobs: the last log line refreshes, and the setting-up step
+    /// re-decides itself the moment its minimum display is up. The poll loop cannot do
+    /// either — it is two seconds apart and reads a process.
     private func startFirstRunTicker() {
         guard firstRunTicker == nil else { return }
         firstRunTicker = Task { [weak self] in

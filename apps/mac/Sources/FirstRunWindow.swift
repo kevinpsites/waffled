@@ -127,8 +127,7 @@ struct FirstRunView: View {
                 primaryEnabled: !model.busy && model.setupOptions.problems.isEmpty)
         case .starting:
             SetupFooter(
-                tertiary: step.tertiaryButton.map { ($0, { model.revealLogs() }) },
-                secondary: step.elapsed.map { ($0, {}) })
+                tertiary: step.tertiaryButton.map { ($0, { model.revealLogs() }) })
         case .ready:
             SetupFooter(
                 secondary: step.secondaryButton.map { ($0, { model.copySetupAddress() }) },

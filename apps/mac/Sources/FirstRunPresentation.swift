@@ -69,9 +69,6 @@ struct FirstRunPresentation: Equatable {
     var services: [ServiceRow] = []
     /// Services ready over services known, 0…1. Nil on every step that is not starting.
     var progress: Double?
-    /// How long this start has been going. Not an estimate — the first start on this Mac
-    /// took under five seconds, and a countdown that is wrong is worse than a clock.
-    var elapsed: String?
     /// The last line the runtime wrote, so a long start shows something moving.
     var lastLogLine: String?
     var address: Address?
@@ -170,8 +167,8 @@ struct FirstRunPresentation: Equatable {
     ///   - busy: a start, stop or backup is in flight. Both of this window's buttons are
     ///     inert while one is (`startServer` refuses a second, and `start` has no timeout),
     ///     so the error step during one is a screen a person cannot leave.
-    ///   - setupStartedAt: when the click happened, for the elapsed clock and the floor
-    ///     under the setting-up step.
+    ///   - setupStartedAt: when the click happened, for the floor under the setting-up
+    ///     step.
     ///   - preferredPort: the public port that was asked for, so the ready step can say
     ///     when the running one is different.
     static func make(
@@ -277,7 +274,6 @@ struct FirstRunPresentation: Equatable {
                 """,
             services: rows,
             progress: rows.isEmpty ? 0 : Double(ready) / Double(rows.count),
-            elapsed: setupStartedAt.map { elapsedLabel(since: $0, now: now) },
             lastLogLine: lastLogLine,
             tertiaryButton: "Show logs",
             closeQuitsApp: false)
@@ -360,20 +356,6 @@ struct FirstRunPresentation: Equatable {
               let host = components.host else { return nil }
         guard let port = components.port else { return host }
         return "\(host):\(port)"
-    }
-
-    /// "4 seconds" / "1 minute 20 seconds". Whole units only: this is a reassurance that
-    /// something is happening, not a measurement.
-    static func elapsedLabel(since: Date, now: Date) -> String {
-        let seconds = max(0, Int(now.timeIntervalSince(since)))
-        guard seconds >= 60 else {
-            return seconds == 1 ? "1 second" : "\(seconds) seconds"
-        }
-        let minutes = seconds / 60
-        let rest = seconds % 60
-        let minuteLabel = minutes == 1 ? "1 minute" : "\(minutes) minutes"
-        guard rest > 0 else { return minuteLabel }
-        return "\(minuteLabel) \(rest == 1 ? "1 second" : "\(rest) seconds")"
     }
 
     /// Said once, on the step where a person can still pick a different Mac. It is a
