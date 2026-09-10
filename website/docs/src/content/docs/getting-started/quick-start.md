@@ -7,6 +7,9 @@ Waffled runs as a small Docker Compose stack — **Postgres · PowerSync · api 
 is built in; no Auth0 or external identity provider is required. You can attach your own
 SSO later (optional).
 
+> **On an Apple silicon Mac?** [Waffled for Mac](/install/mac/) is the same server as a
+> download — drag it to Applications and open it. No Docker, no Terminal.
+
 ## Requirements
 
 - **Docker** with the **Compose v2** plugin (`docker compose`, not the legacy

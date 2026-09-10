@@ -15,6 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Waffled for Mac — download it, drag it to Applications, and you have a family server.**
+  A Mac with Apple silicon and macOS 14 or later can now run the whole of Waffled from one
+  download: no Docker, no Terminal, no Homebrew. Open it and a menu-bar icon walks you
+  through a first run — database, migrations, everything — and hands you the web app in
+  your browser in under five minutes. The menu keeps it running: start at login, the server
+  address to type into the kitchen tablet or a phone, a backup on demand, and
+  **Check for updates…**, which stops the server, replaces the
+  app and brings your household back up on the new version. The download is signed and
+  notarized by Apple, so it opens with no Gatekeeper warning. Self-hosting with Docker
+  Compose is unchanged and remains the way to run Waffled on Linux, a NAS, a Pi or a VPS —
+  same api, same data, same web app. See [Mac install](https://docs.waffled.app/install/mac/).
+
 - **Weekly Planning is on iPhone and iPad.** The whole guided session — the lobby, all ten
   steps, the agenda sheet, the parked-note handoff, the recap and the saved record — now
   runs in the app, not just in the browser. On the phone it opens from a **Weekly

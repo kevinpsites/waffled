@@ -16,14 +16,21 @@
 # Idempotent: it removes what it is about to write, so a second run replaces the .app rather
 # than nesting a runtime inside the last one.
 #
-# The app is signed ad hoc — Developer ID signing and notarization are Phase 3 item 5
-# (docs/product/native-mac-plan.md §7) — and it is re-signed AFTER the runtime goes in,
-# because xcodebuild sealed an app that did not contain one yet. That re-sign is deliberately
-# shallow: `codesign --force --sign -` rewrites Contents/MacOS/Waffled and
-# Contents/_CodeSignature, neither of which the runtime manifest covers. It is `--deep` that
-# rewrites the Mach-O files inside Resources/runtime/ and invalidates every one of their
-# hashes — which is why the packaging order in infra/native/bundle/README.md is sign first,
-# write the manifest second.
+# The app is re-signed AFTER the runtime goes in, because xcodebuild sealed an app that did
+# not contain one yet. That re-sign is deliberately shallow: `codesign --force` rewrites
+# Contents/MacOS/Waffled and Contents/_CodeSignature, neither of which the runtime manifest
+# covers. It is `--deep` that rewrites the Mach-O files inside Resources/runtime/ and
+# invalidates every one of their hashes — which is why the packaging order in
+# infra/native/bundle/README.md is sign first, write the manifest second.
+#
+# Ad hoc by default, which is what CI and every dev build want. Setting WAFFLED_SIGN_IDENTITY
+# (and WAFFLED_TEAM_ID) in the environment makes this a Developer ID build instead: the
+# identity goes into xcodebuild, so Sparkle.framework's nested Autoupdate, Updater.app and
+# XPC services are signed by Xcode with the right identity — Sparkle's documented
+# requirement, and not something a later shallow re-sign of the app could fix. The variables
+# are read from the environment only; apps/mac/Scripts/release-mac.sh is what loads
+# ~/.config/waffled/signing.conf and exports them, so a plain build-app.sh stays ad hoc on
+# the signing Mac too.
 #
 # bash 3.2-clean (macOS /bin/bash): no associative arrays, no ${x,,}, no mapfile.
 set -euo pipefail
@@ -81,7 +88,27 @@ if [ -n "${WAFFLED_APP_VERSION:-}" ]; then
   set -- "MARKETING_VERSION=$WAFFLED_APP_VERSION"
   say "→ MARKETING_VERSION=$WAFFLED_APP_VERSION (WAFFLED_APP_VERSION)"
 fi
-say "→ xcodebuild build (Release, ad-hoc signed)"
+
+# The signing seam. project.yml pins CODE_SIGN_IDENTITY="-" and CODE_SIGNING_REQUIRED=NO for
+# the ad-hoc default, so a Developer ID build has to override BOTH: with signing merely
+# optional, a nested bundle Xcode cannot sign is skipped silently, and the first thing anyone
+# hears about it is a rejected notarization.
+SIGN_ID="${WAFFLED_SIGN_IDENTITY:-}"
+if [ -n "$SIGN_ID" ]; then
+  [ -n "${WAFFLED_TEAM_ID:-}" ] || die "WAFFLED_SIGN_IDENTITY is set but WAFFLED_TEAM_ID is not —
+  a manual Developer ID build needs both (see apps/mac/signing.example.conf)"
+  set -- "$@" \
+    CODE_SIGN_STYLE=Manual \
+    "CODE_SIGN_IDENTITY=$SIGN_ID" \
+    "DEVELOPMENT_TEAM=$WAFFLED_TEAM_ID" \
+    CODE_SIGNING_REQUIRED=YES \
+    CODE_SIGNING_ALLOWED=YES \
+    ENABLE_HARDENED_RUNTIME=YES \
+    OTHER_CODE_SIGN_FLAGS=--timestamp
+  say "→ xcodebuild build (Release, Developer ID, hardened runtime)"
+else
+  say "→ xcodebuild build (Release, ad-hoc signed)"
+fi
 mkdir -p "$OUT"
 ( cd "$MAC" && xcodebuild build \
     -project Waffled.xcodeproj -scheme Waffled -configuration Release \
@@ -125,8 +152,19 @@ ok "embedded into the app ($(hsize "$DEST"))"
 # --deep, codesign rewrites Contents/MacOS/Waffled and Contents/_CodeSignature and nothing
 # else, so the Mach-O files inside Resources/runtime keep the hashes their manifest
 # records. Step 5 below re-proves exactly that, with the embedded supervisor, every run.
-say "→ re-signing the app around the embedded runtime (ad hoc)"
-codesign --force --sign - "$APP" >/dev/null 2>&1 || die "could not re-sign $APP"
+#
+# On a Developer ID build this seal is transient: release-mac.sh goes on to sign the runtime
+# tree and rewrite its manifest, both of which change sealed bytes, and seals the app again
+# afterwards. It is done here anyway so that what this script produces always verifies,
+# whoever runs it.
+if [ -n "$SIGN_ID" ]; then
+  say "→ re-signing the app around the embedded runtime (Developer ID, hardened runtime)"
+  codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP" >/dev/null 2>&1 \
+    || die "could not re-sign $APP with $SIGN_ID"
+else
+  say "→ re-signing the app around the embedded runtime (ad hoc)"
+  codesign --force --sign - "$APP" >/dev/null 2>&1 || die "could not re-sign $APP"
+fi
 codesign --verify --strict "$APP" || die "the re-signed app does not verify"
 ok "sealed — codesign --verify passes over the whole app"
 
@@ -185,6 +223,12 @@ ok "$manifest_detail"
 
 say ""
 ok "$APP ($(hsize "$APP"))"
-say "${c_dim}  unsigned beyond an ad-hoc signature: Gatekeeper will refuse it on another Mac"
-say "  until Phase 3 item 5 (Developer ID + notarization). Run it here with:"
-say "    $APP/Contents/MacOS/Waffled${c_reset}"
+if [ -n "$SIGN_ID" ]; then
+  say "${c_dim}  Signed with a Developer ID, but not yet notarized and not yet a DMG —"
+  say "  apps/mac/Scripts/release-mac.sh is what finishes it. Run it here with:"
+  say "    $APP/Contents/MacOS/Waffled${c_reset}"
+else
+  say "${c_dim}  Ad-hoc signed: Gatekeeper will refuse it on any Mac but this one. A release"
+  say "  build is apps/mac/Scripts/release-mac.sh, which signs and notarizes. Run it here with:"
+  say "    $APP/Contents/MacOS/Waffled${c_reset}"
+fi

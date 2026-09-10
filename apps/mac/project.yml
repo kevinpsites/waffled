@@ -19,9 +19,12 @@ settings:
     SWIFT_VERSION: "5.0"
     SWIFT_STRICT_CONCURRENCY: minimal
     ENABLE_USER_SCRIPT_SANDBOXING: YES
-    # Ad-hoc signing while the app is a dev skeleton. Developer ID signing and
-    # notarization — of the app AND every binary in the embedded runtime bundle —
-    # are Phase 3 item 5, deliberately deferred.
+    # Ad-hoc signing is the DEFAULT, not the release: it is what a dev build and CI want,
+    # and it needs no certificate on the machine. A release overrides these from the
+    # xcodebuild command line (Scripts/build-app.sh's signing seam, driven by
+    # WAFFLED_SIGN_IDENTITY) — CODE_SIGNING_REQUIRED included, because with signing merely
+    # optional Xcode skips a nested bundle it cannot sign without saying so, and
+    # Sparkle.framework's Autoupdate and Updater.app are exactly that.
     #
     # CODE_SIGNING_ALLOWED must stay YES (the default). Setting it to NO skips the
     # CodeSign phase outright, which silently overrides the "-" identity: the binary
@@ -72,7 +75,7 @@ targets:
         # it strands every installed copy on the version it has.
         SUPublicEDKey: P5KntcLJnziFF2CNZTTupX+DpD3N/ty8kPTI/qTkurU=
         # GitHub serves the latest release's assets at this stable path, so the feed never
-        # names a version. Item 5's release script uploads appcast.xml beside the DMG.
+        # names a version. Scripts/release-mac.sh uploads appcast.xml beside the DMG.
         SUFeedURL: https://github.com/kevinpsites/waffled/releases/latest/download/appcast.xml
         # Checking is on from the first launch. Leaving it unset makes Sparkle ask
         # permission in a window of its own on first run — which an LSUIElement app with no
@@ -87,9 +90,11 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.waffled.mac
         ENABLE_TESTABILITY: YES              # @testable import Waffled from the tests
-        # Deliberately NO App Sandbox and no entitlements file: the app spawns
+        # Deliberately NO App Sandbox and no entitlements for the app: it spawns
         # waffled-runtime, which runs Postgres against a real filesystem outside any
-        # container. Sandboxing it would break the one thing it does.
+        # container. Sandboxing it would break the one thing it does. The plists in
+        # Entitlements/ are a different thing — they belong to individual binaries inside
+        # the runtime bundle, applied by Scripts/release-mac.sh.
     scheme:
       testTargets:
         - WaffledTests

@@ -38,7 +38,15 @@ docs/          ARCHITECTURE.md, DATA_MODEL.md, TESTING.md, product/ (user docs)
 
 ## Self-hosting (quickstart)
 
-Waffled runs as a small Docker Compose stack (Postgres · PowerSync · api · Caddy). Auth
+**On an Apple silicon Mac, there is nothing to build.** Download
+`Waffled-<version>.dmg` from the
+[latest release](https://github.com/kevinpsites/waffled/releases/latest), drag it to
+Applications, and open it: a menu-bar app runs the whole server natively — no Docker, no
+Terminal — and updates itself. macOS 14+. See
+[Mac install](https://docs.waffled.app/install/mac/).
+
+Everywhere else — Linux, a NAS, a Raspberry Pi, a VPS — Waffled runs as a small Docker
+Compose stack (Postgres · PowerSync · api · Caddy). Auth
 is **built in** — no Auth0 or external identity provider required. You can optionally
 attach your own SSO later (see below).
 

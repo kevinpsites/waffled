@@ -22,8 +22,10 @@ xcodebuild test -project Waffled.xcodeproj -scheme Waffled -destination 'platfor
   and a bare `-scheme Waffled` can resolve to the iOS one.
 - `TEST_HOST` points at `Waffled.app/Contents/MacOS/Waffled`. The iOS form
   (`Waffled.app/Waffled`) builds fine and then fails to launch the host.
-- There is deliberately **no App Sandbox and no entitlements file**. The app spawns a runtime
-  that runs Postgres against a real filesystem; sandboxing it breaks the only thing it does.
+- There is deliberately **no App Sandbox and no entitlements for the app itself**. It spawns a
+  runtime that runs Postgres against a real filesystem; sandboxing it breaks the only thing it
+  does. (`Entitlements/` is not that: those plists belong to individual binaries inside the
+  runtime bundle — see "Signing a release".)
 - **A whole app is `Scripts/build-app.sh <bundle-dir> [out-dir]`**, not a build phase. It
   builds Release and clones a ~670 MB runtime bundle into `Contents/Resources/runtime`; an
   Xcode copy-files phase would re-copy all of it on every incremental build of an eleven-file
@@ -35,8 +37,9 @@ xcodebuild test -project Waffled.xcodeproj -scheme Waffled -destination 'platfor
 
 ## The runtime is a black box behind `status --json`
 
-The app knows three things about `waffled-runtime`: where it is, its four subcommands, and
-the shape of `status --json`. It must never learn more.
+The app knows three things about `waffled-runtime`: where it is, the four subcommands it
+calls (`start`, `stop`, `status`, `backup` — the runtime has more), and the shape of
+`status --json`. It must never learn more.
 
 - **Never poll anything heavier than `status`.** It is built to be cheap —
   `bonjour.advertised` is a pidfile check, `backups.scheduleInstalled` is a `stat`. `doctor`,
@@ -62,8 +65,7 @@ the shape of `status --json`. It must never learn more.
   `UpdaterDelegate` postpones the relaunch until `stop` succeeds, holds it when `stop`
   refuses — the item then reads `Install the update now`, because the postponed session
   makes a fresh check a no-op — and starts the server back up if the install aborts after
-  the stop. Item 5 must also sign `Sparkle.framework`'s nested `Autoupdate`, `Updater.app`
-  and XPC services **inside-out**, before the app that contains them.
+  the stop.
 - **`armed` is irreversible; Quit while armed always stops the server first.** All of the
   update lives in one table (`UpdateFlow.swift`): the app latches "Sparkle holds a prepared
   installer" on the first news of it and never unlatches for an ending cycle, an abort or an
@@ -75,6 +77,33 @@ the shape of `status --json`. It must never learn more.
   in it, so `codesign --verify` then fails with `SecCSResourceAdded` for all 36,478 embedded
   files and `generate_appcast` refuses to publish it. `build-app.sh` re-signs at the end —
   **shallow, never `--deep`**, which is what keeps the runtime's own manifest hashes valid.
+
+## Signing a release
+
+`Scripts/release-mac.sh` is the only thing that signs for real, and **CI stays ad hoc** —
+the certificate, the notarytool profile and the Sparkle key live in one login Keychain, and
+nothing secret goes in the repo or a workflow. What CI does hold is the two cheap guards:
+`plutil -lint` over every entitlements plist and `release-mac.sh --help`.
+
+- **The order is load-bearing, innermost first, and `--deep` is never the answer.**
+  Sparkle's nested code (`Downloader.xpc`, `Installer.xpc`, `Updater.app`, `Autoupdate`,
+  then the framework) → every Mach-O in `Contents/Resources/runtime` → **the bundle
+  manifest** → the app, shallow. Signing rewrites bytes, so the manifest is written after
+  the files it hashes, and `--deep` on the app would re-sign those files again and undo it.
+- **Xcode does not sign Sparkle's nested code, whatever the build settings say.** A
+  Developer ID `xcodebuild` signs `Sparkle.framework` itself and leaves `Autoupdate`,
+  `Updater.app` and both XPC services `Signature=adhoc`; notarization rejects the app for
+  them. `release-mac.sh` signs them and then *asserts* the authority, because the
+  alternative is finding out ten minutes into a 690 MB submission.
+- **Find binaries by Mach-O magic, never by extension.** Postgres ships extensions as
+  `.dylib`, PowerSync's native prebuilds are `.node`, and node/caddy/waffled-runtime are
+  bare names in `bin/`.
+- **Entitlements: the smallest set that boots, one plist per binary that needs one, under
+  `Entitlements/` named for the binary.** Today that is `node.entitlements.plist` alone —
+  V8 cannot reserve its code range under the hardened runtime without
+  `com.apple.security.cs.allow-jit`. Add one only after watching the unentitled binary
+  actually die. **Never `disable-library-validation`**: a bundled dylib signed by another
+  team is a dylib we re-sign.
 
 ## Everything the menu shows is a pure function
 

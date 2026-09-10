@@ -170,12 +170,14 @@ t "release_repository_ready accepts a clean main synchronized with origin" '
   git -C "$tmp/work" config user.email test@example.com
   git -C "$tmp/work" config user.name "Waffled Test"
   git -C "$tmp/work" switch -q -c main
-  mkdir -p "$tmp/work/apps/api" "$tmp/work/apps/web" "$tmp/work/apps/ios" "$tmp/work/infra/compose"
+  mkdir -p "$tmp/work/apps/api" "$tmp/work/apps/web" "$tmp/work/apps/ios" \
+           "$tmp/work/apps/mac" "$tmp/work/infra/compose"
   printf "%s\n" "## [Unreleased]" "" "### Added" "- Ready to ship" "" "## [0.8.0]" > "$tmp/work/CHANGELOG.md"
   printf "%s\n" "{\"version\":\"0.8.0\"}" > "$tmp/work/apps/api/package.json"
   printf "%s\n" "{\"version\":\"0.8.0\"}" > "$tmp/work/apps/web/package.json"
   printf "%s\n" "WAFFLED_VERSION=0.8.0" > "$tmp/work/infra/compose/.env.example"
   printf "%s\n" "  MARKETING_VERSION: \"0.8.0\"" > "$tmp/work/apps/ios/project.yml"
+  printf "%s\n" "    MARKETING_VERSION: \"0.8.0\"" > "$tmp/work/apps/mac/project.yml"
   git -C "$tmp/work" add .
   git -C "$tmp/work" commit -qm "test fixture"
   git -C "$tmp/work" push -qu origin main
@@ -186,6 +188,75 @@ t "release_repository_ready accepts a clean main synchronized with origin" '
   case "$out" in
     *"Release repository checks passed"*) echo "PASS" ;;
     *) echo "FAIL: missing success message: $out" ;;
+  esac
+'
+
+# --- 8b. every version site is checked, the Mac app included ------------------------
+# A Mac version left behind is a release Sparkle cannot tell from the last one: it
+# compares CFBundleVersion, which follows MARKETING_VERSION in apps/mac/project.yml.
+t "release_repository_ready rejects a Mac version left behind" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  git init --bare -q "$tmp/origin.git"
+  git clone -q "$tmp/origin.git" "$tmp/work"
+  git -C "$tmp/work" config user.email test@example.com
+  git -C "$tmp/work" config user.name "Waffled Test"
+  git -C "$tmp/work" switch -q -c main
+  mkdir -p "$tmp/work/apps/api" "$tmp/work/apps/web" "$tmp/work/apps/ios" \
+           "$tmp/work/apps/mac" "$tmp/work/infra/compose"
+  printf "%s\n" "## [Unreleased]" "" "### Added" "- Ready to ship" "" "## [0.8.0]" > "$tmp/work/CHANGELOG.md"
+  printf "%s\n" "{\"version\":\"0.8.0\"}" > "$tmp/work/apps/api/package.json"
+  printf "%s\n" "{\"version\":\"0.8.0\"}" > "$tmp/work/apps/web/package.json"
+  printf "%s\n" "WAFFLED_VERSION=0.8.0" > "$tmp/work/infra/compose/.env.example"
+  printf "%s\n" "  MARKETING_VERSION: \"0.8.0\"" > "$tmp/work/apps/ios/project.yml"
+  printf "%s\n" "    MARKETING_VERSION: \"0.7.0\"" > "$tmp/work/apps/mac/project.yml"
+  git -C "$tmp/work" add .
+  git -C "$tmp/work" commit -qm "test fixture"
+  git -C "$tmp/work" push -qu origin main
+  ROOT="$tmp/work"
+  set +e
+  out="$(release_repository_ready "0.9.0" 2>&1)"
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || { echo "FAIL: a stale Mac version was accepted"; exit 0; }
+  case "$out" in
+    *"mac=0.7.0"*) echo "PASS" ;;
+    *) echo "FAIL: the drift report does not name the Mac version: $out" ;;
+  esac
+'
+
+# --- 8c. bump_line rewrites the version site, or says it could not --------------------
+# The bump is a `sed` whose expression and target file are written apart from each other.
+# An expression that matches nothing leaves the file byte-identical, and the release then
+# commits and tags with that site left behind — the exact drift the checks above reject.
+t "bump_line rewrites exactly the Mac MARKETING_VERSION line" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  cp "$ROOT/apps/mac/project.yml" "$tmp/project.yml"
+
+  bump_line "$tmp/project.yml" "s/^([[:space:]]*MARKETING_VERSION:[[:space:]]*).*/\\1\"9.9.9\"/"
+
+  count="$(grep -c "MARKETING_VERSION: \"9.9.9\"" "$tmp/project.yml" || true)"
+  [ "$count" -eq 1 ] || { echo "FAIL: expected one bumped line, got $count"; exit 0; }
+  changed="$(diff "$ROOT/apps/mac/project.yml" "$tmp/project.yml" | grep -c "^[<>]" || true)"
+  [ "$changed" -eq 2 ] || { echo "FAIL: $changed diff lines, so more than one line moved"; exit 0; }
+  echo "PASS"
+'
+
+t "bump_line fails loudly when the pattern matches nothing" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  printf "%s\n" "name: Waffled" > "$tmp/project.yml"
+
+  set +e
+  out="$(bump_line "$tmp/project.yml" "s/^([[:space:]]*MARKETING_VERSION:[[:space:]]*).*/\\1\"9.9.9\"/" 2>&1)"
+  rc=$?
+  set -e
+
+  [ "$rc" -ne 0 ] || { echo "FAIL: an unmatched pattern was accepted"; exit 0; }
+  case "$out" in
+    *"$tmp/project.yml"*MARKETING_VERSION*) echo "PASS" ;;
+    *) echo "FAIL: the failure names neither the file nor the pattern: $out" ;;
   esac
 '
 
@@ -236,12 +307,14 @@ t "release_repository_ready rejects main when origin has advanced" '
   git -C "$tmp/work" config user.email test@example.com
   git -C "$tmp/work" config user.name "Waffled Test"
   git -C "$tmp/work" switch -q -c main
-  mkdir -p "$tmp/work/apps/api" "$tmp/work/apps/web" "$tmp/work/apps/ios" "$tmp/work/infra/compose"
+  mkdir -p "$tmp/work/apps/api" "$tmp/work/apps/web" "$tmp/work/apps/ios" \
+           "$tmp/work/apps/mac" "$tmp/work/infra/compose"
   printf "%s\n" "## [Unreleased]" "" "### Added" "- Ready to ship" "" "## [0.8.0]" > "$tmp/work/CHANGELOG.md"
   printf "%s\n" "{\"version\":\"0.8.0\"}" > "$tmp/work/apps/api/package.json"
   printf "%s\n" "{\"version\":\"0.8.0\"}" > "$tmp/work/apps/web/package.json"
   printf "%s\n" "WAFFLED_VERSION=0.8.0" > "$tmp/work/infra/compose/.env.example"
   printf "%s\n" "  MARKETING_VERSION: \"0.8.0\"" > "$tmp/work/apps/ios/project.yml"
+  printf "%s\n" "    MARKETING_VERSION: \"0.8.0\"" > "$tmp/work/apps/mac/project.yml"
   git -C "$tmp/work" add .
   git -C "$tmp/work" commit -qm "test fixture"
   git -C "$tmp/work" push -qu origin main

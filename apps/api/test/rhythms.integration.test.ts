@@ -252,9 +252,15 @@ describe('completion-shape rhythms', () => {
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body).rhythm
     expect(body.lastCompletedAt).toBe(doneAt.toISOString())
-    // completion + 3 months, NOT the old due date + 3 months.
+    // completion + 3 months, NOT the old due date + 3 months. Clamped to the target month's
+    // last day the way Postgres interval arithmetic is (Aug 31 + 3 mons = Nov 30); a bare
+    // setUTCMonth would roll that over to Dec 1.
     const expected = new Date(doneAt)
+    const day = expected.getUTCDate()
+    expected.setUTCDate(1)
     expected.setUTCMonth(expected.getUTCMonth() + 3)
+    const lastDay = new Date(Date.UTC(expected.getUTCFullYear(), expected.getUTCMonth() + 1, 0)).getUTCDate()
+    expected.setUTCDate(Math.min(day, lastDay))
     expect(body.nextDueAt).toBe(expected.toISOString())
   })
 

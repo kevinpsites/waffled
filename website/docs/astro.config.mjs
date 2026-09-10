@@ -33,6 +33,7 @@ export default defineConfig({
 					label: 'Install',
 					items: [
 						{ label: 'Requirements', slug: 'install/requirements' },
+						{ label: 'Mac install', slug: 'install/mac' },
 						{ label: 'Docker install', slug: 'install/docker' },
 						{ label: 'Environment variables', slug: 'install/environment-variables' },
 						{ label: 'Reverse proxy & TLS', slug: 'install/reverse-proxy' },

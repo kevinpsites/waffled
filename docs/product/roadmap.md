@@ -252,6 +252,21 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   edit a rhythm, which is where you already go to ask about one, but it is not a record you
   can page through.
 
+- **Waffled for Mac — a downloadable app that runs the family server natively, no Docker.**
+  Plex-style: the web app stays the UI, the Mac app is a menu-bar icon (running / starting /
+  error) whose menu opens the web UI, copies the server address, toggles start-at-login, and
+  backs up. Same api, migrations, PowerSync, Caddy and web build as Compose — only packaging
+  and supervision differ, via a Go runtime supervisor (`apps/runtime`) that is a CLI first
+  (`waffled-runtime start|status|backup|doctor`). The app carries the whole 669 MB runtime
+  inside it, verifies it against a manifest before starting anything, walks a household
+  through its first run, and **updates itself** via Sparkle — one download that swaps the
+  app, the runtime and the schema together, snapshotting and rolling back if the new version
+  cannot come up healthy. Signed with a Developer ID, **notarized and stapled**, and shipped
+  as a DMG built by `apps/mac/Scripts/release-mac.sh`, so Gatekeeper opens it with no
+  warning. Apple silicon and macOS 14+ only for now; Windows follows from the same runtime
+  later. Plan, risks and phases in [`native-mac-plan.md`](./native-mac-plan.md); how to use
+  it: [docs → Mac install](https://docs.waffled.app/install/mac/).
+
 ## Partial / in progress 🟡
 
 - **Weekly Planning** — a guided session that walks the family through deciding the week
@@ -330,18 +345,14 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Planned 🚧
 
-- **Waffled for Mac — a downloadable app that runs the family server natively, no Docker.**
-  Plex-style: the web app stays the UI, the Mac app is a menu-bar icon (running / starting /
-  error) whose menu opens the web UI, copies the server address, toggles start-at-login, and
-  backs up. A non-technical person should go from download to a working household in under
-  five minutes, and relaunching re-opens the existing server. Same API, migrations,
-  PowerSync, Caddy and web build as Compose — only packaging and supervision differ, via a
-  small Go runtime supervisor that is a CLI first (`waffled-runtime start|status|backup`).
-  Mac only for now; Windows follows from the same runtime later. Plan, risks and phases in
-  [`native-mac-plan.md`](./native-mac-plan.md); the runtime supervisor (Phase 1 spike,
-  Phase 2 build) is done and the menu-bar app now drives it, including the first-run window
-  and the MacBook warning (Phase 3 items 1–4), but nothing is signed, notarized or packaged
-  yet — so there is still nothing to download.
+- **Waffled for Windows** — the same Go runtime, a different wrapper (a tray app rather
+  than a menu-bar one), and a bundle of Windows binaries instead of Mach-O ones. Nothing in
+  the Mac work forecloses it; §9 of [`native-mac-plan.md`](./native-mac-plan.md) records
+  what would have to change. Not started.
+- **iOS "find your Waffled server"** — Bonjour discovery in the app, so a phone on the same
+  network offers the household's Mac instead of asking for an address. The runtime already
+  advertises `_waffled._tcp`; the phone half is Phase 4 of
+  [`native-mac-plan.md`](./native-mac-plan.md).
 - **Chore due-dates on the calendar.** The last piece of "the calendar as the all-in-one
   dated view": overlay `chore_instances.due_on` onto the calendar as read-only all-day chips,
   tapping through to the chore rather than the event editor. Deliberately chips, not
