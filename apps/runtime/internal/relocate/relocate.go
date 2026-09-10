@@ -141,20 +141,26 @@ func Run(ctx context.Context, o Options) (Plan, error) {
 	if err := os.MkdirAll(plan.To, 0o700); err != nil {
 		return Plan{}, fmt.Errorf("create %s: %w", plan.To, err)
 	}
-	if err := o.Copy(ctx, plan.From, plan.To); err != nil {
+	// Every failure from here until the original is removed has to leave the destination
+	// as it found it. A populated one that nobody is pointing at is worse than no move:
+	// `checkDestination` refuses it on the next attempt, so the retry is refused too.
+	abandon := func(err error) (Plan, error) {
 		if madeIt {
 			os.RemoveAll(plan.To)
 		}
-		return Plan{}, fmt.Errorf("copy %s to %s: %w", plan.From, plan.To, err)
+		return Plan{}, err
+	}
+	if err := o.Copy(ctx, plan.From, plan.To); err != nil {
+		return abandon(fmt.Errorf("copy %s to %s: %w", plan.From, plan.To, err))
 	}
 	// The copy carried whatever mode the old root had; the new one is a fresh folder on
 	// a volume whose umask we do not know, and it holds every secret this household has.
 	if err := os.Chmod(plan.To, 0o700); err != nil {
-		return Plan{}, fmt.Errorf("secure %s: %w", plan.To, err)
+		return abandon(fmt.Errorf("secure %s: %w", plan.To, err))
 	}
 	if plan.ForgotSocketDir {
 		if err := forgetSocketDir(plan.To); err != nil {
-			return Plan{}, err
+			return abandon(err)
 		}
 	}
 	if err := os.RemoveAll(plan.From); err != nil {

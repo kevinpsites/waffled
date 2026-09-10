@@ -653,6 +653,7 @@ func (s *Supervisor) Stop(ctx context.Context) error {
 // Status reports what is actually true right now: pids from pidfiles (so it works across
 // process boundaries), health from live probes.
 func (s *Supervisor) Status(ctx context.Context) *status.Report {
+	ip := lanIP()
 	r := &status.Report{
 		DataDir:     s.plan.Layout.Root,
 		BundleDir:   s.plan.Bundle,
@@ -661,8 +662,10 @@ func (s *Supervisor) Status(ctx context.Context) *status.Report {
 			Public: s.plan.Ports.Public, PowerSyncPublic: s.plan.Ports.PowerSyncPublic,
 			API: s.plan.Ports.API, PowerSync: s.plan.Ports.PowerSync, Postgres: s.plan.Ports.Postgres,
 		},
-		URLs: status.URLs{Local: s.LocalURL(), LAN: s.LANURL(), LANIP: s.LANIPURL(),
-			PowerSync: s.powerSyncURL()},
+		// Sampled once for the whole document: three calls to lanIP could straddle a DHCP
+		// renewal and name two different addresses in one answer.
+		URLs: status.URLs{Local: s.LocalURL(), LAN: s.lanURLFrom(ip), LANIP: s.lanIPURLFrom(ip),
+			PowerSync: s.powerSyncURLFrom(ip)},
 	}
 	if m := s.manifest; m != nil {
 		c := m.Components
@@ -774,13 +777,24 @@ func (s *Supervisor) LocalURL() string {
 // that decides, so the status document, the Bonjour TXT record and the "other devices on
 // your network" line a start prints can never disagree about where Waffled is.
 func (s *Supervisor) LANURL() string {
-	return publicURL(s.plan.Env.Get(KeyPublicHost), lanIP(), multicastHost(), s.plan.Ports.Public)
+	return s.lanURLFrom(lanIP())
+}
+
+// lanURLFrom is LANURL against an address already sampled, so one status document cannot
+// name two — `lanIP` asks the routing table each time, and a DHCP renewal between two
+// calls is exactly the disagreement `urls.lanIp` exists to prevent.
+func (s *Supervisor) lanURLFrom(ip string) string {
+	return publicURL(s.plan.Env.Get(KeyPublicHost), ip, multicastHost(), s.plan.Ports.Public)
 }
 
 // LANIPURL is the address that works on any network, whatever form LANURL takes: the
 // "if a device can't find that name, use this" line the setup window shows.
 func (s *Supervisor) LANIPURL() string {
-	return publicURL(PublicHostIP, lanIP(), "", s.plan.Ports.Public)
+	return s.lanIPURLFrom(lanIP())
+}
+
+func (s *Supervisor) lanIPURLFrom(ip string) string {
+	return publicURL(PublicHostIP, ip, "", s.plan.Ports.Public)
 }
 
 // powerSyncURL follows the same setting. The api derives each client's sync endpoint
@@ -788,7 +802,11 @@ func (s *Supervisor) LANIPURL() string {
 // reports rather than what any device is told — but a status document naming two
 // different hosts for one server is a support call.
 func (s *Supervisor) powerSyncURL() string {
-	if url := publicURL(s.plan.Env.Get(KeyPublicHost), lanIP(), multicastHost(),
+	return s.powerSyncURLFrom(lanIP())
+}
+
+func (s *Supervisor) powerSyncURLFrom(ip string) string {
+	if url := publicURL(s.plan.Env.Get(KeyPublicHost), ip, multicastHost(),
 		s.plan.Ports.PowerSyncPublic); url != "" {
 		return url
 	}
