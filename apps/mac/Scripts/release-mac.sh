@@ -479,8 +479,8 @@ took
 # so the feed names the same file. generate_appcast reads the version out of the app inside
 # it; the EdDSA signature is made in the Keychain and never leaves it.
 step "12. the Sparkle appcast"
-if [ "$ADHOC" = yes ]; then
-  warn "skipped: an ad-hoc build must never be published, so it gets no feed"
+if [ "$NOTARIZE" != yes ]; then
+  warn "skipped (--no-notarize): an unnotarized DMG must never be fed to Sparkle"
 else
   WAFFLED_DOWNLOAD_URL_PREFIX="https://github.com/kevinpsites/waffled/releases/download/v$VERSION/" \
     "$HERE/make-appcast.sh" "$RELEASE" "$RELEASE/appcast.xml" || die "make-appcast.sh failed"
@@ -514,8 +514,13 @@ if [ "$UPLOAD" = yes ]; then
   say "  now resolves to this feed — that is the URL every installed copy checks.${c_reset}"
 else
   warn "skipped (--no-upload)"
-  say "${c_dim}  Upload by hand with:"
-  say "    gh release upload v$VERSION '$DMG' '$RELEASE/appcast.xml' --clobber${c_reset}"
+  if [ "$NOTARIZE" = yes ]; then
+    say "${c_dim}  Upload by hand with:"
+    say "    gh release upload v$VERSION '$DMG' '$RELEASE/appcast.xml' --clobber${c_reset}"
+  else
+    say "${c_dim}  This DMG is for local testing only: unnotarized, and with no feed, there is"
+    say "  nothing here that may be uploaded.${c_reset}"
+  fi
 fi
 took
 
