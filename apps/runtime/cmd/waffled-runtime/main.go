@@ -6,6 +6,7 @@
 //	waffled-runtime status [--json]
 //	waffled-runtime logs [service] [-f] [-n N]
 //	waffled-runtime doctor [--json]
+//	waffled-runtime uninstall [--delete-data] [--dry-run] [--json] [--yes]
 //	waffled-runtime version
 //
 // It is a CLI first, deliberately: everything the menu-bar app does, support can ask
@@ -22,13 +23,16 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/kevinpsites/waffled/apps/runtime/internal/datadir"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/schedule"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/services"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/supervisor"
+	"github.com/kevinpsites/waffled/apps/runtime/internal/uninstall"
 )
 
 // version is stamped at build time (-ldflags "-X main.version=..."); the bundle's own
@@ -45,6 +49,7 @@ Usage:
   waffled-runtime backup [flags]    dump the database to the backups folder
   waffled-runtime restore FILE      replace the database with a dump (destructive)
   waffled-runtime doctor [flags]    diagnose a stack that will not start
+  waffled-runtime uninstall [flags] remove what the runtime put on this Mac (keeps your data)
   waffled-runtime version
 
 Common flags:
@@ -67,6 +72,12 @@ backup:
   --uninstall-schedule  remove it
 restore:
   --yes          skip the typed confirmation (required when there is no terminal)
+uninstall:
+  --delete-data  also delete the data directory — the database, media, backups and the
+                 secrets in config.env, which cannot be recovered (default: keep it)
+  --dry-run      print the plan and change nothing
+  --json         machine-readable output (schema 1)
+  --yes          stop the server first if it is still running
 `
 
 func main() {
@@ -96,6 +107,8 @@ func run(args []string) error {
 		return cmdRestore(args[1:])
 	case "doctor":
 		return cmdDoctor(args[1:])
+	case "uninstall":
+		return cmdUninstall(args[1:])
 	case "version", "--version", "-v":
 		fmt.Printf("waffled-runtime %s\n", version)
 		return nil
@@ -349,6 +362,85 @@ func cmdDoctor(args []string) error {
 		return errors.New("doctor found problems")
 	}
 	return nil
+}
+
+// cmdUninstall removes what the runtime put on this machine. It is the machine-level
+// half of the Mac app's "Remove Waffled…"; the app's own half (login item, preferences,
+// Sparkle caches, the .app) is not this command's job — see the README.
+//
+// It does not build a Supervisor. Doing so would write to the directory it is about to
+// report on — the layout, config.env, runtime.json, bundle-verified.json — which would
+// make --dry-run a lie and a second run find a data directory it had just recreated.
+func cmdUninstall(args []string) error {
+	fs := flag.NewFlagSet("uninstall", flag.ContinueOnError)
+	common := addCommon(fs)
+	deleteData := fs.Bool("delete-data", false, "also delete the data directory")
+	dryRun := fs.Bool("dry-run", false, "print the plan and change nothing")
+	asJSON := fs.Bool("json", false, "machine-readable output")
+	yes := fs.Bool("yes", false, "stop the server first if it is running")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	root := common.data
+	if root == "" {
+		var err error
+		if root, err = datadir.DefaultRoot(); err != nil {
+			return err
+		}
+	}
+	if abs, err := filepath.Abs(root); err == nil {
+		root = abs
+	}
+	layout := datadir.At(root)
+
+	opts := uninstall.Options{
+		Layout:     layout,
+		Agent:      backupSchedule(common.bundle, layout),
+		DeleteData: *deleteData,
+		DryRun:     *dryRun,
+		Yes:        *yes,
+		// Narration goes to stderr so --json owns stdout.
+		Log: os.Stderr,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	report, runErr := uninstall.Run(ctx, opts)
+	// A refusal is raised before anything is attempted, so there is no outcome to print.
+	// Every other failure is partial by nature — some items removed, some not — and the
+	// report is the only way to tell those apart from "nothing happened".
+	if errors.Is(runErr, uninstall.ErrRefused) {
+		return runErr
+	}
+	if *asJSON {
+		doc, err := report.JSON()
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(doc))
+	} else {
+		fmt.Print(report.Text())
+	}
+	return runErr
+}
+
+// backupSchedule builds the nightly-backup agent for an uninstall. Only its label,
+// LaunchAgents directory and the data directory recorded in the installed plist matter
+// here, so a binary or bundle path that cannot be resolved — the app already dragged to
+// the Trash — is not a reason to stop; nil simply means "leave the schedule out of the
+// inventory".
+func backupSchedule(bundle string, layout datadir.Layout) uninstall.ScheduleAgent {
+	exe, err := os.Executable()
+	if err != nil {
+		exe = ""
+	}
+	agent, err := schedule.For(exe, bundle, layout.Root, layout.LogPath("backup"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "! could not locate ~/Library/LaunchAgents: %v\n", err)
+		return nil
+	}
+	return agent
 }
 
 func cmdLogs(args []string) error {
