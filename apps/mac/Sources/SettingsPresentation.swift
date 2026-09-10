@@ -126,7 +126,10 @@ struct SettingsPresentation: Equatable {
             applyEnabled: (offerRestart || changed) && problems.isEmpty && !busy,
             primaryAction: offerRestart ? .restart : .apply,
             needsRestart: restartPending,
-            confirmation: applied ? Copy.applied : nil,
+            // Only while it is still true. An edit made after Apply means the form no
+            // longer matches what was applied, and "Settings applied." beside an unsaved
+            // change is the same lie in the other direction.
+            confirmation: applied && !changed ? Copy.applied : nil,
             primaryButton: offerRestart ? Copy.restart : Copy.apply,
             secondaryButton: Copy.close)
     }

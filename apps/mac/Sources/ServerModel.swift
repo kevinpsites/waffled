@@ -408,8 +408,14 @@ final class ServerModel {
     /// The close button, whichever screen is in the window. Settings is simply closed —
     /// it is reopened from the menu — while a first run is dismissed for the rest of the
     /// launch: closing that one is a person saying "I will watch the menu bar".
+    #if DEBUG
     /// Puts the model in the state a finished first run leaves it in, for the tests that
-    /// are about what happens AFTER one. Nothing in the app calls it.
+    /// are about what happens AFTER one.
+    ///
+    /// Behind `#if DEBUG` so it is not in the app a household installs: a Release build
+    /// carries no way to fake its own state, which is the same rule the supervisor's
+    /// health prober follows — a test hook shipped to households is a test hook a
+    /// household can hit.
     func pretendFirstRunForTesting(_ status: RuntimeStatus) {
         isFirstRun = true
         firstRunDecided = true
@@ -417,6 +423,7 @@ final class ServerModel {
         startTrigger = .setup
         setupStartedAt = .distantPast
     }
+    #endif
 
     func dismissFirstRunWindow() {
         showingSettings = false
@@ -622,7 +629,10 @@ final class ServerModel {
                 if wasRunning { try await client.stop() }
                 try await client.apply(.move(to: destination))
                 self?.chooseDataDirectory(destination)
-                if wasRunning { try await self?.client?.start() }
+                if wasRunning {
+                    try await self?.client?.start()
+                    self?.serverStarted()
+                }
                 self?.note("Waffled's files are in \(destination.lastPathComponent) now")
             } catch {
                 self?.recordFailure(Self.describe(error))
@@ -650,8 +660,7 @@ final class ServerModel {
             do {
                 try await client.stop()
                 try await client.start()
-                // Whatever it was running on the old value of, it is not any more.
-                self?.addressAwaitingRestart = false
+                self?.serverStarted()
                 self?.note("Waffled restarted")
             } catch {
                 self?.recordFailure(Self.describe(error))
@@ -667,6 +676,14 @@ final class ServerModel {
     private func restartAfterFailedMove() async {
         guard let client else { return }
         try? await client.start()
+    }
+
+    /// A server that has just started has read whatever config.env says now, so nothing
+    /// is waiting on a restart any more. Called from every start this app makes rather
+    /// than from one of them: the flag is about the running server, not about which
+    /// button was pressed.
+    private func serverStarted() {
+        addressAwaitingRestart = false
     }
 
     private func rememberApplied(_ options: SetupOptions) {
