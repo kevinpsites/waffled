@@ -50,6 +50,7 @@ Usage:
   waffled-runtime restore FILE      replace the database with a dump (destructive)
   waffled-runtime doctor [flags]    diagnose a stack that will not start
   waffled-runtime uninstall [flags] remove what the runtime put on this Mac (keeps your data)
+  waffled-runtime config set KEY=VALUE   write one setting into config.env
   waffled-runtime version
 
 Common flags:
@@ -72,6 +73,9 @@ backup:
   --uninstall-schedule  remove it
 restore:
   --yes          skip the typed confirmation (required when there is no terminal)
+config set:
+  KEY=VALUE      the setting to write; the key is upper case and the value is never
+                 printed back. Creates the data directory and config.env if needed.
 uninstall:
   --delete-data  also delete the data directory — the database, media, backups and the
                  secrets in config.env, which cannot be recovered (default: keep it)
@@ -109,6 +113,8 @@ func run(args []string) error {
 		return cmdDoctor(args[1:])
 	case "uninstall":
 		return cmdUninstall(args[1:])
+	case "config":
+		return cmdConfig(args[1:])
 	case "version", "--version", "-v":
 		fmt.Printf("waffled-runtime %s\n", version)
 		return nil
