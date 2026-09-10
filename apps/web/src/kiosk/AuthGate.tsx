@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { authApi, getAccessToken, isKioskMode, type AuthStatus, type SetupInput } from '../lib/api'
+import { SERVER_REACHABLE_EVENT, isUnansweredError, probeServerNow } from '../lib/api/reachability'
+import { UNREACHABLE_HEADLINE, UNREACHABLE_HINT } from './components/ServerUnreachableBanner'
 import { ProfilePicker } from './ProfilePicker'
 import { PairDevice } from './PairDevice'
 import '../styles/auth.css'
 
-type Phase = 'loading' | 'authed' | 'login' | 'setup' | 'picker'
+type Phase = 'loading' | 'authed' | 'login' | 'setup' | 'picker' | 'unreachable'
 
 // Gates the whole kiosk: shows the first-run Setup wizard, the Login screen, or the
 // app — driven by whether a session exists and whether the instance is initialized.
@@ -56,14 +58,24 @@ export function AuthGate({ children }: { children: ReactNode }) {
       const s = await authApi.status()
       setStatus(s)
       setPhase(s.initialized ? 'login' : 'setup')
-    } catch {
-      setPhase('login')
+    } catch (err) {
+      // The store only admits an outage after a grace window, so branch on THIS call's
+      // verdict: a login form nobody can submit is exactly the bug being fixed.
+      setPhase(isUnansweredError(err) ? 'unreachable' : 'login')
     }
   }, [navigate])
 
   useEffect(() => {
     if (phase === 'loading') void resolve()
   }, [phase, resolve])
+
+  // A probe that gets through re-runs the resolve that failed.
+  useEffect(() => {
+    if (phase !== 'unreachable') return
+    const back = () => setPhase('loading')
+    window.addEventListener(SERVER_REACHABLE_EVENT, back)
+    return () => window.removeEventListener(SERVER_REACHABLE_EVENT, back)
+  }, [phase])
 
   // Login/setup/logout (and a failed refresh) all fire this; re-resolve.
   useEffect(() => {
@@ -76,6 +88,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (phase === 'setup') return <SetupWizard />
   if (phase === 'picker') return <ProfilePicker />
   if (phase === 'login') return <LoginScreen status={status} oidcError={oidcError} />
+  if (phase === 'unreachable') return <UnreachableScreen onAnswered={() => setPhase('loading')} />
   return (
     <div className="auth-screen">
       <div className="auth-loading">Loading…</div>
@@ -93,6 +106,29 @@ function AuthShell({ title, sub, children }: { title: string; sub: string; child
         {children}
       </div>
     </div>
+  )
+}
+
+// Same story the banner tells, on the screen that would otherwise be a dead login form.
+function UnreachableScreen({ onAnswered }: { onAnswered: () => void }) {
+  const [checking, setChecking] = useState(false)
+  async function retry() {
+    setChecking(true)
+    let answer
+    try {
+      answer = await probeServerNow()
+    } finally {
+      setChecking(false)
+    }
+    if (answer === 'answered') onAnswered()
+  }
+  return (
+    <AuthShell title={UNREACHABLE_HEADLINE} sub="It may be stopped or asleep. Retrying…">
+      <div className="auth-sub" style={{ marginTop: 10 }}>{UNREACHABLE_HINT}</div>
+      <button type="button" className="btn btn-primary auth-submit" onClick={() => void retry()} disabled={checking}>
+        {checking ? 'Checking…' : 'Retry'}
+      </button>
+    </AuthShell>
   )
 }
 
