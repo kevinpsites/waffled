@@ -20,10 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   download: no Docker, no Terminal, no Homebrew. Open it and a setup window walks you
   through a first run — database, migrations, everything — and ends on the address to type
   into the kitchen tablet, with a QR code to point a phone at. **Where things go** lets you
-  settle the details before anything is created: which folder Waffled keeps your family's
-  data in, what time it backs up each night, how the house reaches it (this Mac's name, its
-  IP address, or a name you've set up yourself) and on which port, whether it starts when
-  the Mac does, and — optionally — an Anthropic or OpenAI key for meal and week suggestions.
+  settle the details before anything is set up: which folder Waffled keeps your family's
+  data in — it makes a **Waffled** folder inside whatever you pick, so choosing Documents
+  does not scatter a database through Documents, and it says so rather than failing later
+  if it cannot write there — what time it backs up each night, how the house reaches it
+  (this Mac's name, its IP address, or a name you've set up yourself) and on which port
+  (1024 or above: below that needs an administrator), whether it starts when the Mac does, and — optionally — an Anthropic or OpenAI key for meal and week suggestions.
   The menu keeps it running: start at login, the server
   address to type into the kitchen tablet or a phone, a backup on demand, **Settings…**,
   which brings that same screen back whenever you want to change your mind, and

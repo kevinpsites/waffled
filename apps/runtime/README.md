@@ -241,7 +241,18 @@ It is read when the ports are **first chosen**, and never again. Once an install
 public port, `runtime.json` is the record of it and changing `HTTP_PORT` does nothing:
 every phone, tablet and bookmark in the household points at the port already published, and
 moving it is a job that has to tell them first. To move it deliberately, stop the server and
-edit `ports.public` in `runtime.json`.
+edit `ports.public` in `runtime.json`. A value that is not a number is only refused where it
+is acted on — on a first run — so a typo cannot stop a settled install from starting.
+
+**Which run is the first one is decided by `start`, not by whoever looked first.**
+`status`, `doctor`, `stop` and `logs` construct **read-only**: on a data directory that
+does not exist yet they allocate ports in memory and save neither `runtime.json` nor
+`config.env`. Without that the Mac app's launch poll — which happens before the setup
+window is on screen — would spend the household's first allocation before anyone had
+chosen one, and the `HTTP_PORT` written by the setup screen would be read on a run that
+could never be a first run. An install that already exists is unaffected: its files are
+there, so nothing is skipped. `backup` and `restore` still construct normally, because
+both really write.
 
 **PowerSync follows the same address with nothing to configure.** The api derives each
 client's sync endpoint from the `Host` (or `X-Forwarded-Host`) header that client actually

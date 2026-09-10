@@ -64,7 +64,9 @@ uses it.
 - **Waffled's files.** Where the database, your photos and every backup live. It has to be a
   folder on this Mac's own internal disk, formatted APFS or Mac OS Extended — an external
   drive somebody can unplug, or a network folder, is not somewhere a running database can
-  live, and the window says so if you pick one. You can move it later from `Settings…` —
+  live, and the window says so if you pick one — as it does if it cannot write there.
+  Waffled makes a **Waffled** folder inside whatever you pick, so choosing your Documents
+  folder does not scatter a database through it. You can move it later from `Settings…` —
   see [Moving Waffled's files](#moving-waffleds-files) — but picking it now avoids the copy.
 - **Nightly backup.** On, at 3:00 AM, unless you say otherwise — 1:00 AM, 3:00 AM, 5:00 AM
   or noon — noon is there for a Mac that sleeps at night. Switching it off schedules
@@ -77,7 +79,8 @@ uses it.
     point at this Mac yourself — a DNS entry on your router, or a real domain aimed at this
     Mac's address. Waffled does not create it.
   - **Port**, 8080 unless you change it. Waffled *prefers* the port you name and takes the
-    next free one if something else on this Mac already answers there.
+    next free one if something else on this Mac already answers there. Pick 1024 or above
+    — ports below that need an administrator, and Waffled does not run as one.
 
   Whichever you pick, Waffled serves plain **HTTP** on your own network. A nicer name is a
   nicer address, not HTTPS — there is no certificate, and none of this puts Waffled on the
