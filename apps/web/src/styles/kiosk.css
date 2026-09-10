@@ -232,7 +232,8 @@ body {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 60;
+  /* Over the mobile header (100) and the rail + its scrim (210/220). */
+  z-index: 300;
   background: var(--offline);
   color: var(--offline-fg);
   font-size: 13px;
@@ -256,6 +257,22 @@ body {
   font-size: 13px;
   background: color-mix(in srgb, var(--offline-fg) 18%, transparent);
   color: var(--offline-fg);
+}
+
+/* While the strip is up the app is given room under it rather than covered — the
+   banner sets --unreachable-h from its measured height (it wraps on a phone). The
+   shell then fills what the padding leaves of #root; its usual 100dvh would overflow
+   by the strip's height, and subtracting from dvh would double-count on a phone,
+   where dvh and #root's 100% are not the same box. */
+.server-unreachable #root {
+  box-sizing: border-box;
+  padding-top: var(--unreachable-h, 56px);
+}
+.server-unreachable .wf-kiosk {
+  height: 100%;
+}
+.server-unreachable .modal-overlay {
+  top: var(--unreachable-h, 56px);
 }
 
 /* Stalled-sync strip — the same quiet shape as the offline banner, shown only

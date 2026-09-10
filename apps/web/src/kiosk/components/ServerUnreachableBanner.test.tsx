@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import { ServerUnreachableBanner } from './ServerUnreachableBanner'
-import { configureReachability, reportNetworkFailure, resetReachability } from '../../lib/api/reachability'
+import { configureReachability, reportNetworkFailure, reportStatus, resetReachability } from '../../lib/api/reachability'
 
 // The device's own link is the other banner's job; stub it per test.
 let deviceOnline = true
@@ -33,6 +33,27 @@ describe('ServerUnreachableBanner', () => {
     expect(screen.getByRole('status')).toHaveTextContent(/Can’t reach the Waffled server/)
     expect(screen.getByRole('status')).toHaveTextContent(/menu bar and choose Start Waffled/)
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  })
+
+  it('marks the document while it is shown so the app is padded out from under it', () => {
+    const root = document.documentElement
+    const { unmount } = render(<ServerUnreachableBanner />)
+    expect(root.classList.contains('server-unreachable')).toBe(false)
+
+    goUnreachable()
+    expect(root.classList.contains('server-unreachable')).toBe(true)
+    // jsdom lays nothing out, so this is the fallback height.
+    expect(root.style.getPropertyValue('--unreachable-h')).toBe('56px')
+
+    act(() => {
+      reportStatus(200)
+    })
+    expect(root.classList.contains('server-unreachable')).toBe(false)
+    expect(root.style.getPropertyValue('--unreachable-h')).toBe('')
+
+    goUnreachable()
+    unmount()
+    expect(root.classList.contains('server-unreachable')).toBe(false)
   })
 
   it('stays hidden when the device itself is offline — that banner wins', () => {
