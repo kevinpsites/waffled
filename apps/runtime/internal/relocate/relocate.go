@@ -38,6 +38,11 @@ var (
 	ErrRefused = errors.New("that folder cannot hold Waffled")
 	// ErrNoRoom is the destination volume being too small, checked before a byte moves.
 	ErrNoRoom = errors.New("there is not enough room")
+	// ErrOldFolderRemains says the household is whole at the new address and only the
+	// old copy could not be deleted. It is NOT a failed move, and treating it as one
+	// strands a household: the app would keep pointing at the old folder, and a retry
+	// would then be refused for a destination that "already has something in it".
+	ErrOldFolderRemains = errors.New("the old folder could not be removed")
 )
 
 // socketDirKey is runtime.json's own name for the value forgetSocketDir removes. Named
@@ -155,8 +160,8 @@ func Run(ctx context.Context, o Options) (Plan, error) {
 	if err := os.RemoveAll(plan.From); err != nil {
 		// The household is at the new address and whole; the old copy failing to go is
 		// worth saying, and is not worth undoing a good move over.
-		return plan, fmt.Errorf("Waffled moved to %s, but %s could not be removed: %w",
-			plan.To, plan.From, err)
+		return plan, fmt.Errorf("%w: Waffled moved to %s, but %s is still there (%v)",
+			ErrOldFolderRemains, plan.To, plan.From, err)
 	}
 	return plan, nil
 }

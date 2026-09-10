@@ -60,6 +60,17 @@ func cmdMove(args []string) error {
 		return reportMove(plan, *asJSON, true)
 	}
 	plan, err := relocate.Run(context.Background(), options)
+	// The move working and the old folder failing to go is not a failed move: the
+	// household is whole at the new address. Reporting it as a failure leaves whoever
+	// asked pointing at the old folder — and a retry is then refused, because the
+	// destination now "already has something in it".
+	if errors.Is(err, relocate.ErrOldFolderRemains) {
+		if reportErr := reportMove(plan, *asJSON, false); reportErr != nil {
+			return reportErr
+		}
+		fmt.Fprintf(os.Stderr, "! %v\n", err)
+		return nil
+	}
 	if err != nil {
 		return err
 	}
