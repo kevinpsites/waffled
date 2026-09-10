@@ -75,7 +75,7 @@ targets:
         # it strands every installed copy on the version it has.
         SUPublicEDKey: P5KntcLJnziFF2CNZTTupX+DpD3N/ty8kPTI/qTkurU=
         # GitHub serves the latest release's assets at this stable path, so the feed never
-        # names a version. Item 5's release script uploads appcast.xml beside the DMG.
+        # names a version. Scripts/release-mac.sh uploads appcast.xml beside the DMG.
         SUFeedURL: https://github.com/kevinpsites/waffled/releases/latest/download/appcast.xml
         # Checking is on from the first launch. Leaving it unset makes Sparkle ask
         # permission in a window of its own on first run — which an LSUIElement app with no

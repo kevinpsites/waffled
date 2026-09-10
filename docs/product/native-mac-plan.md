@@ -224,7 +224,7 @@ uses bash because it is throwaway and the point is to learn, not to build.
   [--yes]` removes the launchd backup agent, leftover pidfiles, the Bonjour registration and
   the out-of-root Postgres socket directory, keeps the data unless asked, and prints the whole
   kept-vs-removed inventory. The app's "Remove Waffled…" follows.)*
-- **Port collisions** (§3). **Gatekeeper/notarization** *(done — PR #N)* → Confirmed as
+- **Port collisions** (§3). **Gatekeeper/notarization** *(done — PR #TBD-P3-5)* → Confirmed as
   written: every binary in the bundle needs its own hardened-runtime signature, and
   `--deep` is not the way to get one — it rewrites the same Mach-O files the runtime's
   manifest hashes, so signing is per-file and the manifest is written after. 124 binaries,
@@ -417,7 +417,7 @@ every change; a release is `./waffled release X.Y.Z` followed by
    attempt annotates the label and leaves the toggle usable, and only `requiresApproval`
    (which becomes a button that opens Login Items) and `notFound` stop being a toggle.
 5. Signing + notarization pipeline (every embedded binary), DMG build, Sparkle appcast.
-   *(done — PR #N)* → One local command, `apps/mac/Scripts/release-mac.sh X.Y.Z`, because
+   *(done — PR #TBD-P3-5)* → One local command, `apps/mac/Scripts/release-mac.sh X.Y.Z`, because
    the certificate, the notarytool profile and the Sparkle key all live in one login
    Keychain and none of them belong in CI (which stays ad hoc). It asserts the version
    against `project.yml`, builds the bundle and the app, signs, notarizes, staples,
@@ -492,7 +492,7 @@ every change; a release is `./waffled release X.Y.Z` followed by
      EdDSA key is what an update has to satisfy. `Scripts/make-appcast.sh` signs a directory
      of releases into the feed, and `release-mac.sh` (item 5) is what calls it.
 7. **Exit criterion:** a fresh Mac, no dev tools, download → household created in under
-   five minutes, timed by someone who didn't build it. *(the pipeline half is done — PR #N)*
+   five minutes, timed by someone who didn't build it. *(the pipeline half is done — PR #TBD-P3-5)*
    → The whole thing was run once for real: `release-mac.sh 0.14.3 --no-upload` produced a
    **303 MB `Waffled-0.14.3.dmg`**, notarization **Accepted** for the app and for the DMG,
    `spctl -a -vv -t install` on the DMG reads **`source=Notarized Developer ID`**, and the
@@ -506,7 +506,7 @@ every change; a release is `./waffled release X.Y.Z` followed by
 1. iOS "Find your Waffled server" via Bonjour, with manual address as fallback.
 2. Docs site: "Waffled for Mac" how-to (install, where data lives, backups, uninstall,
    Mac mini auto-login), features reference, roadmap → Done, README download link.
-   *(done — PR #N, with item 5: the release that made the app downloadable is the release
+   *(done — PR #TBD-P3-5, with item 5: the release that made the app downloadable is the release
    that needed the docs)* → `website/docs/…/install/mac.md`, a line in the feature matrix,
    and the roadmap entry moved to Done.
 
