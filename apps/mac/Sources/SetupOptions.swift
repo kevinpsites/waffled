@@ -84,13 +84,20 @@ struct SetupOptions: Equatable, Codable {
             out.append("That is not a name — use something like waffled.home, with no http:// and no port.")
         }
         if Self.portNumber(port) == nil {
-            out.append("A port is a number between 1 and 65535.")
+            out.append("A port is a number between \(Self.lowestPort) and 65535 — ports "
+                + "below \(Self.lowestPort) need an administrator.")
         }
         return out
     }
 
+    /// Below this a port needs root. `ports.IsFree` answers by BINDING, so an
+    /// unprivileged Waffled finds every one of them taken and reports "no free port" —
+    /// a dead end, reached long after the screen where a person could have typed another.
+    static let lowestPort = 1024
+
     static func portNumber(_ raw: String) -> Int? {
-        guard let n = Int(raw.trimmingCharacters(in: .whitespaces)), (1...65535).contains(n) else {
+        guard let n = Int(raw.trimmingCharacters(in: .whitespaces)),
+              (lowestPort...65535).contains(n) else {
             return nil
         }
         return n

@@ -17,6 +17,30 @@ final class SetupOptionsTests: XCTestCase {
         XCTAssertTrue(options.problems.isEmpty)
     }
 
+    /// Ports below 1024 need root, and the runtime checks a port by binding it — so an
+    /// unprivileged Waffled reports "no free port" for every one of them, which is a
+    /// dead end nobody can act on. The field refuses them where a person can still type
+    /// another.
+    func testAPrivilegedPortIsRefusedWhereItCanStillBeChanged() {
+        for privileged in ["80", "443", "1023", "1", "0"] {
+            var options = SetupOptions()
+            options.port = privileged
+            XCTAssertFalse(options.problems.isEmpty, "port \(privileged) was accepted")
+            XCTAssertTrue(options.problems.contains { $0.contains("administrator") },
+                          "the reason should say why, got \(options.problems)")
+        }
+    }
+
+    func testTheFirstPortAPersonMayChooseIsAccepted() {
+        var options = SetupOptions()
+        options.port = "1024"
+        XCTAssertTrue(options.problems.isEmpty)
+        options.port = "65535"
+        XCTAssertTrue(options.problems.isEmpty)
+        options.port = "65536"
+        XCTAssertFalse(options.problems.isEmpty)
+    }
+
     /// The two reserved words are the runtime's, and a typo in either is a mode that
     /// silently reads as a hostname nobody can resolve.
     func testTheAddressModesWriteTheRuntimesOwnWords() {
@@ -97,7 +121,7 @@ final class SetupOptionsTests: XCTestCase {
             options.port = bad
             XCTAssertFalse(options.problems.isEmpty, "\(bad) was accepted as a port")
         }
-        for good in ["1", "8080", " 8443 ", "65535"] {
+        for good in ["1024", "8080", " 8443 ", "65535"] {
             var options = SetupOptions()
             options.port = good
             XCTAssertTrue(options.problems.isEmpty, "\(good) was refused as a port")
