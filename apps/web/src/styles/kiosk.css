@@ -134,6 +134,13 @@ body {
     visibility: visible;
   }
 
+  /* Both are fixed at the top of the viewport, under the outage strip's z 300; the
+     drawer's first nav item would sit behind it. Same offset as .modal-overlay. */
+  .server-unreachable .mobile-nav-scrim,
+  .server-unreachable .rail {
+    top: var(--unreachable-h, 56px);
+  }
+
   .rail-logo {
     width: 44px;
     height: 44px;
