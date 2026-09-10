@@ -13,8 +13,12 @@ import {
   resetReachability,
 } from './reachability'
 
-const answered = (status = 200) => ({ status }) as Response
-const gateway = () => ({ status: 502 }) as Response
+// Response stand-ins with the bits the store reads — a real `headers.get`, as in
+// client.test.ts, so a stub can't quietly pass a check the browser would fail.
+const res = (status: number, contentType: string | null) =>
+  ({ status, headers: { get: (k: string) => (k.toLowerCase() === 'content-type' ? contentType : null) } }) as unknown as Response
+const answered = (status = 200) => res(status, 'application/json')
+const gateway = () => res(502, 'text/plain')
 
 function setDeviceOnline(online: boolean) {
   Object.defineProperty(navigator, 'onLine', { configurable: true, value: online })
