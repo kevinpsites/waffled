@@ -12,6 +12,7 @@ package relocate
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -22,6 +23,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/kevinpsites/waffled/apps/runtime/internal/atomicfile"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/datadir"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/rtstate"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/supervisor"
@@ -37,6 +39,10 @@ var (
 	// ErrNoRoom is the destination volume being too small, checked before a byte moves.
 	ErrNoRoom = errors.New("there is not enough room")
 )
+
+// socketDirKey is runtime.json's own name for the value forgetSocketDir removes. Named
+// here rather than reached for through the struct, because that rewrite is a key edit.
+const socketDirKey = "socketDir"
 
 // headroom is kept free at the destination on top of the household's own size, so a move
 // that just fits does not leave a volume with nothing left for the first backup.
@@ -191,14 +197,28 @@ func socketDirIsInside(l datadir.Layout, root string) bool {
 	return dir == root || strings.HasPrefix(dir+string(filepath.Separator), root+string(filepath.Separator))
 }
 
+// forgetSocketDir removes one key and touches nothing else.
+//
+// Deliberately not `rtstate.Load` → mutate → `rtstate.Save`: that round-trips through a Go
+// struct, so any field this binary has never heard of would be gone. The supervisor can
+// round-trip safely because it rewrites a file it wrote moments earlier; a move can be
+// handed a runtime.json written by a newer version, and losing part of it is precisely what
+// a command whose promise is "nothing is lost" must not do.
 func forgetSocketDir(root string) error {
 	path := datadir.At(root).RuntimeJSON
-	s, found, err := rtstate.Load(path)
-	if err != nil || !found {
-		return err
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read %s: %w", path, err)
 	}
-	s.SocketDir = ""
-	return rtstate.Save(path, s)
+	var state map[string]any
+	if err := json.Unmarshal(raw, &state); err != nil {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	delete(state, socketDirKey)
+	return atomicfile.WriteJSON(path, state, 0o644)
 }
 
 func supervisorPid(o Options) (int, bool) {
