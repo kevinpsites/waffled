@@ -59,6 +59,17 @@ func emptyDataDir(t *testing.T) string {
 	return filepath.Join(t.TempDir(), "Application Support", "Waffled")
 }
 
+// layoutFor is emptyDataDir's layout with the directories made, for a test that has to
+// put something in config.env before the first construction.
+func layoutFor(t *testing.T, data string) datadir.Layout {
+	t.Helper()
+	l := datadir.At(data)
+	if err := l.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	return l
+}
+
 func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil

@@ -83,7 +83,8 @@ func (s *Supervisor) Doctor(ctx context.Context) []Check {
 	}
 
 	// Backups: the one check whose answer someone only ever wants once it is too late.
-	b := backup.Describe(s.plan.Layout.Backups, s.scheduleInstalled(), s.scheduleAt())
+	scheduleInstalled, scheduleAt := s.scheduleFacts()
+	b := backup.Describe(s.plan.Layout.Backups, scheduleInstalled, scheduleAt)
 	switch {
 	case b.LastError != "":
 		add("backups", CheckFail, "the last backup failed (%s): %s", b.LastErrorAt, b.LastError)
@@ -118,8 +119,7 @@ func (s *Supervisor) Doctor(ctx context.Context) []Check {
 		if loaded, err := s.scheduleLoaded(); loaded {
 			// The time comes from the plist launchd is holding, so "it is scheduled" and
 			// "it runs then" are one answer rather than two that can drift.
-			add("backup schedule", CheckOK, "a nightly backup is installed and loaded, at %s (%s)",
-				b.ScheduleAt, schedule.Label)
+			add("backup schedule", CheckOK, "%s", scheduleOKDetail(b.ScheduleAt))
 		} else {
 			add("backup schedule", CheckWarn,
 				"%s is installed but launchd does not have the job loaded, so no backup will run — "+

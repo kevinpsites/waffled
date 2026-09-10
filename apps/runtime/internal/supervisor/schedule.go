@@ -28,34 +28,35 @@ func (s *Supervisor) BackupAgent() (*schedule.Agent, error) {
 	return schedule.For(exe, s.plan.Bundle, s.plan.Layout.Root, s.plan.Layout.LogPath("backup"))
 }
 
-// scheduleInstalled answers the status block's question without running launchctl, which
-// `status` polls too often to afford. It tolerates a failure to even look: a missing home
-// directory is not a reason for `status` to produce nothing.
-func (s *Supervisor) scheduleInstalled() bool {
-	a, err := s.BackupAgent()
-	if err != nil {
-		return false
-	}
-	return a.Installed()
-}
-
-// scheduleAt reports the nightly time the installed plist actually names, for the status
-// block. Empty rather than a guess when there is nothing installed or the file will not
-// parse — a time nobody's launchd will honour is worse than no time.
+// scheduleFacts answers both of the status block's questions about the nightly backup
+// from ONE agent. Building it resolves this binary's path and its symlinks, and both
+// callers wanted it on the same poll — `status` is asked once or twice a second.
 //
-// Gated on Installed() so the common answer costs a stat: `status` is polled once or twice
-// a second by the menu-bar app, and reading and XML-parsing a plist on every one of those
-// is not what "status is built to be cheap" means.
-func (s *Supervisor) scheduleAt() string {
+// It tolerates a failure to even look: a missing home directory is not a reason for
+// `status` to produce nothing. The time is empty rather than a guess when there is
+// nothing installed or the plist will not parse, because a time nobody's launchd will
+// honour is worse than no time — and reading it is gated on Installed(), so the common
+// answer costs a stat rather than an XML parse.
+func (s *Supervisor) scheduleFacts() (installed bool, at string) {
 	a, err := s.BackupAgent()
 	if err != nil || !a.Installed() {
-		return ""
+		return false, ""
 	}
-	at, err := a.ScheduledAt()
-	if err != nil {
-		return ""
+	if at, err := a.ScheduledAt(); err == nil {
+		return true, at
 	}
-	return at
+	return true, ""
+}
+
+// scheduleOKDetail is the sentence for a schedule that is installed and loaded. The time
+// is empty when the plist will not parse, and printing that straight into "at %s" gave
+// "at  (app.waffled.backup)" — a gap where the one fact being reported should be.
+func scheduleOKDetail(at string) string {
+	if at == "" {
+		return fmt.Sprintf("a nightly backup is installed and loaded, at an unreadable time (%s)",
+			schedule.Label)
+	}
+	return fmt.Sprintf("a nightly backup is installed and loaded, at %s (%s)", at, schedule.Label)
 }
 
 // scheduleLoaded asks launchd whether the installed job is really loaded — the question

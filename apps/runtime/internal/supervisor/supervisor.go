@@ -276,10 +276,6 @@ func (s *Supervisor) Manifest() *manifest.Manifest { return s.manifest }
 // tablet and bookmark in the household points at it, so silently moving would look like
 // the server had vanished.
 func (s *Supervisor) settlePorts(firstRun bool) error {
-	preferred, err := preferredPublicPort(s.plan.Env)
-	if err != nil {
-		return err
-	}
 	if s.state.Ports.Public == 0 {
 		firstRun = true
 	}
@@ -289,6 +285,13 @@ func (s *Supervisor) settlePorts(firstRun bool) error {
 	// every menu-bar poll and saves the state it settles. Changing the port on a running
 	// install is a job that has to tell the household first.
 	if firstRun {
+		// Read here and nowhere else: on a settled install this setting does nothing, so
+		// a value that is not a number must not refuse to construct a supervisor for a
+		// household that has been running for a year.
+		preferred, err := preferredPublicPort(s.plan.Env)
+		if err != nil {
+			return err
+		}
 		chosen, err := choosePorts(ports.IsFree, preferred)
 		if err != nil {
 			return err
@@ -709,7 +712,8 @@ func (s *Supervisor) Status(ctx context.Context) *status.Report {
 		r.Services = append(r.Services, s.serviceStatus(ctx, spec))
 	}
 
-	r.Backups = backup.Describe(s.plan.Layout.Backups, s.scheduleInstalled(), s.scheduleAt())
+	scheduleInstalled, scheduleAt := s.scheduleFacts()
+	r.Backups = backup.Describe(s.plan.Layout.Backups, scheduleInstalled, scheduleAt)
 	// Reported beside the services, never as one of them: nothing about the
 	// advertisement feeds DeriveState (see bonjour.go).
 	r.Bonjour = s.BonjourStatus()
