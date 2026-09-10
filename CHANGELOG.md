@@ -25,12 +25,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   IP address, or a name you've set up yourself) and on which port, whether it starts when
   the Mac does, and — optionally — an Anthropic or OpenAI key for meal and week suggestions.
   The menu keeps it running: start at login, the server
-  address to type into the kitchen tablet or a phone, a backup on demand, and
+  address to type into the kitchen tablet or a phone, a backup on demand, **Settings…**,
+  which brings that same screen back whenever you want to change your mind, and
   **Check for updates…**, which stops the server, replaces the
   app and brings your household back up on the new version. The download is signed and
   notarized by Apple, so it opens with no Gatekeeper warning. Self-hosting with Docker
   Compose is unchanged and remains the way to run Waffled on Linux, a NAS, a Pi or a VPS —
   same api, same data, same web app. See [Mac install](https://docs.waffled.app/install/mac/).
+
+- **Change your mind about any of it later, and move Waffled's files to another disk.**
+  **Settings…** in the Mac app's menu reopens the setup screen on a Mac where Waffled is
+  already running: the nightly backup time (or turning it off), how the house reaches this
+  Mac, your provider key, and whether Waffled starts when the Mac does. Only what you
+  actually changed is applied, and anything that waits for a restart says so instead of
+  looking like it did not work. **Move…** takes the whole household — database, photos and
+  every backup — to another folder, which is how you get Waffled off a full startup disk:
+  it stops the server, copies, and starts it again, and nothing is deleted until the copy
+  has arrived. From Terminal it is `waffled-runtime move --to DIR`, which refuses a
+  destination that is not empty, is on a drive that could be unplugged, or has no room for
+  it — and refuses to move a server that is still running.
 
 - **`waffled-runtime` now takes the address, the port and the nightly backup hour from
   you.** A Mac install's settings live in `config.env`, and

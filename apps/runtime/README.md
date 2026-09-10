@@ -27,6 +27,7 @@ waffled-runtime restore FILE [--yes]
 waffled-runtime doctor [--json]
 waffled-runtime uninstall [--delete-data] [--dry-run] [--json] [--yes]
 waffled-runtime config set KEY=VALUE
+waffled-runtime move --to DIR [--dry-run] [--json]
 waffled-runtime version
 ```
 
@@ -166,6 +167,45 @@ Flags may be written on either side of the assignment. Go's `flag` package stops
 the first non-flag argument, so `config set KEY=V --data DIR` would otherwise write into
 the household's real `config.env` and report success; the flags are hoisted in front of the
 positional argument before it parses.
+
+### Moving the data directory — `move`
+
+```sh
+waffled-runtime move --to DIR [--data DIR] [--dry-run] [--json]
+```
+
+Takes a household's whole data directory somewhere else on this Mac — off a full startup
+disk, usually. `--data` names the folder being moved **from**, as everywhere else; `--to`
+is where it should end up, and it is the new root itself rather than its parent.
+
+It is **copy-then-remove, not a rename.** A rename cannot cross volumes, and crossing one
+is the reason anyone asks. The original is removed only once the copy has arrived whole,
+so a failure at any point leaves the household exactly where it was — and a copy that dies
+takes its own half-written destination with it, rather than leaving one to be found later
+and mistaken for a household. On macOS the copy is `ditto`, which carries the extended
+attributes a Postgres cluster and the Time Machine exclusion on `postgres/` depend on; a
+hand-written walk would drop them silently.
+
+Four refusals, all before a byte moves:
+
+| | Why |
+|---|---|
+| the server is running | copying a live cluster copies it mid-write, and what arrives is a database that looks fine until it does not. Stop it first |
+| the destination is inside the folder being moved | it would be copied into itself, then deleted along with the folder it was nested in |
+| the destination already has something in it | Waffled needs a folder of its own, and a merge into somebody else's is not undoable. An **empty** directory is fine — that is what a person makes in Finder before choosing it |
+| there is not enough room | measured against the household's size plus 512 MiB of headroom, so a move that just fits does not leave a volume with nothing left for the first backup |
+
+One thing is fixed up on the way through. `runtime.json` remembers the Postgres socket
+directory, and `Layout.SocketDir` **trusts a recorded path outright** — so a value pointing
+into the folder that was just deleted would have the postmaster recreate it at the old
+address, where it starts, logs nothing alarming, and answers nobody. `move` clears that
+value when it pointed inside, and keeps it when it is the short `wfl*` temp directory made
+for a data path too long for a unix socket, which is still valid afterwards. The
+`Caddyfile` needs nothing: the supervisor writes it on every start.
+
+Nothing on the Mac records where the data directory went — `--data` is how every command is
+told, and the Mac app is what remembers the household's answer between launches. The
+summary prints the `start --data` line to use.
 
 ### The address other devices use, and the port
 

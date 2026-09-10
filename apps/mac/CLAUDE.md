@@ -37,9 +37,9 @@ xcodebuild test -project Waffled.xcodeproj -scheme Waffled -destination 'platfor
 
 ## The runtime is a black box behind `status --json`
 
-The app knows three things about `waffled-runtime`: where it is, the five subcommands it
-calls (`start`, `stop`, `status`, `backup`, `config` — the runtime has more), and the shape
-of `status --json`. It must never learn more.
+The app knows three things about `waffled-runtime`: where it is, the six subcommands it
+calls (`start`, `stop`, `status`, `backup`, `config`, `move` — the runtime has more), and
+the shape of `status --json`. It must never learn more.
 
 - **Never poll anything heavier than `status`.** It is built to be cheap —
   `bonjour.advertised` is a pidfile check, `backups.scheduleInstalled` is a `stat`. `doctor`,
@@ -128,6 +128,13 @@ behaviour there rather than in the view, and put process work behind
   an injectable clock.** A first start can finish in under five seconds, and a checklist
   that appears and vanishes inside one animation frame is indistinguishable from a window
   that never opened. Every later step is decided by the status document alone.
+- **`Settings…` and the first run share the window, the rows and `SetupOptions`.** An
+  `LSUIElement` app has one window, so the menu item is off for the whole of a first-run
+  launch, not only while it waits. The two differ in what they do with the same values:
+  the first run applies all of them before the first `start`, and Settings applies only
+  what changed (`commandsForChange`) against what it remembers having applied last. Never
+  offer the port there — `HTTP_PORT` is the first allocation's preference and nothing
+  after it — and never read an empty provider-key field as a deletion.
 - Menu-bar images are **monochrome templates**: state is carried by shape (outline, cooking
   holes, fill, slash), never by colour. Colour belongs to the menu's own content. The mark is
   the waffle iron drawn in `WaffleIronIcon.swift` — no SF Symbol, no asset — and its frames

@@ -257,12 +257,14 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   error) whose menu opens the web UI, copies the server address, toggles start-at-login, and
   backs up. Same api, migrations, PowerSync, Caddy and web build as Compose — only packaging
   and supervision differ, via a Go runtime supervisor (`apps/runtime`) that is a CLI first
-  (`waffled-runtime start|status|backup|config|doctor`). The app carries the whole 669 MB
+  (`waffled-runtime start|status|backup|config|move|doctor`). The app carries the whole 669 MB
   runtime inside it, verifies it against a manifest before starting anything, walks a
   household through its first run — a **Where things go** screen settles the data folder,
   the nightly backup and its hour, the address other devices use (this Mac's name, its IP,
-  or a name the household points at it) and the port, all before anything is created — and
-  **updates itself** via Sparkle — one download that swaps the
+  or a name the household points at it) and the port, all before anything is created. The
+  same screen comes back as **Settings…** afterwards, applying only what changed, with a
+  **Move…** that takes the whole household to another folder when the startup disk fills
+  up. It **updates itself** via Sparkle — one download that swaps the
   app, the runtime and the schema together, snapshotting and rolling back if the new version
   cannot come up healthy. Signed with a Developer ID, **notarized and stapled**, and shipped
   as a DMG built by `apps/mac/Scripts/release-mac.sh`, so Gatekeeper opens it with no

@@ -7,8 +7,8 @@ tells you it is running, and opens it. Plex, not Photoshop.
 Everything it does, `waffled-runtime` already does from Terminal — that is deliberate
 (plan §3), and it is why support can always say "open Terminal and run
 `waffled-runtime status`". This app polls `status --json`, draws an icon, and shells out for
-the five subcommands the menu and the setup window need — `start`, `stop`, `status`,
-`backup`, `config`. It holds no state of its own and knows nothing about Postgres,
+the six subcommands the menu and its two screens need — `start`, `stop`, `status`,
+`backup`, `config`, `move`. It holds no state of its own and knows nothing about Postgres,
 PowerSync, or migrations.
 
 ```text
@@ -23,11 +23,12 @@ apps/mac/
     Updater.swift        # Sparkle: the check, and the stop before the relaunch
     UpdateFlow.swift     # the update state machine — armed until we hand the app over
     Updates.swift        # which way a version crossing went; the feed-URL seam
-    RuntimeClient.swift  # locating waffled-runtime and running its five subcommands
+    RuntimeClient.swift  # locating waffled-runtime and running its six subcommands
     RuntimeStatus.swift  # decoding `status --json`
     MenuPresentation.swift # icon + menu as pure functions of the last status
     FirstRunPresentation.swift # the first-run window's five steps, as a value
     FirstRunWindow.swift # the NSWindow that renders it — the app's only window
+    SettingsPresentation.swift # the same rows after setup, as a value
     SetupOptions.swift   # what "Where things go" collects, and the argv it owes
     Setup.swift          # which volumes may hold a household's data
     SetupTheme.swift     # the setup window's palette and type
@@ -174,6 +175,8 @@ Three things worth knowing:
    Server address: host:port   click to copy; urls.lan, else the Bonjour host
    Start at login              SMAppService.mainApp
    Back up now                 works while stopped — backup starts Postgres itself
+   Settings…                   the options screen again; off while the first-run
+                               window has the app's one window
    Check for updates…          Sparkle; stops the server before it relaunches
                                (reads `Install the update now` while one is held)
    Show logs                   appears only when something has gone wrong
@@ -284,6 +287,50 @@ the one thing the app must not offer, because Sparkle's installer swaps `Waffled
 moment this process exits, whatever the reason (see "Updates"). The item reads **Quit — stop
 the server first (an update will install on quit)** and is disabled; `Install the update now`
 retries the stop, and `waffled-runtime stop` in Terminal is the way out if it keeps refusing.
+
+## Settings
+
+`Settings…` puts the **same five rows** the first run showed back in the app's one window,
+on a Mac where Waffled already lives. Literally the same view — `SetupOptionRows`, bound to
+the same `model.setupOptions` — so there is one place where a row's label, control and
+validation live. What differs is the frame (`SettingsPresentation` rather than
+`FirstRunPresentation`) and what three of the rows may do.
+
+**Only the difference is applied.** `SetupOptions.commandsForChange(from:)` diffs the
+working copy against what was applied last and emits just that. The first run's
+`commandsBeforeFirstStart` writes everything, which is right exactly once; doing it on every
+Apply would put preferences on record that nobody expressed, and that is how `HTTP_PORT`
+came to move a published port.
+
+Three rules fall out of that, and each has a test:
+
+- **The port is read-only here.** `HTTP_PORT` is the preference for the *first* allocation
+  and nothing after it, so a field would be a control that silently did nothing. The row
+  shows the running port and says where a port is really moved.
+- **A blank provider-key field means "unchanged".** The key is never read back out of
+  `config.env` — `config set` is write-only by design — so the field opens blank every time.
+  Reading blank as a deletion would turn the suggestions off for anyone who came to change
+  the backup time.
+- **The backup toggle uninstalls when it goes off.** On the first run, off installs nothing
+  because there is nothing of ours on the Mac yet; here there is. A dev run still touches the
+  schedule in neither direction — launchd's label is global, so one Mac holds exactly one.
+
+What was applied is remembered through the injected `UpdateMemory`, not read back from
+`config.env`. The provider key is deliberately excluded from that (`SetupOptions.CodingKeys`):
+a secret belongs in owner-only `config.env`, not in the app's preferences file.
+
+### Moving the data directory
+
+The folder row becomes `Move…`, which is `ServerModel.moveDataDirectory(to:)`: stop, then
+`waffled-runtime move --to`, then repoint the client at the new folder, then start. That
+order is load-bearing — the runtime refuses to move a running cluster, and the `--data` the
+move is told about is the folder being moved **from**. The destination is checked with the
+same `Setup.refusal(for:)` the first run uses, because the volume rules are identical.
+
+The runtime removes the old folder only once the copy has arrived, and the app keeps showing
+the folder `status` reports rather than the one it asked for — so a move that fails leaves
+both the household and the row where they were. See `apps/runtime/README.md` for what the
+command itself refuses and why.
 
 ## Updates
 

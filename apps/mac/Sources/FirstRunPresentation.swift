@@ -105,7 +105,7 @@ struct FirstRunPresentation: Equatable {
             hint: "The database, your photos and every backup live in this folder.",
             change: "Change…",
             reveal: "Reveal in Finder",
-            settled: "Waffled is already set up here. Moving it is a separate job — see the docs."
+            settled: "Waffled is already set up here. You can move it later from Settings… in the menu bar."
         )
         static let backup = (
             title: "Nightly backup",

@@ -64,8 +64,8 @@ already uses it.
 - **Waffled's files.** Where the database, your photos and every backup live. It has to be a
   folder on this Mac's own internal disk, formatted APFS or Mac OS Extended — an external
   drive somebody can unplug, or a network folder, is not somewhere a running database can
-  live, and the window says so if you pick one. **Decide this now if you are going to**:
-  moving it afterwards is not something this version does for you.
+  live, and the window says so if you pick one. You can move it later from `Settings…` —
+  see [Moving Waffled's files](#moving-waffleds-files) — but picking it now avoids the copy.
 - **Nightly backup.** On, at 3:00 AM, unless you say otherwise — 1:00 AM, 3:00 AM, 5:00 AM
   or noon — noon is there for a Mac that sleeps at night. Switching it off schedules
   nothing; **Back up now** in the menu still works whenever you want it.
@@ -124,6 +124,7 @@ directory, brings the server back up, and the icon goes solid.
 | **Server address** | `host:port` for the kitchen tablet and the iOS app — click to copy. |
 | **Start at login** | Brings the server back after a reboot, with no browser window. |
 | **Back up now** | A `pg_dump` into `backups/`. Works even while the server is stopped. See [Backups](#backups). |
+| **Settings…** | The setup screen again — backup time, address, provider key, login item, and the folder. See [Changing settings later](#changing-settings-later). |
 | **Check for updates…** | See [Updating](#updating). |
 | **Show logs** | Appears only when something has gone wrong. |
 | **Quit Waffled** | Confirms, **stops the server**, then quits. |
@@ -147,12 +148,56 @@ Three things worth knowing:
 - **`postgres/` is excluded from Time Machine**, deliberately: restoring a live database
   directory file-by-file corrupts it. `backups/` **is** backed up, which is the copy you
   would actually restore from.
-- **The folder is chosen once**, on the setup window's *Where things go* screen, and
-  everything above moves with it. Picking a different folder afterwards is not something
-  this version does for you — so choose it while Waffled is asking.
+- **The folder is chosen at setup and can be moved afterwards**, from `Settings…` →
+  *Move…*. Everything above moves with it. See [Moving Waffled's files](#moving-waffleds-files).
 - Everything lives under your own user account — nothing is installed system-wide, and
   nothing asks for an admin password. Turn FileVault on if it isn't already; that is what
   protects `config.env` on a machine somebody could walk off with.
+
+## Changing settings later
+
+`Settings…` in the menu opens the same screen the setup window showed, on a Mac where
+Waffled is already running. You can change:
+
+| | Takes effect |
+|---|---|
+| **Nightly backup** — on or off, and the hour | Straight away. Turning it off removes the scheduled job. |
+| **Address on your network** — this Mac's name, its IP, or a name you set up | **Next time Waffled starts.** The screen says so when you change it; stop and start from the menu when it suits you. |
+| **Smart suggestions** — the provider key | Straight away. The field is always blank when the screen opens — Waffled never reads your key back out of `config.env` — so leaving it blank means "don't change it", not "delete it". |
+| **Start when this Mac starts up** | Straight away. |
+| **Waffled's files** | See below. |
+
+Only what you actually changed is applied, so opening the screen and closing it does
+nothing at all.
+
+**The port is shown but cannot be changed here.** Waffled picked it at setup and every
+phone, tablet and bookmark in the house points at it, so moving it is a job that has to
+tell them first. To move it deliberately, quit Waffled and edit `ports.public` in
+`runtime.json` in the folder above.
+
+## Moving Waffled's files
+
+`Settings…` → *Move…* takes everything — the database, your photos and every backup — to
+another folder on this Mac. Waffled stops the server, copies, and starts it again.
+
+Three things to know before you click it:
+
+- **The new folder must be empty and on a disk that stays plugged in**, formatted APFS or
+  Mac OS Extended. An external drive that could be unplugged, or a network folder, would
+  mean no server; Waffled refuses those rather than letting you find out later.
+- **Nothing is deleted until the copy has arrived.** If anything goes wrong — the disk
+  fills up, the drive disappears — your household is still in the old folder, untouched.
+- **It needs room for a second copy** while it runs, plus a little headroom. Waffled
+  checks first and tells you if there isn't enough.
+
+If you would rather do it from Terminal, it is the same command underneath:
+
+```sh
+/Applications/Waffled.app/Contents/Resources/runtime/bin/waffled-runtime move \
+  --to /Volumes/Big/Waffled --dry-run
+```
+
+Drop `--dry-run` to do it. Quit Waffled first — it refuses to move a running server.
 
 ## Backups
 

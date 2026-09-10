@@ -438,7 +438,8 @@ every change; a release is `./waffled release X.Y.Z` followed by
      (from the manifest by way of `status`, which answers stopped). *Where things go* is the
      whole of §2's "sensible defaults, changeable now": the data folder (internal volumes
      only, APFS or Mac OS Extended, and read-only with *Reveal in Finder* once a directory
-     has been initialized — moving it is a migration, not a setting), the nightly backup and
+     has been initialized — moving it afterwards is `Settings…` → *Move…*, which is a copy
+     and a restart rather than a setting), the nightly backup and
      its hour, the address mode and port, an optional provider key, and the login item.
      Everything on it is applied **before** the first `start`, through `config set` and
      `backup --install-schedule --at`, so the first boot already uses the folder, the port
@@ -463,6 +464,24 @@ every change; a release is `./waffled release X.Y.Z` followed by
    re-read on every poll, since System Settings can change it behind the app's back; a failed
    attempt annotates the label and leaves the toggle usable, and only `requiresApproval`
    (which becomes a button that opens Login Items) and `notFound` stop being a toggle.
+4b. `Settings…` and moving the data directory. *(done — PR #202)* → The options screen is
+   one view (`SetupOptionRows`), shown by the first run and by `Settings…`, so a row's
+   label, control and validation exist once. The difference is what is done with the
+   values: the first run writes all of them before the first `start`, and Settings writes
+   only what changed against what it remembers applying last, because writing everything
+   on every Apply is what put an `HTTP_PORT` on record that nobody chose. So the port is
+   read-only there, an empty provider-key field means "unchanged" rather than "delete",
+   and the backup toggle — which installs nothing when it is off on a first run, there
+   being nothing of ours on the Mac yet — uninstalls the schedule when it goes off here.
+   - **Moving the folder is `waffled-runtime move`, not the app.** The runtime owns the
+     directory layout, so it owns the move: copy-then-remove (a rename cannot cross
+     volumes, and crossing one is the point), `ditto` on macOS so the cluster's extended
+     attributes and the Time Machine exclusion travel with it, and the original removed
+     only once the copy has arrived. It refuses a running server, a destination inside the
+     source, a non-empty destination, and one with no room. The one fix-up on the way
+     through is `runtime.json`'s remembered socket directory: `Layout.SocketDir` trusts a
+     recorded path outright, so one pointing into the deleted folder would have the
+     postmaster recreate it there and answer nobody.
 5. Signing + notarization pipeline (every embedded binary), DMG build, Sparkle appcast.
    *(done — PR #201)* → One local command, `apps/mac/Scripts/release-mac.sh X.Y.Z`, because
    the certificate, the notarytool profile and the Sparkle key all live in one login
