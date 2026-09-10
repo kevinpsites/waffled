@@ -403,9 +403,11 @@ answer one, so a run that appears to hang at 0% CPU is a dialog waiting on the s
 *Always Allow* once.
 
 `dist/` (gitignored) holds `runtime/` (the bundle this release was built from), `app/`
-(the signed, notarized, stapled `Waffled.app` and its DerivedData) and `release/` — the two
-files that get uploaded, `Waffled-<version>.dmg` and `appcast.xml`. Every step replaces what
-it wrote last time, so a run that failed at notarization can simply be run again.
+(the signed, notarized, stapled `Waffled.app` and its DerivedData) and `release/v<version>/`
+— the two files that get uploaded, `Waffled-<version>.dmg` and `appcast.xml`. One directory
+per version: `make-appcast.sh` signs a whole directory, so a shared one would re-point every
+DMG it ever built at the current tag. Every step replaces what it wrote last time *for that
+version*, so a run that failed at notarization can simply be run again.
 
 The signing order is not adjustable; the reasoning is in
 [`CLAUDE.md`](CLAUDE.md#signing-a-release).

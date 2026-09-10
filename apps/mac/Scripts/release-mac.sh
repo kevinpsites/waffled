@@ -10,7 +10,8 @@
 # does the repo half (versions, changelog, tag) and then tells you to run this.
 #
 # Everything lands under apps/mac/dist/ (gitignored). Idempotent: every step replaces what
-# it wrote last time, so a run that failed at notarization can simply be run again.
+# it wrote last time for this version, so a run that failed at notarization can simply be
+# run again.
 #
 # bash 3.2-clean (macOS /bin/bash): no associative arrays, no ${x,,}, no mapfile.
 set -euo pipefail
@@ -70,7 +71,8 @@ one, so if this appears to hang at 0% CPU, look at the screen.
 Output, all under apps/mac/dist/:
   runtime/                 the runtime bundle this release was built from
   app/Waffled.app          the signed, notarized, stapled app
-  release/Waffled-X.Y.Z.dmg + appcast.xml   the two files that get uploaded
+  release/vX.Y.Z/          one directory per version, holding the two files that
+                           get uploaded: Waffled-X.Y.Z.dmg and appcast.xml
 USAGE
 }
 
@@ -103,7 +105,10 @@ DIST="$MAC/dist"
 BUNDLE="$DIST/runtime"
 APPOUT="$DIST/app"
 APP="$APPOUT/Waffled.app"
-RELEASE="$DIST/release"
+# One directory per version. make-appcast.sh signs a DIRECTORY of archives, so a shared
+# release/ would hand every DMG it ever built to generate_appcast and re-point all of them
+# at this tag's download URL.
+RELEASE="$DIST/release/v$VERSION"
 DMG="$RELEASE/Waffled-$VERSION.dmg"
 STAGING="$DIST/staging"
 ENTITLEMENTS="$MAC/Entitlements"
