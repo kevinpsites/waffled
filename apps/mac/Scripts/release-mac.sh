@@ -115,6 +115,9 @@ STAGING="$DIST/staging"
 ICONSET="$DIST/Waffled.iconset"
 ICONMASTER="$MAC/Sources/Assets.xcassets/AppIcon.appiconset/icon_512x512@2x.png"
 DMGRW="$DIST/staging.dmg"
+# Set while the writable image is attached, so the cleanup trap knows to unmount it.
+# Declared here because that trap runs under `set -u` from long before the DMG step.
+MOUNT=""
 ENTITLEMENTS="$MAC/Entitlements"
 # codesign narrates every file it touches on stderr ("replacing existing signature"), which
 # over 124 runtime binaries plus Sparkle is a screen of nothing. It goes here, and is printed
@@ -386,7 +389,17 @@ fi
 # re-run because everything it proved has been rewritten since. Its own throwaway data
 # directory: never the household's, and never one an app is about to be booted against.
 probe="$(mktemp -d)"
-trap 'rm -rf "$probe"' EXIT
+# One cleanup for the whole run. The DMG step below mounts a writable image, and a volume
+# left behind by a failure or a Ctrl-C outlives the run — the next one then cannot attach
+# a second copy of the same image. A second `trap … EXIT` would have replaced this one
+# rather than joining it, which is how the probe directory would start leaking instead.
+cleanup() {
+  if [ -n "$MOUNT" ]; then
+    hdiutil detach "$MOUNT" -force -quiet 2>/dev/null || true
+  fi
+  rm -rf "$probe"
+}
+trap cleanup EXIT INT TERM
 doctor_out="$("$RT/bin/waffled-runtime" doctor --json --data "$probe" 2>&1 || true)"
 detail="$(printf '%s' "$doctor_out" | "$RT/bin/node" -e '
   const NAME = "bundle manifest";  // supervisor.CheckBundleManifest
@@ -498,7 +511,8 @@ rm -f "$DMG" "$DMGRW"
 # be set on a mounted, writable image, which is then compressed into the DMG people download.
 hdiutil create -volname "Waffled $VERSION" -srcfolder "$STAGING" -ov -quiet \
   -format UDRW "$DMGRW" || die "hdiutil could not build the DMG"
-MOUNT="$(hdiutil attach "$DMGRW" -nobrowse | awk -F'\t' 'END { print $NF }')"
+MOUNT="$(hdiutil attach "$DMGRW" -nobrowse | awk -F'\t' 'END { print $NF }')" \
+  || die "hdiutil could not attach the writable DMG"
 [ -d "$MOUNT" ] || die "the writable DMG did not mount"
 if command -v SetFile >/dev/null 2>&1 && SetFile -a C "$MOUNT" 2>/dev/null; then
   ok "volume icon"
@@ -507,6 +521,8 @@ else
 fi
 hdiutil detach "$MOUNT" -quiet || hdiutil detach "$MOUNT" -force -quiet \
   || die "could not unmount $MOUNT"
+# Detached: nothing left for the cleanup to unmount, and it must not try twenty steps later.
+MOUNT=""
 hdiutil convert "$DMGRW" -format UDZO -ov -o "$DMG" -quiet \
   || die "hdiutil could not compress the DMG"
 rm -f "$DMGRW"
