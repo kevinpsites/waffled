@@ -271,6 +271,12 @@ body {
 .server-unreachable .wf-kiosk {
   height: 100%;
 }
+/* Same correction for the pre-app screens: their 100vh is the whole viewport, which
+   under the strip's padding is one strip-height taller than the box they sit in. */
+.server-unreachable .auth-screen,
+.server-unreachable .kp-screen {
+  min-height: 100%;
+}
 .server-unreachable .modal-overlay {
   top: var(--unreachable-h, 56px);
 }
