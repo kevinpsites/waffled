@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"testing"
 
@@ -29,8 +30,11 @@ func fakeBundle(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// This machine's own arch and platform, not the Mac's: `Verify` refuses a bundle
+	// built for another, and the Go job runs on Linux.
 	m := manifest.Manifest{
-		Schema: 1, Name: "waffled-runtime", Arch: "arm64", Platform: "darwin",
+		Schema: 1, Name: "waffled-runtime",
+		Arch: runtime.GOARCH, Platform: runtime.GOOS,
 		WaffledVersion: "0.0.0-test",
 		FileCount:      len(files), SymlinkCount: len(symlinks),
 		Files: files, Symlinks: symlinks,
