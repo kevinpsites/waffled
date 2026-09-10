@@ -45,6 +45,13 @@ describe('server reachability store', () => {
     expect(getServerReachability()).toBe('reachable')
   })
 
+  it('cancels a pending grace flip as soon as something answers', () => {
+    reportNetworkFailure()
+    reportStatus(200)
+    vi.advanceTimersByTime(UNREACHABLE_GRACE_MS)
+    expect(getServerReachability()).toBe('reachable')
+  })
+
   it('blames nothing on the server while the device itself is offline', () => {
     setDeviceOnline(false)
     reportNetworkFailure()
