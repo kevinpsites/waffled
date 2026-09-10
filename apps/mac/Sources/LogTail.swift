@@ -21,17 +21,11 @@ enum LogTail {
               let data = try? handle.readToEnd() else { return nil }
 
         // Decoded lossily on purpose: the window can cut a UTF-8 sequence in half.
-        var lines = String(decoding: data, as: UTF8.self)
+        let lines = String(decoding: data, as: UTF8.self)
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map { $0.trimmingCharacters(in: .whitespaces) }
-        // A window that started mid-line drops that partial first line — unless it is the
-        // only line in there, which is what a single line longer than the window looks
-        // like. Its tail is still the most recent thing the runtime wrote, and a stack
-        // trace is exactly when a blank progress line helps least. A log shorter than the
-        // window starts at byte zero, where nothing was cut.
-        if from > 0, lines.count(where: { !$0.isEmpty }) > 1 {
-            lines.removeFirst()
-        }
+        // A window that started mid-line leaves a partial first line, which is harmless:
+        // only the LAST non-empty line is returned.
         return lines.last { !$0.isEmpty }
     }
 }
