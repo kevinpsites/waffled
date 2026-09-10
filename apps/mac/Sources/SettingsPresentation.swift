@@ -43,7 +43,7 @@ struct SettingsPresentation: Equatable {
     /// Every word this screen adds to the ones `FirstRunPresentation.OptionsCopy` already
     /// holds. The shared rows keep their shared strings; only the frame is new.
     enum Copy {
-        static let title = "Waffled settings"
+        static let title = "Waffled Settings"
         static let message = """
             Change these whenever you like. Anything that needs the server restarted says \
             so before you apply it.

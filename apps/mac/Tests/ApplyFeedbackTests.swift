@@ -106,6 +106,14 @@ final class ApplyFeedbackTests: XCTestCase {
         XCTAssertNotNil(done.confirmation)
         XCTAssertTrue(done.confirmation?.isEmpty == false)
     }
+
+    /// The screen's own name, title-cased the way macOS names System Settings — and the
+    /// way the menu item that opens it is spelled.
+    func testTheScreenIsNamedTheWayTheMenuItemNamesIt() throws {
+        let settled = SetupOptions()
+        XCTAssertEqual(screen(options: settled, saved: settled, status: try running()).title,
+                       "Waffled Settings")
+    }
 }
 
 /// `Restart Waffled` — the way to make a restart-requiring setting take effect without

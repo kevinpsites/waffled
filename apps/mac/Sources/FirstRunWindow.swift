@@ -286,25 +286,32 @@ private struct SettingsStep: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                Text(screen.title).font(SetupTheme.title(24))
+                // Everything that answers "did that work?" sits beside the title, where a
+                // person is already looking. Under the rows it was below the fold at this
+                // window's size, so a successful Apply read as nothing happening at all.
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(screen.title).font(SetupTheme.title(24))
+                    if let confirmation = screen.confirmation {
+                        Label(confirmation, systemImage: "checkmark.circle")
+                            .font(SetupTheme.small)
+                            .foregroundStyle(SetupTheme.green)
+                            .transition(.opacity)
+                    }
+                }
                 Text(screen.message)
                     .font(SetupTheme.body)
                     .foregroundStyle(SetupTheme.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                SetupOptionRows(model: model, settings: screen)
-                    .padding(.top, 8)
-
-                if let confirmation = screen.confirmation {
-                    Label(confirmation, systemImage: "checkmark.circle")
-                        .font(SetupTheme.small)
-                        .foregroundStyle(SetupTheme.green)
-                }
                 if screen.needsRestart {
                     WarningNote(text: SettingsPresentation.Copy.restartNote)
                 }
                 ProblemList(problems: screen.problems)
+
+                SetupOptionRows(model: model, settings: screen)
+                    .padding(.top, 8)
             }
+            .animation(.easeOut(duration: 0.18), value: screen.confirmation)
             .padding(SetupTheme.pad)
         }
     }
