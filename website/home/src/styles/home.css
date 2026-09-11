@@ -173,6 +173,7 @@ img { max-width: 100%; display: block; }
   text-decoration: none;
   padding: 8px 12px;
   border-radius: 10px;
+  white-space: nowrap;
   transition: color 0.15s ease, background 0.15s ease;
 }
 .nav-links a.navlink:hover { color: var(--wf-ink); background: rgba(40, 33, 24, 0.05); }
@@ -555,9 +556,8 @@ img { max-width: 100%; display: block; }
   .plans { grid-template-columns: 1fr; }
   .footer-grid { grid-template-columns: 1fr 1fr; }
 }
-@media (max-width: 620px) {
-  body { font-size: 16px; }
-  .hero { padding: 52px 0 24px; }
+/* The full nav row needs ~830px; below that it collapses to the menu button. */
+@media (max-width: 860px) {
   .nav-links { display: none; }
   .nav-links.open {
     display: flex; flex-direction: column; align-items: stretch;
@@ -570,6 +570,10 @@ img { max-width: 100%; display: block; }
     width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--wf-hairline);
     background: var(--wf-card); cursor: pointer;
   }
+}
+@media (max-width: 620px) {
+  body { font-size: 16px; }
+  .hero { padding: 52px 0 24px; }
   .features { grid-template-columns: 1fr; }
   .pillars { grid-template-columns: 1fr; }
   .download-card { gap: 32px; padding: 32px 24px; }
