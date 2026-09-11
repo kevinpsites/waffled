@@ -43,5 +43,6 @@ export const FEATURES = [
 	{ icon: '🖼️', title: 'Photos & screensaver', slug: 'features/photos', blurb: 'Turn the kitchen display into a family photo frame when no one’s tapping.' },
 	{ icon: '🌙', title: 'Family Night', slug: 'features/family-night', blurb: 'A customizable, auto-rotating agenda for your weekly family time.' },
 	{ icon: '🔁', title: 'Rhythms', slug: 'features/rhythms', blurb: 'The things that should keep happening — the air filter, trash night, a quarterly visit — and one place to confirm each is handled.' },
+	{ icon: '🗓️', title: 'Weekly Planning', slug: 'features/weekly-planning', blurb: 'Sit down once a week and decide it together — loose ends, the calendar, dinners, chores, and each kid’s one thing.' },
 	{ icon: '✨', title: 'AI capture bar', slug: 'features/capture', blurb: 'Type “dentist tuesday 3pm” or “add milk” — AI files it to the right place. Bring your own model.' },
 ] as const;

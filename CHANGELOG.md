@@ -85,8 +85,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Weekly Planning is on iPhone and iPad.** The whole guided session — the lobby, all ten
   steps, the agenda sheet, the parked-note handoff, the recap and the saved record — now
   runs in the app, not just in the browser. On the phone it opens from a **Weekly
-  Planning** tile in the Family tab or from a Today card; on the family display it has its
-  own **Planning** page in the rail. (Settings → Weekly Planning configures the session —
+  Planning** tile in the Family tab; on the family display, from a Today card or a
+  **Planning** page you can pin to the rail. (Settings → Weekly Planning configures the session —
   its day, time and which steps run — rather than starting one.) Leaving a session part-way
   keeps it exactly where it was on that device, and another device can still pick it up.
 
