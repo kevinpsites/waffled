@@ -153,8 +153,8 @@ struct SetupOptionRows: View {
                         Button(SettingsPresentation.Copy.move) { chooseFolder() }
                             .buttonStyle(SetupButton(kind: .ghost))
                             .disabled(!settings.moveEnabled)
-                        if model.offersStandardFolder {
-                            Button(SettingsPresentation.Copy.moveToStandard) { useStandardFolder() }
+                        if model.offersDefaultFolder {
+                            Button(SettingsPresentation.Copy.moveToDefault) { useDefaultFolder() }
                                 .buttonStyle(SetupButton(kind: .ghost))
                                 .disabled(!settings.moveEnabled)
                         }
@@ -164,11 +164,16 @@ struct SetupOptionRows: View {
                     } else {
                         Button(Copy.files.choose) { chooseFolder() }
                             .buttonStyle(SetupButton(kind: .ghost))
-                        if model.offersStandardFolder {
-                            Button(Copy.files.standard) { useStandardFolder() }
+                        if model.offersDefaultFolder {
+                            Button(Copy.files.useDefault) { useDefaultFolder() }
                                 .buttonStyle(SetupButton(kind: .ghost))
                         }
                     }
+                }
+                if model.offersDefaultFolder, settings != nil || !folderIsSettled {
+                    Text(model.defaultFolderNote).font(SetupTheme.small)
+                        .foregroundStyle(SetupTheme.inkTertiary)
+                        .textSelection(.enabled)
                 }
                 if settings == nil, folderIsSettled {
                     Text(Copy.files.settled).font(SetupTheme.small)
@@ -196,9 +201,9 @@ struct SetupOptionRows: View {
         .buttonStyle(SetupButton(kind: .ghost))
     }
 
-    private func useStandardFolder() {
+    private func useDefaultFolder() {
         folderRefusal = nil
-        model.useStandardFolder()
+        model.useDefaultFolder()
     }
 
     private func chooseFolder() {

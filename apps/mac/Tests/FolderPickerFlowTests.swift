@@ -29,14 +29,14 @@ final class FolderPickerFlowTests: XCTestCase {
         }
     }
 
-    /// The standard folder is this scratch home's, never the real one, so no test here can
+    /// The default folder is this scratch home's, never the real one, so no test here can
     /// hand the runtime a path under the real ~/Library.
     private func makeModel(runner: RecordingRunner, memory: InMemoryDefaults = InMemoryDefaults(),
                            at folder: URL? = nil, environment: [String: String] = [:]) -> ServerModel {
         memory.set((folder ?? current).path, forKey: Setup.dataDirectoryKey)
         return ServerModel(environment: environment.merging([RuntimeLocator.binaryVariable: "/nonexistent/waffled-runtime"]) { a, _ in a },
                            resourceURL: nil, memory: memory, runner: runner,
-                           standardDataDirectory: current)
+                           defaultDataDirectory: current)
     }
 
     private func waitUntil(_ what: String, _ condition: () -> Bool) async {
@@ -146,18 +146,27 @@ final class FolderPickerFlowTests: XCTestCase {
         XCTAssertTrue(runner.calls.isEmpty)
     }
 
-    // MARK: back to the standard folder
+    // MARK: back to the default folder
 
     /// ~/Library is hidden, so no open panel shows Application Support: once Waffled is
     /// anywhere else, this is the only way back.
-    func testTheStandardFolderIsOfferedOnlyWhenWaffledIsElsewhere() {
+    func testTheDefaultFolderIsOfferedOnlyWhenWaffledIsElsewhere() {
         let atStandard = makeModel(runner: RecordingRunner())
         defer { atStandard.end() }
-        XCTAssertFalse(atStandard.offersStandardFolder)
+        XCTAssertFalse(atStandard.offersDefaultFolder)
 
         let elsewhere = makeModel(runner: RecordingRunner(), at: documents.appendingPathComponent("Waffled"))
         defer { elsewhere.end() }
-        XCTAssertTrue(elsewhere.offersStandardFolder)
+        XCTAssertTrue(elsewhere.offersDefaultFolder)
+    }
+
+    /// "Default" says where it goes only with the path beside it.
+    func testTheButtonSaysDefaultAndThePathIsShown() {
+        let model = makeModel(runner: RecordingRunner(), at: documents.appendingPathComponent("Waffled"))
+        defer { model.end() }
+        XCTAssertEqual(FirstRunPresentation.OptionsCopy.files.useDefault, "Use the default folder")
+        XCTAssertEqual(SettingsPresentation.Copy.moveToDefault, "Move to the default folder")
+        XCTAssertEqual(model.defaultFolderNote, "The default folder is \(current.path)")
     }
 
     func testAPinnedFolderIsNeverOfferedAWayOut() {
@@ -165,21 +174,21 @@ final class FolderPickerFlowTests: XCTestCase {
         let model = makeModel(runner: RecordingRunner(), at: pinned,
                               environment: [RuntimeLocator.dataVariable: pinned.path])
         defer { model.end() }
-        XCTAssertFalse(model.offersStandardFolder)
+        XCTAssertFalse(model.offersDefaultFolder)
     }
 
-    func testAFirstRunCanGoBackToTheStandardFolder() {
+    func testAFirstRunCanGoBackToTheDefaultFolder() {
         let model = makeModel(runner: RecordingRunner())
         defer { model.end() }
         model.chooseDataDirectory(documents.appendingPathComponent("Waffled"))
-        XCTAssertTrue(model.offersStandardFolder)
+        XCTAssertTrue(model.offersDefaultFolder)
 
-        model.useStandardFolder()
+        model.useDefaultFolder()
         XCTAssertEqual(model.dataDirectory.path, current.path)
-        XCTAssertFalse(model.offersStandardFolder)
+        XCTAssertFalse(model.offersDefaultFolder)
     }
 
-    func testSettingsMovesBackToTheStandardFolder() async throws {
+    func testSettingsMovesBackToTheDefaultFolder() async throws {
         let elsewhere = documents.appendingPathComponent("Waffled")
         try makeDirectory(elsewhere, with: ["runtime.json", "config.env"])
         let memory = InMemoryDefaults()
@@ -188,7 +197,7 @@ final class FolderPickerFlowTests: XCTestCase {
         defer { model.end() }
         model.openSettings()
 
-        model.useStandardFolder()
+        model.useDefaultFolder()
         await waitUntil("the move finishes") { !model.busy }
 
         let move = try XCTUnwrap(runner.calls.first { $0.arguments.first == "move" })

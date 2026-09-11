@@ -81,7 +81,7 @@ struct SettingsPresentation: Equatable {
         static let restart = "Restart Waffled"
         static let close = "Close"
         static let move = "Move…"
-        static let moveToStandard = "Move to the standard folder"
+        static let moveToDefault = "Move to the default folder"
         static let restartNote = """
             The server is still running with the settings it started with. Restart when it \
             suits you — nothing is lost by waiting, and anything already pointed at this \

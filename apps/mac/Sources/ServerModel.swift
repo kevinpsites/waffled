@@ -53,7 +53,7 @@ final class ServerModel {
     /// a `Process` — the seam every runtime call goes through stays injected.
     private let runner: RuntimeProcessRunning
     /// `Setup.defaultDataDirectory` outside tests, which pass a scratch one.
-    private let standardDataDirectory: URL
+    private let defaultFolder: URL
     private var pollTask: Task<Void, Never>?
     private var animationTask: Task<Void, Never>?
     private var operationTask: Task<Void, Never>?
@@ -120,10 +120,10 @@ final class ServerModel {
          memory: UpdateMemory = UserDefaults.standard,
          runner: RuntimeProcessRunning = SubprocessRunner(),
          loginItem: LoginItem? = nil,
-         standardDataDirectory: URL = Setup.defaultDataDirectory) {
+         defaultDataDirectory: URL = Setup.defaultDataDirectory) {
         self.memory = memory
         self.runner = runner
-        self.standardDataDirectory = standardDataDirectory
+        self.defaultFolder = defaultDataDirectory
         // Built here rather than as a default argument: LoginItem is main-actor isolated,
         // and a default argument is evaluated outside that isolation.
         self.loginItem = loginItem ?? LoginItem()
@@ -220,18 +220,21 @@ final class ServerModel {
     var dataDirectoryIsPinned: Bool { location?.dataDirIsFromEnvironment ?? false }
 
     /// ~/Library is hidden, so no open panel shows Application Support: once Waffled's
-    /// files are anywhere else, this button is the only way back to the standard folder.
-    var offersStandardFolder: Bool {
+    /// files are anywhere else, this button is the only way back to the default folder.
+    var offersDefaultFolder: Bool {
         !dataDirectoryIsPinned
-            && dataDirectory.standardizedFileURL.path != standardDataDirectory.standardizedFileURL.path
+            && dataDirectory.standardizedFileURL.path != defaultFolder.standardizedFileURL.path
     }
 
+    /// Said under the button, because "default" alone does not say where that is.
+    var defaultFolderNote: String { "The default folder is \(defaultFolder.path)" }
+
     /// Before setup this is only a choice; afterwards it is a move, like any other.
-    func useStandardFolder() {
+    func useDefaultFolder() {
         if showingSettings {
-            moveDataDirectory(to: standardDataDirectory)
+            moveDataDirectory(to: defaultFolder)
         } else {
-            chooseDataDirectory(standardDataDirectory)
+            chooseDataDirectory(defaultFolder)
         }
     }
 

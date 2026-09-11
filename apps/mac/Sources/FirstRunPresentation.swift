@@ -107,7 +107,7 @@ struct FirstRunPresentation: Equatable {
             hint: "The database, your photos and every backup live in this folder.",
             change: "Change…",
             choose: "Choose a folder…",
-            standard: "Use the standard folder",
+            useDefault: "Use the default folder",
             reveal: "Reveal in Finder",
             settled: "Waffled is already set up here. You can move it later from Settings… in the menu bar."
         )
