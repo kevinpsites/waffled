@@ -29,10 +29,13 @@ goals & rewards, meals & recipes, lists, photos, and an AI "Add anything" captur
 ```
 infra/
   compose/     self-hosted runtime (Postgres, PowerSync, api, Caddy)
+  native/      builds the self-contained runtime bundle Waffled for Mac ships
 apps/
   api/         backend (lambda-api); calendar sync runs in-process (5-min scheduler)
   web/         React SPA — also the kiosk layout (same build, fullscreen/PWA mode)
   ios/         native Swift app
+  mac/         Waffled for Mac — the SwiftUI menu-bar app that drives waffled-runtime
+  runtime/     waffled-runtime — Go supervisor that runs the server natively, no Docker
 docs/          ARCHITECTURE.md, DATA_MODEL.md, TESTING.md, product/ (user docs)
 ```
 

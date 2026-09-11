@@ -19,6 +19,9 @@ The **Kiosk and Web are the same build** — the kiosk is a layout/PWA mode of t
 separate program. **iOS** is a separate native client that talks to the same api and, for the
 calendar, syncs the same data offline.
 
+The **Mac menu-bar app** isn't a fourth surface. It runs the server on a Mac and opens the web
+app; it has no UI of its own for household data.
+
 ## The stack
 
 A small Docker Compose stack ([Docker install](/install/docker/) has the service-by-service
@@ -48,6 +51,25 @@ table):
   it validates client tokens against the api's JWKS.
 - **backup** dumps Postgres nightly (see [Backup & restore](/operations/backup/)).
 
+## Two ways to run the same server
+
+The server above runs in one of two ways, from the same pieces: the same api build, the same
+migrations, the same PowerSync config and the same web build behind the same Caddyfile.
+
+- **Docker Compose** — the stack above, driven by `./waffled`. This is how it runs on Linux, a
+  NAS, a VPS, or a Mac with Docker.
+- **Native on a Mac** — [Waffled for Mac](/install/mac/) runs the same services (Postgres, the
+  one-shot migration, api, PowerSync, Caddy) as ordinary processes, with no Docker. A Go supervisor,
+  `waffled-runtime` (`apps/runtime`), starts them in dependency order behind health checks,
+  restarts what crashes, and runs the nightly backup. The binaries it runs (Postgres, Node,
+  Caddy, PowerSync) ship inside the app, built by `infra/native/bundle/`, so nothing is needed
+  from Homebrew, a system Node, or Docker. Data lives in `~/Library/Application Support/Waffled`.
+  The menu-bar app (`apps/mac`) is a thin SwiftUI wrapper that shells out to `waffled-runtime`,
+  and everything it does is also a `waffled-runtime` command in Terminal.
+
+Natively there is no private Compose network: the services reach each other over loopback, on
+ports picked on first run and then kept, and Caddy is what other devices on the network reach.
+
 ## Repo layout
 
 Waffled is a monorepo, but **not** npm workspaces — `apps/api` and `apps/web` each own their
@@ -58,7 +80,10 @@ Waffled is a monorepo, but **not** npm workspaces — `apps/api` and `apps/web` 
 | `apps/api` | The backend — `src/` (routes, platform, modules), `migrations/`, `scripts/`, `test/` |
 | `apps/web` | React + Vite web app / kiosk — `src/` (incl. `src/kiosk/`) |
 | `apps/ios` | SwiftUI universal app (XcodeGen) — see [iOS development](/developer/ios/) |
+| `apps/mac` | The Mac menu-bar app (SwiftUI, XcodeGen) that drives `waffled-runtime` |
+| `apps/runtime` | `waffled-runtime`, the Go supervisor that runs the server natively on a Mac |
 | `infra/compose` | The Docker stack — `docker-compose.yml`, `caddy/`, `powersync/`, `backup/` |
+| `infra/native` | `bundle/` builds the self-contained runtime directory the Mac app ships |
 | `website/` | This docs site (Astro Starlight) |
 | `docs/` | Design/product docs — `ARCHITECTURE.md`, `DATA_MODEL.md`, roadmap |
 | `./waffled` | The operator CLI wrapping `docker compose` |
@@ -101,3 +126,4 @@ you're offline. See [AI providers](/administration/ai-providers/).
 - The schema & migrations → [Database & migrations](/developer/database/)
 - Add a feature → [Building a module](/concepts/extensibility/)
 - The native app → [iOS development](/developer/ios/)
+- The Mac app and runtime → [Working on the Mac app and runtime](/developer/local-development/#working-on-the-mac-app-and-runtime)
