@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (1024 or above: below that needs an administrator), whether it starts when the Mac does,
   and — optionally — who powers meal and week suggestions: Claude, any OpenAI-compatible
   server, or Ollama, which the window checks is running on the Mac and lists the models of.
+  Its **Advanced** and **Diagnostics** tabs — the same ones Settings has — set sign-in,
+  calendar sync, AI limits, rate limits and logging before the first start, too.
   The menu keeps it running: start at login, the server
   address to type into the kitchen tablet or a phone, a backup on demand, **Settings…**,
   which brings that same screen back whenever you want to change your mind, and

@@ -208,9 +208,11 @@ behind the browser someone was reading) and walks five steps:
    there is a plain paragraph here first: closing the lid puts the server to sleep for the
    whole house, and a Mac that stays awake is a better home. It is a warning, not a refusal.
 2. **Where things go.** Everything on this screen is applied **before** the first `start`, so
-   the first boot already uses the folder, the port and the name that were chosen. Four of
-   the rows are drawers (`SettingsDrawer`): collapsed, each says what is in force;
-   `Change…` opens it and becomes `Done`.
+   the first boot already uses the folder, the port and the name that were chosen. It has
+   Settings' three tabs: Basic is the rows below, and Advanced and Diagnostics are the same
+   `SettingsCatalog` sections, written by `commandsBeforeFirstStart`. Four of the Basic
+   rows are drawers (`SettingsDrawer`): collapsed, each says what is in force; `Change…`
+   opens it and becomes `Done`.
    - **Waffled's files** — a folder picker, restricted to this Mac's own **internal** disk
      and to APFS or Mac OS Extended. A removable drive, a network folder or an ExFAT volume
      is refused in the row itself, with the reason. Once a data directory has been

@@ -128,7 +128,8 @@ behaviour there rather than in the view, and put process work behind
   an injectable clock.** A first start can finish in under five seconds, and a checklist
   that appears and vanishes inside one animation frame is indistinguishable from a window
   that never opened. Every later step is decided by the status document alone.
-- **`Settings…` and the first run share the window, the rows and `SetupOptions`.** An
+- **`Settings…` and the first run share the window, the tabs, the rows and
+  `SetupOptions`** — every setting is choosable before the first start. An
   `LSUIElement` app has one window, so the menu item is off for the whole of a first-run
   launch, not only while it waits. The two differ in what they do with the same values:
   the first run applies all of them before the first `start`, and Settings applies only

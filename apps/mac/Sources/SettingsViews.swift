@@ -13,15 +13,7 @@ struct SettingsStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
-                Picker("", selection: $model.settingsTab) {
-                    ForEach(SettingsPresentation.Tab.allCases, id: \.self) { tab in
-                        Text(tab.label).tag(tab)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(width: 330)
-                .padding(.bottom, 4)
+                SettingsTabPicker(tab: $model.settingsTab)
 
                 // Everything that answers "did that work?" sits beside the title, where a
                 // person is already looking.
@@ -67,6 +59,23 @@ struct SettingsStep: View {
             }
         }
         .animation(.easeOut(duration: 0.18), value: screen.confirmation)
+    }
+}
+
+/// Basic / Advanced / Diagnostics, on both `Settings…` and the first run's options step.
+struct SettingsTabPicker: View {
+    @Binding var tab: SettingsPresentation.Tab
+
+    var body: some View {
+        Picker("", selection: $tab) {
+            ForEach(SettingsPresentation.Tab.allCases, id: \.self) { tab in
+                Text(tab.label).tag(tab)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.segmented)
+        .frame(width: 330)
+        .padding(.bottom, 4)
     }
 }
 
@@ -517,9 +526,13 @@ private struct SectionHeading: View {
     }
 }
 
-private struct CatalogSections: View {
+/// Internal, not private: the first run's options step (`FirstRunWindow.swift`) shows the
+/// same Advanced and Diagnostics tabs.
+struct CatalogSections: View {
     var sections: [SettingsSection]
     @Bindable var model: ServerModel
+    /// Before setup no secret has been saved, so its field must not say one is hidden.
+    var afterSetup = true
 
     var body: some View {
         ForEach(sections, id: \.title) { section in
@@ -527,7 +540,7 @@ private struct CatalogSections: View {
                 SectionHeading(title: section.title, detail: section.detail)
                 ForEach(section.settings, id: \.key) { setting in
                     Divider().overlay(SetupTheme.hairline)
-                    SettingField(setting: setting, model: model)
+                    SettingField(setting: setting, model: model, afterSetup: afterSetup)
                 }
             }
             .background(SetupTheme.panel, in: RoundedRectangle(cornerRadius: 14))
@@ -540,6 +553,7 @@ private struct CatalogSections: View {
 private struct SettingField: View {
     var setting: EnvSetting
     @Bindable var model: ServerModel
+    var afterSetup: Bool
 
     private var value: Binding<String> {
         Binding(get: { model.setupOptions.settings[setting.key] ?? "" },
@@ -578,7 +592,8 @@ private struct SettingField: View {
     private var control: some View {
         switch setting.kind {
         case .secret:
-            SecureField(FirstRunPresentation.OptionsCopy.provider.secretPlaceholder, text: secret)
+            SecureField(afterSetup ? FirstRunPresentation.OptionsCopy.provider.secretPlaceholder : "",
+                        text: secret)
                 .textFieldStyle(.roundedBorder)
                 .font(SetupTheme.mono)
                 .frame(maxWidth: 360)

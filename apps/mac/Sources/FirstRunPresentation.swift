@@ -58,6 +58,9 @@ struct FirstRunPresentation: Equatable {
     }
 
     var step: Step
+    /// The options step's tab — the same three Settings has, since everything Settings
+    /// can change can also be chosen before the first start. Nil on every other step.
+    var tab: SettingsPresentation.Tab?
     var title: String
     var message: String
     /// The small line above the title, on the steps that have one.
@@ -203,7 +206,8 @@ struct FirstRunPresentation: Equatable {
         setupStartedAt: Date? = nil,
         now: Date = Date(),
         lastLogLine: String? = nil,
-        preferredPort: Int = SetupOptions.defaultPort
+        preferredPort: Int = SetupOptions.defaultPort,
+        optionsTab: SettingsPresentation.Tab = .basic
     ) -> FirstRunPresentation? {
         guard isFirstRun else { return nil }
 
@@ -224,7 +228,7 @@ struct FirstRunPresentation: Equatable {
         // window follows the server rather than only its own button.
         let underWay = setupBegun || (status.map { $0.state != .stopped } ?? false)
         guard underWay else {
-            return showingOptions ? options() : welcome(status: status, isPortable: isPortable)
+            return showingOptions ? options(tab: optionsTab) : welcome(status: status, isPortable: isPortable)
         }
 
         let coming = starting(status: status, setupStartedAt: setupStartedAt, now: now,
@@ -266,14 +270,22 @@ struct FirstRunPresentation: Equatable {
             closeQuitsApp: true)
     }
 
-    private static func options() -> FirstRunPresentation {
-        FirstRunPresentation(
+    private static func options(tab: SettingsPresentation.Tab) -> FirstRunPresentation {
+        let (title, message): (String, String) = switch tab {
+        case .basic: ("Where things go", """
+            These are already set sensibly. Change any of them now if you'd rather — all \
+            of it stays in Settings… in the menu bar for later.
+            """)
+        case .advanced: (SettingsPresentation.Copy.advancedTitle,
+                         SettingsPresentation.Copy.advancedMessage)
+        case .diagnostics: (SettingsPresentation.Copy.diagnosticsTitle,
+                            SettingsPresentation.Copy.diagnosticsMessage)
+        }
+        return FirstRunPresentation(
             step: .options,
-            title: "Where things go",
-            message: """
-                These are already set sensibly. Change them now if you'd rather — you can \
-                change the backup time and your keys later from the menu bar.
-                """,
+            tab: tab,
+            title: title,
+            message: message,
             eyebrow: "Before we start",
             primaryButton: "Set up Waffled",
             tertiaryButton: "Back",

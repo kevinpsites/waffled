@@ -54,13 +54,16 @@ with it.
 The defaults are sensible, so **Set up Waffled** is a fine answer: Waffled's files in
 `~/Library/Application Support/Waffled`, a nightly backup at 3:00 AM, this Mac's own name
 as the address, port 8080, and Waffled starting whenever the Mac does. **Settings first…**
-is how you change any of that first.
+is how you change any of that — or anything else `Settings…` has — first.
 
 ### 2. Where things go
 
-Each row says what is in force; **Change…** opens it and **Done** closes it again.
-Everything on this screen is applied **before** the first start, so that start already
-uses it.
+The same three tabs as `Settings…`: **Basic** (the rows below), and **Advanced** and
+**Diagnostics** — sign-in, calendar sync, AI limits, rate limits and logging, described in
+[Changing settings later](#changing-settings-later). Everything on all three is applied
+**before** the first start, so that start already uses it — nothing to restart into
+afterwards. On Basic, each row says what is in force; **Change…** opens it and **Done**
+closes it again.
 
 - **Waffled's files.** Where the database, your photos and every backup live. It has to be a
   folder on this Mac's own internal disk, formatted APFS or Mac OS Extended — an external

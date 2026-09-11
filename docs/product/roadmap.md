@@ -264,7 +264,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   or a name the household points at it) and the port, all before anything is created. The
   same screen comes back as **Settings…** afterwards, applying only what changed, with a
   **Move…** that takes the whole household to another folder when the startup disk fills
-  up. Settings has three tabs: **Basic** (those rows as drawers, plus how many nightly
+  up. Both screens have three tabs, so anything Settings changes can be chosen before the
+  first start too: **Basic** (those rows as drawers, plus how many nightly
   backups to keep and a provider segment — Not now, Claude, OpenAI-compatible, or Ollama
   detected on the Mac), **Advanced** (AI model and limits, calendar sync, sessions and
   sign-in, rate limits) and **Diagnostics** (log level and format) — every control one the

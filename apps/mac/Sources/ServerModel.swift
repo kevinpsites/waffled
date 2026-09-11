@@ -191,7 +191,8 @@ final class ServerModel {
                                   setupStartedAt: setupStartedAt, now: firstRunNow,
                                   lastLogLine: lastLogLine,
                                   preferredPort: SetupOptions.portNumber(setupOptions.port)
-                                      ?? SetupOptions.defaultPort)
+                                      ?? SetupOptions.defaultPort,
+                                  optionsTab: settingsTab)
     }
 
     /// A first run whose welcome step is still waiting for a person. It holds the
@@ -447,6 +448,7 @@ final class ServerModel {
     // MARK: the setup screen
 
     func showSetupOptions() {
+        settingsTab = .basic
         showingSetupOptions = true
         syncFirstRunWindow()
     }

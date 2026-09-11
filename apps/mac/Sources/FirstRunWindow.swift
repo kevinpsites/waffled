@@ -258,23 +258,40 @@ private struct OptionsStep: View {
     @Bindable var model: ServerModel
 
     var body: some View {
-        ScrollView {
+        VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
                 if let eyebrow = step.eyebrow {
                     Text(eyebrow).font(SetupTheme.eyebrow).foregroundStyle(SetupTheme.inkTertiary)
                 }
+                SettingsTabPicker(tab: $model.settingsTab)
                 Text(step.title).font(SetupTheme.title(24))
                 Text(step.message)
                     .font(SetupTheme.body)
                     .foregroundStyle(SetupTheme.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
-
-                SetupOptionRows(model: model, settings: nil)
-                    .padding(.top, 8)
-
+                // Above the tabs: a problem on Advanced is what keeps Set up off on Basic.
                 ProblemList(problems: model.setupOptions.problems)
             }
-            .padding(SetupTheme.pad)
+            .padding(.horizontal, SetupTheme.pad)
+            .padding(.top, 28)
+            .padding(.bottom, 14)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    switch step.tab ?? .basic {
+                    case .basic:
+                        SetupOptionRows(model: model, settings: nil)
+                    case .advanced:
+                        CatalogSections(sections: SettingsCatalog.advanced, model: model,
+                                        afterSetup: false)
+                    case .diagnostics:
+                        CatalogSections(sections: SettingsCatalog.diagnostics, model: model,
+                                        afterSetup: false)
+                    }
+                }
+                .padding(.horizontal, SetupTheme.pad)
+                .padding(.bottom, 24)
+            }
         }
     }
 }

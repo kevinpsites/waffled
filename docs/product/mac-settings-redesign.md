@@ -201,7 +201,9 @@ What shipped:
    *out* by a test.
 3. `LOG_LEVEL` / `LOG_FORMAT` read from `config.env`, unknown values falling back to the
    defaults.
-4. Settings in Basic / Advanced / Diagnostics tabs. Advanced and Diagnostics are a curated
+4. Settings in Basic / Advanced / Diagnostics tabs — on the first run's `Settings first…`
+   as well as `Settings…`, since every setting is one a household may need in force
+   before the first start. Advanced and Diagnostics are a curated
    catalog (`apps/mac/Sources/SettingsCatalog.swift`), not the free-form `KEY=VALUE`
    table: any key outside the allowlist is written and reaches nothing. A Mac test reads
    `passthroughKeys` out of `services.go` and fails if the app can write a key nothing
