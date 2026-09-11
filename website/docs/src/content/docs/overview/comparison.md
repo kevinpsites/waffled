@@ -73,9 +73,9 @@ a hosted product is a reasonable choice. Waffled is for people who want the oppo
 | Recurring upkeep (not events) | ✅ **Rhythms** — due/overdue, confirm it was handled | ⚠️ Recurring events | ⚠️ Recurring events | ⚠️ Recurring events | ⚠️ DIY |
 | Family night | ✅ Auto-rotating agenda, roles shared fairly | ❌ | ❌ | ❌ | ⚠️ DIY |
 | Countdowns | ✅ From events, birthdays, anything — in "sleeps" | ❌ | ✅ | ❌ | ⚠️ DIY |
-| Type it in plain English | ✅ **Capture bar** — "dentist tuesday 3pm", your model or on-device | ❌ | ❌ | ⚠️ Assistant/Gemini | ⚠️ Their AI |
+| Get it in without typing it out | ✅ **Capture bar** — "dentist tuesday 3pm", your model or on-device | ❌ | ⚠️ Photo, email or PDF → events (**paid plan**) | ⚠️ Assistant/Gemini | ⚠️ Their AI |
 | Photos + screensaver | ✅ | ❌ | ✅ (photo frame) | 📱 Google Photos | ❌ |
-| AI features | ✅ **Your model / key, or fully local** — never our cloud | ❌ | ❌ | ⚠️ Gemini (their cloud) | ⚠️ Their cloud |
+| AI features | ✅ **Your model / key, or fully local** — never our cloud, and never an extra fee | ❌ | ⚠️ Sidekick — AI import, meal ideas, fridge scan (**paid plan**, their cloud) | ⚠️ Gemini (their cloud) | ⚠️ Their cloud |
 | Build on it / open API | ✅ Public scoped API + toggleable modules | ❌ | ❌ | ❌ | ⚠️ API only |
 | Native offline app | ✅ iOS (PowerSync) | ✅ | ⚠️ | ✅ | ⚠️ |
 | Ads / tracking | None | Ads (free tier) | — | Ads elsewhere in ecosystem | — |
@@ -96,7 +96,10 @@ plan**. Waffled turns *any* tablet you already have into that always-on display,
 keeps the data local — and behind the display sits far more app (goals, cook mode, a barcode
 pantry, a guided weekly planning session, an open API) than a fixed-function screen offers.
 They have the parts families use most — a shared calendar, chore charts with stars, meal
-plans, countdowns — behind a yearly plan. If you specifically want a polished
+plans, countdowns, and Skylight's **Sidekick** AI, which turns a photographed school flyer or
+a forwarded email into events and suggests meals — all behind a yearly plan. Waffled's AI does
+the same kind of work at no extra cost, and on a model you choose: your own key, or a local
+model that never leaves the house. If you specifically want a polished
 physical device with support and don't mind the subscription, the hardware products are a fine
 choice.
 
