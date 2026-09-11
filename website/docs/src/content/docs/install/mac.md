@@ -225,10 +225,14 @@ somewhere else yourself for now.
 ## Moving Waffled's files
 
 `Settings…` → *Move…* takes everything — the database, your photos and every backup — to
-another folder on this Mac. Waffled stops the server, copies, and starts it again. Once
-it lives anywhere but `~/Library/Application Support/Waffled`, *Move to the default
-folder* appears beside it, with that path underneath, and takes it back there — the folder
-window cannot, because macOS hides `~/Library`.
+another folder on this Mac. Like every other setting, choosing the folder changes nothing
+yet: the row says where it will go, **Keep it where it is** changes your mind, and
+**Apply** does it — any other settings you changed first, then Waffled stops the server,
+copies, and starts it again. The window says **Moving…** while it works and "Moved, and
+Waffled restarted." when it is done. Once it lives anywhere but
+`~/Library/Application Support/Waffled`, *Move to the default folder* appears beside it,
+with that path underneath, and chooses it the same way — the folder window cannot, because
+macOS hides `~/Library`.
 
 Four things to know before you click it:
 

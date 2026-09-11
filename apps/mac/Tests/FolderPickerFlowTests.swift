@@ -99,9 +99,9 @@ final class FolderPickerFlowTests: XCTestCase {
         model.openSettings()
 
         for picked in [applicationSupport, current] {
-            model.moveDataDirectory(to: Setup.dataDirectory(forChosen: picked, current: model.dataDirectory))
-            XCTAssertNil(model.heldFailure, "picking \(picked.lastPathComponent) was reported as a failure")
-            XCTAssertFalse(model.busy)
+            let refusal = model.stageMove(to: Setup.dataDirectory(forChosen: picked, current: model.dataDirectory))
+            XCTAssertNil(refusal, "picking \(picked.lastPathComponent) was refused")
+            XCTAssertNil(model.pendingMove, "picking \(picked.lastPathComponent) staged a move")
             // Said in the drawer that was clicked: the menu's note is behind this window.
             XCTAssertEqual(model.folderNote, SettingsPresentation.Copy.alreadyThere)
         }
@@ -121,7 +121,9 @@ final class FolderPickerFlowTests: XCTestCase {
         model.openSettings()
 
         let destination = Setup.dataDirectory(forChosen: documents, current: model.dataDirectory)
-        model.moveDataDirectory(to: destination)
+        XCTAssertNil(model.stageMove(to: destination))
+        XCTAssertTrue(runner.calls.isEmpty, "choosing a folder moves nothing until Apply")
+        model.applySettings()
         await waitUntil("the move finishes") { !model.busy }
 
         let move = try XCTUnwrap(runner.calls.first { $0.arguments.first == "move" })
@@ -141,8 +143,9 @@ final class FolderPickerFlowTests: XCTestCase {
         defer { model.end() }
         model.openSettings()
 
-        model.moveDataDirectory(to: current.appendingPathComponent("media/Waffled"))
-        XCTAssertEqual(model.heldFailure, SettingsPresentation.Copy.folderInsideItself)
+        XCTAssertEqual(model.stageMove(to: current.appendingPathComponent("media/Waffled")),
+                       SettingsPresentation.Copy.folderInsideItself)
+        XCTAssertNil(model.pendingMove)
         XCTAssertTrue(runner.calls.isEmpty)
     }
 
@@ -183,7 +186,7 @@ final class FolderPickerFlowTests: XCTestCase {
         model.chooseDataDirectory(documents.appendingPathComponent("Waffled"))
         XCTAssertTrue(model.offersDefaultFolder)
 
-        model.useDefaultFolder()
+        XCTAssertNil(model.useDefaultFolder())
         XCTAssertEqual(model.dataDirectory.path, current.path)
         XCTAssertFalse(model.offersDefaultFolder)
     }
@@ -197,7 +200,10 @@ final class FolderPickerFlowTests: XCTestCase {
         defer { model.end() }
         model.openSettings()
 
-        model.useDefaultFolder()
+        XCTAssertNil(model.useDefaultFolder())
+        XCTAssertTrue(runner.calls.isEmpty, "the button stages the move; Apply makes it")
+        XCTAssertFalse(model.offersDefaultFolder, "the default folder is already the one staged")
+        model.applySettings()
         await waitUntil("the move finishes") { !model.busy }
 
         let move = try XCTUnwrap(runner.calls.first { $0.arguments.first == "move" })

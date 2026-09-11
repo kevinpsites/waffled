@@ -133,7 +133,9 @@ behaviour there rather than in the view, and put process work behind
   `LSUIElement` app has one window, so the menu item is off for the whole of a first-run
   launch, not only while it waits. The two differ in what they do with the same values:
   the first run applies all of them before the first `start`, and Settings applies only
-  what changed (`commandsForChange`) against what it remembers having applied last. Never
+  what changed (`commandsForChange`) against what it remembers having applied last. Nothing
+  in Settings acts on the click that chooses it — a folder move is staged and runs last on
+  Apply, and the window says what is in flight and what finished. Never
   offer the port there — `HTTP_PORT` is the first allocation's preference and nothing
   after it — and never read an empty provider-key field as a deletion (Not now is).
 - **Every Settings control must write a key something reads.** Advanced/Diagnostics are

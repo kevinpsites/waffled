@@ -353,11 +353,17 @@ No panel can show the default folder, because `~/Library` is hidden, so once the
 anywhere else the row adds *Use the default folder* / *Move to the default folder*
 (`ServerModel.useDefaultFolder()`), with the path under it — the same choose or move, aimed at
 `Setup.defaultDataDirectory`.
-Otherwise the folder row's `Move…` is `ServerModel.moveDataDirectory(to:)`: stop, then
-`waffled-runtime move --to`, then repoint the client at the new folder, then start. That
-order is load-bearing — the runtime refuses to move a running cluster, and the `--data` the
-move is told about is the folder being moved **from**. The destination is checked with the
-same `Setup.refusal(for:)` the first run uses, because the volume rules are identical.
+Otherwise the folder row's `Move…` **stages** the folder (`ServerModel.stageMove(to:)`,
+which hands any refusal back to the drawer) and Apply performs it, like every other setting:
+the changed settings first, written into the folder that is about to move, then stop,
+`waffled-runtime move --to`, repoint the client at the new folder, start. That order is
+load-bearing — the runtime refuses to move a running cluster, the `--data` the move is told
+about is the folder being moved **from**, and the start is the restart the settings were
+waiting for. What was applied is remembered before the move, and a move that fails stays
+staged for another Apply. While it runs the window says so (`SettingsPresentation.activity`,
+**Moving…** on the button) and afterwards what finished (`Done`) — the menu's note is behind
+the window. The destination is checked with the same `Setup.refusal(for:)` the first run
+uses, because the volume rules are identical.
 
 The runtime removes the old folder only once the copy has arrived, and the app keeps showing
 the folder `status` reports rather than the one it asked for — so a move that fails leaves

@@ -100,7 +100,7 @@ final class ApplyFeedbackTests: XCTestCase {
         let done = SettingsPresentation.make(
             options: settled, saved: settled,
             dataDirectory: URL(fileURLWithPath: "/tmp/Waffled"),
-            status: try running(), applied: true)
+            status: try running(), done: .applied)
         XCTAssertNotNil(done.confirmation)
         XCTAssertTrue(done.confirmation?.isEmpty == false)
     }

@@ -221,6 +221,11 @@ What shipped:
    anywhere else they could not be moved back. The files row now offers *Use the default
    folder* (first run) or *Move to the default folder* (Settings) whenever they are
    elsewhere and `WAFFLED_DATA_DIR` does not pin them.
+6. A move waits for Apply. The same click test found `Move…` acting on the click while
+   every other setting waited for Apply, and the restart it caused invisible behind a
+   greyed-out button. A chosen folder is now staged, Apply runs it last (settings into the
+   old folder, then stop, move, start), and the window says what is in flight and what
+   finished — for a restart too.
 
 Found while building this:
 

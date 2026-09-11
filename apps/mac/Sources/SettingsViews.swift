@@ -31,6 +31,23 @@ struct SettingsStep: View {
                     .foregroundStyle(SetupTheme.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
 
+                if let activity = screen.activity {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(activity).font(SetupTheme.small)
+                            .foregroundStyle(SetupTheme.inkSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                if let failure = screen.failure {
+                    Label(failure, systemImage: "exclamationmark.triangle")
+                        .font(SetupTheme.small)
+                        .foregroundStyle(SetupTheme.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let moveNote = screen.moveNote, screen.activity == nil {
+                    WarningNote(text: moveNote)
+                }
                 if screen.needsRestart {
                     WarningNote(text: SettingsPresentation.Copy.restartNote)
                 }
@@ -170,6 +187,17 @@ struct SetupOptionRows: View {
                         }
                     }
                 }
+                if let pending = settings?.pendingMovePath {
+                    HStack(spacing: 8) {
+                        Label(SettingsPresentation.Copy.pendingMove(pending), systemImage: "arrow.right.circle")
+                            .font(SetupTheme.small)
+                            .foregroundStyle(SetupTheme.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button(SettingsPresentation.Copy.keepHere) { model.keepFolderWhereItIs() }
+                            .buttonStyle(SetupButton(kind: .ghost))
+                            .disabled(!(settings?.moveEnabled ?? false))
+                    }
+                }
                 if model.offersDefaultFolder, settings != nil || !folderIsSettled {
                     Text(model.defaultFolderNote).font(SetupTheme.small)
                         .foregroundStyle(SetupTheme.inkTertiary)
@@ -202,8 +230,7 @@ struct SetupOptionRows: View {
     }
 
     private func useDefaultFolder() {
-        folderRefusal = nil
-        model.useDefaultFolder()
+        folderRefusal = model.useDefaultFolder()
     }
 
     private func chooseFolder() {
@@ -226,12 +253,11 @@ struct SetupOptionRows: View {
         // Waffled gets a folder of its own inside their choice, so picking Documents does
         // not scatter a database through Documents.
         let destination = Setup.dataDirectory(forChosen: picked, current: model.dataDirectory)
-        // Before setup this is only a choice; afterwards it is a copy of everything the
-        // household has, which the runtime does with the server stopped.
+        // Before setup this is the choice itself; afterwards it stages a move for Apply.
         if settings == nil {
             model.chooseDataDirectory(destination)
         } else {
-            model.moveDataDirectory(to: destination)
+            folderRefusal = model.stageMove(to: destination)
         }
     }
 

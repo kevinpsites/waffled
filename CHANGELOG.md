@@ -50,11 +50,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   logs, and in JSON or readable text. Only what you actually changed is applied, and
   anything that waits for a restart says so — and turns Apply into **Restart Waffled** —
   instead of looking like it did not work. **Move…** takes the whole household — database, photos and
-  every backup — to another folder, which is how you get Waffled off a full startup disk:
-  it stops the server, copies, and starts it again, and nothing is deleted until the copy
-  has arrived. The nightly backup moves with it, keeping its time and how many it keeps.
-  **Move to the default folder** takes it back to `~/Library/Application Support/Waffled`,
-  which the folder window cannot show, and says that path under the button. From Terminal
+  every backup — to another folder, which is how you get Waffled off a full startup disk.
+  Like everything else on the screen it waits for **Apply**, which then stops the server,
+  copies, and starts it again — saying **Moving…** while it works and "Moved, and Waffled
+  restarted." when it is done — and nothing is deleted until the copy has arrived. The
+  nightly backup moves with it, keeping its time and how many it keeps. **Move to the
+  default folder** chooses `~/Library/Application Support/Waffled`, which the folder window
+  cannot show, and says that path under the button. **Restart Waffled** says so while it
+  restarts, too. From Terminal
   it is `waffled-runtime move --to DIR`, which refuses a
   destination that is not empty, is on a drive that could be unplugged, or has no room for
   it — and refuses to move a server that is still running.

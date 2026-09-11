@@ -13,6 +13,8 @@ final class RecordingRunner: RuntimeProcessRunning, @unchecked Sendable {
     private(set) var calls: [Call] = []
     var result: RuntimeProcessResult
     var thrownError: Error?
+    /// Subcommands that exit 1 with this sentence, the way the runtime refuses.
+    var refusing: [String: String] = [:]
 
     init(result: RuntimeProcessResult = .init(exitCode: 0, standardOutput: Data(), standardError: "")) {
         self.result = result
@@ -21,6 +23,9 @@ final class RecordingRunner: RuntimeProcessRunning, @unchecked Sendable {
     func run(executable: URL, arguments: [String]) async throws -> RuntimeProcessResult {
         calls.append(Call(executable: executable.path, arguments: arguments))
         if let thrownError { throw thrownError }
+        if let refusal = refusing[arguments.first ?? ""] {
+            return .init(exitCode: 1, standardOutput: Data(), standardError: refusal)
+        }
         return result
     }
 }

@@ -90,13 +90,15 @@ final class SettingsWindowTests: XCTestCase {
         XCTAssertTrue(after.applyEnabled)
     }
 
-    /// `moveDataDirectory` needs the screen open — it is that screen's button — and it
-    /// must not be reachable any other way, because it stops the server to do its work.
+    /// A move is staged only with the screen open — it is that screen's button — and Apply
+    /// must not be reachable any other way, because a move stops the server to do its work.
     func testTheFolderIsNotMovedFromAClosedScreen() {
         let model = makeModel()
         defer { model.end() }
 
-        model.moveDataDirectory(to: URL(fileURLWithPath: "/tmp/somewhere"))
+        _ = model.stageMove(to: URL(fileURLWithPath: "/tmp/somewhere"))
+        XCTAssertNil(model.pendingMove)
+        model.applySettings()
         XCTAssertFalse(model.busy, "nothing should have been started")
     }
 
