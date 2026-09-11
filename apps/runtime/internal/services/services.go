@@ -431,12 +431,21 @@ func (p Plan) provenance() []string {
 // passthroughKeys are optional settings an operator may add to config.env by hand. They
 // are forwarded verbatim when present, and omitted entirely when not, so the api falls
 // back to its own defaults rather than seeing an empty string.
+//
+// It is an allowlist on purpose: each key is one a household is meant to set, and never
+// a pass-everything rule. OTEL_* and UPDATE_CHECK_REPO are left out because they would do
+// nothing natively — see docs/product/mac-settings-redesign.md §3.
 var passthroughKeys = []string{
 	"PUBLIC_BASE_URL",
 	"ACCESS_TOKEN_TTL_SECONDS", "REFRESH_TOKEN_TTL_DAYS", "AUTH_FORCE_PASSWORD",
+	"OIDC_NATIVE_REDIRECT_URI",
+	"RATE_LIMIT_SETUP_MAX", "RATE_LIMIT_LOGIN_ACCOUNT_MAX", "RATE_LIMIT_LOGIN_IP_MAX",
+	"RATE_LIMIT_OIDC_START_MAX", "RATE_LIMIT_OIDC_EXCHANGE_MAX", "RATE_LIMIT_REFRESH_MAX",
+	"RATE_LIMIT_KIOSK_PAIR_MAX", "RATE_LIMIT_KIOSK_TOKEN_MAX", "RATE_LIMIT_MEDIA_MAX",
 	"ANTHROPIC_API_KEY", "ANTHROPIC_MODEL",
 	"OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_BASE_URL",
 	"OLLAMA_HOST", "OLLAMA_MODEL",
+	"AI_TIMEOUT_MS", "AI_MAX_RETRIES",
 	"GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_CALENDAR_REDIRECT_URI", "GOOGLE_CALENDAR_SCOPES",
 	"MS_CLIENT_ID", "MS_CLIENT_SECRET", "MS_CALENDAR_REDIRECT_URI", "MS_CALENDAR_SCOPES",
 	"TZ",
