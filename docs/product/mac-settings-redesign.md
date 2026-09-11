@@ -37,7 +37,7 @@ Structurally, on top of what #202 shipped:
 - **Drawer rows** in Basic: each row's `Change…` expands an inline drawer and becomes
   `Done`, instead of showing every control at once. This is the fix for the scrolling
   problem #202's flat list has at 940×648.
-- **A provider segment** for smart suggestions — *Not now · Claude · OpenAI-compatible ·
+- **A provider segment** (the **AI settings** row) — *Not now · Claude · OpenAI-compatible ·
   Ollama* — with Ollama detected on the Mac and reported inline.
 - **Advanced**: address and ports, AI model and limits, calendar sync (Google and
   Microsoft), sessions and sign-in, rate limits, offsite backup, and a free-form
@@ -67,7 +67,7 @@ what follows.
 
 | Control | Key / mechanism |
 |---|---|
-| Smart suggestions: Claude, OpenAI-compatible, Ollama | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OLLAMA_HOST` — all allowlisted |
+| AI settings: Claude, OpenAI-compatible, Ollama | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OLLAMA_HOST` — all allowlisted |
 | Advanced → AI model | `ANTHROPIC_MODEL`, `OPENAI_MODEL`, `OLLAMA_MODEL` — allowlisted |
 | Advanced → Calendar sync, both providers | `GOOGLE_*`, `MS_*` — allowlisted, and the api reads them |
 | Address on the network | `WAFFLED_PUBLIC_HOST` — the runtime's own, shipped in #202 |

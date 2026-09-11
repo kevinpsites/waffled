@@ -228,7 +228,7 @@ behind the browser someone was reading) and walks five steps:
      always had" and a first run has none. `HTTP_PORT` is written only when someone chose a
      port that is not the default: it is the preference for the first allocation, so an
      assignment nobody asked for would put a number on record they never chose.
-   - **Smart suggestions** — a segment: Not now, Claude (`ANTHROPIC_API_KEY`),
+   - **AI settings** — a segment: Not now, Claude (`ANTHROPIC_API_KEY`),
      OpenAI-compatible (`OPENAI_API_KEY`, plus `OPENAI_BASE_URL` when it is not OpenAI) or
      Ollama (`OLLAMA_HOST`). Choosing Ollama asks `<host>/api/tags` once — never on a timer —
      and says whether it answered and with which models (`OllamaProbe`). These only make a

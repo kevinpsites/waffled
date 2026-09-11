@@ -15,7 +15,7 @@ struct SetupOptions: Equatable, Codable {
         case name, ip, custom
     }
 
-    /// Which provider's credential smart suggestions get. config.env only makes a provider
+    /// Which provider's credential the AI settings row writes. config.env only makes a provider
     /// AVAILABLE; which one a household uses, and its model, is chosen per household in the
     /// web app's Settings — so each case writes a credential and nothing else.
     enum Provider: String, CaseIterable, Equatable, Codable {

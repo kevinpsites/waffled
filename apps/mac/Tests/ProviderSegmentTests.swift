@@ -1,12 +1,16 @@
 import XCTest
 @testable import Waffled
 
-/// Smart suggestions: Not now · Claude · OpenAI-compatible · Ollama.
+/// AI settings: Not now · Claude · OpenAI-compatible · Ollama.
 ///
 /// config.env only makes a provider AVAILABLE — which one a household actually uses, and
 /// which model, is chosen per household in the web app's Settings (`households.settings.ai`).
 /// So each segment writes that provider's credential and nothing else.
 final class ProviderSegmentTests: XCTestCase {
+
+    func testTheRowIsCalledAISettings() {
+        XCTAssertEqual(FirstRunPresentation.OptionsCopy.provider.title, "AI settings")
+    }
 
     func testNothingIsChosenUntilSomeoneChoosesIt() {
         XCTAssertEqual(SetupOptions().provider, .none)

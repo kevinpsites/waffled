@@ -145,7 +145,7 @@ struct FirstRunPresentation: Equatable {
             (.custom, "A name I've set up myself", "A domain or router entry aimed at this Mac."),
         ]
         static let provider = (
-            title: "Smart suggestions",
+            title: "AI settings",
             optional: "— optional",
             hint: """
                 Stored on this Mac only, in Waffled's own config. Once the server has \

@@ -91,7 +91,7 @@ closes it again.
   Whichever you pick, Waffled serves plain **HTTP** on your own network. A nicer name is a
   nicer address, not HTTPS — there is no certificate, and none of this puts Waffled on the
   public internet.
-- **Smart suggestions** *(optional)* — meal ideas and week planning, from a provider you
+- **AI settings** *(optional)* — meal ideas and week planning, from a provider you
   choose: **Not now** (Waffled's built-in parser, no account needed), **Claude** (an
   Anthropic key), **OpenAI-compatible** (a key, plus a server address if it is not OpenAI
   itself — LM Studio, vLLM and the like), or **Ollama** (its address; Waffled checks
@@ -179,7 +179,7 @@ screen and closing it does nothing at all.
 |---|---|
 | **Nightly backup** — on or off, the hour, and how many to keep | Straight away. Turning it off removes the scheduled job. |
 | **Address on your network** — this Mac's name, its IP, or a name you set up | After a restart. |
-| **Smart suggestions** — the provider, its key or address | After a restart. The key field is always blank when the screen opens — Waffled never reads your key back out of `config.env` — so leaving it blank means "don't change it", not "delete it". Choosing **Not now** is how you remove saved keys. |
+| **AI settings** — the provider, its key or address | After a restart. The key field is always blank when the screen opens — Waffled never reads your key back out of `config.env` — so leaving it blank means "don't change it", not "delete it". Choosing **Not now** is how you remove saved keys. |
 | **Start when this Mac starts up** | Straight away. |
 | **Waffled's files** | See [below](#moving-waffleds-files). |
 
