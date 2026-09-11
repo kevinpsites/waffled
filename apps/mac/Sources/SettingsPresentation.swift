@@ -61,6 +61,10 @@ struct SettingsPresentation: Equatable {
             already pointed at this Mac keeps working.
             """
         static let applied = "Settings applied."
+        static let folderInsideItself = """
+            That folder is inside the one Waffled is in, so moving there would put it \
+            inside itself. Pick one somewhere else.
+            """
         static let pinnedFolder = """
             WAFFLED_DATA_DIR is set, so this run does not decide where Waffled's files \
             live and cannot move them.

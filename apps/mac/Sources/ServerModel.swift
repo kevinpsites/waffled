@@ -621,6 +621,14 @@ final class ServerModel {
             recordFailure(refusal)
             return
         }
+        // The runtime refuses a destination inside the folder being moved, and it refuses
+        // it AFTER this app has stopped the server. Asked here, the server stays up.
+        let from = dataDirectory.standardizedFileURL.path
+        if destination.standardizedFileURL.path == from
+            || destination.standardizedFileURL.path.hasPrefix(from + "/") {
+            recordFailure(SettingsPresentation.Copy.folderInsideItself)
+            return
+        }
         let wasRunning = status?.state == .running
 
         operationTask = Task { [weak self] in
@@ -675,7 +683,9 @@ final class ServerModel {
     /// replace the sentence explaining why.
     private func restartAfterFailedMove() async {
         guard let client else { return }
-        try? await client.start()
+        if (try? await client.start()) != nil {
+            serverStarted()
+        }
     }
 
     /// A server that has just started has read whatever config.env says now, so nothing
