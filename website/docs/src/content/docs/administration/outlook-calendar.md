@@ -57,6 +57,11 @@ no paid Azure services involved:
    sync** and restart Waffled when it asks. `TOKEN_ENCRYPTION_KEY` is generated for you —
    nothing to set.
 
+   ⚠️ Microsoft takes a redirect URI only over `https`, with `localhost` the one exception —
+   so the LAN address a Mac hands out (`http://192.168.1.5:8080/…`) is refused. Sign in from
+   the Mac itself with `http://localhost:8080/auth/microsoft/calendar/callback`, or put a real
+   domain with HTTPS in front of Waffled ([Reverse proxy & TLS](/install/reverse-proxy/)).
+
 The default scopes are `openid email offline_access User.Read Calendars.ReadWrite` (identity +
 calendar read/write + a refresh token). Override with `MS_CALENDAR_SCOPES` only if you know you
 need to — leave it unset otherwise. (On a Mac it has no Settings field; it's

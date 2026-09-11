@@ -51,6 +51,15 @@ project):
    nothing to set. `GOOGLE_CALENDAR_SCOPES` has no field; set it with `waffled-runtime config
    set` only if you need to.
 
+   ⚠️ **The address a Mac hands out on your LAN cannot be used here.** Google takes a redirect
+   URI only over `https`, never a raw IP address, and only on a domain in the public suffix
+   list — so `http://192.168.1.5:8080/…` and a `.local` name are all refused. Either sign in
+   from the Mac itself with `http://localhost:8080/auth/google/calendar/callback`, or give
+   Waffled a real domain with HTTPS in front of it
+   ([Reverse proxy & TLS](/install/reverse-proxy/)). The rest of Waffled works fine on the
+   LAN address either way — this limit is Google's, and applies to a Docker install on a LAN
+   address just the same.
+
 > **⚠️ Publish your consent screen.** While the OAuth app is in **"Testing"**, Google **expires
 > refresh tokens after 7 days**, so sync silently breaks about once a week. Moving the consent
 > screen out of *Testing* to *Published* (In production) stops this recurring failure. This is
