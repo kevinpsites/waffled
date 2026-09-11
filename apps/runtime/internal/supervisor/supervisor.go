@@ -157,13 +157,23 @@ func New(opts Options) (*Supervisor, error) {
 		log = NewLogger(os.Stderr, false)
 	}
 
-	if err := layout.Ensure(); err != nil {
+	// A read-only look at a data directory that does not exist leaves it not existing —
+	// no scaffold of empty folders either. The Mac app polls the default location before
+	// anyone has chosen one, and a scaffold left there is neither empty nor a household:
+	// `move` refuses it as a destination, and the folder picker nests a Waffled inside it.
+	absent := opts.ReadOnly && !fileExists(root)
+	bundleCache := layout.BundleCache
+	if absent {
+		// The memo is keyed on the bundle's own contents, so where it lives is only a
+		// question of cost: re-hashing the whole bundle on every poll is not an option.
+		bundleCache = filepath.Join(os.TempDir(), "waffled-bundle-verified.json")
+	} else if err := layout.Ensure(); err != nil {
 		return nil, err
 	}
 
 	// Nothing in the bundle is executed until it matches the manifest it was built and
 	// signed with. The result is memoized per build, so only a new install pays the walk.
-	m, cached, err := manifest.VerifyCached(bundleDir, layout.BundleCache)
+	m, cached, err := manifest.VerifyCached(bundleDir, bundleCache)
 	if err != nil {
 		return nil, err
 	}
@@ -247,9 +257,13 @@ func New(opts Options) (*Supervisor, error) {
 		log.Warnf("%v", err)
 	}
 
-	socketDir, fellBack, err := layout.SocketDir(st.SocketDir)
-	if err != nil {
-		return nil, err
+	// No socket directory for a household that does not exist: a long path would make one
+	// in the temp directory on every poll, and nothing here starts Postgres.
+	socketDir, fellBack := layout.Postgres, false
+	if !absent {
+		if socketDir, fellBack, err = layout.SocketDir(st.SocketDir); err != nil {
+			return nil, err
+		}
 	}
 	if fellBack && st.SocketDir == "" {
 		log.Warnf("the data directory path is too long for a unix socket; "+

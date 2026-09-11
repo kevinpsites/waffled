@@ -84,8 +84,8 @@ func cmdMove(args []string) error {
 }
 
 // looksLikeAHousehold is uninstall's rule, asked here too: one of our own files, or a
-// postgres directory with a cluster in it. An empty tree is a scaffold every read-only
-// command lays out before it knows whether anybody lives here — not a household.
+// postgres directory with a cluster in it. An empty tree of our folders is not a
+// household — older builds laid one out on every read-only look at a missing directory.
 func looksLikeAHousehold(layout datadir.Layout) bool {
 	if _, err := os.Stat(layout.ConfigEnv); err == nil {
 		return true
