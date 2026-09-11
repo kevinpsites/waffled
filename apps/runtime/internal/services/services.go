@@ -37,6 +37,9 @@ const (
 	// Bonjour is the advisory child that advertises the server on the local network.
 	// It is NOT a member of the server: see Plan.Bonjour.
 	Bonjour = "bonjour"
+	// Admin is the break-glass operator CLI, run on demand. It has no log file and no
+	// pidfile: it is a person's command, in their terminal.
+	Admin = "admin"
 )
 
 // Order is the dependency order Compose expresses with depends_on + healthchecks.
@@ -235,6 +238,32 @@ func (p Plan) Migrate() Spec {
 		Args:    []string{p.node(), filepath.Join(p.Bundle, p.apiMigrate())},
 		Env:     env,
 		OneShot: true,
+	}
+}
+
+// Admin is the break-glass operator CLI — the native form of compose's
+// `docker exec waffled-api node dist/admin.js <args>`. It is the same bundled file the
+// api ships, so it needs the api's database environment and nothing that serves HTTP.
+//
+// Not a OneShot: admin.js prompts for a typed confirmation on a TTY, so the supervisor
+// streams the caller's own stdio through rather than capturing it.
+func (p Plan) Admin(args []string) Spec {
+	env := append(p.baseEnv(),
+		"NODE_ENV=production",
+		"DATABASE_URL="+p.databaseURL(),
+		"LOCAL_JWT_SECRET="+p.Env.Get(configenv.KeyLocalJWTSecret),
+		"TOKEN_ENCRYPTION_KEY="+p.Env.Get(configenv.KeyTokenEncryptionKey),
+		"POWERSYNC_JWT_PRIVATE_KEY="+p.Env.Get(configenv.KeyPowerSyncJWTPrivateKey),
+	)
+	// The same settings the api runs with — token lifetimes and TZ change what a reset or
+	// a session prune actually writes.
+	env = append(env, p.passthrough()...)
+
+	return Spec{
+		Name: Admin,
+		Path: p.node(),
+		Args: append([]string{p.node(), filepath.Join(p.Bundle, p.apiAdmin())}, args...),
+		Env:  env,
 	}
 }
 
@@ -489,6 +518,13 @@ func (p Plan) apiMigrate() string {
 		return p.Manifest.Components.API.Migrate
 	}
 	return "api/dist/migrate.js"
+}
+
+// apiAdmin sits beside migrate.js in the bundle's api/dist, and is derived from it rather
+// than hard-coded so a bundle that moves that directory only says so once. The manifest
+// has no entry of its own for it — build.sh copies the whole of dist.
+func (p Plan) apiAdmin() string {
+	return filepath.Join(filepath.Dir(p.apiMigrate()), "admin.js")
 }
 
 func (p Plan) powersyncEntry() string {

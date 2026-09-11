@@ -6,6 +6,7 @@
 //	waffled-runtime status [--json]
 //	waffled-runtime logs [service] [-f] [-n N]
 //	waffled-runtime doctor [--json]
+//	waffled-runtime admin [--data DIR] <command> [args…]
 //	waffled-runtime uninstall [--delete-data] [--dry-run] [--json] [--yes]
 //	waffled-runtime move --to DIR [--dry-run] [--json]
 //	waffled-runtime version
@@ -52,6 +53,7 @@ Usage:
   waffled-runtime doctor [flags]    diagnose a stack that will not start
   waffled-runtime uninstall [flags] remove what the runtime put on this Mac (keeps your data)
   waffled-runtime config set KEY=VALUE   write one setting into config.env
+  waffled-runtime admin <command>   break-glass operator commands (reset a password, grant admin…)
   waffled-runtime move [flags]      move the data directory to another folder
   waffled-runtime version
 
@@ -80,6 +82,9 @@ restore:
 config set:
   KEY=VALUE      the setting to write; the key is upper case and the value is never
                  printed back. Creates the data directory and config.env if needed.
+admin:
+  <command>      forwarded to the bundled operator CLI, along with everything after it.
+                 --bundle/--data go BEFORE the command. "admin help" lists the commands.
 move:
   --to DIR       the folder to move the data directory to; it must be empty, on this
                  Mac, and not inside the folder being moved. Refuses while the server
@@ -96,6 +101,12 @@ uninstall:
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
+		// A passthrough command's child has already said why, in its own words; this
+		// process only carries its exit code out to the shell.
+		var exit *exitCodeError
+		if errors.As(err, &exit) {
+			os.Exit(exit.code)
+		}
 		fmt.Fprintf(os.Stderr, "✗ %v\n", err)
 		os.Exit(1)
 	}
@@ -125,6 +136,8 @@ func run(args []string) error {
 		return cmdUninstall(args[1:])
 	case "config":
 		return cmdConfig(args[1:])
+	case "admin":
+		return cmdAdmin(args[1:])
 	case "move":
 		return cmdMove(args[1:])
 	case "version", "--version", "-v":

@@ -26,6 +26,7 @@ waffled-runtime restore FILE [--yes]
 waffled-runtime doctor [--json]
 waffled-runtime uninstall [--delete-data] [--dry-run] [--json] [--yes]
 waffled-runtime config set KEY=VALUE
+waffled-runtime admin <command> [args…]
 waffled-runtime move --to DIR [--dry-run] [--json]
 waffled-runtime version
 ```
@@ -166,6 +167,43 @@ Flags may be written on either side of the assignment. Go's `flag` package stops
 the first non-flag argument, so `config set KEY=V --data DIR` would otherwise write into
 the household's real `config.env` and report success; the flags are hoisted in front of the
 positional argument before it parses.
+
+### Break-glass operator commands — `admin`
+
+```sh
+waffled-runtime admin [--data DIR] [--bundle DIR] <command> [args…]
+waffled-runtime admin list-members
+waffled-runtime admin reset-password --email you@example.com
+waffled-runtime admin help                  # the full command list
+```
+
+The native form of the Docker install's `./waffled admin`, which is
+`docker exec waffled-api node dist/admin.js <cmd>`. It is the **same file**: the bundle
+ships the api's whole `dist/`, so this runs `api/dist/admin.js` with the bundled node and
+the api's database environment, forwards every argument, streams stdout/stderr straight
+through, and exits with the code the CLI exited with. The commands themselves are
+documented in one place — `admin help` — and nothing here knows what they are.
+
+Stdio is passed through rather than captured because the CLI is interactive: it refuses
+every destructive command unless stdin is a terminal, so a captured pipe would make each of
+them unanswerable. There is no timeout on it for the same reason.
+
+**The server does not have to be running.** With the stack stopped, Postgres alone is
+started for the command and shut down again afterwards — `backup`'s pattern, for the same
+reason: being locked out is the usual reason to be here, and "start the whole server first"
+is a poor answer to "nobody can sign in". (This makes the native path more capable than
+Docker's, which needs the api container up.) On a Mac where Waffled has never started there
+is no cluster to reach, and it says so and names `start` instead. Like `status` and
+`doctor`, it is a **read-only** construction: it never becomes a data directory's first run,
+so a typo in `--data` leaves nothing behind.
+
+`admin` is the one command with a positional that does **not** hoist its flags. Hoisting
+reorders, and this positional is an opaque command line for another program — it would pull
+`--email you@example.com` out of the CLI's own arguments. So the runtime's flags lead, and
+the first word that is not one of them ends them. What hoisting exists to prevent still has
+to be prevented, though, so `--data` or `--bundle` written *after* the command is refused
+with the line to type instead rather than silently forwarded to a CLI that would ignore it
+and open the default household. `--` is the escape hatch for anyone who meant it literally.
 
 ### Moving the data directory — `move`
 

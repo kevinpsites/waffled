@@ -84,6 +84,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `LOG_FORMAT`, `AI_TIMEOUT_MS`, `AI_MAX_RETRIES`, `OIDC_NATIVE_REDIRECT_URI` and the
   `RATE_LIMIT_*_MAX` throttles from `config.env`, as it does from a Docker `.env`.
 
+- **A Mac install can let you back in when nobody can sign in.** `waffled-runtime admin`
+  is the break-glass operator CLI a Docker install has had as `./waffled admin`, and it is
+  now there on a Mac too — `admin reset-password`, `make-admin`, `list-members`,
+  `prune-sessions` and the rest, run from Terminal with no login and no web UI. It reaches
+  the database directly, so a household locked out of its owner account can recover it. The
+  server does not even have to be running: with Waffled stopped, it starts the database for
+  the command and shuts it down again afterwards. `waffled-runtime admin help` lists
+  everything it can do.
+
 - **Weekly Planning is on iPhone and iPad.** The whole guided session — the lobby, all ten
   steps, the agenda sheet, the parked-note handoff, the recap and the saved record — now
   runs in the app, not just in the browser. On the phone it opens from a **Weekly
