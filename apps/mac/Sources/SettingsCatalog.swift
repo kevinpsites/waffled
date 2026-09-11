@@ -91,17 +91,20 @@ enum SettingsCatalog {
             detail: """
                 Your own OAuth app, so family members can connect Google or Microsoft \
                 calendars. The redirect address must match the one registered on the app, \
-                ending in /auth/google/calendar/callback or /auth/microsoft/calendar/callback.
+                ending in /auth/google/calendar/callback or /auth/microsoft/calendar/callback. \
+                Both providers refuse a plain http address unless it is localhost, so this \
+                needs a name of your own with https — this Mac's IP address will not be \
+                accepted.
                 """,
             settings: [
                 EnvSetting(key: "GOOGLE_CLIENT_ID", label: "Google client ID"),
                 EnvSetting(key: "GOOGLE_CLIENT_SECRET", label: "Google client secret", kind: .secret),
                 EnvSetting(key: "GOOGLE_CALENDAR_REDIRECT_URI", label: "Google redirect address",
-                           placeholder: "http://waffled.local:8080/auth/google/calendar/callback", kind: .url),
+                           placeholder: "https://waffled.example.com/auth/google/calendar/callback", kind: .url),
                 EnvSetting(key: "MS_CLIENT_ID", label: "Microsoft client ID"),
                 EnvSetting(key: "MS_CLIENT_SECRET", label: "Microsoft client secret", kind: .secret),
                 EnvSetting(key: "MS_CALENDAR_REDIRECT_URI", label: "Microsoft redirect address",
-                           placeholder: "http://waffled.local:8080/auth/microsoft/calendar/callback", kind: .url),
+                           placeholder: "https://waffled.example.com/auth/microsoft/calendar/callback", kind: .url),
             ]),
         SettingsSection(
             title: "Sessions and sign-in",
