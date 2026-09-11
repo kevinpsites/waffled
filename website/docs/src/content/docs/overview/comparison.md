@@ -24,6 +24,14 @@ suit you better.
   habits and auto-fill from **Apple Health**; recipes with a full **cook mode** (step-by-step,
   per-step timers); lists you can save as reusable **templates**; a pantry with a real
   **barcode scanner**.
+- **The week itself, not just the items in it.** A guided
+  [Weekly Planning](/features/weekly-planning/) session walks the family through deciding the
+  week ahead in ten steps — loose ends, the calendar, dinners, who does which chore, what each
+  kid's week is about. [Rhythms](/features/rhythms/) keeps the things that should *keep*
+  happening (the air filter, trash night, a quarterly visit) from falling off,
+  [Family Night](/features/family-night/) rotates the jobs of your weekly get-together fairly,
+  and [countdowns](/features/countdowns/) put "12 sleeps until the beach" on the kitchen
+  screen.
 - **Adds on, doesn't replace.** Waffled **syncs two-way with the Google Calendar you already
   use** — keep your existing calendar and let Waffled be the family layer on top, instead of
   migrating everyone to something new.
@@ -55,12 +63,17 @@ a hosted product is a reasonable choice. Waffled is for people who want the oppo
 | Your data | On your machine | On their servers | On their servers | On their servers | On their servers |
 | Kitchen display | ✅ **Any tablet you own**, no hardware to buy | 📱 App only | ✅ Their screen (buy it) | 📱 App only | ❌ |
 | Calendar | ✅ Its own, **+ two-way Google / Outlook sync** and ICS feeds (adds on, doesn't replace) | ✅ | ✅ | ✅ (it *is* Google) | ⚠️ Manual |
-| Chores + reward economy | ✅ Stars, approvals, shop, **photo proof**, streaks | ⚠️ Basic lists | ⚠️ Chore charts | ❌ | ⚠️ DIY |
+| Chores + reward economy | ✅ Stars, approvals, a **shop** kids spend in, **photo proof**, streaks | ⚠️ Basic lists | ⚠️ Chore charts with stars & streaks (paid plan) | ❌ | ⚠️ DIY |
 | Goals + habit tracking | ✅ Count / total / habit / checklist, **Apple Health** auto-fill | ❌ | ❌ | ❌ | ⚠️ DIY |
 | Meals → auto grocery list | ✅ | ⚠️ Recipe box + lists | ⚠️ Meal planner | ❌ | ⚠️ DIY |
 | Recipes + **cook mode** | ✅ In-app recipes, AI import, step-by-step + per-step timers | ⚠️ Recipe box | ⚠️ Meal planner | ❌ | ⚠️ DIY |
 | Lists | ✅ Custom multi-lists + reusable **templates** | ✅ Lists | ⚠️ Basic | ⚠️ Keep | ⚠️ DIY |
 | Pantry / inventory | ✅ **Barcode scanner** + allergens | ❌ | ❌ | ❌ | ⚠️ DIY |
+| Plans the week *with* you | ✅ **Weekly Planning** — a ten-step guided session | ❌ | ❌ | ❌ | ⚠️ DIY |
+| Recurring upkeep (not events) | ✅ **Rhythms** — due/overdue, confirm it was handled | ⚠️ Recurring events | ⚠️ Recurring events | ⚠️ Recurring events | ⚠️ DIY |
+| Family night | ✅ Auto-rotating agenda, roles shared fairly | ❌ | ❌ | ❌ | ⚠️ DIY |
+| Countdowns | ✅ From events, birthdays, anything — in "sleeps" | ❌ | ✅ | ❌ | ⚠️ DIY |
+| Type it in plain English | ✅ **Capture bar** — "dentist tuesday 3pm", your model or on-device | ❌ | ❌ | ⚠️ Assistant/Gemini | ⚠️ Their AI |
 | Photos + screensaver | ✅ | ❌ | ✅ (photo frame) | 📱 Google Photos | ❌ |
 | AI features | ✅ **Your model / key, or fully local** — never our cloud | ❌ | ❌ | ⚠️ Gemini (their cloud) | ⚠️ Their cloud |
 | Build on it / open API | ✅ Public scoped API + toggleable modules | ❌ | ❌ | ❌ | ⚠️ API only |
@@ -74,21 +87,24 @@ a hosted product is a reasonable choice. Waffled is for people who want the oppo
 The closest "does a bit of everything" family app, and genuinely good for a shared calendar +
 lists. But it's an ad-supported cloud product with a paid tier to remove ads, no kitchen-display
 mode, and none of the depth Waffled goes for: no reward economy or **photo-proof chores**, no
-**habit/goal tracking**, no **cook mode**, no pantry with a barcode scanner, no open API, and no
-self-hosting. Waffled trades "install nothing" for "own everything."
+**habit/goal tracking**, no **cook mode**, no pantry with a barcode scanner, nothing that sits
+the family down to plan the week, no open API, and no self-hosting. Waffled trades "install nothing" for "own everything."
 
 ### Skylight Calendar / Hearth Display
 Beautiful dedicated wall screens — and that's the pitch: **buy the hardware, pay the yearly
 plan**. Waffled turns *any* tablet you already have into that always-on display, for free, and
 keeps the data local — and behind the display sits far more app (goals, cook mode, a barcode
-pantry, an open API) than a fixed-function screen offers. If you specifically want a polished
+pantry, a guided weekly planning session, an open API) than a fixed-function screen offers.
+They have the parts families use most — a shared calendar, chore charts with stars, meal
+plans, countdowns — behind a yearly plan. If you specifically want a polished
 physical device with support and don't mind the subscription, the hardware products are a fine
 choice.
 
 ### Google Calendar / Family
 Excellent calendar, ubiquitous, free — and Waffled **syncs with it two-way** rather than
 replacing it. What Google doesn't give you is the family operating system around the calendar:
-chores + stars, meal planning that builds a grocery list, a pantry, a shared kitchen kiosk. Use
+chores + stars, meal planning that builds a grocery list, a pantry, the weekly planning
+session, a shared kitchen kiosk. Use
 both: keep Google as your calendar backbone and let Waffled be the hub on top.
 
 ### Notion / a spreadsheet
