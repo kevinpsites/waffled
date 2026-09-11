@@ -9,7 +9,11 @@ export const LINKS = {
 	appStore: APP_STORE,
 	quickStart: `${DOCS}/getting-started/quick-start/`,
 	overview: `${DOCS}/getting-started/overview/`,
-	install: `${DOCS}/install/docker/`,
+	mac: `${DOCS}/install/mac/`,
+	// release-mac.sh uploads a fixed-name Waffled.dmg to every release, and GitHub
+	// serves the Latest release's assets here — so this never changes per version.
+	macDownload: `${GITHUB}/releases/latest/download/Waffled.dmg`,
+	docker: `${DOCS}/install/docker/`,
 	requirements: `${DOCS}/install/requirements/`,
 	features: `${DOCS}/reference/features/`,
 	api: `${DOCS}/reference/api/`,
