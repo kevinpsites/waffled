@@ -277,13 +277,11 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   later. Plan, risks and phases in [`native-mac-plan.md`](./native-mac-plan.md); how to use
   it: [docs → Mac install](https://docs.waffled.app/install/mac/).
 
-## Partial / in progress 🟡
-
 - **Weekly Planning** — a guided session that walks the family through deciding the week
   ahead in ten steps (loose ends · calendar · horizon scan · family night · connection ·
   goals · meals · tasks · kids · recap). New optional `weeklyPlanning` module (default
   **off**), `planning_sessions` / `planning_session_steps` tables, and a server-owned step
-  catalog so web and iOS can't drift on the shape of the session. **Shipped so far:** the
+  catalog so web and iOS can't drift on the shape of the session. **Shipped:** the
   module shell — Settings → Modules panel (session day/time, per-step opt-out), the
   `/planning` screen with its lobby, the step chrome (counter → agenda sheet, the one
   question, progress hair, skip/affirm footer), the saved record, plus a step-in-the-URL
@@ -294,8 +292,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   no conflicts, then a validation pass that fixed ten reported defects across five of them.
   **iOS parity shipped too** — the session shell (lobby, chrome, agenda sheet, the
   parked-note handoff with each step's lent verb, "leave for now" as a per-device pause,
-  the saved record, the settings panel) and all ten step bodies, reachable from a Today
-  card, the Family hub, Settings, and the iPad kiosk's own rail page. Built the same way
+  the saved record, the settings panel) and all ten step bodies, reachable from the Family hub,
+  Settings, the iPad display's Today card, and a Planning page the iPad can pin to its rail. Built the same way
   the web steps were — a registry naming all ten keys and ten stub files on day one, so
   each step could be written against its own files and nothing shared; six agents in two
   waves, integrating with two compile errors between them, both in the wiring rather than
@@ -321,6 +319,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   every adult holds by default rather than by admin — running a session is not an admin
   act — with the same switches still in Settings → Modules → Weekly Planning. Design:
   `Weekly Planning v4` canvas; plan: `docs/product/weekly-planning-plan.md`.
+
+## Partial / in progress 🟡
 
 - **Waffled-Bites (kid companion device)** — the pairing system and the parent-facing
   control panel (Family → tap a kid → Waffled-Bite: quiet time, night light, wake-up
