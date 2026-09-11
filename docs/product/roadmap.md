@@ -360,6 +360,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   offsite copy to S3/B2/R2, a hostname Caddy actually serves with a certificate, a beta
   update channel, and OpenTelemetry (the bundle ships none of it). Listed with the reason
   each is not a setting yet in §3d of [`mac-settings-redesign.md`](./mac-settings-redesign.md).
+  First, a bug found on the way (§6 there): **Move…** must re-point the nightly backup at
+  the new folder — today it keeps backing up the folder the household left.
 - **Waffled for Windows** — the same Go runtime, a different wrapper (a tray app rather
   than a menu-bar one), and a bundle of Windows binaries instead of Mach-O ones. Nothing in
   the Mac work forecloses it; §9 of [`native-mac-plan.md`](./native-mac-plan.md) records

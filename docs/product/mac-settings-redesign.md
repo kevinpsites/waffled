@@ -206,5 +206,18 @@ What shipped:
    `passthroughKeys` out of `services.go` and fails if the app can write a key nothing
    reads. Offsite backup, media/backup folders and the update channel are not on screen.
 
+Found while building this, not fixed here:
+
+- **Move… leaves the nightly backup pointed at the old folder.** `cmdMove`
+  (`apps/runtime/cmd/waffled-runtime/move.go`) never touches the launchd plist, whose
+  `--data` still names the folder the household left. `backup` is a writing construction,
+  so the next nightly run recreates that folder with fresh secrets and backs up an empty
+  database there, while the real one is not backed up at all — and its retention falls
+  back to 14, since the schedule no longer names its data directory. The fix belongs in
+  `move`: when the plist's `--data` is the moved-from folder, re-install it for the new
+  one with the same `--at` and `--keep`. Until then, re-run
+  `waffled-runtime backup --install-schedule --data NEW --keep N` after a move (`--keep`
+  too: a schedule for a different folder does not inherit the old one's).
+
 *Originally audited against `mac-setup-flow` at the tip of PR #202; re-audited for §6. If
 `passthroughKeys` or `Plan.API` have moved since, re-run the audit before trusting §3.*
