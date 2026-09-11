@@ -654,6 +654,36 @@ EOF
   echo "PASS"
 '
 
+# Ctrl-D at the prompt is someone backing out, and the read fails rather than returning a
+# line. Resolving that to the empty string would make it identical to Enter — consent to a
+# forty-minute notarized build, given at the moment they tried to leave.
+t "EOF at the prompt declines, it does not consent" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  cat > "$tmp/release-mac.sh" <<EOF
+#!/bin/sh
+touch "$tmp/ran"
+EOF
+  chmod +x "$tmp/release-mac.sh"
+  MAC_RELEASE_SCRIPT="$tmp/release-mac.sh"
+  MAC_SIGNING_CONF="$tmp/signing.conf"; : > "$MAC_SIGNING_CONF"
+  uname() { echo Darwin; }
+  gh() { :; }
+  stdin_is_terminal() { return 0; }
+
+  set +e
+  out="$(mac_release_step 1.2.3 < /dev/null 2>&1)"   # a read that fails, not an empty line
+  rc=$?
+  set -e
+
+  [ "$rc" -eq 0 ] || { echo "FAIL: backing out returned $rc: $out"; exit 0; }
+  [ -f "$tmp/ran" ] && { echo "FAIL: EOF started the build: $out"; exit 0; }
+  case "$out" in
+    *"Still to do on the signing Mac"*) echo "PASS" ;;
+    *) echo "FAIL: declining left no hand-off note: $out" ;;
+  esac
+'
+
 t "answering no leaves the hand-off note and runs nothing" '
   source "$WAFFLED" help >/dev/null 2>&1
   tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT

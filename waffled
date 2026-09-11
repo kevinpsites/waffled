@@ -858,7 +858,9 @@ mac_release_step() {
   echo "Release the tag creates, builds a ~670 MB app and notarizes it — and the first"
   echo "codesign may raise a Keychain dialog no headless shell can answer."
   printf "Run ${c_dim}release-mac.sh %s${c_reset} now? [Y/n] " "$ver"
-  read -r ans || ans=""
+  # A failed read is Ctrl-D — someone leaving, not someone agreeing. Enter is the only
+  # silence that means yes.
+  read -r ans || ans="n"
   case "$ans" in
     n|N|no|NO) mac_release_note "$ver"; return 0 ;;
   esac
