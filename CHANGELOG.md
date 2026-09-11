@@ -55,7 +55,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Like everything else on the screen it waits for **Apply**, which then stops the server,
   copies, and starts it again — saying **Moving…** while it works and "Moved, and Waffled
   restarted." when it is done — and nothing is deleted until the copy has arrived. The
-  nightly backup moves with it, keeping its time and how many it keeps. **Move to the
+  nightly backup moves with it, keeping its time and how many it keeps; if it cannot, or the
+  old folder cannot be removed, the window says so. A folder with anything in it is refused
+  as soon as you choose it, before the server stops. **Move to the
   default folder** chooses `~/Library/Application Support/Waffled`, which the folder window
   cannot show, and says that path under the button. **Restart Waffled** says so while it
   restarts, too. From Terminal

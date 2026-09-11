@@ -240,12 +240,14 @@ Four things to know before you click it:
 
 - **The new folder must be empty and on a disk that stays plugged in**, formatted APFS or
   Mac OS Extended. An external drive that could be unplugged, or a network folder, would
-  mean no server; Waffled refuses those rather than letting you find out later.
+  mean no server; Waffled refuses those — and a folder with anything in it — as soon as you
+  choose one, before anything stops.
 - **Nothing is deleted until the copy has arrived.** If anything goes wrong — the disk
   fills up, the drive disappears — your household is still in the old folder, untouched.
 - **It needs room for a second copy** while it runs, plus a little headroom. Waffled
   checks first and tells you if there isn't enough.
-- **The nightly backup moves with it**, at the same time and keeping the same number.
+- **The nightly backup moves with it**, at the same time and keeping the same number. If it
+  cannot — or the old folder cannot be removed — the window says so beside "Moved".
 
 If you would rather do it from Terminal, it is the same command underneath:
 
@@ -263,8 +265,8 @@ into `backups/`. `Back up now` in the menu writes one on demand, and works even 
 server is stopped. Waffled also takes one **before every migration**, so an update that goes
 wrong has something to roll back to.
 
-To change the time later, or to schedule a nightly backup if you switched it off, one
-Terminal command does it:
+To change the time or how many it keeps, or to switch it back on, use **Settings…** —
+**Nightly backup** on the Basic tab — and **Apply**. From Terminal it is:
 
 ```sh
 /Applications/Waffled.app/Contents/Resources/runtime/bin/waffled-runtime backup \
@@ -274,9 +276,10 @@ Terminal command does it:
 `--at` is 24-hour local time and defaults to `03:00`; add `--keep 30` to keep the last 30
 instead of 14. Leaving either flag out keeps what the installed schedule already says, so
 running this again changes only what you name. `--uninstall-schedule` removes the schedule.
-One Mac keeps one nightly backup. **Back up now** keeps the number Settings shows, even with
-the nightly backup off; `waffled-runtime backup` on its own keeps the same number the
-nightly backup does.
+One Mac keeps one nightly backup. Settings does not see a change made from Terminal, and
+**Back up now** keeps the number Settings shows, even with the nightly backup off — so if
+you use the app, change the number there. `waffled-runtime backup` on its own keeps the same
+number the nightly backup does.
 
 A backup on the same Mac survives a mistake, not a fire. Copy `backups/` somewhere else —
 another disk, or a cloud folder — the same advice as the

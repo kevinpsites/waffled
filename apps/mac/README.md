@@ -363,7 +363,13 @@ waiting for. What was applied is remembered before the move, and a move that fai
 staged for another Apply. While it runs the window says so (`SettingsPresentation.activity`,
 **Moving…** on the button) and afterwards what finished (`Done`) — the menu's note is behind
 the window. The destination is checked with the same `Setup.refusal(for:)` the first run
-uses, because the volume rules are identical.
+uses, because the volume rules are identical, and `stageMove` also refuses a destination
+inside the current folder or with anything in it (`relocate.checkDestination`'s rule, any
+entry) — the runtime refuses both, but only after the app has stopped the server. The poll
+sits out the move, so the menu forgets the running status after the stop and says *Moving
+Waffled's files…* instead. A move that worked can still warn — a nightly backup that could
+not follow, an old folder that stayed — and those `! ` lines come back from
+`RuntimeClient.apply` and show beside the confirmation.
 
 The runtime removes the old folder only once the copy has arrived, and the app keeps showing
 the folder `status` reports rather than the one it asked for — so a move that fails leaves

@@ -245,5 +245,25 @@ Found while building this:
   existing data directory either. Changing that touches every read-only command, so it is
   its own change.
 
+Left for later by the focused review of `67e17024..1372cb12` (the fixes it asked for are in
+this branch):
+
+- **Back up now asserts the app's retention over the schedule's.** It passes the remembered
+  `--keep`, so a household that set a different number from Terminal is pruned to the one
+  Settings shows. That was deliberate — it is what fixed the backups-off and after-a-move
+  cases — and the docs now send Mac households to Settings rather than Terminal. The real fix
+  is for `status` to say whether the installed schedule is *this* folder's
+  (`scheduleInstalled` is also true for another folder's plist, whose `keep` then reads 14),
+  so the app can defer to it.
+- **A schedule that could not follow a move is said, not repaired.** The window shows the
+  runtime's warning; nothing re-installs it. The app could run `backup --install-schedule`
+  with the applied time and retention — never in dev mode, since the label is global.
+- **That warning's re-install hint resets the time and retention** to 03:00 / 14. `Follow`
+  has read `--at` and `--keep` by the time `Install` fails and could print them.
+- **`Follow` compares path text.** The same folder spelled through a symlink
+  (`/tmp` vs `/private/tmp`) reads as another household's schedule and is skipped silently.
+  `keepFrom` and `chooseSchedule` share the convention; resolving `from` before the move
+  removes it would close it.
+
 *Originally audited against `mac-setup-flow` at the tip of PR #202; re-audited for §6. If
 `passthroughKeys` or `Plan.API` have moved since, re-run the audit before trusting §3.*
