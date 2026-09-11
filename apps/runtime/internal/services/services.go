@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/kevinpsites/waffled/apps/runtime/internal/bonjour"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/caddyconf"
@@ -189,8 +190,8 @@ func (p Plan) API() Spec {
 		"POWERSYNC_PUBLIC_URL=",
 		// The PUBLIC PowerSync port — Caddy's, not the loopback one.
 		"POWERSYNC_PORT="+strconv.Itoa(p.Ports.PowerSyncPublic),
-		"LOG_FORMAT=json",
-		"LOG_LEVEL=info",
+		"LOG_FORMAT="+p.logSetting("LOG_FORMAT", "json", "pretty"),
+		"LOG_LEVEL="+p.logSetting("LOG_LEVEL", "info", "debug", "warn", "error"),
 		// There is no backup SIDECAR natively — but there are backups, and the runtime
 		// writes the same backup_runs rows the sidecar does. BACKUP_ENABLED=false makes
 		// the api's health check short-circuit to "backups are turned off", which would
@@ -449,6 +450,19 @@ var passthroughKeys = []string{
 	"GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_CALENDAR_REDIRECT_URI", "GOOGLE_CALENDAR_SCOPES",
 	"MS_CLIENT_ID", "MS_CLIENT_SECRET", "MS_CALENDAR_REDIRECT_URI", "MS_CALENDAR_SCOPES",
 	"TZ",
+}
+
+// logSetting reads one of the api's logging keys from config.env, lower-cased. Anything
+// but the default or one of the alternatives the api knows becomes the default, which is
+// what the api would quietly do with it anyway.
+func (p Plan) logSetting(key, def string, alternatives ...string) string {
+	v := strings.ToLower(strings.TrimSpace(p.Env.Get(key)))
+	for _, a := range alternatives {
+		if v == a {
+			return v
+		}
+	}
+	return def
 }
 
 func (p Plan) passthrough() []string {

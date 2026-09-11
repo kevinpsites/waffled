@@ -148,6 +148,30 @@ func TestHouseholdSettingsReachTheAPI(t *testing.T) {
 	}
 }
 
+// Logging is the household's to choose, within what the api understands. A value it does
+// not know becomes the default here, so the environment says what is really in force.
+func TestTheAPILogsTheWayConfigEnvAsks(t *testing.T) {
+	for _, c := range []struct {
+		level, format         string
+		wantLevel, wantFormat string
+	}{
+		{"", "", "info", "json"},
+		{"debug", "pretty", "debug", "pretty"},
+		{"WARN", "json", "warn", "json"},
+		{"error", "", "error", "json"},
+		{"verbose", "text", "info", "json"},
+	} {
+		p := testPlan(t)
+		p.Env.Set("LOG_LEVEL", c.level)
+		p.Env.Set("LOG_FORMAT", c.format)
+		e := envMap(p.API().Env)
+		if e["LOG_LEVEL"] != c.wantLevel || e["LOG_FORMAT"] != c.wantFormat {
+			t.Errorf("config.env %q/%q gave the api LOG_LEVEL=%q LOG_FORMAT=%q, want %q/%q",
+				c.level, c.format, e["LOG_LEVEL"], e["LOG_FORMAT"], c.wantLevel, c.wantFormat)
+		}
+	}
+}
+
 // The allowlist is the boundary between a hand-edited config.env and the api's
 // environment, so what stays OUT is pinned as deliberately as what goes in. OTEL only
 // ever loads through the preload the bundle does not ship, the update notifier is off
