@@ -164,7 +164,7 @@ struct SetupOptionRows: View {
                 if let refusal = folderRefusal {
                     Text(refusal).font(SetupTheme.small).foregroundStyle(SetupTheme.primary)
                 }
-                if settings != nil, let note = model.folderNote {
+                if settings != nil, folderRefusal == nil, let note = model.folderNote {
                     Text(note).font(SetupTheme.small).foregroundStyle(SetupTheme.inkSecondary)
                 }
             }

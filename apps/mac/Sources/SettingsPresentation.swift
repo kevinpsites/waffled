@@ -137,7 +137,9 @@ struct SettingsPresentation: Equatable {
     ) -> SettingsPresentation {
         let problems = options.problems(comparedTo: saved)
         let changes = options.commandsForChange(from: saved)
+        // The login item is the app's own, not a runtime command, so it is counted here.
         let changed = !changes.isEmpty
+            || (options.startAtLogin != saved.startAtLogin && problems.isEmpty)
         let port = status?.ports.public ?? 0
         // Every config.env write waits for a restart: the runtime builds the api's
         // environment when it starts it, and the api reads its keys once. Only the nightly

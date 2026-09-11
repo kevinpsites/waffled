@@ -127,7 +127,14 @@ final class ServerModel {
         // stored property has one.
         let applied = Setup.appliedOptions(in: memory)
         appliedOptions = applied
-        setupOptions = applied
+        // The first-run form starts from what was remembered, but no key ever is — so a
+        // keyed provider arriving without one would block "Set up Waffled" with nothing on
+        // the welcome step to say why. Settings reseeds from `appliedOptions` when it opens.
+        var seed = applied
+        if seed.provider.needsKey {
+            seed.provider = .none
+        }
+        setupOptions = seed
         // A folder chosen on a previous launch's setup screen. `WAFFLED_DATA_DIR` is not
         // read from here: the environment always wins, so a dev run against a scratch
         // directory can never be overridden by a choice the household made.
