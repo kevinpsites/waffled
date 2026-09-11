@@ -52,6 +52,8 @@ final class ServerModel {
     /// Kept so the client can be rebuilt around a new data directory without reaching for
     /// a `Process` — the seam every runtime call goes through stays injected.
     private let runner: RuntimeProcessRunning
+    /// `Setup.defaultDataDirectory` outside tests, which pass a scratch one.
+    private let standardDataDirectory: URL
     private var pollTask: Task<Void, Never>?
     private var animationTask: Task<Void, Never>?
     private var operationTask: Task<Void, Never>?
@@ -117,9 +119,11 @@ final class ServerModel {
          hardware: HardwareProbe = SystemHardware(),
          memory: UpdateMemory = UserDefaults.standard,
          runner: RuntimeProcessRunning = SubprocessRunner(),
-         loginItem: LoginItem? = nil) {
+         loginItem: LoginItem? = nil,
+         standardDataDirectory: URL = Setup.defaultDataDirectory) {
         self.memory = memory
         self.runner = runner
+        self.standardDataDirectory = standardDataDirectory
         // Built here rather than as a default argument: LoginItem is main-actor isolated,
         // and a default argument is evaluated outside that isolation.
         self.loginItem = loginItem ?? LoginItem()
@@ -214,6 +218,22 @@ final class ServerModel {
     /// household, delete the original, and leave this app pointing at the folder it
     /// just deleted.
     var dataDirectoryIsPinned: Bool { location?.dataDirIsFromEnvironment ?? false }
+
+    /// ~/Library is hidden, so no open panel shows Application Support: once Waffled's
+    /// files are anywhere else, this button is the only way back to the standard folder.
+    var offersStandardFolder: Bool {
+        !dataDirectoryIsPinned
+            && dataDirectory.standardizedFileURL.path != standardDataDirectory.standardizedFileURL.path
+    }
+
+    /// Before setup this is only a choice; afterwards it is a move, like any other.
+    func useStandardFolder() {
+        if showingSettings {
+            moveDataDirectory(to: standardDataDirectory)
+        } else {
+            chooseDataDirectory(standardDataDirectory)
+        }
+    }
 
     /// Where `Show logs` reveals. `status` knows best, but the whole point of that item is
     /// that something went wrong — possibly before any status came back — so the resolved

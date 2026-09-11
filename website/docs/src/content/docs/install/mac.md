@@ -70,8 +70,10 @@ closes it again.
   drive somebody can unplug, or a network folder, is not somewhere a running database can
   live, and the window says so if you pick one — as it does if it cannot write there.
   Waffled makes a **Waffled** folder inside whatever you pick, so choosing your Documents
-  folder does not scatter a database through it. You can move it later from `Settings…` —
-  see [Moving Waffled's files](#moving-waffleds-files) — but picking it now avoids the copy.
+  folder does not scatter a database through it. Wandered off to another folder and want
+  the default back? **Use the standard folder** does that — the folder window cannot show
+  it, because macOS hides `~/Library`. You can move it later from `Settings…` — see
+  [Moving Waffled's files](#moving-waffleds-files) — but picking it now avoids the copy.
 - **Nightly backup.** On, at 3:00 AM, unless you say otherwise — 1:00 AM, 3:00 AM, 5:00 AM
   or noon — noon is there for a Mac that sleeps at night. **Keep the last** 7, 14, 30 or 90
   backups (14 unless you change it); the oldest goes when a new one arrives. Switching it
@@ -223,7 +225,10 @@ somewhere else yourself for now.
 ## Moving Waffled's files
 
 `Settings…` → *Move…* takes everything — the database, your photos and every backup — to
-another folder on this Mac. Waffled stops the server, copies, and starts it again.
+another folder on this Mac. Waffled stops the server, copies, and starts it again. Once
+it lives anywhere but `~/Library/Application Support/Waffled`, *Move to the standard
+folder* appears beside it and takes it back there — the folder window cannot, because
+macOS hides `~/Library`.
 
 Three things to know before you click it:
 

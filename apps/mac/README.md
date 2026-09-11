@@ -349,6 +349,10 @@ someone hand-edits into `config.env` is not what Settings shows.
 
 The panel opens beside the folder Waffled is in, so the likeliest pick is that folder or its
 parent — both resolve to where Waffled already is, and the drawer says so and stops nothing.
+No panel can show the standard folder, because `~/Library` is hidden, so once the files are
+anywhere else the row adds *Use the standard folder* / *Move to the standard folder*
+(`ServerModel.useStandardFolder()`) — the same choose or move, aimed at
+`Setup.defaultDataDirectory`.
 Otherwise the folder row's `Move…` is `ServerModel.moveDataDirectory(to:)`: stop, then
 `waffled-runtime move --to`, then repoint the client at the new folder, then start. That
 order is load-bearing — the runtime refuses to move a running cluster, and the `--data` the

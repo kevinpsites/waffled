@@ -29,10 +29,14 @@ final class FolderPickerFlowTests: XCTestCase {
         }
     }
 
-    private func makeModel(runner: RecordingRunner, memory: InMemoryDefaults = InMemoryDefaults()) -> ServerModel {
-        memory.set(current.path, forKey: Setup.dataDirectoryKey)
-        return ServerModel(environment: [RuntimeLocator.binaryVariable: "/nonexistent/waffled-runtime"],
-                           resourceURL: nil, memory: memory, runner: runner)
+    /// The standard folder is this scratch home's, never the real one, so no test here can
+    /// hand the runtime a path under the real ~/Library.
+    private func makeModel(runner: RecordingRunner, memory: InMemoryDefaults = InMemoryDefaults(),
+                           at folder: URL? = nil, environment: [String: String] = [:]) -> ServerModel {
+        memory.set((folder ?? current).path, forKey: Setup.dataDirectoryKey)
+        return ServerModel(environment: environment.merging([RuntimeLocator.binaryVariable: "/nonexistent/waffled-runtime"]) { a, _ in a },
+                           resourceURL: nil, memory: memory, runner: runner,
+                           standardDataDirectory: current)
     }
 
     private func waitUntil(_ what: String, _ condition: () -> Bool) async {
@@ -140,5 +144,56 @@ final class FolderPickerFlowTests: XCTestCase {
         model.moveDataDirectory(to: current.appendingPathComponent("media/Waffled"))
         XCTAssertEqual(model.heldFailure, SettingsPresentation.Copy.folderInsideItself)
         XCTAssertTrue(runner.calls.isEmpty)
+    }
+
+    // MARK: back to the standard folder
+
+    /// ~/Library is hidden, so no open panel shows Application Support: once Waffled is
+    /// anywhere else, this is the only way back.
+    func testTheStandardFolderIsOfferedOnlyWhenWaffledIsElsewhere() {
+        let atStandard = makeModel(runner: RecordingRunner())
+        defer { atStandard.end() }
+        XCTAssertFalse(atStandard.offersStandardFolder)
+
+        let elsewhere = makeModel(runner: RecordingRunner(), at: documents.appendingPathComponent("Waffled"))
+        defer { elsewhere.end() }
+        XCTAssertTrue(elsewhere.offersStandardFolder)
+    }
+
+    func testAPinnedFolderIsNeverOfferedAWayOut() {
+        let pinned = documents.appendingPathComponent("Waffled")
+        let model = makeModel(runner: RecordingRunner(), at: pinned,
+                              environment: [RuntimeLocator.dataVariable: pinned.path])
+        defer { model.end() }
+        XCTAssertFalse(model.offersStandardFolder)
+    }
+
+    func testAFirstRunCanGoBackToTheStandardFolder() {
+        let model = makeModel(runner: RecordingRunner())
+        defer { model.end() }
+        model.chooseDataDirectory(documents.appendingPathComponent("Waffled"))
+        XCTAssertTrue(model.offersStandardFolder)
+
+        model.useStandardFolder()
+        XCTAssertEqual(model.dataDirectory.path, current.path)
+        XCTAssertFalse(model.offersStandardFolder)
+    }
+
+    func testSettingsMovesBackToTheStandardFolder() async throws {
+        let elsewhere = documents.appendingPathComponent("Waffled")
+        try makeDirectory(elsewhere, with: ["runtime.json", "config.env"])
+        let memory = InMemoryDefaults()
+        let runner = RecordingRunner()
+        let model = makeModel(runner: runner, memory: memory, at: elsewhere)
+        defer { model.end() }
+        model.openSettings()
+
+        model.useStandardFolder()
+        await waitUntil("the move finishes") { !model.busy }
+
+        let move = try XCTUnwrap(runner.calls.first { $0.arguments.first == "move" })
+        XCTAssertEqual(Array(move.arguments.prefix(3)), ["move", "--to", current.path])
+        XCTAssertEqual(dataArgument(move), elsewhere.path)
+        XCTAssertEqual(memory.string(forKey: Setup.dataDirectoryKey), current.path)
     }
 }

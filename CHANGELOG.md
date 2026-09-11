@@ -52,7 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of looking like it did not work. **Move…** takes the whole household — database, photos and
   every backup — to another folder, which is how you get Waffled off a full startup disk:
   it stops the server, copies, and starts it again, and nothing is deleted until the copy
-  has arrived. From Terminal it is `waffled-runtime move --to DIR`, which refuses a
+  has arrived. **Move to the standard folder** takes it back to
+  `~/Library/Application Support/Waffled`, which the folder window cannot show. From Terminal it is `waffled-runtime move --to DIR`, which refuses a
   destination that is not empty, is on a drive that could be unplugged, or has no room for
   it — and refuses to move a server that is still running.
 

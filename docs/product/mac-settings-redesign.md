@@ -216,6 +216,11 @@ What shipped:
    table: any key outside the allowlist is written and reaches nothing. A Mac test reads
    `passthroughKeys` out of `services.go` and fails if the app can write a key nothing
    reads. Offsite backup, media/backup folders and the update channel are not on screen.
+5. A way back to the standard folder. A click test showed that no open panel reaches
+   `~/Library/Application Support` — `~/Library` is hidden — so once the files were
+   anywhere else they could not be moved back. The files row now offers *Use the standard
+   folder* (first run) or *Move to the standard folder* (Settings) whenever they are
+   elsewhere and `WAFFLED_DATA_DIR` does not pin them.
 
 Found while building this, not fixed here:
 

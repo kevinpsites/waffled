@@ -153,12 +153,21 @@ struct SetupOptionRows: View {
                         Button(SettingsPresentation.Copy.move) { chooseFolder() }
                             .buttonStyle(SetupButton(kind: .ghost))
                             .disabled(!settings.moveEnabled)
+                        if model.offersStandardFolder {
+                            Button(SettingsPresentation.Copy.moveToStandard) { useStandardFolder() }
+                                .buttonStyle(SetupButton(kind: .ghost))
+                                .disabled(!settings.moveEnabled)
+                        }
                         revealButton
                     } else if folderIsSettled {
                         revealButton
                     } else {
                         Button(Copy.files.choose) { chooseFolder() }
                             .buttonStyle(SetupButton(kind: .ghost))
+                        if model.offersStandardFolder {
+                            Button(Copy.files.standard) { useStandardFolder() }
+                                .buttonStyle(SetupButton(kind: .ghost))
+                        }
                     }
                 }
                 if settings == nil, folderIsSettled {
@@ -185,6 +194,11 @@ struct SetupOptionRows: View {
             NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: model.dataDirectory.path)
         }
         .buttonStyle(SetupButton(kind: .ghost))
+    }
+
+    private func useStandardFolder() {
+        folderRefusal = nil
+        model.useStandardFolder()
     }
 
     private func chooseFolder() {
