@@ -193,9 +193,10 @@ Re-audited against `apps/api` before any key was added. Corrections to §3:
 What shipped:
 
 1. `backup --install-schedule --keep N` writes `--keep` into the plist, re-installing with
-   either flag omitted keeps what the plist says, a run with no `--keep` ("Back up now")
-   keeps what the nightly schedule keeps when it is this data directory's, and `status`
-   reports `backups.keep`. No "Forever" — the runtime has no keep-everything mode.
+   either flag omitted keeps what the plist says, a run with no `--keep` keeps what the
+   nightly schedule keeps when it is this data directory's, and `status` reports
+   `backups.keep`. The app's "Back up now" passes the `--keep` Settings shows, so it holds
+   with the nightly backup off. No "Forever" — the runtime has no keep-everything mode.
 2. Twelve keys added to `passthroughKeys`; the ones above that would do nothing are pinned
    *out* by a test.
 3. `LOG_LEVEL` / `LOG_FORMAT` read from `config.env`, unknown values falling back to the

@@ -259,8 +259,9 @@ Terminal command does it:
 `--at` is 24-hour local time and defaults to `03:00`; add `--keep 30` to keep the last 30
 instead of 14. Leaving either flag out keeps what the installed schedule already says, so
 running this again changes only what you name. `--uninstall-schedule` removes the schedule.
-One Mac keeps one nightly backup. **Back up now**, and `waffled-runtime backup` on its own,
-keep the same number the nightly backup does.
+One Mac keeps one nightly backup. **Back up now** keeps the number Settings shows, even with
+the nightly backup off; `waffled-runtime backup` on its own keeps the same number the
+nightly backup does.
 
 A backup on the same Mac survives a mistake, not a fire. Copy `backups/` somewhere else —
 another disk, or a cloud folder — the same advice as the

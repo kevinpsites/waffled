@@ -85,12 +85,12 @@ final class RuntimeClientTests: XCTestCase {
 
         try await c.start()
         try await c.stop()
-        let dump = try await c.backup()
+        let dump = try await c.backup(keep: 30)
 
         XCTAssertEqual(runner.calls.map(\.arguments), [
             ["start", "--bundle", "/tmp/runtime", "--data", "/tmp/data"],
             ["stop", "--bundle", "/tmp/runtime", "--data", "/tmp/data"],
-            ["backup", "--bundle", "/tmp/runtime", "--data", "/tmp/data"],
+            ["backup", "--keep", "30", "--bundle", "/tmp/runtime", "--data", "/tmp/data"],
         ])
         XCTAssertEqual(dump, "/tmp/data/backups/waffled-20260908-030000.dump")
         XCTAssertFalse(runner.calls.contains { $0.arguments.contains("--foreground") })

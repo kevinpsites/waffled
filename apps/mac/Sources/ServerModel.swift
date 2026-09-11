@@ -798,11 +798,12 @@ final class ServerModel {
 
     func backUpNow() {
         guard let client, operationTask == nil else { return }
+        let keep = appliedOptions.backupKeep
         note("Backing up…", clearAfter: nil)
         operationTask = Task { [weak self] in
             defer { self?.finishOperation() }
             do {
-                let path = try await client.backup()
+                let path = try await client.backup(keep: keep)
                 let name = (path as NSString).lastPathComponent
                 self?.note(name.isEmpty ? "Backed up" : "Backed up to \(name)")
             } catch {

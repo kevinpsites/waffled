@@ -40,6 +40,29 @@ final class SettingsReviewTests: XCTestCase {
         XCTAssertNil(screen.confirmation, "an unapplied change is not 'Settings applied.'")
     }
 
+    /// A `backup` with no `--keep` keeps what this folder's nightly schedule keeps — and
+    /// with the nightly backup off, never installed (dev mode), or still naming the folder
+    /// before a Move, there is none, so it keeps 14 under a picker that says 90.
+    func testBackUpNowKeepsTheRetentionSettingsShows() async {
+        let memory = InMemoryDefaults()
+        var applied = SetupOptions()
+        applied.backupEnabled = false
+        applied.backupKeep = 90
+        Setup.remember(applied, in: memory)
+        let runner = RecordingRunner()
+        let model = ServerModel(environment: [RuntimeLocator.binaryVariable: "/nonexistent/waffled-runtime"],
+                                resourceURL: nil, memory: memory, runner: runner)
+        defer { model.end() }
+
+        model.backUpNow()
+        for _ in 0..<200 where !runner.calls.contains(where: { $0.arguments.first == "backup" }) {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
+        let backup = runner.calls.first { $0.arguments.first == "backup" }?.arguments ?? []
+        XCTAssertTrue(backup.joined(separator: " ").contains("--keep 90"), "ran \(backup)")
+    }
+
     func testStartAtLoginNeedsNoRestart() throws {
         var changed = SetupOptions()
         changed.startAtLogin = false

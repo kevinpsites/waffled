@@ -134,9 +134,11 @@ struct RuntimeClient {
 
     /// Prints the dump path on stdout. Works while the server is stopped — `backup`
     /// starts Postgres for itself and puts it back — which is when the question is asked.
+    /// `keep` is always passed: left out, the runtime keeps what this folder's nightly
+    /// schedule keeps, and there may be no such schedule (off, dev mode, or after a Move).
     @discardableResult
-    func backup() async throws -> String {
-        let result = try await run("backup")
+    func backup(keep: Int) async throws -> String {
+        let result = try await run("backup", extra: ["--keep", String(keep)])
         let out = String(decoding: result.standardOutput, as: UTF8.self)
         return out.trimmingCharacters(in: .whitespacesAndNewlines)
     }

@@ -757,10 +757,11 @@ can drift out of step with the schedule launchd actually obeys. Changing the tim
 before this, `--keep` was accepted and dropped, so every schedule kept 14. Re-installing
 with `--at` or `--keep` left out keeps what the installed plist says for the one not
 restated (`chooseSchedule`), so changing only the time never resets the retention. A
-`backup` run with **no** `--keep` — "Back up now", or the command typed in Terminal — keeps
-what the nightly schedule keeps, when that schedule is this data directory's
-(`Supervisor.retention`); otherwise the first manual run would prune a 30-backup history
-back to 14. `--keep 0` or a negative count is refused rather than read as "the default".
+`backup` run with **no** `--keep` keeps what the nightly schedule keeps, when that schedule
+is this data directory's (`Supervisor.retention`); otherwise the first manual run would
+prune a 30-backup history back to 14. The Mac app's "Back up now" passes `--keep` itself —
+the count Settings shows — because with the nightly backup off there is no schedule to
+read. `--keep 0` or a negative count is refused rather than read as "the default".
 
 **One Mac holds one nightly backup.** The launchd label is global, so installing from a
 second data directory takes the existing schedule over. The command says so —
