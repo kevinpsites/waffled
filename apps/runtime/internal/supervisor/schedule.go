@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/kevinpsites/waffled/apps/runtime/internal/backup"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/schedule"
 )
 
@@ -28,7 +29,32 @@ func (s *Supervisor) BackupAgent() (*schedule.Agent, error) {
 	return schedule.For(exe, s.plan.Bundle, s.plan.Layout.Root, s.plan.Layout.LogPath("backup"))
 }
 
-// scheduleFacts answers both of the status block's questions about the nightly backup
+// retention is how many routine dumps a run keeps when it was given no --keep — "Back up
+// now", or `backup` typed in Terminal. It is whatever the nightly schedule keeps, so the
+// first manual run does not prune a household's chosen history back to the default.
+func (s *Supervisor) retention() int {
+	a, err := s.BackupAgent()
+	if err != nil || !a.Installed() {
+		return backup.DefaultKeepDumps
+	}
+	return s.keepFrom(a)
+}
+
+// keepFrom reads an installed schedule's retention, but only when that schedule backs up
+// this data directory: the launchd label is global, so the one on this Mac may be
+// another household's, and its retention is theirs.
+func (s *Supervisor) keepFrom(a *schedule.Agent) int {
+	dir, err := a.ScheduledDataDir()
+	if err != nil || filepath.Clean(dir) != filepath.Clean(s.plan.Layout.Root) {
+		return backup.DefaultKeepDumps
+	}
+	if n, err := a.ScheduledKeep(); err == nil && n > 0 {
+		return n
+	}
+	return backup.DefaultKeepDumps
+}
+
+// scheduleFacts answers the status block's questions about the nightly backup
 // from ONE agent. Building it resolves this binary's path and its symlinks, and both
 // callers wanted it on the same poll — `status` is asked once or twice a second.
 //
@@ -44,15 +70,15 @@ func (s *Supervisor) BackupAgent() (*schedule.Agent, error) {
 //
 // `scheduleLoaded` deliberately stays separate and builds its own agent: it forks
 // launchctl, so only `doctor` asks it, once, when a person types the command.
-func (s *Supervisor) scheduleFacts() (installed bool, at string) {
+func (s *Supervisor) scheduleFacts() (installed bool, at string, keep int) {
 	a, err := s.BackupAgent()
 	if err != nil || !a.Installed() {
-		return false, ""
+		return false, "", backup.DefaultKeepDumps
 	}
-	if at, err := a.ScheduledAt(); err == nil {
-		return true, at
+	if at, err = a.ScheduledAt(); err != nil {
+		at = ""
 	}
-	return true, ""
+	return true, at, s.keepFrom(a)
 }
 
 // scheduleOKDetail is the sentence for a schedule that is installed and loaded. The time

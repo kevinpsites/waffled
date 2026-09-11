@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/kevinpsites/waffled/apps/runtime/internal/bonjour"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/caddyconf"
@@ -189,8 +190,8 @@ func (p Plan) API() Spec {
 		"POWERSYNC_PUBLIC_URL=",
 		// The PUBLIC PowerSync port — Caddy's, not the loopback one.
 		"POWERSYNC_PORT="+strconv.Itoa(p.Ports.PowerSyncPublic),
-		"LOG_FORMAT=json",
-		"LOG_LEVEL=info",
+		"LOG_FORMAT="+p.logSetting("LOG_FORMAT", "json", "pretty"),
+		"LOG_LEVEL="+p.logSetting("LOG_LEVEL", "info", "debug", "warn", "error"),
 		// There is no backup SIDECAR natively — but there are backups, and the runtime
 		// writes the same backup_runs rows the sidecar does. BACKUP_ENABLED=false makes
 		// the api's health check short-circuit to "backups are turned off", which would
@@ -431,15 +432,37 @@ func (p Plan) provenance() []string {
 // passthroughKeys are optional settings an operator may add to config.env by hand. They
 // are forwarded verbatim when present, and omitted entirely when not, so the api falls
 // back to its own defaults rather than seeing an empty string.
+//
+// It is an allowlist on purpose: each key is one a household is meant to set, and never
+// a pass-everything rule. OTEL_* and UPDATE_CHECK_REPO are left out because they would do
+// nothing natively — see docs/product/mac-settings-redesign.md §3.
 var passthroughKeys = []string{
 	"PUBLIC_BASE_URL",
 	"ACCESS_TOKEN_TTL_SECONDS", "REFRESH_TOKEN_TTL_DAYS", "AUTH_FORCE_PASSWORD",
+	"OIDC_NATIVE_REDIRECT_URI",
+	"RATE_LIMIT_SETUP_MAX", "RATE_LIMIT_LOGIN_ACCOUNT_MAX", "RATE_LIMIT_LOGIN_IP_MAX",
+	"RATE_LIMIT_OIDC_START_MAX", "RATE_LIMIT_OIDC_EXCHANGE_MAX", "RATE_LIMIT_REFRESH_MAX",
+	"RATE_LIMIT_KIOSK_PAIR_MAX", "RATE_LIMIT_KIOSK_TOKEN_MAX", "RATE_LIMIT_MEDIA_MAX",
 	"ANTHROPIC_API_KEY", "ANTHROPIC_MODEL",
 	"OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_BASE_URL",
 	"OLLAMA_HOST", "OLLAMA_MODEL",
+	"AI_TIMEOUT_MS", "AI_MAX_RETRIES",
 	"GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_CALENDAR_REDIRECT_URI", "GOOGLE_CALENDAR_SCOPES",
 	"MS_CLIENT_ID", "MS_CLIENT_SECRET", "MS_CALENDAR_REDIRECT_URI", "MS_CALENDAR_SCOPES",
 	"TZ",
+}
+
+// logSetting reads one of the api's logging keys from config.env, lower-cased. Anything
+// but the default or one of the alternatives the api knows becomes the default, which is
+// what the api would quietly do with it anyway.
+func (p Plan) logSetting(key, def string, alternatives ...string) string {
+	v := strings.ToLower(strings.TrimSpace(p.Env.Get(key)))
+	for _, a := range alternatives {
+		if v == a {
+			return v
+		}
+	}
+	return def
 }
 
 func (p Plan) passthrough() []string {

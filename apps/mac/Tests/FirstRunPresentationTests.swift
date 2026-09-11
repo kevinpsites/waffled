@@ -264,7 +264,7 @@ final class FirstRunPresentationTests: XCTestCase {
         XCTAssertEqual(welcome.components.map(\.version).filter { !$0.isEmpty }.count, 4,
                        "every row carries the version from the bundle manifest")
         XCTAssertEqual(welcome.promises.count, 3)
-        XCTAssertEqual(welcome.tertiaryButton, "Choose where things go…")
+        XCTAssertEqual(welcome.tertiaryButton, "Settings first…")
         XCTAssertEqual(welcome.secondaryButton, "Not on this Mac")
         XCTAssertTrue(welcome.closeQuitsApp)
     }

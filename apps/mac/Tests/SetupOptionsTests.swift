@@ -11,9 +11,11 @@ final class SetupOptionsTests: XCTestCase {
         XCTAssertTrue(options.backupEnabled)
         XCTAssertEqual(options.backupAt, "03:00")
         XCTAssertTrue(options.startAtLogin)
-        XCTAssertEqual(options.addressMode, .name)
+        XCTAssertEqual(options.addressMode, .ip)
         XCTAssertEqual(options.port, "8080")
         XCTAssertTrue(options.providerKey.isEmpty)
+        XCTAssertEqual(options.provider, .none)
+        XCTAssertEqual(options.backupKeep, 14)
         XCTAssertTrue(options.problems.isEmpty)
     }
 
@@ -89,7 +91,12 @@ final class SetupOptionsTests: XCTestCase {
     /// upgrade and wrong for a Mac that has never run Waffled.
     func testTheAddressIsAlwaysWrittenDown() {
         XCTAssertTrue(SetupOptions().commandsBeforeFirstStart()
-            .contains { $0.trailing.contains("WAFFLED_PUBLIC_HOST=name") })
+            .contains { $0.trailing.contains("WAFFLED_PUBLIC_HOST=ip") })
+    }
+
+    /// The picker lists the default first, so the choice already made reads as the top one.
+    func testThePickerStartsWithTheDefault() {
+        XCTAssertEqual(FirstRunPresentation.OptionsCopy.addressModes.first?.0, SetupOptions().addressMode)
     }
 
     /// The key is optional and nothing else depends on it: an empty field writes no
@@ -182,7 +189,7 @@ final class SetupOptionsTests: XCTestCase {
         let options = SetupOptions()
         let dev = options.commandsBeforeFirstStart(isDevMode: true)
         XCTAssertFalse(dev.contains { $0.subcommand == "backup" })
-        XCTAssertTrue(dev.contains { $0.trailing.contains("WAFFLED_PUBLIC_HOST=name") })
+        XCTAssertTrue(dev.contains { $0.trailing.contains("WAFFLED_PUBLIC_HOST=ip") })
         XCTAssertTrue(options.commandsBeforeFirstStart().contains { $0.subcommand == "backup" },
                       "an ordinary first run still installs one")
     }

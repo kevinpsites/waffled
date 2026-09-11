@@ -119,6 +119,32 @@ func TestAReadOnlyConstructionOnAnEmptyDataDirectoryWritesNothing(t *testing.T) 
 	}
 }
 
+// Nothing at all, not even the empty folders. The launch polls reach the default location
+// before anyone has picked a folder, and a scaffold left there is neither empty nor a
+// household: `move` refuses it as a destination ("already has something in it"), and the
+// Mac app's folder picker, finding none of our files in it, nests a second Waffled inside.
+func TestAReadOnlyLookAtAMissingDataDirectoryLeavesItMissing(t *testing.T) {
+	bundle, data := fakeBundle(t), emptyDataDir(t)
+
+	for i := 0; i < 2; i++ { // the second is a warm poll, answered from the memo
+		if _, err := New(Options{BundleDir: bundle, DataDir: data, ReadOnly: true,
+			TolerateConflicts: true, Log: NewLogger(&testLog{t}, false)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if exists(data) {
+		entries, _ := os.ReadDir(data)
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("a read-only construction created %s, holding %v", data, names)
+	}
+	if exists(filepath.Dir(data)) {
+		t.Errorf("a read-only construction created the parent %s", filepath.Dir(data))
+	}
+}
+
 // The Time Machine exclusion is a write whose "already done" memo lives in the
 // runtime.json a read-only construction does not save. Doing it anyway would fork tmutil
 // on every one of the menu bar's two-second polls and remember nothing.

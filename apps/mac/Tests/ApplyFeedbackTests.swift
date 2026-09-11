@@ -25,7 +25,7 @@ final class ApplyFeedbackTests: XCTestCase {
     /// exactly when the warning matters most.
     func testTheRestartNoteSurvivesTheApplyThatCausedIt() throws {
         var changed = SetupOptions()
-        changed.addressMode = .ip
+        changed.addressMode = .name
 
         let before = screen(options: changed, saved: SetupOptions(), status: try running())
         XCTAssertTrue(before.needsRestart, "precondition: the pending change needs one")
@@ -59,7 +59,7 @@ final class ApplyFeedbackTests: XCTestCase {
     /// looking at, under a note below the fold.
     func testTheButtonBecomesTheRestartOnceThereIsNothingLeftToApply() throws {
         var changed = SetupOptions()
-        changed.addressMode = .ip
+        changed.addressMode = .name
 
         let pending = screen(options: changed, saved: SetupOptions(), status: try running())
         XCTAssertEqual(pending.primaryAction, .apply, "there is still something to apply")
@@ -100,7 +100,7 @@ final class ApplyFeedbackTests: XCTestCase {
         let done = SettingsPresentation.make(
             options: settled, saved: settled,
             dataDirectory: URL(fileURLWithPath: "/tmp/Waffled"),
-            status: try running(), applied: true)
+            status: try running(), done: .applied)
         XCTAssertNotNil(done.confirmation)
         XCTAssertTrue(done.confirmation?.isEmpty == false)
     }

@@ -37,12 +37,23 @@ func uninstallSandbox(t *testing.T) string {
 // captureStdout runs fn with os.Stdout redirected and returns what it printed.
 func captureStdout(t *testing.T, fn func() error) (string, error) {
 	t.Helper()
+	return capture(t, &os.Stdout, fn)
+}
+
+// captureStderr is captureStdout for os.Stderr.
+func captureStderr(t *testing.T, fn func() error) (string, error) {
+	t.Helper()
+	return capture(t, &os.Stderr, fn)
+}
+
+func capture(t *testing.T, stream **os.File, fn func() error) (string, error) {
+	t.Helper()
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved := os.Stdout
-	os.Stdout = w
+	saved := *stream
+	*stream = w
 
 	// Drained concurrently: a pipe holds only 64 KB, and a command that printed more
 	// than that would block forever instead of failing the test.
@@ -53,7 +64,7 @@ func captureStdout(t *testing.T, fn func() error) (string, error) {
 	}()
 
 	runErr := fn()
-	os.Stdout = saved
+	*stream = saved
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}

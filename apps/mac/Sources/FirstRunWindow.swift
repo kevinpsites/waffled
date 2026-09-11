@@ -222,7 +222,8 @@ private struct InsidePanel: View {
     }
 }
 
-private struct WarningNote: View {
+/// Internal, not private: Settings (`SettingsViews.swift`) shows its restart note in it.
+struct WarningNote: View {
     var text: String
 
     var body: some View {
@@ -257,346 +258,41 @@ private struct OptionsStep: View {
     @Bindable var model: ServerModel
 
     var body: some View {
-        ScrollView {
+        VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
                 if let eyebrow = step.eyebrow {
                     Text(eyebrow).font(SetupTheme.eyebrow).foregroundStyle(SetupTheme.inkTertiary)
                 }
+                SettingsTabPicker(tab: $model.settingsTab)
                 Text(step.title).font(SetupTheme.title(24))
                 Text(step.message)
                     .font(SetupTheme.body)
                     .foregroundStyle(SetupTheme.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
-
-                SetupOptionRows(model: model, settings: nil)
-                    .padding(.top, 8)
-
+                // Above the tabs: a problem on Advanced is what keeps Set up off on Basic.
                 ProblemList(problems: model.setupOptions.problems)
             }
-            .padding(SetupTheme.pad)
-        }
-    }
-}
+            .padding(.horizontal, SetupTheme.pad)
+            .padding(.top, 28)
+            .padding(.bottom, 14)
 
-// MARK: - Settings
-
-/// `Settings…`: the same five rows on a Mac where Waffled already lives. What differs is
-/// the frame around them and what three of them are allowed to do — see `SetupOptionRows`.
-private struct SettingsStep: View {
-    var screen: SettingsPresentation
-    @Bindable var model: ServerModel
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                // Everything that answers "did that work?" sits beside the title, where a
-                // person is already looking. Under the rows it was below the fold at this
-                // window's size, so a successful Apply read as nothing happening at all.
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    Text(screen.title).font(SetupTheme.title(24))
-                    if let confirmation = screen.confirmation {
-                        Label(confirmation, systemImage: "checkmark.circle")
-                            .font(SetupTheme.small)
-                            .foregroundStyle(SetupTheme.green)
-                            .transition(.opacity)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    switch step.tab ?? .basic {
+                    case .basic:
+                        SetupOptionRows(model: model, settings: nil)
+                    case .advanced:
+                        CatalogSections(sections: SettingsCatalog.advanced, model: model,
+                                        afterSetup: false)
+                    case .diagnostics:
+                        CatalogSections(sections: SettingsCatalog.diagnostics, model: model,
+                                        afterSetup: false)
                     }
                 }
-                Text(screen.message)
-                    .font(SetupTheme.body)
-                    .foregroundStyle(SetupTheme.inkSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if screen.needsRestart {
-                    WarningNote(text: SettingsPresentation.Copy.restartNote)
-                }
-                ProblemList(problems: screen.problems)
-
-                SetupOptionRows(model: model, settings: screen)
-                    .padding(.top, 8)
-            }
-            .animation(.easeOut(duration: 0.18), value: screen.confirmation)
-            .padding(SetupTheme.pad)
-        }
-    }
-}
-
-/// The reasons a screen cannot be applied, in the words its value chose.
-private struct ProblemList: View {
-    var problems: [String]
-
-    var body: some View {
-        ForEach(problems, id: \.self) { problem in
-            Label(problem, systemImage: "exclamationmark.circle")
-                .font(SetupTheme.small)
-                .foregroundStyle(SetupTheme.primary)
-        }
-    }
-}
-
-/// The five rows both screens show, bound to the same `model.setupOptions`.
-///
-/// `settings` being non-nil is what makes this the after-setup screen, and it changes
-/// exactly three things: the folder can be moved rather than only revealed, the port is
-/// read-only, and the port's explanation is the one that says why.
-private struct SetupOptionRows: View {
-    @Bindable var model: ServerModel
-    var settings: SettingsPresentation?
-
-    private typealias Copy = FirstRunPresentation.OptionsCopy
-
-    var body: some View {
-        VStack(spacing: 0) {
-            filesRow
-            Divider().overlay(SetupTheme.hairline)
-            backupRow
-            Divider().overlay(SetupTheme.hairline)
-            addressRow
-            Divider().overlay(SetupTheme.hairline)
-            providerRow
-            Divider().overlay(SetupTheme.hairline)
-            loginRow
-        }
-        .background(SetupTheme.panel, in: RoundedRectangle(cornerRadius: 14))
-    }
-
-    // The folder is settled once a data directory has been initialized. On the first run
-    // that makes the row a place to look; in Settings it makes it a move, which is a copy
-    // and a restart rather than a setting.
-    private var folderIsSettled: Bool { model.status?.initialized == true }
-
-    private var filesRow: some View {
-        OptionRow(icon: "folder", title: Copy.files.title,
-                  detail: settings == nil ? Copy.files.hint : SettingsPresentation.Copy.filesHint) {
-            HStack(spacing: 8) {
-                if let settings {
-                    Button(SettingsPresentation.Copy.move) { chooseFolder() }
-                        .buttonStyle(SetupButton(kind: .ghost))
-                        .disabled(!settings.moveEnabled)
-                    Button(Copy.files.reveal) {
-                        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath:
-                            model.dataDirectory.path)
-                    }
-                    .buttonStyle(SetupButton(kind: .ghost))
-                } else if folderIsSettled {
-                    Button(Copy.files.reveal) {
-                        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath:
-                            model.dataDirectory.path)
-                    }
-                    .buttonStyle(SetupButton(kind: .ghost))
-                } else {
-                    Button(Copy.files.change) { chooseFolder() }
-                        .buttonStyle(SetupButton(kind: .ghost))
-                }
-            }
-        } below: {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(model.dataDirectory.path)
-                    .font(SetupTheme.mono)
-                    .foregroundStyle(SetupTheme.inkSecondary)
-                    .lineLimit(1)
-                    .truncationMode(.head)
-                if settings == nil, folderIsSettled {
-                    Text(Copy.files.settled).font(SetupTheme.small)
-                        .foregroundStyle(SetupTheme.inkTertiary)
-                }
-                if let refusal = settings?.moveRefusal {
-                    Text(refusal).font(SetupTheme.small)
-                        .foregroundStyle(SetupTheme.inkTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if let refusal = folderRefusal {
-                    Text(refusal).font(SetupTheme.small).foregroundStyle(SetupTheme.primary)
-                }
+                .padding(.horizontal, SetupTheme.pad)
+                .padding(.bottom, 24)
             }
         }
-    }
-
-    @State private var folderRefusal: String?
-
-    private func chooseFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Choose"
-        panel.directoryURL = model.dataDirectory.deletingLastPathComponent()
-        NSApp.activate(ignoringOtherApps: true)
-        guard panel.runModal() == .OK, let picked = panel.url else { return }
-        // Asked of the folder that was picked, not of a path typed anywhere: the answers
-        // are facts about the volume it sits on and about our access to it.
-        if let refusal = Setup.refusal(for: picked) {
-            folderRefusal = refusal
-            return
-        }
-        folderRefusal = nil
-        // Waffled gets a folder of its own inside their choice, so picking Documents does
-        // not scatter a database through Documents.
-        let destination = Setup.dataDirectory(forChosen: picked, current: model.dataDirectory)
-        // Before setup this is only a choice; afterwards it is a copy of everything the
-        // household has, which the runtime does with the server stopped.
-        if settings == nil {
-            model.chooseDataDirectory(destination)
-        } else {
-            model.moveDataDirectory(to: destination)
-        }
-    }
-
-    private var backupRow: some View {
-        OptionRow(icon: "arrow.down.circle",
-                  title: Copy.backup.title,
-                  detail: model.setupOptions.backupEnabled
-                      ? String(format: Copy.backup.detail,
-                               SetupOptions.backupTimeLabel(model.setupOptions.backupAt))
-                      : Copy.backup.off) {
-            HStack(spacing: 10) {
-                Picker("", selection: $model.setupOptions.backupAt) {
-                    ForEach(SetupOptions.backupTimes, id: \.self) { at in
-                        Text(SetupOptions.backupTimeLabel(at)).tag(at)
-                    }
-                }
-                .labelsHidden()
-                .frame(width: 118)
-                .disabled(!model.setupOptions.backupEnabled)
-                Toggle("", isOn: $model.setupOptions.backupEnabled)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-            }
-        }
-    }
-
-    private var addressRow: some View {
-        OptionRow(icon: "globe", title: Copy.address.title, detail: Copy.address.hint) {
-            EmptyView()
-        } below: {
-            VStack(alignment: .leading, spacing: 10) {
-                Picker("", selection: $model.setupOptions.addressMode) {
-                    ForEach(FirstRunPresentation.OptionsCopy.addressModes, id: \.0) { mode in
-                        Text(mode.1).tag(mode.0)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.radioGroup)
-
-                if model.setupOptions.addressMode == .custom {
-                    TextField(Copy.address.custom, text: $model.setupOptions.customHost)
-                        .textFieldStyle(.roundedBorder)
-                        .font(SetupTheme.mono)
-                        .frame(maxWidth: 320)
-                    Text(Copy.address.customHint).font(SetupTheme.small)
-                        .foregroundStyle(SetupTheme.inkTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                portControl
-            }
-        }
-    }
-
-    /// A field before setup and a fact afterwards. `HTTP_PORT` is the preference for the
-    /// first allocation and nothing after it, so a field here would be a control that
-    /// silently did nothing — and the note says where the port is really moved.
-    @ViewBuilder
-    private var portControl: some View {
-        if let settings {
-            HStack(spacing: 10) {
-                Text(Copy.address.port).font(SetupTheme.small)
-                Text(settings.portValue)
-                    .font(SetupTheme.mono)
-                    .foregroundStyle(SetupTheme.inkSecondary)
-            }
-            Text(settings.portNote).font(SetupTheme.small)
-                .foregroundStyle(SetupTheme.inkTertiary)
-                .fixedSize(horizontal: false, vertical: true)
-        } else {
-            HStack(spacing: 10) {
-                Text(Copy.address.port).font(SetupTheme.small)
-                TextField("", text: $model.setupOptions.port)
-                    .textFieldStyle(.roundedBorder)
-                    .font(SetupTheme.mono)
-                    .frame(width: 90)
-            }
-            Text(Copy.address.portHint).font(SetupTheme.small)
-                .foregroundStyle(SetupTheme.inkTertiary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var providerRow: some View {
-        OptionRow(icon: "sparkles",
-                  title: "\(Copy.provider.title) \(Copy.provider.optional)",
-                  detail: Copy.provider.detail) {
-            EmptyView()
-        } below: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 10) {
-                    Picker("", selection: $model.setupOptions.provider) {
-                        ForEach(SetupOptions.Provider.allCases, id: \.self) { provider in
-                            Text(provider.label).tag(provider)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 140)
-                    SecureField(Copy.provider.placeholder, text: $model.setupOptions.providerKey)
-                        .textFieldStyle(.roundedBorder)
-                        .font(SetupTheme.mono)
-                        .frame(maxWidth: 320)
-                }
-                Text(Copy.provider.hint).font(SetupTheme.small)
-                    .foregroundStyle(SetupTheme.inkTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    private var loginRow: some View {
-        OptionRow(icon: "power", title: Copy.login.title, detail: Copy.login.detail) {
-            Toggle("", isOn: $model.setupOptions.startAtLogin)
-                .labelsHidden()
-                .toggleStyle(.switch)
-        }
-    }
-}
-
-/// One row of the options list: a mark, a two-line label, a control on the right, and
-/// anything the row needs to unfold underneath it.
-private struct OptionRow<Trailing: View, Below: View>: View {
-    var icon: String
-    var title: String
-    var detail: String
-    @ViewBuilder var trailing: () -> Trailing
-    @ViewBuilder var below: () -> Below
-
-    init(icon: String, title: String, detail: String,
-         @ViewBuilder trailing: @escaping () -> Trailing,
-         @ViewBuilder below: @escaping () -> Below = { EmptyView() }) {
-        self.icon = icon
-        self.title = title
-        self.detail = detail
-        self.trailing = trailing
-        self.below = below
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 15))
-                    .foregroundStyle(SetupTheme.inkSecondary)
-                    .frame(width: 22)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title).font(.system(size: 14, weight: .semibold))
-                    Text(detail)
-                        .font(SetupTheme.small)
-                        .foregroundStyle(SetupTheme.inkSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 12)
-                trailing()
-            }
-            below().padding(.leading, 34)
-        }
-        .padding(16)
     }
 }
 

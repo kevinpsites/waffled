@@ -13,6 +13,7 @@ import (
 	"github.com/kevinpsites/waffled/apps/runtime/internal/backup"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/datadir"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/rtstate"
+	"github.com/kevinpsites/waffled/apps/runtime/internal/schedule"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/services"
 )
 
@@ -22,6 +23,9 @@ import (
 // happens on the way OUT of a failed backup.
 func backupSupervisor(t *testing.T) *Supervisor {
 	t.Helper()
+	// A run with no --keep asks the installed nightly schedule how many to keep, so HOME
+	// points somewhere the real ~/Library/LaunchAgents can never be read from.
+	t.Setenv("HOME", t.TempDir())
 	root := t.TempDir()
 	s := &Supervisor{
 		log:   NewLogger(io.Discard, true),
@@ -189,5 +193,88 @@ func TestRetentionSkipsAnOperatorNamedDestination(t *testing.T) {
 	if got := dumpsIn(t, dir); len(got) != 5 {
 		t.Errorf("%d dumps left, want 5 — retention pruned the backups directory during a "+
 			"run that was writing somewhere else entirely: %v", len(got), got)
+	}
+}
+
+// installSchedule writes the nightly agent's plist into the test's HOME — never loaded
+// into launchd, which is all Backup reads: the file.
+func installSchedule(t *testing.T, dataDir string, keep int) {
+	t.Helper()
+	a, err := schedule.For("/x/waffled-runtime", "", dataDir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Keep = keep
+	body, err := a.Plist()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(a.AgentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(a.PlistPath(), body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// "Back up now" and a `backup` typed in Terminal pass no --keep. They must keep what the
+// household chose for the nightly one, or the first manual run prunes a 30-backup
+// history back down to the default 14.
+func TestAManualBackupKeepsWhatTheScheduleKeeps(t *testing.T) {
+	s := backupSupervisor(t)
+	dir := s.plan.Layout.Backups
+	seedDumps(t, dir, 20)
+	installSchedule(t, s.plan.Layout.Root, 18)
+
+	if _, err := s.Backup(context.Background(), BackupOptions{}); err == nil {
+		t.Fatal("the backup succeeded; this test needs it to fail (there is no cluster)")
+	}
+	if got := dumpsIn(t, dir); len(got) != 18 {
+		t.Errorf("%d dumps kept, want the schedule's 18", len(got))
+	}
+}
+
+// The launchd label is global: one Mac holds one nightly backup, and it may belong to a
+// different data directory. Its retention is that household's, not this one's.
+func TestAManualBackupIgnoresAnotherDataDirectorysSchedule(t *testing.T) {
+	s := backupSupervisor(t)
+	dir := s.plan.Layout.Backups
+	seedDumps(t, dir, 16)
+	installSchedule(t, filepath.Join(t.TempDir(), "SomeoneElse"), 3)
+
+	if _, err := s.Backup(context.Background(), BackupOptions{}); err == nil {
+		t.Fatal("the backup succeeded; this test needs it to fail")
+	}
+	if got := dumpsIn(t, dir); len(got) != backup.DefaultKeepDumps {
+		t.Errorf("%d dumps kept, want the default %d — another household's schedule decided "+
+			"this one's retention", len(got), backup.DefaultKeepDumps)
+	}
+}
+
+// A --keep given on the command line is still the last word.
+func TestAnExplicitKeepOutranksTheSchedule(t *testing.T) {
+	s := backupSupervisor(t)
+	dir := s.plan.Layout.Backups
+	seedDumps(t, dir, 10)
+	installSchedule(t, s.plan.Layout.Root, 8)
+
+	if _, err := s.Backup(context.Background(), BackupOptions{Keep: 4}); err == nil {
+		t.Fatal("the backup succeeded; this test needs it to fail")
+	}
+	if got := dumpsIn(t, dir); len(got) != 4 {
+		t.Errorf("%d dumps kept, want the 4 asked for", len(got))
+	}
+}
+
+// `status` reports the retention in force, so the Mac app's picker shows what the
+// nightly job will actually do.
+func TestStatusReportsTheRetentionInForce(t *testing.T) {
+	s := backupSupervisor(t)
+	if _, _, keep := s.scheduleFacts(); keep != backup.DefaultKeepDumps {
+		t.Errorf("with no schedule, keep = %d, want the default %d", keep, backup.DefaultKeepDumps)
+	}
+	installSchedule(t, s.plan.Layout.Root, 30)
+	if _, _, keep := s.scheduleFacts(); keep != 30 {
+		t.Errorf("keep = %d, want the schedule's 30", keep)
 	}
 }

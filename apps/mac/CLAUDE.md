@@ -44,6 +44,9 @@ the shape of `status --json`. It must never learn more.
 - **Never poll anything heavier than `status`.** It is built to be cheap —
   `bonjour.advertised` is a pidfile check, `backups.scheduleInstalled` is a `stat`. `doctor`,
   `logs` and `backup` are clicks, never timers.
+- **A command that worked can still warn.** The runtime marks those stderr lines `! ` and
+  exits 0 (a move whose nightly backup could not follow, or whose old folder stayed);
+  `RuntimeClient.warnings` reads them, and Settings shows them beside the confirmation.
 - **Decode defensively, refuse only on `schema`.** The runtime adds fields without bumping it,
   so unknown keys and absent blocks are normal; a `state` word we do not recognise reads as
   `unhealthy` rather than throwing. If you find yourself adding a required field, you are
@@ -128,13 +131,21 @@ behaviour there rather than in the view, and put process work behind
   an injectable clock.** A first start can finish in under five seconds, and a checklist
   that appears and vanishes inside one animation frame is indistinguishable from a window
   that never opened. Every later step is decided by the status document alone.
-- **`Settings…` and the first run share the window, the rows and `SetupOptions`.** An
+- **`Settings…` and the first run share the window, the tabs, the rows and
+  `SetupOptions`** — every setting is choosable before the first start. An
   `LSUIElement` app has one window, so the menu item is off for the whole of a first-run
   launch, not only while it waits. The two differ in what they do with the same values:
   the first run applies all of them before the first `start`, and Settings applies only
-  what changed (`commandsForChange`) against what it remembers having applied last. Never
+  what changed (`commandsForChange`) against what it remembers having applied last. Nothing
+  in Settings acts on the click that chooses it — a folder move is staged and runs last on
+  Apply, and the window says what is in flight and what finished. Never
   offer the port there — `HTTP_PORT` is the first allocation's preference and nothing
-  after it — and never read an empty provider-key field as a deletion.
+  after it — and never read an empty provider-key field as a deletion (Not now is).
+- **Every Settings control must write a key something reads.** Advanced/Diagnostics are
+  `SettingsCatalog`, never a free-form KEY=VALUE table; add a key to the runtime's
+  `passthroughKeys` first — `SettingsCatalogTests` reads `services.go` and fails
+  otherwise. And **every `config set` waits for a restart**: the api reads its
+  environment once, provider keys included.
 - Menu-bar images are **monochrome templates**: state is carried by shape (outline, cooking
   holes, fill, slash), never by colour. Colour belongs to the menu's own content. The mark is
   the waffle iron drawn in `WaffleIronIcon.swift` — no SF Symbol, no asset — and its frames

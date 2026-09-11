@@ -8,6 +8,21 @@ import Foundation
 /// questions: the first run asks what a household wants, and this asks what they changed.
 /// The controls are shared; only what is done with them differs.
 struct SettingsPresentation: Equatable {
+    /// Basic is the rows the first run also shows; Advanced and Diagnostics are the api
+    /// settings in `SettingsCatalog`. One Apply covers all three.
+    enum Tab: String, CaseIterable, Equatable {
+        case basic, advanced, diagnostics
+
+        var label: String {
+            switch self {
+            case .basic: return "Basic"
+            case .advanced: return "Advanced"
+            case .diagnostics: return "Diagnostics"
+            }
+        }
+    }
+
+    var tab: Tab
     var title: String
     var message: String
     /// Where Waffled's files actually are, as the runtime reports them.
@@ -42,6 +57,30 @@ struct SettingsPresentation: Equatable {
     var confirmation: String?
     var primaryButton: String
     var secondaryButton: String
+    /// A folder chosen with `Move…` or the default-folder button, moved to only on Apply —
+    /// like every other setting on this screen.
+    var pendingMovePath: String?
+    /// What Apply will do about that folder, shown on every tab.
+    var moveNote: String?
+    /// What is in flight. A stop, a copy and a start take a while, and a greyed-out Apply
+    /// on its own looked like nothing was happening.
+    var activity: String?
+    /// Why the last thing this window started did not work.
+    var failure: String?
+    /// What a move that worked still had to say.
+    var warning: String?
+
+    /// What this window has set going.
+    enum Activity: Equatable {
+        case applying, moving, restarting
+    }
+
+    /// What this window's last Apply or restart finished doing.
+    enum Done: Equatable {
+        case applied
+        case moved(restarted: Bool)
+        case restarted
+    }
 
     /// Every word this screen adds to the ones `FirstRunPresentation.OptionsCopy` already
     /// holds. The shared rows keep their shared strings; only the frame is new.
@@ -51,25 +90,76 @@ struct SettingsPresentation: Equatable {
             Change these whenever you like. Anything that needs the server restarted says \
             so before you apply it.
             """
+        static let advancedTitle = "Advanced"
+        static let advancedMessage = """
+            For households running their own sign-in, calendar sync or AI. Leave a field \
+            blank and Waffled uses the default shown in it.
+            """
+        static let diagnosticsTitle = "Diagnostics"
+        static let diagnosticsMessage = """
+            What the server writes down as it runs, and where to find it when something \
+            goes wrong.
+            """
+        static let showLogs = "Show logs"
         static let apply = "Apply"
         static let restart = "Restart Waffled"
         static let close = "Close"
         static let move = "Move…"
+        static let moveToDefault = "Move to the default folder"
         static let restartNote = """
-            Phones and tablets that find Waffled on their own are still being handed the old \
-            address. Restart when it suits you — nothing is lost by waiting, and anything \
-            already pointed at this Mac keeps working.
+            The server is still running with the settings it started with. Restart when it \
+            suits you — nothing is lost by waiting, and anything already pointed at this \
+            Mac keeps working.
             """
         static let applied = "Settings applied."
+        static let keepHere = "Keep it where it is"
+
+        static func pendingMove(_ path: String) -> String { "Moves to \(path) when you apply." }
+
+        static func moveNote(_ path: String, restarts: Bool) -> String {
+            "Apply moves everything — the database, your photos and every backup — to \(path)"
+                + (restarts ? ", then restarts the server." : ".")
+        }
+
+        static func activity(_ activity: Activity) -> String {
+            switch activity {
+            case .applying: return "Applying your settings…"
+            case .moving: return "Moving Waffled's files — the server stops, everything is copied, and it starts again from the new folder."
+            case .restarting: return "Restarting Waffled…"
+            }
+        }
+
+        static func busyButton(_ activity: Activity) -> String {
+            switch activity {
+            case .applying: return "Applying…"
+            case .moving: return "Moving…"
+            case .restarting: return "Restarting…"
+            }
+        }
+
+        static func done(_ done: Done) -> String {
+            switch done {
+            case .applied: return applied
+            case .moved(restarted: true): return "Moved, and Waffled restarted."
+            case .moved(restarted: false): return "Moved."
+            case .restarted: return "Waffled restarted."
+            }
+        }
+        static let alreadyThere = "Waffled is already in that folder — nothing to move."
         static let folderInsideItself = """
             That folder is inside the one Waffled is in, so moving there would put it \
             inside itself. Pick one somewhere else.
             """
+        static func folderNotEmpty(_ path: String) -> String {
+            "\(path) already has something in it — Waffled needs a folder of its own."
+        }
+        static func folderUnreadable(_ path: String) -> String {
+            "\(path) cannot be read, so Waffled cannot move there."
+        }
         static let pinnedFolder = """
             WAFFLED_DATA_DIR is set, so this run does not decide where Waffled's files \
             live and cannot move them.
             """ 
-        static let movedNote = "Waffled's files are here now. The server was restarted to use them."
         static let portReadOnly = """
             Waffled picked this port at setup and every device in the house points at it, \
             so it is not moved from here. Changing it means stopping the server and \
@@ -96,7 +186,11 @@ struct SettingsPresentation: Equatable {
     ///     since it started. Held by the model, because once Apply has run the form and
     ///     what was saved agree — and comparing those two was what made the warning
     ///     disappear at the moment it became true.
-    ///   - applied: the last Apply succeeded, and this window has not been closed since.
+    ///   - pendingMove: the folder Apply will move Waffled's files to, if one was chosen.
+    ///   - activity: what this window has in flight.
+    ///   - done: what this window's last Apply or restart finished, until it is closed.
+    ///   - failure: why that last one did not work.
+    ///   - warning: what it said while working.
     static func make(
         options: SetupOptions,
         saved: SetupOptions,
@@ -105,22 +199,38 @@ struct SettingsPresentation: Equatable {
         busy: Bool = false,
         pinned: Bool = false,
         awaitingRestart: Bool = false,
-        applied: Bool = false
+        pendingMove: URL? = nil,
+        activity: Activity? = nil,
+        done: Done? = nil,
+        failure: String? = nil,
+        warning: String? = nil,
+        tab: Tab = .basic
     ) -> SettingsPresentation {
-        let problems = options.problems
-        let changed = !options.commandsForChange(from: saved).isEmpty
+        let problems = options.problems(comparedTo: saved)
+        let changes = options.commandsForChange(from: saved)
+        // The login item is the app's own, not a runtime command, so it is counted here.
+        let changed = pendingMove != nil || !changes.isEmpty
+            || (options.startAtLogin != saved.startAtLogin && problems.isEmpty)
+        let running = status?.state == .running
         let port = status?.ports.public ?? 0
-        // Only the address is read at start. The nightly backup is installed into launchd
-        // there and then, and a provider key is read per request by the api.
-        let restartPending = (options.publicHost != saved.publicHost || awaitingRestart)
-            && status?.state == .running
+        // Every config.env write waits for a restart: the runtime builds the api's
+        // environment when it starts it, and the api reads its keys once. Only the nightly
+        // backup (installed into launchd there and then) and the login item do not.
+        let restartPending = (changes.contains(where: \.writesConfig) || awaitingRestart) && running
         // Nothing left to apply, but something left to do: the button becomes that thing
         // rather than greying out and leaving the person to find it in the menu.
         let offerRestart = !changed && restartPending
 
+        let (title, message): (String, String) = switch tab {
+        case .basic: (Copy.title, Copy.message)
+        case .advanced: (Copy.advancedTitle, Copy.advancedMessage)
+        case .diagnostics: (Copy.diagnosticsTitle, Copy.diagnosticsMessage)
+        }
+
         return SettingsPresentation(
-            title: Copy.title,
-            message: Copy.message,
+            tab: tab,
+            title: title,
+            message: message,
             dataDirectoryPath: dataDirectory.path,
             moveEnabled: !busy && !pinned,
             moveRefusal: pinned ? Copy.pinnedFolder : nil,
@@ -129,12 +239,18 @@ struct SettingsPresentation: Equatable {
             problems: problems,
             applyEnabled: (offerRestart || changed) && problems.isEmpty && !busy,
             primaryAction: offerRestart ? .restart : .apply,
-            needsRestart: restartPending,
+            // A staged move restarts the server itself, and its own note says so.
+            needsRestart: restartPending && pendingMove == nil,
             // Only while it is still true. An edit made after Apply means the form no
             // longer matches what was applied, and "Settings applied." beside an unsaved
             // change is the same lie in the other direction.
-            confirmation: applied && !changed ? Copy.applied : nil,
-            primaryButton: offerRestart ? Copy.restart : Copy.apply,
-            secondaryButton: Copy.close)
+            confirmation: activity == nil && !changed ? done.map(Copy.done) : nil,
+            primaryButton: activity.map(Copy.busyButton) ?? (offerRestart ? Copy.restart : Copy.apply),
+            secondaryButton: Copy.close,
+            pendingMovePath: pendingMove?.path,
+            moveNote: pendingMove.map { Copy.moveNote($0.path, restarts: running) },
+            activity: activity.map(Copy.activity),
+            failure: activity == nil ? failure : nil,
+            warning: activity == nil ? warning : nil)
     }
 }

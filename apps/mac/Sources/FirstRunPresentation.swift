@@ -58,6 +58,9 @@ struct FirstRunPresentation: Equatable {
     }
 
     var step: Step
+    /// The options step's tab — the same three Settings has, since everything Settings
+    /// can change can also be chosen before the first start. Nil on every other step.
+    var tab: SettingsPresentation.Tab?
     var title: String
     var message: String
     /// The small line above the title, on the steps that have one.
@@ -75,7 +78,7 @@ struct FirstRunPresentation: Equatable {
     var menuBarNote: String?
     var primaryButton: String?
     var secondaryButton: String?
-    /// The quiet one on the left: `Choose where things go…`, `Back`, `Show logs`.
+    /// The quiet one on the left: `Settings first…`, `Back`, `Show logs`.
     var tertiaryButton: String?
     /// Closing the welcome window means "not on this Mac", and there is nothing on disk
     /// yet to leave behind, so it quits. Every later step is only a window in front of a
@@ -97,16 +100,26 @@ struct FirstRunPresentation: Equatable {
     /// live here as a table instead of on a presentation of their own — but they live
     /// here, where they are read without a window like the rest of them.
     enum OptionsCopy {
+        /// A drawer row's button once it is open.
+        static let done = "Done"
         static let files = (
             title: "Waffled's files",
             hint: "The database, your photos and every backup live in this folder.",
             change: "Change…",
+            choose: "Choose a folder…",
+            useDefault: "Use the default folder",
             reveal: "Reveal in Finder",
             settled: "Waffled is already set up here. You can move it later from Settings… in the menu bar."
         )
         static let backup = (
             title: "Nightly backup",
-            detail: "Every night at %@, kept alongside Waffled's files.",
+            toggle: "Back up every night",
+            at: "At",
+            keep: "Keep the last",
+            keepHint: """
+                Kept alongside Waffled's files; the oldest goes when a new one arrives. A \
+                backup holds the database — photos stay in Waffled's folder.
+                """,
             off: "No backup is scheduled. Waffled can still back up on demand from the menu bar."
         )
         static let address = (
@@ -128,19 +141,31 @@ struct FirstRunPresentation: Equatable {
                 """
         )
         static let addressModes: [(SetupOptions.AddressMode, String, String)] = [
-            (.name, "This Mac's name", "What phones and tablets discover on their own."),
-            (.ip, "Its IP address", "For networks where .local names don't resolve."),
+            (.ip, "Its IP address", "Works on every network."),
+            (.name, "This Mac's name", "A .local name, which some networks don't resolve."),
             (.custom, "A name I've set up myself", "A domain or router entry aimed at this Mac."),
         ]
         static let provider = (
-            title: "Smart suggestions",
+            title: "AI settings",
             optional: "— optional",
-            detail: "Meal ideas and week planning. Add a provider key to turn them on.",
             hint: """
-                Stored on this Mac only, in Waffled's own config. Skip it and add it later \
-                — nothing else depends on it.
+                Stored on this Mac only, in Waffled's own config. Once the server has \
+                restarted, choose it in Waffled under Settings → AI & Capture.
                 """,
-            placeholder: "sk-…"
+            notNow: """
+                Waffled uses its built-in parser, which needs no account and works offline. \
+                Add a provider whenever you like — nothing else depends on it.
+                """,
+            notNowClears: """
+                Apply takes the saved keys and the Ollama address off this Mac, and Waffled \
+                goes back to its built-in parser.
+                """,
+            placeholder: "sk-…",
+            savedPlaceholder: "Saved — type a new key to replace it",
+            secretPlaceholder: "Never shown — type to replace",
+            baseURLPlaceholder: "https://api.openai.com/v1",
+            baseURLHint: "Leave the address blank for OpenAI itself, or point it at LM Studio, vLLM or any server that speaks the same API.",
+            checkAgain: "Check again"
         )
         static let login = (
             title: "Start Waffled when this Mac starts up",
@@ -182,7 +207,8 @@ struct FirstRunPresentation: Equatable {
         setupStartedAt: Date? = nil,
         now: Date = Date(),
         lastLogLine: String? = nil,
-        preferredPort: Int = SetupOptions.defaultPort
+        preferredPort: Int = SetupOptions.defaultPort,
+        optionsTab: SettingsPresentation.Tab = .basic
     ) -> FirstRunPresentation? {
         guard isFirstRun else { return nil }
 
@@ -203,7 +229,7 @@ struct FirstRunPresentation: Equatable {
         // window follows the server rather than only its own button.
         let underWay = setupBegun || (status.map { $0.state != .stopped } ?? false)
         guard underWay else {
-            return showingOptions ? options() : welcome(status: status, isPortable: isPortable)
+            return showingOptions ? options(tab: optionsTab) : welcome(status: status, isPortable: isPortable)
         }
 
         let coming = starting(status: status, setupStartedAt: setupStartedAt, now: now,
@@ -241,18 +267,26 @@ struct FirstRunPresentation: Equatable {
             portableNote: isPortable ? portableWarning : nil,
             primaryButton: "Set up Waffled",
             secondaryButton: "Not on this Mac",
-            tertiaryButton: "Choose where things go…",
+            tertiaryButton: "Settings first…",
             closeQuitsApp: true)
     }
 
-    private static func options() -> FirstRunPresentation {
-        FirstRunPresentation(
+    private static func options(tab: SettingsPresentation.Tab) -> FirstRunPresentation {
+        let (title, message): (String, String) = switch tab {
+        case .basic: ("Where things go", """
+            These are already set sensibly. Change any of them now if you'd rather — all \
+            of it stays in Settings… in the menu bar for later.
+            """)
+        case .advanced: (SettingsPresentation.Copy.advancedTitle,
+                         SettingsPresentation.Copy.advancedMessage)
+        case .diagnostics: (SettingsPresentation.Copy.diagnosticsTitle,
+                            SettingsPresentation.Copy.diagnosticsMessage)
+        }
+        return FirstRunPresentation(
             step: .options,
-            title: "Where things go",
-            message: """
-                These are already set sensibly. Change them now if you'd rather — you can \
-                change the backup time and your keys later from the menu bar.
-                """,
+            tab: tab,
+            title: title,
+            message: message,
             eyebrow: "Before we start",
             primaryButton: "Set up Waffled",
             tertiaryButton: "Back",

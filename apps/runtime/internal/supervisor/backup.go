@@ -29,7 +29,8 @@ type BackupOptions struct {
 	// Out overrides the generated path. Retention is then skipped: a file the operator
 	// named is theirs, and pruning a directory they chose would be a surprise.
 	Out string
-	// Keep is how many routine dumps to retain. Zero means the default.
+	// Keep is how many routine dumps to retain. Zero means what the nightly schedule
+	// keeps, or the default when there is none — see retention.
 	Keep int
 }
 
@@ -85,7 +86,7 @@ func (s *Supervisor) Backup(ctx context.Context, opts BackupOptions) (path strin
 		defer func() {
 			keep := opts.Keep
 			if keep <= 0 {
-				keep = backup.DefaultKeepDumps
+				keep = s.retention()
 			}
 			removed, perr := backup.Prune(dir, backup.KindDump, keep)
 			if perr != nil {

@@ -119,6 +119,82 @@ func TestAPIRunsTheBundledNodeInProductionOnLoopback(t *testing.T) {
 	}
 }
 
+// The settings a household is meant to tune reach the api — every one of them a key the
+// api reads, with the value config.env holds.
+func TestHouseholdSettingsReachTheAPI(t *testing.T) {
+	p := testPlan(t)
+	want := map[string]string{
+		"AI_TIMEOUT_MS":                "45000",
+		"AI_MAX_RETRIES":               "1",
+		"OIDC_NATIVE_REDIRECT_URI":     "waffled://auth/callback",
+		"RATE_LIMIT_SETUP_MAX":         "6",
+		"RATE_LIMIT_LOGIN_ACCOUNT_MAX": "11",
+		"RATE_LIMIT_LOGIN_IP_MAX":      "51",
+		"RATE_LIMIT_OIDC_START_MAX":    "31",
+		"RATE_LIMIT_OIDC_EXCHANGE_MAX": "21",
+		"RATE_LIMIT_REFRESH_MAX":       "61",
+		"RATE_LIMIT_KIOSK_PAIR_MAX":    "12",
+		"RATE_LIMIT_KIOSK_TOKEN_MAX":   "32",
+		"RATE_LIMIT_MEDIA_MAX":         "33",
+	}
+	for k, v := range want {
+		p.Env.Set(k, v)
+	}
+	got := envMap(p.API().Env)
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s = %q in the api's environment, want %q", k, got[k], v)
+		}
+	}
+}
+
+// Logging is the household's to choose, within what the api understands. A value it does
+// not know becomes the default here, so the environment says what is really in force.
+func TestTheAPILogsTheWayConfigEnvAsks(t *testing.T) {
+	for _, c := range []struct {
+		level, format         string
+		wantLevel, wantFormat string
+	}{
+		{"", "", "info", "json"},
+		{"debug", "pretty", "debug", "pretty"},
+		{"WARN", "json", "warn", "json"},
+		{"error", "", "error", "json"},
+		{"verbose", "text", "info", "json"},
+	} {
+		p := testPlan(t)
+		p.Env.Set("LOG_LEVEL", c.level)
+		p.Env.Set("LOG_FORMAT", c.format)
+		e := envMap(p.API().Env)
+		if e["LOG_LEVEL"] != c.wantLevel || e["LOG_FORMAT"] != c.wantFormat {
+			t.Errorf("config.env %q/%q gave the api LOG_LEVEL=%q LOG_FORMAT=%q, want %q/%q",
+				c.level, c.format, e["LOG_LEVEL"], e["LOG_FORMAT"], c.wantLevel, c.wantFormat)
+		}
+	}
+}
+
+// The allowlist is the boundary between a hand-edited config.env and the api's
+// environment, so what stays OUT is pinned as deliberately as what goes in. OTEL only
+// ever loads through the preload the bundle does not ship, the update notifier is off
+// so its repo is never read, and AUTH0_DOMAIN switches the api into a different auth mode.
+func TestKeysThatWouldDoNothingOrHarmStayOut(t *testing.T) {
+	p := testPlan(t)
+	for _, k := range []string{
+		"OTEL_SDK_DISABLED", "OTEL_EXPORTER_OTLP_ENDPOINT", "UPDATE_CHECK_REPO",
+		"AUTH0_DOMAIN", "NODE_OPTIONS", "SOMETHING_ELSE",
+	} {
+		p.Env.Set(k, "x")
+	}
+	got := envMap(p.API().Env)
+	for _, k := range []string{
+		"OTEL_SDK_DISABLED", "OTEL_EXPORTER_OTLP_ENDPOINT", "UPDATE_CHECK_REPO",
+		"AUTH0_DOMAIN", "NODE_OPTIONS", "SOMETHING_ELSE",
+	} {
+		if _, ok := got[k]; ok {
+			t.Errorf("%s reached the api's environment", k)
+		}
+	}
+}
+
 // otel.js is deliberately not in the bundle; a --require preload for it would make the
 // api fail to boot with "Cannot find module".
 func TestNodeOptionsPreloadIsNeverSet(t *testing.T) {

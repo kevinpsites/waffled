@@ -46,9 +46,8 @@ func publicURL(publicHost, lanIP, bonjourHost string, port int) string {
 	case "", PublicHostIP:
 		host = lanIP
 	case PublicHostName:
-		// The IP when this Mac has no usable multicast name. `name` is what the setup
-		// screen writes for the household that took the default, so the alternative is a
-		// ready step with no address on it and a QR code that never renders.
+		// The IP when this Mac has no usable multicast name: the alternative is a ready
+		// step with no address on it and a QR code that never renders.
 		host = bonjourHost
 		if host == "" {
 			host = lanIP

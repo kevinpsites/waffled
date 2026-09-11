@@ -35,9 +35,9 @@ final class ReviewFindingsTests: XCTestCase {
         XCTAssertNil(screen.moveRefusal)
     }
 
-    /// And the model refuses it too, not just the button — `moveDataDirectory` is reachable
-    /// on its own, and the consequence of getting this wrong is a household's data left in
-    /// a folder nothing points at.
+    /// And the model refuses it too, not just the button — `stageMove` is reachable on its
+    /// own, and the consequence of getting this wrong is a household's data left in a
+    /// folder nothing points at.
     func testTheModelRefusesAPinnedMoveEvenIfSomethingAsks() async {
         let model = ServerModel(
             environment: [RuntimeLocator.binaryVariable: "/nonexistent/waffled-runtime",
@@ -47,10 +47,11 @@ final class ReviewFindingsTests: XCTestCase {
 
         XCTAssertTrue(model.dataDirectoryIsPinned, "precondition: the environment set it")
         model.openSettings()
-        model.moveDataDirectory(to: URL(fileURLWithPath: "/tmp/somewhere-else"))
+        let refusal = model.stageMove(to: URL(fileURLWithPath: "/tmp/somewhere-else"))
 
+        XCTAssertNil(model.pendingMove, "nothing should have been staged, so Apply has nothing to move")
+        XCTAssertEqual(refusal, SettingsPresentation.Copy.pinnedFolder, "and the person is told why")
         XCTAssertFalse(model.busy, "nothing should have been started")
-        XCTAssertNotNil(model.heldFailure, "and the person is told why")
     }
 
     /// And nothing about that run is remembered either. Written before the guard, a

@@ -83,7 +83,7 @@ func (s *Supervisor) Doctor(ctx context.Context) []Check {
 	}
 
 	// Backups: the one check whose answer someone only ever wants once it is too late.
-	scheduleInstalled, scheduleAt := s.scheduleFacts()
+	scheduleInstalled, scheduleAt, _ := s.scheduleFacts()
 	b := backup.Describe(s.plan.Layout.Backups, scheduleInstalled, scheduleAt)
 	switch {
 	case b.LastError != "":

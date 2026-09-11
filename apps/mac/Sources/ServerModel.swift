@@ -52,6 +52,8 @@ final class ServerModel {
     /// Kept so the client can be rebuilt around a new data directory without reaching for
     /// a `Process` — the seam every runtime call goes through stays injected.
     private let runner: RuntimeProcessRunning
+    /// `Setup.defaultDataDirectory` outside tests, which pass a scratch one.
+    private let defaultFolder: URL
     private var pollTask: Task<Void, Never>?
     private var animationTask: Task<Void, Never>?
     private var operationTask: Task<Void, Never>?
@@ -80,14 +82,29 @@ final class ServerModel {
     /// What was applied last, so Settings can show it and work out what changed. Read
     /// from the injected memory, never from config.env — `config set` is write-only.
     private(set) var appliedOptions: SetupOptions
-    /// A setting the server only reads at start has been written since it started, so the
-    /// running server is still on the old value. Held here rather than derived from the
-    /// form: once Apply has run the form and what was saved agree, and comparing those two
-    /// made the warning disappear at the very moment it became true.
-    private(set) var addressAwaitingRestart = false
+    /// Something has been written to config.env since the server started, so the running
+    /// server is still on the old value. Held here rather than derived from the form: once
+    /// Apply has run the form and what was saved agree, and comparing those two made the
+    /// warning disappear at the very moment it became true.
+    private(set) var configAwaitingRestart = false
+    /// Which of Settings' three tabs is showing. Reset to Basic each time it opens.
+    var settingsTab = SettingsPresentation.Tab.basic
+    /// What the files drawer says about the last folder chosen there, when it is not a
+    /// failure — shown in the drawer, because the menu's own note is behind this window.
+    private(set) var folderNote: String?
     /// The last Apply succeeded and this window has not been closed since — so the window
     /// can say so. The menu's own note is behind it and cannot be read.
-    private(set) var settingsApplied = false
+    private(set) var settingsDone: SettingsPresentation.Done?
+    /// What this window has in flight, so it can say so instead of only greying out Apply.
+    private(set) var settingsActivity: SettingsPresentation.Activity?
+    /// Why the last thing this window started did not work — said in the window, since the
+    /// menu's own line is behind it.
+    private(set) var settingsFailure: String?
+    /// What a move that worked still had to say — the runtime's `! ` lines.
+    private(set) var settingsWarning: String?
+    /// A folder chosen in Settings and not moved to yet. Apply moves it, like every other
+    /// setting on the screen; nothing is stopped or copied on the click that chose it.
+    private(set) var pendingMove: URL?
     /// When the setup click happened, for the floor under the setting-up step.
     private(set) var setupStartedAt: Date?
     /// Ticked once a second while the window is up, so the log line refreshes and the
@@ -112,9 +129,11 @@ final class ServerModel {
          hardware: HardwareProbe = SystemHardware(),
          memory: UpdateMemory = UserDefaults.standard,
          runner: RuntimeProcessRunning = SubprocessRunner(),
-         loginItem: LoginItem? = nil) {
+         loginItem: LoginItem? = nil,
+         defaultDataDirectory: URL = Setup.defaultDataDirectory) {
         self.memory = memory
         self.runner = runner
+        self.defaultFolder = defaultDataDirectory
         // Built here rather than as a default argument: LoginItem is main-actor isolated,
         // and a default argument is evaluated outside that isolation.
         self.loginItem = loginItem ?? LoginItem()
@@ -122,7 +141,14 @@ final class ServerModel {
         // stored property has one.
         let applied = Setup.appliedOptions(in: memory)
         appliedOptions = applied
-        setupOptions = applied
+        // The first-run form starts from what was remembered, but no key ever is — so a
+        // keyed provider arriving without one would block "Set up Waffled" with nothing on
+        // the welcome step to say why. Settings reseeds from `appliedOptions` when it opens.
+        var seed = applied
+        if seed.provider.needsKey {
+            seed.provider = .none
+        }
+        setupOptions = seed
         // A folder chosen on a previous launch's setup screen. `WAFFLED_DATA_DIR` is not
         // read from here: the environment always wins, so a dev run against a scratch
         // directory can never be overridden by a choice the household made.
@@ -179,7 +205,8 @@ final class ServerModel {
                                   setupStartedAt: setupStartedAt, now: firstRunNow,
                                   lastLogLine: lastLogLine,
                                   preferredPort: SetupOptions.portNumber(setupOptions.port)
-                                      ?? SetupOptions.defaultPort)
+                                      ?? SetupOptions.defaultPort,
+                                  optionsTab: settingsTab)
     }
 
     /// A first run whose welcome step is still waiting for a person. It holds the
@@ -201,6 +228,27 @@ final class ServerModel {
     /// household, delete the original, and leave this app pointing at the folder it
     /// just deleted.
     var dataDirectoryIsPinned: Bool { location?.dataDirIsFromEnvironment ?? false }
+
+    /// ~/Library is hidden, so no open panel shows Application Support: once Waffled's
+    /// files are anywhere else, this button is the only way back to the default folder.
+    var offersDefaultFolder: Bool {
+        !dataDirectoryIsPinned
+            && (pendingMove ?? dataDirectory).standardizedFileURL.path != defaultFolder.standardizedFileURL.path
+    }
+
+    /// Said under the button, because "default" alone does not say where that is.
+    var defaultFolderNote: String { "The default folder is \(defaultFolder.path)" }
+
+    /// Before setup this is the choice itself; afterwards it stages a move, like `Move…`.
+    /// Returns why it cannot, for the drawer to say.
+    @discardableResult
+    func useDefaultFolder() -> String? {
+        if showingSettings {
+            return stageMove(to: defaultFolder)
+        }
+        chooseDataDirectory(defaultFolder)
+        return nil
+    }
 
     /// Where `Show logs` reveals. `status` knows best, but the whole point of that item is
     /// that something went wrong — possibly before any status came back — so the resolved
@@ -235,6 +283,9 @@ final class ServerModel {
             while !Task.isCancelled {
                 let interval = self?.pollInterval ?? 2
                 try? await Task.sleep(for: .seconds(interval))
+                // Not the folder a move is carrying away: a `status` of it lays its folders
+                // back out, and the move then cannot remove it. Apply refreshes when it ends.
+                if self?.settingsActivity == .moving { continue }
                 await self?.refresh()
                 self?.considerAutoStart()
                 // The login item is not ours alone to change — someone can switch Waffled
@@ -435,6 +486,7 @@ final class ServerModel {
     // MARK: the setup screen
 
     func showSetupOptions() {
+        settingsTab = .basic
         showingSetupOptions = true
         syncFirstRunWindow()
     }
@@ -541,8 +593,13 @@ final class ServerModel {
                                                    dataDirectory: dataDirectory,
                                                    status: status, busy: busy,
                                                    pinned: dataDirectoryIsPinned,
-                                                   awaitingRestart: addressAwaitingRestart,
-                                                   applied: settingsApplied))
+                                                   awaitingRestart: configAwaitingRestart,
+                                                   pendingMove: pendingMove,
+                                                   activity: settingsActivity,
+                                                   done: settingsDone,
+                                                   failure: settingsFailure,
+                                                   warning: settingsWarning,
+                                                   tab: settingsTab))
     }
 
     /// Which of the two screens the window is showing.
@@ -551,8 +608,8 @@ final class ServerModel {
         case settings(SettingsPresentation)
     }
 
-    /// The menu item. The working copy starts from what was applied, with the provider key
-    /// blank: it is never read back out of config.env, and a blank field reads as "I did
+    /// The menu item. The working copy starts from what was applied, with every secret
+    /// blank: none is ever read back out of config.env, and a blank field reads as "I did
     /// not change it" rather than as a deletion.
     func openSettings() {
         // Refused only while the first-run window is actually up. A first run that has
@@ -560,7 +617,13 @@ final class ServerModel {
         guard !firstRunWindowIsUp else { return }
         setupOptions = appliedOptions
         setupOptions.providerKey = ""
-        settingsApplied = false
+        setupOptions.secrets = [:]
+        settingsTab = .basic
+        folderNote = nil
+        pendingMove = nil
+        settingsDone = nil
+        settingsFailure = nil
+        settingsWarning = nil
         showingSettings = true
         syncFirstRunWindow()
         NSApp.activate(ignoringOtherApps: true)
@@ -572,36 +635,94 @@ final class ServerModel {
     }
 
     /// Apply. Only what changed is sent — see `commandsForChange` — and the login item is
-    /// this app's own business rather than the runtime's, so it is set separately.
+    /// this app's own business rather than the runtime's, so it is set separately. A staged
+    /// move goes last, after the settings have been written into the folder it is about to
+    /// carry away.
     func applySettings() {
         guard let client, operationTask == nil, showingSettings else { return }
         let options = setupOptions
-        guard options.problems.isEmpty else { return }
         let previous = appliedOptions
+        guard options.problems(comparedTo: previous).isEmpty else { return }
         let devMode = isDevMode
+        let commands = options.commandsForChange(from: previous, isDevMode: devMode)
+        let move = pendingMove
+        let wasRunning = status?.state == .running
+        settingsActivity = move == nil ? .applying : .moving
+        settingsDone = nil
+        settingsFailure = nil
+        settingsWarning = nil
 
         operationTask = Task { [weak self] in
             defer { self?.finishOperation() }
             do {
-                for command in options.commandsForChange(from: previous, isDevMode: devMode) {
+                for command in commands {
                     try await client.apply(command)
                 }
                 if !devMode, options.startAtLogin != previous.startAtLogin {
                     self?.loginItem.setEnabled(options.startAtLogin)
                 }
+                // Before the move: these were written whether or not the move then works.
                 self?.rememberApplied(options)
-                // The address is the one setting a running server will not pick up, so
-                // this is what keeps the restart note on screen after the form settles.
-                if options.publicHost != previous.publicHost, self?.status?.state == .running {
-                    self?.addressAwaitingRestart = true
+                if let move {
+                    await self?.performMove(to: move, client: client, wasRunning: wasRunning)
+                } else {
+                    // A running server does not pick up config.env, so this is what keeps
+                    // the restart note on screen after the form settles.
+                    if commands.contains(where: \.writesConfig), self?.status?.state == .running {
+                        self?.configAwaitingRestart = true
+                    }
+                    self?.settingsDone = .applied
+                    self?.note("Settings applied")
                 }
-                self?.settingsApplied = true
-                self?.note("Settings applied")
             } catch {
-                self?.recordFailure(Self.describe(error))
+                self?.failSettings(Self.describe(error))
             }
             await self?.refresh()
         }
+    }
+
+    /// Chooses the folder Apply will move Waffled's files to. Returns why it cannot be,
+    /// for the drawer to say — the menu's own line is behind this window.
+    @discardableResult
+    func stageMove(to destination: URL) -> String? {
+        guard showingSettings else { return nil }
+        // Refused rather than half-done: the copy would work, the original would go, and
+        // this app would keep pointing at the deleted folder.
+        guard !dataDirectoryIsPinned else { return SettingsPresentation.Copy.pinnedFolder }
+        // The panel opens beside the folder Waffled is in, so choosing it — or its parent —
+        // is the likeliest click there is. It means "leave it", not a failure.
+        let from = dataDirectory.standardizedFileURL.path
+        let to = destination.standardizedFileURL.path
+        if to == from {
+            pendingMove = nil
+            folderNote = SettingsPresentation.Copy.alreadyThere
+            return nil
+        }
+        folderNote = nil
+        if let refusal = Setup.refusal(for: destination) { return refusal }
+        // The runtime refuses a destination inside the folder being moved, and it refuses
+        // it AFTER this app has stopped the server. Asked here, the server stays up.
+        if to.hasPrefix(from + "/") { return SettingsPresentation.Copy.folderInsideItself }
+        // Likewise `relocate.checkDestination`: any entry at all, `.DS_Store` included.
+        do {
+            if try !FileManager.default.contentsOfDirectory(atPath: to).isEmpty {
+                return SettingsPresentation.Copy.folderNotEmpty(to)
+            }
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            // Not there yet: the runtime makes it.
+        } catch {
+            return SettingsPresentation.Copy.folderUnreadable(to)
+        }
+        pendingMove = destination
+        settingsDone = nil
+        settingsFailure = nil
+        settingsWarning = nil
+        return nil
+    }
+
+    func keepFolderWhereItIs() {
+        pendingMove = nil
+        folderNote = nil
     }
 
     /// Moving Waffled's files. Three steps, in this order and no other: the runtime
@@ -611,48 +732,48 @@ final class ServerModel {
     /// The old folder is only removed by the runtime once the copy has arrived, so a
     /// failure at any point here leaves the household where it was — and the app keeps
     /// pointing at the folder the runtime last reported rather than the one it asked for.
-    func moveDataDirectory(to destination: URL) {
-        guard let client, operationTask == nil, showingSettings else { return }
-        // Refused rather than half-done: the copy would work, the original would go, and
-        // this app would keep pointing at the deleted folder.
-        guard !dataDirectoryIsPinned else {
-            recordFailure(SettingsPresentation.Copy.pinnedFolder)
-            return
-        }
-        if let refusal = Setup.refusal(for: destination) {
-            recordFailure(refusal)
-            return
-        }
-        // The runtime refuses a destination inside the folder being moved, and it refuses
-        // it AFTER this app has stopped the server. Asked here, the server stays up.
-        let from = dataDirectory.standardizedFileURL.path
-        if destination.standardizedFileURL.path == from
-            || destination.standardizedFileURL.path.hasPrefix(from + "/") {
-            recordFailure(SettingsPresentation.Copy.folderInsideItself)
-            return
-        }
-        let wasRunning = status?.state == .running
-
-        operationTask = Task { [weak self] in
-            defer { self?.finishOperation() }
-            do {
-                if wasRunning { try await client.stop() }
-                try await client.apply(.move(to: destination))
-                self?.chooseDataDirectory(destination)
-                if wasRunning {
-                    try await self?.client?.start()
-                    self?.serverStarted()
-                }
-                self?.note("Waffled's files are in \(destination.lastPathComponent) now")
-            } catch {
-                self?.recordFailure(Self.describe(error))
-                // A move that refused leaves the household in the old folder, whole — but
-                // the stop that came first really happened. Bring the server back, or a
-                // full disk costs a household their server as well as their move.
-                if wasRunning { await self?.restartAfterFailedMove() }
+    /// The move stays staged, so another Apply tries it again.
+    private func performMove(to destination: URL, client: RuntimeClient, wasRunning: Bool) async {
+        note("Moving Waffled's files…", clearAfter: nil)
+        do {
+            if wasRunning {
+                try await client.stop()
+                // The poll sits out the move, so nothing else would replace a status that
+                // says running.
+                status = nil
             }
-            await self?.refresh()
+            // A move that worked can still leave something undone: the nightly backup, or
+            // the old folder. Said in the window beside the confirmation.
+            let warnings = try await client.apply(.move(to: destination))
+            settingsWarning = warnings.isEmpty ? nil : warnings.joined(separator: "\n")
+        } catch {
+            clearNote()
+            failSettings(Self.describe(error))
+            // A move that refused leaves the household in the old folder, whole — but the
+            // stop that came first really happened. Bring the server back, or a full disk
+            // costs a household their server as well as their move.
+            if wasRunning { await restartAfterFailedMove() }
+            return
         }
+        chooseDataDirectory(destination)
+        pendingMove = nil
+        do {
+            if wasRunning {
+                try await self.client?.start()
+                serverStarted()
+            }
+            settingsDone = .moved(restarted: wasRunning)
+            note("Waffled's files are in \(destination.lastPathComponent) now")
+        } catch {
+            clearNote()
+            failSettings(Self.describe(error))
+        }
+    }
+
+    /// A failure this window caused: said in the window and, as before, in the menu.
+    private func failSettings(_ message: String) {
+        settingsFailure = message
+        recordFailure(message)
     }
 
     /// `Restart Waffled`: a stop and a start, so a setting the server only reads at start
@@ -664,16 +785,24 @@ final class ServerModel {
         failure = nil
         pollFailure = nil
         stopFailure = nil
+        settingsActivity = .restarting
+        settingsDone = nil
+        settingsFailure = nil
+        settingsWarning = nil
+        note("Restarting Waffled…", clearAfter: nil)
 
         operationTask = Task { [weak self] in
             defer { self?.finishOperation() }
             do {
                 try await client.stop()
+                self?.status = nil
                 try await client.start()
                 self?.serverStarted()
+                self?.settingsDone = .restarted
                 self?.note("Waffled restarted")
             } catch {
-                self?.recordFailure(Self.describe(error))
+                self?.clearNote()
+                self?.failSettings(Self.describe(error))
             }
             await self?.refresh()
         }
@@ -695,7 +824,7 @@ final class ServerModel {
     /// than from one of them: the flag is about the running server, not about which
     /// button was pressed.
     private func serverStarted() {
-        addressAwaitingRestart = false
+        configAwaitingRestart = false
     }
 
     private func rememberApplied(_ options: SetupOptions) {
@@ -774,11 +903,12 @@ final class ServerModel {
 
     func backUpNow() {
         guard let client, operationTask == nil else { return }
+        let keep = appliedOptions.backupKeep
         note("Backing up…", clearAfter: nil)
         operationTask = Task { [weak self] in
             defer { self?.finishOperation() }
             do {
-                let path = try await client.backup()
+                let path = try await client.backup(keep: keep)
                 let name = (path as NSString).lastPathComponent
                 self?.note(name.isEmpty ? "Backed up" : "Backed up to \(name)")
             } catch {
@@ -954,6 +1084,7 @@ final class ServerModel {
     /// a poll for the error a start just reported to be offered with a working button.
     private func finishOperation() {
         operationTask = nil
+        settingsActivity = nil
         syncFirstRunWindow()
         send(.operationSlotFreed(serverState: status?.state))
     }
@@ -977,9 +1108,13 @@ final class ServerModel {
     /// The `Stopping…` note has to go with it: `transient` outranks everything in the
     /// status line, and this one was left up deliberately until something replaced it.
     private func recordStopFailure(_ message: String) {
+        clearNote()
+        stopFailure = message
+    }
+
+    private func clearNote() {
         transientTask?.cancel()
         transient = nil
-        stopFailure = message
     }
 
     /// A few seconds of answer in the status line. `clearAfter: nil` leaves it up until

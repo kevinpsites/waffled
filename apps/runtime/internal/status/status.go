@@ -135,6 +135,9 @@ type Backups struct {
 	// installed plist itself. Empty when nothing is installed — or when the plist is
 	// there and unreadable, which is a schedule nobody should be told the time of.
 	ScheduleAt string `json:"scheduleAt"`
+	// Keep is how many routine dumps retention holds on to: the nightly schedule's own
+	// --keep when it backs up this data directory, the runtime's default otherwise.
+	Keep int `json:"keep"`
 }
 
 // Bonjour is the advertisement on the local network — how a phone that has never been

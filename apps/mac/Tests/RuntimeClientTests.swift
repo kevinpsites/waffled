@@ -13,6 +13,10 @@ final class RecordingRunner: RuntimeProcessRunning, @unchecked Sendable {
     private(set) var calls: [Call] = []
     var result: RuntimeProcessResult
     var thrownError: Error?
+    /// Subcommands that exit 1 with this sentence, the way the runtime refuses.
+    var refusing: [String: String] = [:]
+    /// Subcommands that succeed and say this on stderr — a move's `! ` warnings.
+    var warning: [String: String] = [:]
 
     init(result: RuntimeProcessResult = .init(exitCode: 0, standardOutput: Data(), standardError: "")) {
         self.result = result
@@ -21,6 +25,12 @@ final class RecordingRunner: RuntimeProcessRunning, @unchecked Sendable {
     func run(executable: URL, arguments: [String]) async throws -> RuntimeProcessResult {
         calls.append(Call(executable: executable.path, arguments: arguments))
         if let thrownError { throw thrownError }
+        if let refusal = refusing[arguments.first ?? ""] {
+            return .init(exitCode: 1, standardOutput: Data(), standardError: refusal)
+        }
+        if let warning = warning[arguments.first ?? ""] {
+            return .init(exitCode: 0, standardOutput: Data(), standardError: warning)
+        }
         return result
     }
 }
@@ -36,6 +46,33 @@ final class RuntimeClientTests: XCTestCase {
                 dataDir: data.map { URL(fileURLWithPath: $0) },
                 isDevMode: true),
             runner: runner)
+    }
+
+    /// A move that worked can still have something to say — a nightly backup that could
+    /// not follow, an old folder that would not go. The runtime marks those `! ` and exits
+    /// 0; its narration and a line's own continuation are not warnings.
+    func testASucceedingCommandHandsBackItsWarnings() async throws {
+        let runner = RecordingRunner()
+        runner.warning["move"] = """
+            bundle verified (cached)
+            ! the nightly backup could not be pointed at /new: launchctl bootstrap: 5: Input/output error
+              re-install it with: waffled-runtime backup --install-schedule --data "/new"
+            ! the old folder could not be removed: Waffled moved to /new, but /old is still there
+            """
+        let warnings = try await client(bundle: nil, data: "/old", runner: runner)
+            .apply(.move(to: URL(fileURLWithPath: "/new")))
+        XCTAssertEqual(warnings, [
+            "The nightly backup could not be pointed at /new: launchctl bootstrap: 5: Input/output error",
+            "The old folder could not be removed: Waffled moved to /new, but /old is still there",
+        ])
+    }
+
+    func testACommandWithNothingToSayHasNoWarnings() async throws {
+        let runner = RecordingRunner()
+        runner.warning["move"] = "bundle verified (cached)\n"
+        let warnings = try await client(bundle: nil, data: "/old", runner: runner)
+            .apply(.move(to: URL(fileURLWithPath: "/new")))
+        XCTAssertEqual(warnings, [])
     }
 
     func testStatusPassesBothDevModeDirectories() async throws {
@@ -85,12 +122,12 @@ final class RuntimeClientTests: XCTestCase {
 
         try await c.start()
         try await c.stop()
-        let dump = try await c.backup()
+        let dump = try await c.backup(keep: 30)
 
         XCTAssertEqual(runner.calls.map(\.arguments), [
             ["start", "--bundle", "/tmp/runtime", "--data", "/tmp/data"],
             ["stop", "--bundle", "/tmp/runtime", "--data", "/tmp/data"],
-            ["backup", "--bundle", "/tmp/runtime", "--data", "/tmp/data"],
+            ["backup", "--keep", "30", "--bundle", "/tmp/runtime", "--data", "/tmp/data"],
         ])
         XCTAssertEqual(dump, "/tmp/data/backups/waffled-20260908-030000.dump")
         XCTAssertFalse(runner.calls.contains { $0.arguments.contains("--foreground") })
