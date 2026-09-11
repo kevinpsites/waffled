@@ -37,9 +37,9 @@ xcodebuild test -project Waffled.xcodeproj -scheme Waffled -destination 'platfor
 
 ## The runtime is a black box behind `status --json`
 
-The app knows three things about `waffled-runtime`: where it is, the four subcommands it
-calls (`start`, `stop`, `status`, `backup` — the runtime has more), and the shape of
-`status --json`. It must never learn more.
+The app knows three things about `waffled-runtime`: where it is, the six subcommands it
+calls (`start`, `stop`, `status`, `backup`, `config`, `move` — the runtime has more), and
+the shape of `status --json`. It must never learn more.
 
 - **Never poll anything heavier than `status`.** It is built to be cheap —
   `bonjour.advertised` is a pidfile check, `backups.scheduleInstalled` is a `stat`. `doctor`,
@@ -55,10 +55,12 @@ calls (`start`, `stop`, `status`, `backup` — the runtime has more), and the sh
   that is a person clicking `Start Waffled`. The one exception is a **first run**
   (`initialized: false`), where the attempt is held open while the welcome window asks; the
   click spends it.
-- **The browser opens once per process, and only when someone is waiting for it**: the end
-  of a first run, or a click on `Start Waffled`. Not for the auto-start — the login item
-  makes one of those at every boot, and a browser window per reboot is the opposite of the
-  quiet relaunch.
+- **The browser opens once per process, and only when someone is waiting for it**: a click
+  on `Open Waffled` — the ready step's own button, or the menu item — or a click on
+  `Start Waffled`. Never for the auto-start (the login item makes one of those at every
+  boot, and a browser window per reboot is the opposite of the quiet relaunch), and never
+  at the end of a first run on its own: that step exists to be read and copied from, and a
+  browser thrown in front of it is the window nobody got to see.
 - **`start` has no timeout**, by design: a first `initdb` plus every migration takes minutes.
 - **Never let Sparkle relaunch over a running server** — a swap over a live one leaves the
   household on the old runtime (why: `docs/product/native-mac-plan.md`, Phase 3 item 6).
@@ -112,7 +114,7 @@ why the whole enabled/disabled table is tested without a menu or a process. Keep
 behaviour there rather than in the view, and put process work behind
 `RuntimeProcessRunning` — **no test may spawn anything**.
 
-## Two macOS facts that shape the UI
+## macOS facts that shape the UI
 
 - A `.menu`-style `MenuBarExtra` renders only Button / Toggle / Text / Divider / Menu, and
   **`.help(_:)` tooltips do not appear on its items** — an explanation has to go in the label.
@@ -122,6 +124,17 @@ behaviour there rather than in the view, and put process work behind
   forward on its own — `NSApp.activate(ignoringOtherApps:)` before ordering it front, or it
   opens behind whatever the person was reading. Modal questions are `NSAlert` after the same
   call.
+- **The setting-up step has a floor under it: `minimumStartingDisplay`, three seconds, off
+  an injectable clock.** A first start can finish in under five seconds, and a checklist
+  that appears and vanishes inside one animation frame is indistinguishable from a window
+  that never opened. Every later step is decided by the status document alone.
+- **`Settings…` and the first run share the window, the rows and `SetupOptions`.** An
+  `LSUIElement` app has one window, so the menu item is off for the whole of a first-run
+  launch, not only while it waits. The two differ in what they do with the same values:
+  the first run applies all of them before the first `start`, and Settings applies only
+  what changed (`commandsForChange`) against what it remembers having applied last. Never
+  offer the port there — `HTTP_PORT` is the first allocation's preference and nothing
+  after it — and never read an empty provider-key field as a deletion.
 - Menu-bar images are **monochrome templates**: state is carried by shape (outline, cooking
   holes, fill, slash), never by colour. Colour belongs to the menu's own content. The mark is
   the waffle iron drawn in `WaffleIronIcon.swift` — no SF Symbol, no asset — and its frames

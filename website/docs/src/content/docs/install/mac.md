@@ -40,18 +40,79 @@ first-launch question and takes one click.
 ## First run
 
 A menu-bar icon appears within a second — the Waffled iron, outlined while nothing is
-running. Because the data directory is empty, a **setup window** opens in front of
-everything and asks before it creates anything:
+running. Because there is no household yet, a **setup window** opens in front of everything
+and asks before it sets one up.
 
-1. **Welcome** — what is about to happen and where the data will live. One button, `Set up
-   Waffled`. (On a laptop, the lid warning is here.) Closing this window quits; nothing has
-   been created.
-2. **Starting** — a tick per service as Postgres, the api, Sync and Web come up. The first
-   start creates the database cluster and runs every migration, so **give it a minute**.
-3. **Ready** — your browser opens on the server, and the window closes itself.
+### 1. Welcome
 
-Finish in the browser: the web app's own first-run wizard creates your household and the
-first adult, exactly as on Docker.
+What Waffled is, which versions of the database, the server, sync and the web app are
+already inside the download, and three ways on: **Set up Waffled**, **Choose where things
+go…**, or **Not on this Mac**. Closing this window quits — no database, no household. On a
+laptop there is a paragraph about the lid here: close it and the household's server sleeps
+with it.
+
+The defaults are sensible, so **Set up Waffled** is a fine answer: Waffled's files in
+`~/Library/Application Support/Waffled`, a nightly backup at 3:00 AM, this Mac's own name
+as the address, port 8080, and Waffled starting whenever the Mac does. **Choose where things
+go…** is how you change any of that first.
+
+### 2. Where things go
+
+Everything on this screen is applied **before** the first start, so that start already
+uses it.
+
+- **Waffled's files.** Where the database, your photos and every backup live. It has to be a
+  folder on this Mac's own internal disk, formatted APFS or Mac OS Extended — an external
+  drive somebody can unplug, or a network folder, is not somewhere a running database can
+  live, and the window says so if you pick one — as it does if it cannot write there.
+  Waffled makes a **Waffled** folder inside whatever you pick, so choosing your Documents
+  folder does not scatter a database through it. You can move it later from `Settings…` —
+  see [Moving Waffled's files](#moving-waffleds-files) — but picking it now avoids the copy.
+- **Nightly backup.** On, at 3:00 AM, unless you say otherwise — 1:00 AM, 3:00 AM, 5:00 AM
+  or noon — noon is there for a Mac that sleeps at night. Switching it off schedules
+  nothing; **Back up now** in the menu still works whenever you want it.
+- **Address on your network** — how the kitchen tablet and everyone's phones reach this Mac.
+  - **This Mac's name**, a `.local` name phones and tablets discover on their own. The
+    default, and the right answer on most home networks.
+  - **Its IP address**, for networks where `.local` names do not resolve.
+  - **A name I've set up myself**, such as `waffled.home`. You have to have made that name
+    point at this Mac yourself — a DNS entry on your router, or a real domain aimed at this
+    Mac's address. Waffled does not create it.
+  - **Port**, 8080 unless you change it. Waffled *prefers* the port you name and takes the
+    next free one if something else on this Mac already answers there. Pick 1024 or above
+    — ports below that need an administrator, and Waffled does not run as one.
+
+  Whichever you pick, Waffled serves plain **HTTP** on your own network. A nicer name is a
+  nicer address, not HTTPS — there is no certificate, and none of this puts Waffled on the
+  public internet.
+- **Smart suggestions** *(optional)*. An Anthropic or OpenAI key turns on meal ideas and
+  week planning. It is stored on this Mac only, in Waffled's own config, and you can add it
+  later instead — nothing else depends on it.
+- **Start Waffled when this Mac starts up.** On, and worth leaving on: the tablet and the
+  phones expect the server to be there.
+
+### 3. Setting up
+
+A tick per service as the database, the server, sync and the web app come up, with a
+progress bar and the last line of the log underneath. The first start creates the database
+and runs every migration, so **give it a minute** — longer on an older Mac. You can close
+this window: it carries on without it, and the menu-bar icon shows the same progress.
+
+### 4. Ready
+
+The address to type into the kitchen tablet, a **QR code** to point a phone's camera at,
+and — when it is different from the name — the plain IP address underneath, which is the one
+to use if a device cannot find the name. If the port you asked for was busy, a line here
+says which port Waffled took instead.
+
+**Copy address** puts it on the clipboard. **Open Waffled** opens the web app in your
+browser, where Waffled's own setup wizard creates your household and the first adult,
+exactly as on Docker.
+
+### If a start goes wrong
+
+The window says what happened in the runtime's own words, and offers **Try again** and
+**Show logs**.
 
 Every launch after that gets **no window and no browser**. The app finds the existing data
 directory, brings the server back up, and the icon goes solid.
@@ -66,6 +127,7 @@ directory, brings the server back up, and the icon goes solid.
 | **Server address** | `host:port` for the kitchen tablet and the iOS app — click to copy. |
 | **Start at login** | Brings the server back after a reboot, with no browser window. |
 | **Back up now** | A `pg_dump` into `backups/`. Works even while the server is stopped. See [Backups](#backups). |
+| **Settings…** | The setup screen again — backup time, address, provider key, login item, and the folder. See [Changing settings later](#changing-settings-later). |
 | **Check for updates…** | See [Updating](#updating). |
 | **Show logs** | Appears only when something has gone wrong. |
 | **Quit Waffled** | Confirms, **stops the server**, then quits. |
@@ -84,29 +146,79 @@ the server up without the icon, leave the app running; that is what `Start at lo
   logs/           one file per service
 ```
 
-Two things worth knowing:
+Three things worth knowing:
 
 - **`postgres/` is excluded from Time Machine**, deliberately: restoring a live database
   directory file-by-file corrupts it. `backups/` **is** backed up, which is the copy you
   would actually restore from.
+- **The folder is chosen at setup and can be moved afterwards**, from `Settings…` →
+  *Move…*. Everything above moves with it. See [Moving Waffled's files](#moving-waffleds-files).
 - Everything lives under your own user account — nothing is installed system-wide, and
   nothing asks for an admin password. Turn FileVault on if it isn't already; that is what
   protects `config.env` on a machine somebody could walk off with.
 
-## Backups
+## Changing settings later
 
-`Back up now` in the menu writes a timestamped `pg_dump` into `backups/`, and works even
-while the server is stopped. Waffled also takes one **before every migration**, so an update
-that goes wrong has something to roll back to.
+`Settings…` in the menu opens the same screen the setup window showed, on a Mac where
+Waffled is already running. You can change:
 
-A **nightly** backup is one Terminal command away and worth the thirty seconds — nothing
-runs it for you:
+| | Takes effect |
+|---|---|
+| **Nightly backup** — on or off, and the hour | Straight away. Turning it off removes the scheduled job. |
+| **Address on your network** — this Mac's name, its IP, or a name you set up | **Next time Waffled starts.** The screen says so when you change it; stop and start from the menu when it suits you. |
+| **Smart suggestions** — the provider key | Straight away. The field is always blank when the screen opens — Waffled never reads your key back out of `config.env` — so leaving it blank means "don't change it", not "delete it". |
+| **Start when this Mac starts up** | Straight away. |
+| **Waffled's files** | See below. |
+
+Only what you actually changed is applied, so opening the screen and closing it does
+nothing at all.
+
+**The port is shown but cannot be changed here.** Waffled picked it at setup and every
+phone, tablet and bookmark in the house points at it, so moving it is a job that has to
+tell them first. To move it deliberately, quit Waffled and edit `ports.public` in
+`runtime.json` in the folder above.
+
+## Moving Waffled's files
+
+`Settings…` → *Move…* takes everything — the database, your photos and every backup — to
+another folder on this Mac. Waffled stops the server, copies, and starts it again.
+
+Three things to know before you click it:
+
+- **The new folder must be empty and on a disk that stays plugged in**, formatted APFS or
+  Mac OS Extended. An external drive that could be unplugged, or a network folder, would
+  mean no server; Waffled refuses those rather than letting you find out later.
+- **Nothing is deleted until the copy has arrived.** If anything goes wrong — the disk
+  fills up, the drive disappears — your household is still in the old folder, untouched.
+- **It needs room for a second copy** while it runs, plus a little headroom. Waffled
+  checks first and tells you if there isn't enough.
+
+If you would rather do it from Terminal, it is the same command underneath:
 
 ```sh
-/Applications/Waffled.app/Contents/Resources/runtime/bin/waffled-runtime backup --install-schedule
+/Applications/Waffled.app/Contents/Resources/runtime/bin/waffled-runtime move \
+  --to /Volumes/Big/Waffled --dry-run
 ```
 
-That installs a launchd agent that runs at 03:00. `--uninstall-schedule` removes it.
+Drop `--dry-run` to do it. Quit Waffled first — it refuses to move a running server.
+
+## Backups
+
+Waffled backs up **every night** — at 3:00 AM unless you chose another time during setup —
+into `backups/`. `Back up now` in the menu writes one on demand, and works even while the
+server is stopped. Waffled also takes one **before every migration**, so an update that goes
+wrong has something to roll back to.
+
+To change the time later, or to schedule a nightly backup if you switched it off, one
+Terminal command does it:
+
+```sh
+/Applications/Waffled.app/Contents/Resources/runtime/bin/waffled-runtime backup \
+  --install-schedule --at 01:00
+```
+
+`--at` is 24-hour local time and defaults to `03:00`; `--uninstall-schedule` removes the
+schedule. One Mac keeps one nightly backup, so running this again simply moves the time.
 
 A backup on the same Mac survives a mistake, not a fire. Copy `backups/` somewhere else —
 another disk, or a cloud folder — the same advice as the
@@ -145,16 +257,26 @@ directory with your household in it is not something an uninstaller should guess
    General → Login Items).
 2. **Quit Waffled** from the menu. This stops the server — dragging the app to the Trash
    would not.
-3. Drag `/Applications/Waffled.app` to the Trash.
-4. If you installed the nightly backup, remove its job:
-   `~/Library/LaunchAgents/app.waffled.backup.plist`.
+3. Let the runtime clean up after itself. It removes the nightly backup job, any pidfiles,
+   the Bonjour advertisement and the Postgres socket directory, and **keeps your data**,
+   printing where it is and how big it is:
+
+   ```sh
+   /Applications/Waffled.app/Contents/Resources/runtime/bin/waffled-runtime uninstall
+   ```
+
+   Add `--dry-run` first if you want to read the plan before anything happens.
+4. Drag `/Applications/Waffled.app` to the Trash.
 5. Optional leftovers, both tiny: `~/Library/Preferences/app.waffled.mac.plist` (the
    updater's own settings) and `~/Library/Caches/app.waffled.mac/`.
 6. **Your data is still there**, at `~/Library/Application Support/Waffled/`, and that is
    your household. Copy `backups/` and `media/` somewhere safe if you might want them, then
-   delete the folder.
+   delete the folder — or let step 3 do it by passing `--delete-data`.
 
-*(Removing Waffled from the menu is coming — for now it is the six steps above.)*
+⚠️ **`--delete-data` cannot be undone.** It takes `config.env` with it, and the secrets in
+there exist nowhere else — back up first if you might ever come back.
+
+*(A **Remove Waffled…** item in the menu is still to come; for now step 3 is the command.)*
 
 ## How this relates to the Docker install
 
@@ -172,6 +294,7 @@ You do not need both, and you should not point both at the same data. If you alr
 the Compose stack and just want it on a Mac desktop, Compose keeps working — the Mac app is
 for households that would rather not meet Docker at all.
 
-Ports work the same way: Waffled takes `8080` if it is free and the next free port if it is
-not, and the menu's **Server address** always tells you which. See
+Ports work the same way, with one addition: the setup screen lets you name the port you
+would rather have. Waffled takes it if it is free and the next free one if it is not, and
+the menu's **Server address** always tells you which. See
 [Requirements](/install/requirements/) for the full port table.

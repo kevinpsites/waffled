@@ -79,8 +79,13 @@ type Bundle struct {
 // URLs are the addresses to hand a person. Local works on this Mac; LAN is what a phone
 // or the kiosk tablet needs.
 type URLs struct {
-	Local     string `json:"local"`
-	LAN       string `json:"lan"`
+	Local string `json:"local"`
+	LAN   string `json:"lan"`
+	// LANIP is the same address in its always-dependable form — this Mac's IP — whatever
+	// form LAN took. It exists so that a client showing "if a device can't find that
+	// name, use this instead" never has to work an IP out for itself. Equal to LAN when
+	// the address is already an IP, and empty when this Mac is on no network.
+	LANIP     string `json:"lanIp"`
 	PowerSync string `json:"powersync"`
 }
 
@@ -126,6 +131,10 @@ type Backups struct {
 	LastErrorAt string `json:"lastErrorAt"`
 	// ScheduleInstalled reports whether the nightly launchd agent is in place.
 	ScheduleInstalled bool `json:"scheduleInstalled"`
+	// ScheduleAt is the local 24-hour time that agent runs, "HH:MM", read out of the
+	// installed plist itself. Empty when nothing is installed — or when the plist is
+	// there and unreadable, which is a schedule nobody should be told the time of.
+	ScheduleAt string `json:"scheduleAt"`
 }
 
 // Bonjour is the advertisement on the local network — how a phone that has never been

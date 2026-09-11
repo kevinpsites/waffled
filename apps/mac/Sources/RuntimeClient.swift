@@ -21,6 +21,10 @@ struct RuntimeLocation: Equatable {
     var binary: URL
     var bundleDir: URL?
     var dataDir: URL?
+    /// True when `WAFFLED_DATA_DIR` named the directory. The setup screen may not move a
+    /// data directory the environment pinned: that is the dev-mode recipe, and a choice
+    /// saved on a household's Mac must never redirect it.
+    var dataDirIsFromEnvironment = false
     /// True when the environment pointed us somewhere, which the menu says out loud —
     /// a dev run against a scratch data directory should never be mistaken for the
     /// household's real server.
@@ -40,14 +44,20 @@ enum RuntimeLocator {
     static let bundleVariable = "WAFFLED_RUNTIME_BUNDLE"
     static let dataVariable = "WAFFLED_DATA_DIR"
 
-    static func locate(environment: [String: String], resourceURL: URL?) -> RuntimeLocation? {
-        let dataDir = environment[dataVariable].flatMap(directory)
+    /// - Parameter chosenDataDirectory: a folder the household picked on the setup screen,
+    ///   used only when the environment named none.
+    static func locate(environment: [String: String], resourceURL: URL?,
+                       chosenDataDirectory: URL? = nil) -> RuntimeLocation? {
+        let fromEnvironment = environment[dataVariable].flatMap(directory)
+        let dataDir = fromEnvironment ?? chosenDataDirectory
+        let pinned = fromEnvironment != nil
 
         if let binary = environment[binaryVariable], !binary.isEmpty {
             return RuntimeLocation(
                 binary: URL(fileURLWithPath: binary),
                 bundleDir: environment[bundleVariable].flatMap(directory),
                 dataDir: dataDir,
+                dataDirIsFromEnvironment: pinned,
                 isDevMode: true)
         }
 
@@ -62,7 +72,8 @@ enum RuntimeLocator {
         guard let resourceURL else { return nil }
         let bundleDir = resourceURL.appendingPathComponent("runtime")
         let binary = bundleDir.appendingPathComponent("bin/waffled-runtime")
-        return RuntimeLocation(binary: binary, bundleDir: bundleDir, dataDir: dataDir, isDevMode: false)
+        return RuntimeLocation(binary: binary, bundleDir: bundleDir, dataDir: dataDir,
+                               dataDirIsFromEnvironment: pinned, isDevMode: false)
     }
 
     private static func directory(_ path: String) -> URL? {
@@ -92,7 +103,7 @@ enum RuntimeClientError: Error, Equatable {
     }
 }
 
-/// A thin wrapper over the four subcommands the menu needs. Everything the GUI does is
+/// A thin wrapper over the six subcommands this app needs. Everything the GUI does is
 /// available in Terminal, by construction — this type does not know how to do anything
 /// the CLI cannot.
 struct RuntimeClient {
@@ -130,14 +141,23 @@ struct RuntimeClient {
         return out.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// One of the setup screen's writes — a `config set`, or the nightly schedule. They
+    /// are values (`RuntimeCommand`) rather than methods so the argv the app would really
+    /// have used is asserted without spawning anything, and so nothing that logs a
+    /// failure can reach the value a `config set` carried.
+    func apply(_ command: RuntimeCommand) async throws {
+        _ = try await run(command.subcommand, extra: command.flags, trailing: command.trailing)
+    }
+
     // MARK: -
 
-    private func run(_ command: String, extra: [String] = []) async throws -> RuntimeProcessResult {
+    private func run(_ command: String, extra: [String] = [],
+                     trailing: [String] = []) async throws -> RuntimeProcessResult {
         let result: RuntimeProcessResult
         do {
             result = try await runner.run(
                 executable: location.binary,
-                arguments: arguments(for: command, extra: extra))
+                arguments: arguments(for: command, extra: extra, trailing: trailing))
         } catch {
             throw RuntimeClientError.cannotRunRuntime(
                 path: location.binary.path,
@@ -147,14 +167,15 @@ struct RuntimeClient {
             throw RuntimeClientError.commandFailed(
                 command: command,
                 exitCode: result.exitCode,
-                message: Self.cleaned(result.standardError))
+                message: Self.failureMessage(result.standardError))
         }
         return result
     }
 
-    /// The subcommand, then its own flags, then the common ones. Go's `flag` package stops
-    /// parsing at the first non-flag argument, so the subcommand has to come first.
-    func arguments(for command: String, extra: [String] = []) -> [String] {
+    /// The subcommand, then its own flags, then the common ones, then any positional
+    /// argument. Go's `flag` package stops parsing at the first non-flag argument, so the
+    /// subcommand has to come first and `config set`'s assignment has to come last.
+    func arguments(for command: String, extra: [String] = [], trailing: [String] = []) -> [String] {
         var argv = [command] + extra
         if let bundleDir = location.bundleDir {
             argv += ["--bundle", bundleDir.path]
@@ -162,21 +183,46 @@ struct RuntimeClient {
         if let dataDir = location.dataDir {
             argv += ["--data", dataDir.path]
         }
-        return argv
+        return argv + trailing
     }
 
-    /// The runtime prefixes its refusals with "✗ ". That mark is for a terminal; in a
-    /// menu it is noise in front of the sentence someone needs to read.
-    private static func cleaned(_ stderr: String) -> String {
-        stderr
+    /// What a failed command actually said, out of everything it wrote to stderr.
+    ///
+    /// The runtime narrates as it works and prints its refusal to the same stream, so the
+    /// raw text opens with "bundle verified …" and buries the reason below. Taken whole,
+    /// the error window and the menu both led with an INFO line.
+    ///
+    /// The refusal is marked with "✗ " and its detail follows underneath, so that mark is
+    /// the cut. Without one — a panic, or a bundled tool's own stderr — the narration is
+    /// dropped by shape instead. A stream that is nothing BUT narration is kept as it is:
+    /// a blank window says even less than the wrong line.
+    static func failureMessage(_ stderr: String) -> String {
+        let lines = stderr
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { line -> String in
-                var line = String(line)
-                if line.hasPrefix("✗ ") { line.removeFirst(2) }
-                return line.trimmingCharacters(in: .whitespaces)
-            }
-            .joined(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+
+        if let mark = lines.firstIndex(where: { $0.hasPrefix("\u{2717} ") }) {
+            var kept = Array(lines[mark...])
+            kept[0].removeFirst(2)
+            return kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let withoutNarration = lines.filter { !Self.isLogLine($0) }
+        guard withoutNarration.contains(where: { !$0.isEmpty }) else {
+            return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return withoutNarration.joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The runtime's own log shape: `2026-09-10 09:33:11 info  …`. Matched rather than
+    /// parsed — this only has to decide whether a line is narration.
+    private static func isLogLine(_ line: String) -> Bool {
+        let parts = line.split(separator: " ", maxSplits: 3, omittingEmptySubsequences: true)
+        guard parts.count >= 3 else { return false }
+        return parts[0].count == 10 && parts[0].filter { $0 == "-" }.count == 2
+            && parts[1].contains(":")
+            && ["info", "warn", "error", "debug"].contains(String(parts[2]))
     }
 }
 

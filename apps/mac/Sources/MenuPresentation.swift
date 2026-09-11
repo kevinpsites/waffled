@@ -69,13 +69,26 @@ struct MenuPresentation: Equatable {
     var openEnabled: Bool
     var addressLine: String
     var addressEnabled: Bool
+    /// `Show QR code…`. The ready step shows one on the single launch a household ever
+    /// sees it; every phone that arrives after that is somebody reading an address off
+    /// this menu and typing it in.
+    var shareEnabled: Bool
     var backupEnabled: Bool
     /// A way back. Auto-start is one attempt per launch, so a stopped server — or a start
     /// that refused — has to be startable by hand.
     var showStart: Bool
     var startEnabled: Bool
+    /// `Restart Waffled`. The way to make a setting the server only reads at start take
+    /// effect, without quitting the app — which stops the server and leaves the household
+    /// with nothing until somebody opens it again.
+    var showRestart: Bool
+    var restartEnabled: Bool
     /// Appears only when there is something in `logs/` worth reading.
     var showLogs: Bool
+    /// `Settings…`, which opens the app's one window on the options screen again. Off
+    /// while the first-run window already has that window, and off while an operation
+    /// holds the slot Apply would need.
+    var settingsEnabled: Bool
     /// The updater's item. The label carries the reason it is off, because a
     /// `.menu`-style `MenuBarExtra` renders no tooltip on an item.
     var checkForUpdatesLabel: String
@@ -112,6 +125,9 @@ struct MenuPresentation: Equatable {
     ///     because the server it describes is still *running* — so a successful poll must
     ///     not clear it — and because it is what changes the quit item.
     ///   - awaitingSetup: a first run whose welcome window is still waiting for a click.
+    ///   - windowTaken: the first-run window is on screen. An `LSUIElement` app has one
+    ///     window, so `Settings…` has nowhere to open until that one is finished with —
+    ///     and it stays taken through the setting-up and ready steps, not only the wait.
     ///   - canCheckForUpdates: Sparkle's own answer, observed on the updater.
     ///   - updatePhase: where the update flow has got to. It decides two separate things:
     ///     whether the app holds an install block it can run (the item becomes the install),
@@ -124,6 +140,7 @@ struct MenuPresentation: Equatable {
         runtimeAvailable: Bool = true,
         stopFailure: String? = nil,
         awaitingSetup: Bool = false,
+        windowTaken: Bool = false,
         canCheckForUpdates: Bool = false,
         updatePhase: UpdateFlow.Phase = .idle
     ) -> MenuPresentation {
@@ -178,12 +195,20 @@ struct MenuPresentation: Equatable {
             openEnabled: running && !(status?.urls.local.isEmpty ?? true),
             addressLine: "Server address: \(address ?? "—")",
             addressEnabled: running && address != nil,
+            shareEnabled: running && shareURL(status) != nil,
             // Enabled while stopped on purpose: `backup` starts Postgres for itself, and
             // "am I protected?" is asked exactly when nothing is up.
             backupEnabled: status != nil && !busy,
             showStart: startable,
             startEnabled: startable && !busy,
+            // Only while there is something to restart: `Start Waffled` covers a server
+            // that is down, and offering both would be two items for one job.
+            showRestart: running,
+            restartEnabled: running && !busy,
             showLogs: faulted,
+            // Available while stopped, unlike `Start Waffled`: the address and the backup
+            // time are exactly what a person fixes before starting again.
+            settingsEnabled: runtimeAvailable && !windowTaken && !busy,
             // A held update comes first: Sparkle reports `canCheckForUpdates` false for
             // the whole of the session it is still holding open, so the ordinary label
             // would sit there disabled and the update would never happen. Otherwise the
@@ -198,6 +223,16 @@ struct MenuPresentation: Equatable {
             updateAction: canInstallNow ? .installNow : .check,
             quitTitle: quit.title,
             quitEnabled: quit != .stopTheServerFirst)
+    }
+
+    /// What the shared code encodes: the whole URL, which is what a phone's camera can
+    /// open. The ready step's card is built from the same value, so the code in the menu
+    /// and the code at the end of setup are the same code.
+    static func shareURL(_ status: RuntimeStatus?) -> String? {
+        guard let card = FirstRunPresentation.addressCard(status, preferredPort: 0) else {
+            return nil
+        }
+        return card.url
     }
 
     /// The line the menu shows once after an update installed itself and relaunched the
@@ -272,8 +307,17 @@ enum Lifecycle {
         case notUs
         /// The one auto-start per launch, which at login happens with nobody watching.
         case app
-        /// A click: `Set up Waffled` on the first-run window, or `Start Waffled` in the menu.
+        /// A click on `Start Waffled` in the menu — someone waiting for a browser.
         case person
+        /// A click on `Set up Waffled`. Held apart from `person` because a first run ends
+        /// on the ready step, which offers the browser itself: this is the one start whose
+        /// success must not open one. Every later click in the same session still does.
+        case setup
+        /// A click on `Restart Waffled`, from the menu or from Settings. A person asking
+        /// for the server back is not a person asking for the web app — they are usually
+        /// in Settings, and a browser landing on top of it is the window they never got
+        /// to read.
+        case restart
     }
 
     /// Auto-start from `stopped` and from nowhere else.
@@ -293,11 +337,16 @@ enum Lifecycle {
     /// boot, and a browser window that opens itself every time the Mac starts is the quiet
     /// relaunch (plan §2 step 6) getting loud. A server that was already running when the
     /// menu appeared belongs to whoever started it.
+    /// A first run is deliberately NOT a parameter. It is latched for the whole process,
+    /// so suppressing on it would suppress every later `Start Waffled` click too. The
+    /// setup start is its own trigger instead: the ready step it lands on is the address
+    /// someone still has to copy, and a browser in front of it is the window they never
+    /// got to read.
     static func shouldOpenBrowser(
-        newState: RuntimeState, trigger: StartTrigger, isFirstRun: Bool, alreadyOpened: Bool
+        newState: RuntimeState, trigger: StartTrigger, alreadyOpened: Bool
     ) -> Bool {
         guard newState == .running, !alreadyOpened else { return false }
-        return isFirstRun || trigger == .person
+        return trigger == .person
     }
 
     /// What a click on the quit item means. The first click asks the alert and stops the
@@ -418,8 +467,17 @@ enum Lifecycle {
     /// window it was armed on can have been replaced in the meantime — a poll during those
     /// two seconds can report a stack that fell over — and closing is permanent, so a timer
     /// that fired blind would shut the `Try again` button away for the rest of the process.
-    static func readyCloseStillApplies(step: FirstRunPresentation.Step?) -> Bool {
-        step == .ready
+    /// Whether the setting-up step has been on screen long enough to move on. A first
+    /// start can finish in under five seconds, and a checklist that appears and vanishes
+    /// inside one animation frame is a window that "never showed".
+    ///
+    /// A negative interval is a clock that moved backwards under us — an NTP correction on
+    /// a Mac that just woke — and the floor is a courtesy, not a guarantee: waiting it out
+    /// would strand the window on a finished start until the clock caught up.
+    static func startingDisplayHasElapsed(since: Date?, now: Date) -> Bool {
+        guard let since else { return true }
+        let elapsed = now.timeIntervalSince(since)
+        return elapsed < 0 || elapsed >= FirstRunPresentation.minimumStartingDisplay
     }
 
     /// Polling spawns a process, so it is deliberately unhurried once the answer has

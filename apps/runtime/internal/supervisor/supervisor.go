@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/kevinpsites/waffled/apps/runtime/internal/backup"
+	"github.com/kevinpsites/waffled/apps/runtime/internal/bonjour"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/caddyconf"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/configenv"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/datadir"
@@ -73,6 +74,17 @@ type Options struct {
 	// `status --json` emits no JSON for the menu-bar app to read. `start` leaves it
 	// false and still fails hard.
 	TolerateConflicts bool
+	// ReadOnly stops a construction on a data directory that does not exist yet from
+	// becoming that household's first run. `status`, `doctor` and `stop` set it.
+	//
+	// The Mac app polls `status` the instant it launches — before the setup window is on
+	// screen, let alone before anyone has typed a port — and every construction settles
+	// ports and saves them. Without this the first allocation happens before the person
+	// choosing it, so the `HTTP_PORT` the setup screen writes is read on a run that can
+	// never be a first run. `start` stays the writer, which makes the first `start` the
+	// first allocation. An install that already exists is unaffected: its files are
+	// there, so nothing here is skipped.
+	ReadOnly bool
 }
 
 // Supervisor owns one data directory and the processes serving it.
@@ -161,6 +173,10 @@ func New(opts Options) (*Supervisor, error) {
 		log.Infof("bundle verified — %d files + %d symlinks — %s", m.FileCount, m.SymlinkCount, m.VersionSummary())
 	}
 
+	// Asked before anything creates it. A read-only construction may fill config.env in
+	// memory — Validate still has to pass — but must not leave it on disk: those are the
+	// household's secrets, generated before anyone said yes.
+	configExisted := fileExists(layout.ConfigEnv)
 	env, err := configenv.Load(layout.ConfigEnv)
 	if err != nil {
 		return nil, err
@@ -172,8 +188,22 @@ func New(opts Options) (*Supervisor, error) {
 	if len(generated) > 0 {
 		log.Infof("generated %d secret(s) in %s", len(generated), layout.ConfigEnv)
 	}
-	if err := env.Save(layout.ConfigEnv); err != nil {
-		return nil, err
+	// Written only when secrets were actually generated — which is once, on a first run.
+	// Every construction used to write it back, and `status` builds one on every poll: a
+	// `config set` landing between this env being loaded and being saved was silently
+	// overwritten by the stale copy. The setup screen writes settings while the app polls
+	// twice a second, so that race is not theoretical.
+	if len(generated) > 0 && (!opts.ReadOnly || configExisted) {
+		if err := env.Save(layout.ConfigEnv); err != nil {
+			return nil, err
+		}
+	}
+	// Re-tightened separately, because the write that used to do it is now conditional.
+	// A chmod cannot lose somebody else's concurrent write the way a rewrite can.
+	if configExisted {
+		if err := os.Chmod(layout.ConfigEnv, 0o600); err != nil {
+			log.Warnf("could not re-secure %s: %v", layout.ConfigEnv, err)
+		}
 	}
 	if err := env.Validate(); err != nil {
 		return nil, err
@@ -229,10 +259,18 @@ func New(opts Options) (*Supervisor, error) {
 	s.state.SocketDir = socketDir
 	s.state.BundleSHA = m.GitSha
 	s.state.BundleTime = m.BuiltAt
-	s.excludeDataFromTimeMachine()
+	// Not on a household that does not exist yet and is not being created here. The
+	// exclusion is a write, and its "already done" memo lives in runtime.json — which a
+	// read-only construction does not save, so doing it would fork tmutil on every one of
+	// the menu bar's two-second polls and never remember. `start` sets it, once.
+	if !opts.ReadOnly || existed {
+		s.excludeDataFromTimeMachine()
+	}
 
-	if err := rtstate.Save(layout.RuntimeJSON, s.state); err != nil {
-		return nil, err
+	if !opts.ReadOnly || existed {
+		if err := rtstate.Save(layout.RuntimeJSON, s.state); err != nil {
+			return nil, err
+		}
 	}
 	return s, nil
 }
@@ -253,8 +291,20 @@ func (s *Supervisor) settlePorts(firstRun bool) error {
 	if s.state.Ports.Public == 0 {
 		firstRun = true
 	}
+	// HTTP_PORT is the preference for the FIRST allocation and nothing after it. Acting on
+	// a later change here would move a port every phone, tablet and bookmark in the house
+	// already points at — and it would do so from `status`, which builds a supervisor on
+	// every menu-bar poll and saves the state it settles. Changing the port on a running
+	// install is a job that has to tell the household first.
 	if firstRun {
-		chosen, err := choosePorts(ports.IsFree)
+		// Read here and nowhere else: on a settled install this setting does nothing, so
+		// a value that is not a number must not refuse to construct a supervisor for a
+		// household that has been running for a year.
+		preferred, err := preferredPublicPort(s.plan.Env)
+		if err != nil {
+			return err
+		}
+		chosen, err := choosePorts(ports.IsFree, preferred)
 		if err != nil {
 			return err
 		}
@@ -615,6 +665,7 @@ func (s *Supervisor) Stop(ctx context.Context) error {
 // Status reports what is actually true right now: pids from pidfiles (so it works across
 // process boundaries), health from live probes.
 func (s *Supervisor) Status(ctx context.Context) *status.Report {
+	ip := lanIP()
 	r := &status.Report{
 		DataDir:     s.plan.Layout.Root,
 		BundleDir:   s.plan.Bundle,
@@ -623,7 +674,10 @@ func (s *Supervisor) Status(ctx context.Context) *status.Report {
 			Public: s.plan.Ports.Public, PowerSyncPublic: s.plan.Ports.PowerSyncPublic,
 			API: s.plan.Ports.API, PowerSync: s.plan.Ports.PowerSync, Postgres: s.plan.Ports.Postgres,
 		},
-		URLs: status.URLs{Local: s.LocalURL(), LAN: s.LANURL(), PowerSync: s.powerSyncURL()},
+		// Sampled once for the whole document: three calls to lanIP could straddle a DHCP
+		// renewal and name two different addresses in one answer.
+		URLs: status.URLs{Local: s.LocalURL(), LAN: s.lanURLFrom(ip), LANIP: s.lanIPURLFrom(ip),
+			PowerSync: s.powerSyncURLFrom(ip)},
 	}
 	if m := s.manifest; m != nil {
 		c := m.Components
@@ -673,7 +727,8 @@ func (s *Supervisor) Status(ctx context.Context) *status.Report {
 		r.Services = append(r.Services, s.serviceStatus(ctx, spec))
 	}
 
-	r.Backups = backup.Describe(s.plan.Layout.Backups, s.scheduleInstalled())
+	scheduleInstalled, scheduleAt := s.scheduleFacts()
+	r.Backups = backup.Describe(s.plan.Layout.Backups, scheduleInstalled, scheduleAt)
 	// Reported beside the services, never as one of them: nothing about the
 	// advertisement feeds DeriveState (see bonjour.go).
 	r.Bonjour = s.BonjourStatus()
@@ -729,19 +784,46 @@ func (s *Supervisor) LocalURL() string {
 // LANURL is the address to give a phone or the kiosk tablet. Empty when this Mac has no
 // routable address — the menu should then say "not on a network" rather than show
 // localhost, which only ever works here.
+// It is WAFFLED_PUBLIC_HOST that decides which form that address takes — this Mac's IP,
+// its multicast name, or a name the household pointed at it — and this is the one place
+// that decides, so the status document, the Bonjour TXT record and the "other devices on
+// your network" line a start prints can never disagree about where Waffled is.
 func (s *Supervisor) LANURL() string {
-	ip := lanIP()
-	if ip == "" {
-		return ""
-	}
-	return fmt.Sprintf("http://%s:%d", ip, s.plan.Ports.Public)
+	return s.lanURLFrom(lanIP())
 }
 
-func (s *Supervisor) powerSyncURL() string {
-	if ip := lanIP(); ip != "" {
-		return fmt.Sprintf("http://%s:%d", ip, s.plan.Ports.PowerSyncPublic)
+// lanURLFrom is LANURL against an address already sampled, so one status document cannot
+// name two — `lanIP` asks the routing table each time, and a DHCP renewal between two
+// calls is exactly the disagreement `urls.lanIp` exists to prevent.
+func (s *Supervisor) lanURLFrom(ip string) string {
+	return publicURL(s.plan.Env.Get(KeyPublicHost), ip, multicastHost(), s.plan.Ports.Public)
+}
+
+// LANIPURL is the address that works on any network, whatever form LANURL takes: the
+// "if a device can't find that name, use this" line the setup window shows.
+func (s *Supervisor) lanIPURLFrom(ip string) string {
+	return publicURL(PublicHostIP, ip, "", s.plan.Ports.Public)
+}
+
+// powerSyncURL follows the same setting. The api derives each client's sync endpoint
+// from the address that client actually reached it on, so this value is what `status`
+// reports rather than what any device is told — but a status document naming two
+// different hosts for one server is a support call.
+func (s *Supervisor) powerSyncURLFrom(ip string) string {
+	if url := publicURL(s.plan.Env.Get(KeyPublicHost), ip, multicastHost(),
+		s.plan.Ports.PowerSyncPublic); url != "" {
+		return url
 	}
 	return fmt.Sprintf("http://127.0.0.1:%d", s.plan.Ports.PowerSyncPublic)
+}
+
+// multicastHost is this Mac's `<hostname>.local`, or empty when it has no usable one.
+func multicastHost() string {
+	host, err := os.Hostname()
+	if err != nil {
+		return ""
+	}
+	return bonjour.Host(host)
 }
 
 // lanIP finds this Mac's address on the local network by asking the routing table which

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // AppName is the folder Waffled uses inside the platform's application-support location.
@@ -155,4 +156,29 @@ func (l Layout) Risks() []string {
 		}
 	}
 	return warnings
+}
+
+// HumanBytes renders a size the way every command that prints one renders it. It lives
+// here because the data directory is the thing whose size gets printed — by `uninstall`,
+// by `move`, and by `doctor`'s disk-space check.
+func HumanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for rest := n / unit; rest >= unit; rest /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+// FreeBytes is how much room the volume holding path has left.
+func FreeBytes(path string) (uint64, error) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(path, &st); err != nil {
+		return 0, err
+	}
+	return uint64(st.Bavail) * uint64(st.Bsize), nil
 }

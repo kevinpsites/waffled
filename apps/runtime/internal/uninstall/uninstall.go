@@ -347,12 +347,21 @@ func (o Options) dataTarget() string {
 	return target
 }
 
-// looksLikeDataDir asks whether this directory is one the runtime made. Any one of the
-// three marks is enough: a data directory that was only ever laid out and never started
-// has the folders but no config.env, and one restored by hand may have config.env and
-// nothing else yet.
+// looksLikeDataDir asks whether this directory is one the runtime made. It guards
+// `--delete-data`, so what counts as proof matters: `uninstall --data ~ --delete-data` is
+// a plausible slip.
+//
+// A file of ours is proof. An empty `postgres/` is NOT — every read-only command lays the
+// tree out before it knows whether a household lives here, so a mistyped
+// `status --data ~/Documents` leaves a bare one behind, and accepting that would let a
+// later mistyped `--delete-data` take the whole folder. A postgres directory with a
+// cluster in it is proof; an empty one is a directory somebody's `status` made.
 func (o Options) looksLikeDataDir() bool {
-	return exists(o.Layout.ConfigEnv) || exists(o.Layout.RuntimeJSON) || exists(o.Layout.Postgres)
+	if exists(o.Layout.ConfigEnv) || exists(o.Layout.RuntimeJSON) {
+		return true
+	}
+	entries, err := os.ReadDir(o.Layout.Postgres)
+	return err == nil && len(entries) > 0
 }
 
 // unwrapMarker drops the internal marker prefix from a message meant for a person.
@@ -827,18 +836,7 @@ func dirSize(root string) int64 {
 	return total
 }
 
-func humanBytes(n int64) string {
-	const unit = 1024
-	if n < unit {
-		return fmt.Sprintf("%d B", n)
-	}
-	div, exp := int64(unit), 0
-	for rest := n / unit; rest >= unit; rest /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
-}
+func humanBytes(n int64) string { return datadir.HumanBytes(n) }
 
 func readPidfile(path string) (int, error) {
 	raw, err := os.ReadFile(path)

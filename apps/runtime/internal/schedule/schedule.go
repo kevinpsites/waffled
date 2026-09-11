@@ -22,13 +22,6 @@ import (
 // Label is the launchd job label. The plist filename must match it.
 const Label = "app.waffled.backup"
 
-// The nightly hour. 03:00 local, an hour after the Compose sidecar's 02:00 default so a
-// household running both during a migration does not have them collide.
-const (
-	Hour   = 3
-	Minute = 0
-)
-
 // Agent is one installable schedule. Every path is explicit rather than derived at
 // install time so the tests can point it at a temp directory: nothing here may write
 // into the real ~/Library/LaunchAgents or run launchctl during `go test`.
@@ -41,6 +34,10 @@ type Agent struct {
 	BundleDir  string
 	DataDir    string
 	LogPath    string
+	// At is the local 24-hour time the nightly backup runs, "HH:MM". Empty means
+	// DefaultHour:DefaultMinute — a string rather than two ints so that a household
+	// choosing midnight is not read as one that chose nothing.
+	At string
 	// UID is the user's, for the gui/<uid> domain launchctl bootstraps into.
 	UID int
 
@@ -263,7 +260,11 @@ func (a *Agent) Plist() ([]byte, error) {
 	// RunAtLoad false: installing the schedule must not kick off a dump on the spot, and
 	// neither should every login.
 	d.boolean("RunAtLoad", false)
-	d.raw("StartCalendarInterval", dict{}.intPair("Hour", Hour, "Minute", Minute))
+	hour, minute, err := a.at()
+	if err != nil {
+		return nil, err
+	}
+	d.raw("StartCalendarInterval", dict{}.intPair("Hour", hour, "Minute", minute))
 	if a.LogPath != "" {
 		// Both streams go to one file. A nightly backup that fails silently is the whole
 		// failure mode this schedule exists to avoid.
@@ -273,6 +274,13 @@ func (a *Agent) Plist() ([]byte, error) {
 	// The dump can take a while on a large household; launchd should not consider the
 	// job wedged and kill it partway through writing a file.
 	d.boolean("AbandonProcessGroup", false)
+	// Without this, Login Items & Extensions lists the agent as the executable it runs:
+	// "waffled-runtime", a generic exec icon, and no idea what it belongs to. Named only
+	// when the binary really is inside an app — a runtime run from Terminal belongs to no
+	// app, and pointing macOS at one that is not there would be worse than the bare name.
+	if id := a.owningAppIdentifier(); id != "" {
+		d.arr("AssociatedBundleIdentifiers", []string{id})
+	}
 
 	body, err := xml.MarshalIndent(plistDoc{Version: "1.0", Body: d}, "", "\t")
 	if err != nil {
@@ -281,7 +289,73 @@ func (a *Agent) Plist() ([]byte, error) {
 	header := xml.Header +
 		"<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" " +
 		"\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
-	return append([]byte(header), append(body, '\n')...), nil
+	return append([]byte(header), append(selfCloseBooleans(body), '\n')...), nil
+}
+
+// owningAppIdentifier is the bundle identifier of the .app this binary lives inside, or
+// "" when it does not live inside one.
+//
+// Read from that app's own Info.plist rather than written down here: the runtime ships
+// inside Waffled.app but is a CLI in its own right, and the two must not disagree about
+// which app — if any — a schedule installed from it belongs to.
+func (a *Agent) owningAppIdentifier() string {
+	app := enclosingApp(a.BinaryPath)
+	if app == "" {
+		return ""
+	}
+	raw, err := os.ReadFile(filepath.Join(app, "Contents", "Info.plist"))
+	if err != nil {
+		return ""
+	}
+	return bundleIdentifier(raw)
+}
+
+// enclosingApp walks up from a path to the nearest ".app" directory containing it.
+func enclosingApp(path string) string {
+	for dir := filepath.Dir(path); ; {
+		if strings.HasSuffix(dir, ".app") {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
+// bundleIdentifier pulls CFBundleIdentifier out of an Info.plist. A whole plist parser is
+// not warranted for one string, and a miss is handled the same way an absent app is.
+func bundleIdentifier(plist []byte) string {
+	const key = "<key>CFBundleIdentifier</key>"
+	i := bytes.Index(plist, []byte(key))
+	if i < 0 {
+		return ""
+	}
+	rest := plist[i+len(key):]
+	open := bytes.Index(rest, []byte("<string>"))
+	if open < 0 {
+		return ""
+	}
+	rest = rest[open+len("<string>"):]
+	close := bytes.Index(rest, []byte("</string>"))
+	if close < 0 {
+		return ""
+	}
+	return strings.TrimSpace(string(rest[:close]))
+}
+
+// selfCloseBooleans rewrites `<false></false>` as `<false/>`.
+//
+// Not cosmetic: launchd refuses the long spelling. `launchctl bootstrap` answers
+// "Bootstrap failed: 5: Input/output error" and loads nothing, so the nightly backup is
+// never scheduled — measured on macOS 15.7 against two dictionaries that `plutil -lint`
+// and every plist reader here call identical. encoding/xml always writes the long form
+// for an empty element and offers no way to ask for the short one, so this is done to the
+// bytes. `<true>`/`<false>` are the only empty elements this plist has.
+func selfCloseBooleans(body []byte) []byte {
+	body = bytes.ReplaceAll(body, []byte("<false></false>"), []byte("<false/>"))
+	return bytes.ReplaceAll(body, []byte("<true></true>"), []byte("<true/>"))
 }
 
 // The minimum of the plist XML grammar this one job needs. Property lists are an ordered

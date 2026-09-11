@@ -17,15 +17,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Waffled for Mac — download it, drag it to Applications, and you have a family server.**
   A Mac with Apple silicon and macOS 14 or later can now run the whole of Waffled from one
-  download: no Docker, no Terminal, no Homebrew. Open it and a menu-bar icon walks you
-  through a first run — database, migrations, everything — and hands you the web app in
-  your browser in under five minutes. The menu keeps it running: start at login, the server
-  address to type into the kitchen tablet or a phone, a backup on demand, and
+  download: no Docker, no Terminal, no Homebrew. Open it and a setup window walks you
+  through a first run — database, migrations, everything — and ends on the address to type
+  into the kitchen tablet, with a QR code to point a phone at. **Where things go** lets you
+  settle the details before anything is set up: which folder Waffled keeps your family's
+  data in — it makes a **Waffled** folder inside whatever you pick, so choosing Documents
+  does not scatter a database through Documents, and it says so rather than failing later
+  if it cannot write there — what time it backs up each night, how the house reaches it
+  (this Mac's name, its IP address, or a name you've set up yourself) and on which port
+  (1024 or above: below that needs an administrator), whether it starts when the Mac does, and — optionally — an Anthropic or OpenAI key for meal and week suggestions.
+  The menu keeps it running: start at login, the server
+  address to type into the kitchen tablet or a phone, a backup on demand, **Settings…**,
+  which brings that same screen back whenever you want to change your mind, and
   **Check for updates…**, which stops the server, replaces the
   app and brings your household back up on the new version. The download is signed and
   notarized by Apple, so it opens with no Gatekeeper warning. Self-hosting with Docker
   Compose is unchanged and remains the way to run Waffled on Linux, a NAS, a Pi or a VPS —
   same api, same data, same web app. See [Mac install](https://docs.waffled.app/install/mac/).
+
+- **Change your mind about any of it later, and move Waffled's files to another disk.**
+  **Settings…** in the Mac app's menu reopens the setup screen on a Mac where Waffled is
+  already running: the nightly backup time (or turning it off), how the house reaches this
+  Mac, your provider key, and whether Waffled starts when the Mac does. Only what you
+  actually changed is applied, and anything that waits for a restart says so instead of
+  looking like it did not work. **Move…** takes the whole household — database, photos and
+  every backup — to another folder, which is how you get Waffled off a full startup disk:
+  it stops the server, copies, and starts it again, and nothing is deleted until the copy
+  has arrived. From Terminal it is `waffled-runtime move --to DIR`, which refuses a
+  destination that is not empty, is on a drive that could be unplugged, or has no room for
+  it — and refuses to move a server that is still running.
+
+- **`waffled-runtime` now takes the address, the port and the nightly backup hour from
+  you.** A Mac install's settings live in `config.env`, and
+  `waffled-runtime config set KEY=VALUE` writes one of them — creating the file if you are
+  setting up before the first start, and never echoing the value back, since these are
+  where provider keys go. Two settings are new: `WAFFLED_PUBLIC_HOST` decides what the rest
+  of the house is told (this Mac's IP address, its own `.local` name, or a name you have
+  pointed at this Mac yourself), and `HTTP_PORT` names the public port you would rather
+  have — still falling forward to the next free one when something else already answers
+  there. `backup --install-schedule --at HH:MM` puts the nightly backup at an hour that
+  suits the household rather than 03:00, and `status --json` now reports both the time it
+  will run (`backups.scheduleAt`) and the address in its always-dependable IP form
+  (`urls.lanIp`).
 
 - **Weekly Planning is on iPhone and iPad.** The whole guided session — the lobby, all ten
   steps, the agenda sheet, the parked-note handoff, the recap and the saved record — now

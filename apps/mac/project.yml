@@ -56,6 +56,10 @@ targets:
       path: Waffled-Info.plist
       properties:
         CFBundleDisplayName: Waffled
+        # The catalog compiles the icon; this key is what tells Finder, the Login Items
+        # pane and Sparkle's dialogs which compiled set to draw. Both halves are load-
+        # bearing — ASSETCATALOG_COMPILER_APPICON_NAME alone leaves the app iconless.
+        CFBundleIconName: AppIcon
         # Version keys MUST point at the build settings — XcodeGen otherwise writes a
         # hardcoded "1.0"/"1" into the generated plist, so bumping MARKETING_VERSION
         # (what `./waffled release` does) would silently do nothing. Same reason as iOS.
@@ -90,6 +94,13 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.waffled.mac
         ENABLE_TESTABILITY: YES              # @testable import Waffled from the tests
+        # Sources/Assets.xcassets rides in on `sources: - path: Sources` above. Every slot
+        # is drawn from resources/waffled.png (the 1254px brand master) onto Apple's icon
+        # grid: an 824/1024 rounded square, centred, with the margin left for the shadow.
+        # The mark is full-bleed square, so without that it sat as a square tile next to
+        # every other app. The menu-bar glyph is unaffected: that stays drawn in
+        # Sources/WaffleIronIcon.swift.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # Deliberately NO App Sandbox and no entitlements for the app: it spawns
         # waffled-runtime, which runs Postgres against a real filesystem outside any
         # container. Sandboxing it would break the one thing it does. The plists in

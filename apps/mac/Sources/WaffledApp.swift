@@ -62,10 +62,22 @@ private struct MenuContent: View {
                 .disabled(!menu.startEnabled)
         }
 
+        // A stop and a start in one click, for the settings a running server only reads
+        // when it starts. Quitting would do it too, and leave the household with nothing.
+        if menu.showRestart {
+            Button("Restart Waffled") { model.restartServer() }
+                .disabled(!menu.restartEnabled)
+        }
+
         Divider()
 
         Button(menu.addressLine) { model.copyServerAddress() }
             .disabled(!menu.addressEnabled)
+
+        // The address as something a phone's camera can read, for every device that
+        // arrives after the one launch the ready step's code appeared on.
+        Button("Show QR code…") { model.showAddressCode() }
+            .disabled(!menu.shareEnabled)
 
         // Any reason goes in the label: a .help(_:) tooltip does not render on an item in
         // a .menu-style MenuBarExtra, and an unexplained control is worse than none. Only
@@ -84,6 +96,11 @@ private struct MenuContent: View {
 
         Button("Back up now") { model.backUpNow() }
             .disabled(!menu.backupEnabled)
+
+        // The options screen again, on a Mac where Waffled already lives. It borrows the
+        // app's one window, so it is off while the first-run window has it.
+        Button("Settings…") { model.openSettings() }
+            .disabled(!menu.settingsEnabled)
 
         Button(menu.checkForUpdatesLabel) {
             switch menu.updateAction {

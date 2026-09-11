@@ -30,7 +30,7 @@ func TestDescribeReadsTheNewestDumpOffDisk(t *testing.T) {
 	// a rollback point taken mid-upgrade, not a backup anyone can rely on.
 	writeFile(t, dir, "pre-migrate-0.14.3-20260905-030000.dump")
 
-	got := Describe(dir, false)
+	got := Describe(dir, false, "")
 	if got.LastBackupAt != "2026-09-03T03:00:00Z" {
 		t.Errorf("LastBackupAt = %q, want 2026-09-03T03:00:00Z", got.LastBackupAt)
 	}
@@ -52,7 +52,7 @@ func TestDescribeReadsTheNewestDumpOffDisk(t *testing.T) {
 }
 
 func TestDescribeOnAnEmptyDirectory(t *testing.T) {
-	got := Describe(t.TempDir(), true)
+	got := Describe(t.TempDir(), true, "")
 	if got.LastBackupAt != "" || got.LastPath != "" || got.LastSizeBytes != 0 {
 		t.Errorf("a directory with no dumps should report nothing: %+v", got)
 	}
@@ -70,7 +70,7 @@ func TestDescribeSurfacesTheLastFailure(t *testing.T) {
 		t.Fatalf("RecordFailure: %v", err)
 	}
 
-	got := Describe(dir, false)
+	got := Describe(dir, false, "")
 	if got.LastError != "pg_dump: connection refused" {
 		t.Errorf("LastError = %q", got.LastError)
 	}
@@ -83,7 +83,7 @@ func TestDescribeSurfacesTheLastFailure(t *testing.T) {
 	if err := ClearFailure(dir); err != nil {
 		t.Fatalf("ClearFailure: %v", err)
 	}
-	if e := Describe(dir, false).LastError; e != "" {
+	if e := Describe(dir, false, "").LastError; e != "" {
 		t.Errorf("LastError = %q after a success, want empty", e)
 	}
 }

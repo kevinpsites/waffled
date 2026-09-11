@@ -7,6 +7,7 @@
 //	waffled-runtime logs [service] [-f] [-n N]
 //	waffled-runtime doctor [--json]
 //	waffled-runtime uninstall [--delete-data] [--dry-run] [--json] [--yes]
+//	waffled-runtime move --to DIR [--dry-run] [--json]
 //	waffled-runtime version
 //
 // It is a CLI first, deliberately: everything the menu-bar app does, support can ask
@@ -50,6 +51,8 @@ Usage:
   waffled-runtime restore FILE      replace the database with a dump (destructive)
   waffled-runtime doctor [flags]    diagnose a stack that will not start
   waffled-runtime uninstall [flags] remove what the runtime put on this Mac (keeps your data)
+  waffled-runtime config set KEY=VALUE   write one setting into config.env
+  waffled-runtime move [flags]      move the data directory to another folder
   waffled-runtime version
 
 Common flags:
@@ -68,10 +71,20 @@ logs:
 backup:
   --out FILE            write here instead of the backups folder (retention is then skipped)
   --keep N              how many backups to keep (default 14)
-  --install-schedule    install a nightly 03:00 backup as a launchd agent
+  --install-schedule    install a nightly backup as a launchd agent
+  --at HH:MM            the time it runs, 24-hour local (default 03:00)
   --uninstall-schedule  remove it
 restore:
   --yes          skip the typed confirmation (required when there is no terminal)
+config set:
+  KEY=VALUE      the setting to write; the key is upper case and the value is never
+                 printed back. Creates the data directory and config.env if needed.
+move:
+  --to DIR       the folder to move the data directory to; it must be empty, on this
+                 Mac, and not inside the folder being moved. Refuses while the server
+                 is running — stop it first.
+  --dry-run      print what would happen and change nothing
+  --json         machine-readable output
 uninstall:
   --delete-data  also delete the data directory — the database, media, backups and the
                  secrets in config.env, which cannot be recovered (default: keep it)
@@ -109,6 +122,10 @@ func run(args []string) error {
 		return cmdDoctor(args[1:])
 	case "uninstall":
 		return cmdUninstall(args[1:])
+	case "config":
+		return cmdConfig(args[1:])
+	case "move":
+		return cmdMove(args[1:])
 	case "version", "--version", "-v":
 		fmt.Printf("waffled-runtime %s\n", version)
 		return nil
@@ -141,9 +158,23 @@ func newSupervisor(c *commonFlags, log *supervisor.Logger) (*supervisor.Supervis
 	return supervisor.New(supervisor.Options{BundleDir: c.bundle, DataDir: c.data, Log: log})
 }
 
-// newInspector is newSupervisor for the read-only commands. They must still work when
-// something has taken one of our ports — that is precisely when someone runs them — so
-// a conflict becomes a reported fault rather than a refusal to start up at all.
+// newReader is for the commands that only ever look: `status`, `doctor`, `stop` and
+// `logs`. On a data directory that does not exist yet they must not become its first run
+// — the Mac app polls `status` before the setup window is even on screen, and a
+// construction that allocated and saved ports there would spend the household's first
+// allocation before anyone had chosen one.
+func newReader(c *commonFlags, log *supervisor.Logger) (*supervisor.Supervisor, error) {
+	return supervisor.New(supervisor.Options{
+		BundleDir: c.bundle, DataDir: c.data, Log: log,
+		TolerateConflicts: true, ReadOnly: true,
+	})
+}
+
+// newInspector is newSupervisor for the tolerant commands that DO write: `backup` and
+// `restore`. They must still work when something has taken one of our ports — that is
+// precisely when someone runs them — so a conflict becomes a reported fault rather than
+// a refusal to start up at all, and a backup taken before the first start still has to
+// bring a server up to take it.
 func newInspector(c *commonFlags, log *supervisor.Logger) (*supervisor.Supervisor, error) {
 	return supervisor.New(supervisor.Options{
 		BundleDir: c.bundle, DataDir: c.data, Log: log, TolerateConflicts: true,
@@ -194,7 +225,7 @@ func cmdStop(args []string) error {
 	// port, refusing to construct would leave `stop` unable to shut down the services
 	// that ARE still running — the command whose whole job is freeing ports, blocked by
 	// a port being occupied.
-	s, err := newInspector(common, supervisor.NewLogger(os.Stderr, false))
+	s, err := newReader(common, supervisor.NewLogger(os.Stderr, false))
 	if err != nil {
 		return err
 	}
@@ -211,7 +242,7 @@ func cmdStatus(args []string) error {
 		return err
 	}
 	// Status must not narrate; it is parsed.
-	s, err := newInspector(common, supervisor.NewLogger(os.Stderr, true))
+	s, err := newReader(common, supervisor.NewLogger(os.Stderr, true))
 	if err != nil {
 		return err
 	}
@@ -235,11 +266,22 @@ func cmdBackup(args []string) error {
 	keep := fs.Int("keep", 0, "how many backups to keep (default 14)")
 	install := fs.Bool("install-schedule", false, "install the nightly backup launchd agent")
 	uninstall := fs.Bool("uninstall-schedule", false, "remove the nightly backup launchd agent")
+	at := fs.String("at", "", "the nightly time to back up, HH:MM in 24-hour form (default 03:00)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *install && *uninstall {
 		return errors.New("--install-schedule and --uninstall-schedule are opposites; pick one")
+	}
+	// Both checks come before the supervisor is built: a mistyped time should be answered
+	// in the words of the time, not of a bundle this command had to verify to say so.
+	if *at != "" {
+		if !*install {
+			return errors.New("--at sets the nightly time, so it only means anything with --install-schedule")
+		}
+		if _, _, err := schedule.ParseAt(*at); err != nil {
+			return err
+		}
 	}
 
 	// Tolerant, like status and doctor. Backing up needs Postgres and nothing else, so a
@@ -262,11 +304,29 @@ func cmdBackup(args []string) error {
 			fmt.Printf("Removed the nightly backup (%s)\n", agent.PlistPath())
 			return nil
 		}
+		// One Mac holds one nightly backup: the launchd label is global, so installing
+		// from a second data directory takes the schedule over. Said out loud rather than
+		// refused — the person running this command is the one asking for it.
+		if previous, err := agent.ScheduledDataDir(); err == nil && previous != agent.DataDir {
+			fmt.Printf("Note: this replaces the nightly backup of %s\n", previous)
+		}
+		// Omitting --at means "leave the time alone", not "put it back to 03:00". A
+		// household that chose 01:00 and re-ran this — following the docs, or after an
+		// update — had their choice silently replaced by the default.
+		agent.At = *at
+		if *at == "" {
+			if existing, err := agent.ScheduledAt(); err == nil && existing != "" {
+				agent.At = existing
+			}
+		}
 		if err := agent.Install(); err != nil {
 			return err
 		}
-		fmt.Printf("Waffled will back up nightly at %02d:%02d → %s\n",
-			schedule.Hour, schedule.Minute, s.Plan().Layout.Backups)
+		scheduled, err := agent.ScheduledAt()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Waffled will back up nightly at %s → %s\n", scheduled, s.Plan().Layout.Backups)
 		fmt.Printf("  agent: %s\n", agent.PlistPath())
 		fmt.Printf("  log:   %s\n", s.Plan().Layout.LogPath("backup"))
 		return nil
@@ -286,10 +346,18 @@ func cmdRestore(args []string) error {
 	fs := flag.NewFlagSet("restore", flag.ContinueOnError)
 	common := addCommon(fs)
 	yes := fs.Bool("yes", false, "skip the typed confirmation")
-	if err := fs.Parse(args); err != nil {
+	// Hoisted, like `config set` and `move`: Go's flag package stops at the first
+	// non-flag word, so `restore dump.sql --data DIR` parsed DIR into nothing and
+	// restored over whichever household the DEFAULT directory holds — destructively, and
+	// reporting success.
+	flags, positional := hoistFlags(args, commonValueFlags)
+	if err := fs.Parse(flags); err != nil {
 		return err
 	}
-	file := fs.Arg(0)
+	var file string
+	if len(positional) > 0 {
+		file = positional[0]
+	}
 	if file == "" {
 		return errors.New("usage: waffled-runtime restore FILE [--yes]")
 	}
@@ -343,7 +411,7 @@ func cmdDoctor(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	s, err := newInspector(common, supervisor.NewLogger(os.Stderr, true))
+	s, err := newReader(common, supervisor.NewLogger(os.Stderr, true))
 	if err != nil {
 		return err
 	}
@@ -448,16 +516,22 @@ func cmdLogs(args []string) error {
 	common := addCommon(fs)
 	follow := fs.Bool("f", false, "follow the log")
 	lines := fs.Int("n", 200, "number of lines to show")
-	if err := fs.Parse(args); err != nil {
+	// `logs api --data DIR` has the same shape as `restore`: the service name is a
+	// positional, so everything after it was dropped and the wrong install was read.
+	flags, positional := hoistFlags(args, logsValueFlags)
+	if err := fs.Parse(flags); err != nil {
 		return err
 	}
-	s, err := newInspector(common, supervisor.NewLogger(io.Discard, true))
+	s, err := newReader(common, supervisor.NewLogger(io.Discard, true))
 	if err != nil {
 		return err
 	}
 	layout := s.Plan().Layout
 
-	name := fs.Arg(0)
+	var name string
+	if len(positional) > 0 {
+		name = positional[0]
+	}
 	if name == "" {
 		entries, err := os.ReadDir(layout.Logs)
 		if err != nil {

@@ -22,10 +22,12 @@ waffled-runtime stop [--timeout 2m]
 waffled-runtime status [--json]
 waffled-runtime logs [service] [-f] [-n N]      # postgres migrate api powersync caddy bonjour runtime
 waffled-runtime backup [--out FILE] [--keep N]
-waffled-runtime backup --install-schedule | --uninstall-schedule
+waffled-runtime backup --install-schedule [--at HH:MM] | --uninstall-schedule
 waffled-runtime restore FILE [--yes]
 waffled-runtime doctor [--json]
 waffled-runtime uninstall [--delete-data] [--dry-run] [--json] [--yes]
+waffled-runtime config set KEY=VALUE
+waffled-runtime move --to DIR [--dry-run] [--json]
 waffled-runtime version
 ```
 
@@ -142,6 +144,125 @@ script produces — the same api binary validates them either way:
 key, Google OAuth credentials) and their comments survive; those keys are passed through
 to the api, so a native install is as capable as the Docker one.
 
+### Writing one setting — `config set`
+
+```sh
+waffled-runtime config set KEY=VALUE [--data DIR] [--bundle DIR]
+```
+
+Writes one assignment into `config.env`, replacing that key's line when it is already
+there and leaving every other line — an operator's own keys, their comments, the order
+they put them in — exactly where it was. The data directory and the file are created if
+they are not there yet, `0600` like the rest of the store: this is the command the Mac
+app's setup screen runs **before** the first `start`, so it builds no supervisor and needs
+no bundle, and it works against a data directory that does not exist.
+
+The key has to look like an environment variable (`[A-Z][A-Z0-9_]*`) and the value may not
+contain a line break — the file is one assignment per line, and a value carrying one would
+silently become a second assignment. What is printed back is the key and the file it went
+into, **never the value**: this command's whole job is carrying provider keys, and a
+terminal is scrolled back through.
+
+Flags may be written on either side of the assignment. Go's `flag` package stops parsing at
+the first non-flag argument, so `config set KEY=V --data DIR` would otherwise write into
+the household's real `config.env` and report success; the flags are hoisted in front of the
+positional argument before it parses.
+
+### Moving the data directory — `move`
+
+```sh
+waffled-runtime move --to DIR [--data DIR] [--dry-run] [--json]
+```
+
+Takes a household's whole data directory somewhere else on this Mac — off a full startup
+disk, usually. `--data` names the folder being moved **from**, as everywhere else; `--to`
+is where it should end up, and it is the new root itself rather than its parent.
+
+It is **copy-then-remove, not a rename.** A rename cannot cross volumes, and crossing one
+is the reason anyone asks. The original is removed only once the copy has arrived whole,
+so a failure at any point leaves the household exactly where it was — and a copy that dies
+takes its own half-written destination with it, rather than leaving one to be found later
+and mistaken for a household. On macOS the copy is `ditto`, which carries the extended
+attributes a Postgres cluster and the Time Machine exclusion on `postgres/` depend on; a
+hand-written walk would drop them silently.
+
+Four refusals, all before a byte moves:
+
+| | Why |
+|---|---|
+| the server is running | copying a live cluster copies it mid-write, and what arrives is a database that looks fine until it does not. Stop it first |
+| the destination is inside the folder being moved | it would be copied into itself, then deleted along with the folder it was nested in |
+| the destination already has something in it | Waffled needs a folder of its own, and a merge into somebody else's is not undoable. An **empty** directory is fine — that is what a person makes in Finder before choosing it |
+| there is not enough room | measured against the household's size plus 512 MiB of headroom, so a move that just fits does not leave a volume with nothing left for the first backup |
+
+One thing is fixed up on the way through. `runtime.json` remembers the Postgres socket
+directory, and `Layout.SocketDir` **trusts a recorded path outright** — so a value pointing
+into the folder that was just deleted would have the postmaster recreate it at the old
+address, where it starts, logs nothing alarming, and answers nobody. `move` clears that
+value when it pointed inside, and keeps it when it is the short `wfl*` temp directory made
+for a data path too long for a unix socket, which is still valid afterwards. The
+`Caddyfile` needs nothing: the supervisor writes it on every start.
+
+Nothing on the Mac records where the data directory went — `--data` is how every command is
+told, and the Mac app is what remembers the household's answer between launches. The
+summary prints the `start --data` line to use.
+
+### The address other devices use, and the port
+
+Two `config.env` keys decide what the rest of the house is told. Both are set from the Mac
+app's setup screen, or by hand with `config set`.
+
+| Variable | Value | The address becomes |
+|---|---|---|
+| `WAFFLED_PUBLIC_HOST` | *(empty)* | this Mac's IP — what an install written before this setting existed keeps doing |
+| | `ip` | the same, chosen deliberately |
+| | `name` | this Mac's `<hostname>.local`, which is the name Bonjour advertises |
+| | a hostname | a name the household has pointed at this Mac — a router DNS entry, or a real domain aimed at the LAN address |
+| `HTTP_PORT` | a port number | the **preferred** public port for a first run, default 8080 — the same key `infra/compose/.env` uses for the same thing |
+
+One function composes that address, which is why `urls.lan`, the Bonjour TXT record's `url`
+and the `other devices on your network: …` line a start ends with can never disagree about
+where Waffled is. A value that is not a hostname — a pasted `http://`, a port, a path, a
+space — composes nothing: the address goes **empty**, the way it already does on a Mac with
+no network, rather than naming somewhere no device can reach. That is why the Mac app
+validates the name before writing it.
+
+There is **no TLS**. Waffled serves plain HTTP on the household's own network; a custom name
+buys a nicer address, not a certificate. And a custom name is only an address: it has to
+resolve to this Mac on the household's network before anything can use it.
+
+`HTTP_PORT` is a preference rather than a requirement — a busy one falls forward to the next
+free port like any other (see [Ports](#ports)) — and a value that is not a number between 1
+and 65535 fails the start rather than quietly reverting to 8080. `status` and `doctor`
+tolerate it the way they tolerate a stolen port: reported in `lastError`, not refused, since
+they are the commands someone runs *because* something is wrong.
+
+It is read when the ports are **first chosen**, and never again. Once an install has a
+public port, `runtime.json` is the record of it and changing `HTTP_PORT` does nothing:
+every phone, tablet and bookmark in the household points at the port already published, and
+moving it is a job that has to tell them first. To move it deliberately, stop the server and
+edit `ports.public` in `runtime.json`. A value that is not a number is only refused where it
+is acted on — on a first run — so a typo cannot stop a settled install from starting.
+
+**Which run is the first one is decided by `start`, not by whoever looked first.**
+`status`, `doctor`, `stop` and `logs` construct **read-only**: on a data directory that
+does not exist yet they allocate ports in memory and save neither `runtime.json` nor
+`config.env`. Without that the Mac app's launch poll — which happens before the setup
+window is on screen — would spend the household's first allocation before anyone had
+chosen one, and the `HTTP_PORT` written by the setup screen would be read on a run that
+could never be a first run. An install that already exists is unaffected: its files are
+there, so nothing is skipped. `backup` and `restore` still construct normally, because
+both really write.
+
+**PowerSync follows the same address with nothing to configure.** The api derives each
+client's sync endpoint from the `Host` (or `X-Forwarded-Host`) header that client actually
+reached it on, swapping in `POWERSYNC_PORT` — the runtime passes an empty
+`POWERSYNC_PUBLIC_URL` precisely so that it does (`powerSyncPublicUrl`,
+`apps/api/src/modules/powersync/powersync.ts`). A tablet that reached `waffled.home:8080` is
+told to sync at `http://waffled.home:8081`, and one that reached the IP is told the IP.
+`urls.powersync` in `status` is the runtime describing the same address, not something a
+device is handed.
+
 ### Postgres and the `en_US.UTF-8` decision
 
 The cluster is created with:
@@ -196,6 +317,10 @@ next free port is used and recorded. **On later runs** a recorded port held by s
 else is a hard error, because every phone, tablet and bookmark in the household points at
 the public one, and silently moving would look like the server had vanished. A port held
 by one of our own live services is fine, so `start` stays idempotent.
+
+The public default is 8080 unless `config.env` names another one in `HTTP_PORT`, which is
+still a *preference* — see
+[The address other devices use, and the port](#the-address-other-devices-use-and-the-port).
 
 All five are allocated in **one pass with a single exclusion list spanning both scopes**.
 Two passes is what once put Caddy's public site and PowerSync's service on the same port:
@@ -355,8 +480,9 @@ renamed.
   "dataDir": "/Users/…/Application Support/Waffled",
   "bundleDir": "/Applications/Waffled.app/Contents/Resources/runtime",
   "initialized": true,           // false until initdb has created the cluster
-  "urls":     { "local": "http://127.0.0.1:8080", "lan": "http://192.168.1.5:8080",
-                "powersync": "http://192.168.1.5:8081" },
+  "urls":     { "local": "http://127.0.0.1:8080", "lan": "http://waffled.home:8080",
+                "lanIp": "http://192.168.1.5:8080",
+                "powersync": "http://waffled.home:8081" },
   "ports":    { "public": 8080, "powersyncPublic": 8081, "api": 3000,
                 "powersync": 8082, "postgres": 5432 },
   "versions": { "waffled": "0.14.3", "node": "24.19.0", "postgres": "16.14",
@@ -381,6 +507,12 @@ it is reported here rather than worked out there because the runtime owns its la
 an app that stat'd PGDATA would be a second place that knows where the cluster lives.
 `schema` stays at **1**: additive, and no existing field changed meaning.
 
+`urls.lan` is the address in whichever form `WAFFLED_PUBLIC_HOST` asked for; `urls.lanIp` is
+that same address in its always-dependable IP form — equal to `lan` when the address is
+already an IP, and empty when this Mac is on no network. It is reported rather than derived
+so that a client showing "if a device can't find that name, use this instead" never has to
+work an IP out for itself.
+
 Service states: `stopped` (not running), `starting` (up, health not green yet),
 `running` (up and healthy), `unhealthy` (gone when it should not be, or failing its
 health check). The overall `state` is derived: a stopped service beside running ones is
@@ -402,7 +534,8 @@ The `backups` block is added to the same document:
   "lastMigration": "0099_rhythm_book_within",
   "count": 14,
   "lastError": "", "lastErrorAt": "",
-  "scheduleInstalled": true
+  "scheduleInstalled": true,
+  "scheduleAt": "03:00"
 }
 ```
 
@@ -414,6 +547,11 @@ Postgres would go blank at the only moment it mattered. `backup_runs` is the sam
 mirrored for the api, which can only be asked when the api is up anyway. For the same
 reason `scheduleInstalled` is a `stat` of the plist rather than a `launchctl print` — the
 menu-bar app polls this, and a process spawn per poll is not free.
+
+`scheduleAt` is the local 24-hour time that agent runs, read out of the plist's own
+`StartCalendarInterval` — the schedule launchd obeys is the only record of it. Empty when
+nothing is installed, and empty when the plist is there and will not parse, which is a
+schedule nobody should be told the time of.
 
 So is the `bonjour` block:
 
@@ -446,7 +584,8 @@ why the unclean stop left it there).
 ```sh
 waffled-runtime backup                       # → backups/waffled-<UTC stamp>.dump
 waffled-runtime backup --out /Volumes/…/x.dump
-waffled-runtime backup --install-schedule    # nightly at 03:00, via launchd
+waffled-runtime backup --install-schedule            # nightly via launchd, 03:00 by default
+waffled-runtime backup --install-schedule --at 01:00 # …or whenever the household picked
 waffled-runtime restore backups/waffled-20260908-030000.dump
 ```
 
@@ -566,13 +705,35 @@ a newer bundle — so `pre-migrate-` is the only snapshot pool there is.
 
 ### Schedule
 
-`backup --install-schedule` writes `~/Library/LaunchAgents/app.waffled.backup.plist`
-(`StartCalendarInterval` 03:00, `RunAtLoad` false) and loads it with
+```sh
+waffled-runtime backup --install-schedule [--at HH:MM]
+waffled-runtime backup --uninstall-schedule
+```
+
+`--install-schedule` writes `~/Library/LaunchAgents/app.waffled.backup.plist`
+(`StartCalendarInterval` at the chosen time, `RunAtLoad` false) and loads it with
 `launchctl bootstrap gui/$UID`. Every path in it is absolute and `--data` is baked in,
 because a launchd agent gets a minimal environment and no working directory it can rely
 on. The plist is built with `encoding/xml`, not string concatenation: a household under
 `/Users/sam & jo` would otherwise get a file launchd silently refuses to parse and a
 backup that never runs with nothing to show for it. Output goes to `logs/backup.log`.
+
+`--at` is 24-hour local time, `HH:MM`, and defaults to **03:00** — an hour after the Compose
+sidecar's 02:00, so a household running both through a migration does not have the two
+collide. It is read strictly (`3pm`, `03:0`, `24:00`, `٣:٠٠` are all refused) and read
+*before* the command builds anything, so a mistyped time is answered in the words of the
+time rather than of a bundle that had to be verified first. On its own, without
+`--install-schedule`, it is an error: there is no schedule for it to set the time of.
+
+**The plist is the only record of that time.** `status --json` reports it back as
+`backups.scheduleAt` by reading the file's own `StartCalendarInterval`, so no second file
+can drift out of step with the schedule launchd actually obeys. Changing the time is
+`--install-schedule --at` again.
+
+**One Mac holds one nightly backup.** The launchd label is global, so installing from a
+second data directory takes the existing schedule over. The command says so —
+`Note: this replaces the nightly backup of <dir>` — rather than refusing: the person running
+it is the one asking for it.
 
 A **failed bootstrap takes the plist with it**. "The plist is on disk" and "launchd holds
 the job" are different facts, and everything that polls — `status`, the menu bar — can

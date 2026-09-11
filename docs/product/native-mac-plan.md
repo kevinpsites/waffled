@@ -247,11 +247,33 @@ uses bash because it is throwaway and the point is to learn, not to build.
 - Login item + auto-login guidance before daemon mode.
 - Developer-ID + notarization, outside the App Store.
 - PG 16 pinned for the life of the 1.x line.
+- **The menu-bar glyph stays a template.** The app has a colour icon — Finder, the Dock,
+  `NSAlert` and Sparkle's dialogs all draw the bundle icon, and the DMG carries a volume
+  icon — resampled from `resources/waffled.png`, the 1254px brand master the web app's own
+  `icon-512.png` also comes from, so the Mac and the tablet show one mark. The menu bar is the exception and stays the monochrome waffle iron drawn in
+  `WaffleIronIcon.swift`: a menu-bar image is a template, and colour there is the one thing
+  the HIG rules out.
+- **No custom `.local` name.** `WAFFLED_PUBLIC_HOST` offers three forms of address and
+  invents none of them: this Mac's IP, this Mac's *own* `<hostname>.local` — the name macOS
+  already answers to and Bonjour already advertises — or a hostname the household has
+  pointed here themselves. The third is a router DNS entry or a real domain, which is theirs
+  to create; Waffled composes an address out of it and validates its shape, and does not
+  publish a name of its own.
+- **The port fallback stays silent.** A busy preferred port falls forward to the next free
+  one rather than refusing to start, and the ready step says which port it landed on and why
+  — the one moment a person is looking at the address anyway. `HTTP_PORT` is the household's
+  preference for the **first** allocation only: once a port is published, every phone and
+  bookmark in the house points at it, and moving it is a job that has to tell them first.
 
 **Open (decide during Phase 1/2)**
 
 - ~~PowerSync path (a) build from tag vs (b) own entry over npm packages.~~ **Resolved: (a).** The spike built from the `v1.22.0` tag on the first try; (b) was never needed.
-- Whether the default public port stays 8080 or moves to something less collision-prone.
+- ~~Whether the default public port stays 8080 or moves to something less collision-prone.~~
+  **Resolved: 8080 stays, and it is now a preference.** `HTTP_PORT` in `config.env` — set
+  from the setup screen — names the port a household would rather have, a busy one still
+  falls forward to the next free port, and the ready step and the menu both say which port
+  is in use. A different default would have collided with something else and taught nobody
+  where to look.
 - ~~Sparkle vs a home-grown updater, and whether the *runtime* updates independently of the
   app.~~ **Resolved: Sparkle, and one unit.** The app is updated whole, Plex-style: Sparkle
   swaps `Waffled.app` with the runtime bundle inside it, relaunches, and the menu-bar app
@@ -394,28 +416,72 @@ every change; a release is `./waffled release X.Y.Z` followed by
    refuses during quit keeps the app alive to say so rather than exiting on a server that is
    still running.
 3. First-run window (welcome → starting → "your server is ready, opening…") and the MacBook
-   warning. *(done — PR #197)* → The runtime answers the question — `status --json` gained
-   an additive `initialized`, a stat of `postgres/PG_VERSION`, so the app never stats a
-   layout the runtime owns — and the window appears only when the first poll that *answers*
-   says false. The welcome step **holds** the auto-start open rather than spending it: the
+   warning. *(done — PR #197; revised into the five-step setup flow)* → The runtime answers
+   the question — `status --json` gained an additive `initialized`, a stat of
+   `postgres/PG_VERSION`, so the app never stats a layout the runtime owns — and the window
+   appears only when the first poll that *answers* says false. The welcome step **holds** the auto-start open rather than spending it: the
    button is what starts a first run, `Start Waffled` in the menu counts as the same click,
    and closing that step quits without creating anything. Everything the window draws is a
-   pure `FirstRunPresentation`, so the four steps, the service ticks and the copy are tested
+   pure `FirstRunPresentation`, so every step, the service ticks and the copy are tested
    without a window.
-   - **The relaunch rule.** The browser now opens once per process and only when someone is
-     waiting for it: the end of a first run, or a click on `Start Waffled`. "Any start this
-     app made" included the login item's start at every boot, which would have opened a
-     browser window on every reboot — the opposite of §2 step 6.
+   - **The relaunch rule.** The browser opens once per process and only when someone is
+     waiting for it: a click on `Open Waffled` — the ready step's own button, or the menu
+     item — or a click on `Start Waffled`. "Any start this app made" included the login
+     item's start at every boot, which would have opened a browser window on every reboot —
+     the opposite of §2 step 6.
    - **Portable detection.** `Hardware.isPortable` is a pure function over two readings:
      an internal battery from IOKit power sources, **or** "MacBook" in `hw.model`. The
      battery is the load-bearing half — Apple Silicon laptops report `Mac14,7` and friends,
      with no MacBook in the string.
+   - **The five steps that shipped.** Welcome, **Where things go**, setting up, ready, and
+     the error sheet. The welcome step lists the component versions really inside the bundle
+     (from the manifest by way of `status`, which answers stopped). *Where things go* is the
+     whole of §2's "sensible defaults, changeable now": the data folder (internal volumes
+     only, APFS or Mac OS Extended, and read-only with *Reveal in Finder* once a directory
+     has been initialized — moving it afterwards is `Settings…` → *Move…*, which is a copy
+     and a restart rather than a setting), the nightly backup and
+     its hour, the address mode and port, an optional provider key, and the login item.
+     Everything on it is applied **before** the first `start`, through `config set` and
+     `backup --install-schedule --at`, so the first boot already uses the folder, the port
+     and the name that were chosen — nothing is applied twice and nothing has to be
+     migrated afterwards. Those choices are a value (`SetupOptions`), so the argv the app
+     would really have used is asserted without spawning anything.
+   - **Ready is a screen someone acts on, not a goodbye.** It carries the address the
+     runtime composed, the IP form beside it when that differs, a QR code of the URL, the
+     quiet port note when the port in use is not the one asked for, and `Copy address` /
+     `Open Waffled` — the click that opens the browser. The window is also *activated*
+     before it is ordered front: an `LSUIElement` app has nothing to bring it forward, so
+     without that it opens behind whatever the person was reading. The setting-up step has
+     a three-second floor under it off an injectable clock, because a start that finishes
+     in under five seconds would otherwise leave a household with a window that flashed.
+   - **A dev run installs no login item and no nightly backup.** launchd holds exactly one
+     nightly backup per Mac under a global label, so a run against `WAFFLED_RUNTIME_BIN` and
+     a scratch data directory would take the household's real schedule over and point it at
+     `/tmp`. The `config set` writes still happen: they land in the scratch directory.
 4. Login item via `SMAppService`. *(done — PR #195)* → Wired to `SMAppService.mainApp`, and
    it works in an **unsigned** build: measured on macOS 15.7, an ad-hoc-signed `LSUIElement`
    app registers from a `DerivedData` path, contrary to the common assumption. The status is
    re-read on every poll, since System Settings can change it behind the app's back; a failed
    attempt annotates the label and leaves the toggle usable, and only `requiresApproval`
    (which becomes a button that opens Login Items) and `notFound` stop being a toggle.
+4b. `Settings…` and moving the data directory. *(done — PR #202)* → The options screen is
+   one view (`SetupOptionRows`), shown by the first run and by `Settings…`, so a row's
+   label, control and validation exist once. The difference is what is done with the
+   values: the first run writes all of them before the first `start`, and Settings writes
+   only what changed against what it remembers applying last, because writing everything
+   on every Apply is what put an `HTTP_PORT` on record that nobody chose. So the port is
+   read-only there, an empty provider-key field means "unchanged" rather than "delete",
+   and the backup toggle — which installs nothing when it is off on a first run, there
+   being nothing of ours on the Mac yet — uninstalls the schedule when it goes off here.
+   - **Moving the folder is `waffled-runtime move`, not the app.** The runtime owns the
+     directory layout, so it owns the move: copy-then-remove (a rename cannot cross
+     volumes, and crossing one is the point), `ditto` on macOS so the cluster's extended
+     attributes and the Time Machine exclusion travel with it, and the original removed
+     only once the copy has arrived. It refuses a running server, a destination inside the
+     source, a non-empty destination, and one with no room. The one fix-up on the way
+     through is `runtime.json`'s remembered socket directory: `Layout.SocketDir` trusts a
+     recorded path outright, so one pointing into the deleted folder would have the
+     postmaster recreate it there and answer nobody.
 5. Signing + notarization pipeline (every embedded binary), DMG build, Sparkle appcast.
    *(done — PR #201)* → One local command, `apps/mac/Scripts/release-mac.sh X.Y.Z`, because
    the certificate, the notarytool profile and the Sparkle key all live in one login

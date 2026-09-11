@@ -28,15 +28,42 @@ func (s *Supervisor) BackupAgent() (*schedule.Agent, error) {
 	return schedule.For(exe, s.plan.Bundle, s.plan.Layout.Root, s.plan.Layout.LogPath("backup"))
 }
 
-// scheduleInstalled answers the status block's question without running launchctl, which
-// `status` polls too often to afford. It tolerates a failure to even look: a missing home
-// directory is not a reason for `status` to produce nothing.
-func (s *Supervisor) scheduleInstalled() bool {
+// scheduleFacts answers both of the status block's questions about the nightly backup
+// from ONE agent. Building it resolves this binary's path and its symlinks, and both
+// callers wanted it on the same poll — `status` is asked once or twice a second.
+//
+// It tolerates a failure to even look: a missing home directory is not a reason for
+// `status` to produce nothing. The time is empty rather than a guess when there is
+// nothing installed or the plist will not parse, because a time nobody's launchd will
+// honour is worse than no time.
+//
+// Reading the time is gated on Installed() — which since the setup screen started
+// installing one is the COMMON case, so most polls really do pay the plist read. That is
+// the price of `status` reporting a time at all; the stat only saves the households who
+// turned the nightly backup off.
+//
+// `scheduleLoaded` deliberately stays separate and builds its own agent: it forks
+// launchctl, so only `doctor` asks it, once, when a person types the command.
+func (s *Supervisor) scheduleFacts() (installed bool, at string) {
 	a, err := s.BackupAgent()
-	if err != nil {
-		return false
+	if err != nil || !a.Installed() {
+		return false, ""
 	}
-	return a.Installed()
+	if at, err := a.ScheduledAt(); err == nil {
+		return true, at
+	}
+	return true, ""
+}
+
+// scheduleOKDetail is the sentence for a schedule that is installed and loaded. The time
+// is empty when the plist will not parse, and printing that straight into "at %s" gave
+// "at  (app.waffled.backup)" — a gap where the one fact being reported should be.
+func scheduleOKDetail(at string) string {
+	if at == "" {
+		return fmt.Sprintf("a nightly backup is installed and loaded, at an unreadable time (%s)",
+			schedule.Label)
+	}
+	return fmt.Sprintf("a nightly backup is installed and loaded, at %s (%s)", at, schedule.Label)
 }
 
 // scheduleLoaded asks launchd whether the installed job is really loaded — the question

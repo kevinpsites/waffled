@@ -25,6 +25,10 @@ struct RuntimeStatus: Equatable {
     struct URLs: Equatable {
         var local = ""
         var lan = ""
+        /// The same address in its always-dependable form, this Mac's IP, whatever form
+        /// `lan` took. The runtime reports it so that nothing here has to work an address
+        /// out for itself.
+        var lanIp = ""
         var powersync = ""
     }
 
@@ -86,6 +90,9 @@ struct RuntimeStatus: Equatable {
         var lastError = ""
         var lastErrorAt = ""
         var scheduleInstalled = false
+        /// The local 24-hour time that schedule runs, "HH:MM", read from the plist launchd
+        /// holds. Empty when nothing is installed.
+        var scheduleAt = ""
     }
 
     struct Bonjour: Equatable {
@@ -158,6 +165,7 @@ struct RuntimeStatus: Equatable {
         let urls = object.object("urls")
         s.urls = URLs(local: urls.string("local"),
                       lan: urls.string("lan"),
+                      lanIp: urls.string("lanIp"),
                       powersync: urls.string("powersync"))
 
         let ports = object.object("ports")
@@ -210,7 +218,8 @@ struct RuntimeStatus: Equatable {
                             count: backups.int("count"),
                             lastError: backups.string("lastError"),
                             lastErrorAt: backups.string("lastErrorAt"),
-                            scheduleInstalled: backups.bool("scheduleInstalled"))
+                            scheduleInstalled: backups.bool("scheduleInstalled"),
+                            scheduleAt: backups.string("scheduleAt"))
 
         let bonjour = object.object("bonjour")
         s.bonjour = Bonjour(advertised: bonjour.bool("advertised"),

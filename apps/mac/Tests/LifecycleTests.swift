@@ -81,28 +81,35 @@ final class LifecycleTests: XCTestCase {
     /// Phase 3 item 3, "The relaunch rule".
     func testTheBrowserOpensForAFirstRunOrAClickAndNothingElse() {
         XCTAssertTrue(Lifecycle.shouldOpenBrowser(
-            newState: .running, trigger: .person, isFirstRun: false, alreadyOpened: false),
+            newState: .running, trigger: .person, alreadyOpened: false),
             "a person clicked Start Waffled and is waiting for something to happen")
 
+        XCTAssertFalse(Lifecycle.shouldOpenBrowser(
+            newState: .running, trigger: .setup, alreadyOpened: false),
+            "a first run ends on the ready step, whose Open Waffled button is the click")
+
+        // `isFirstRun` is latched for the whole process, so it must not be what suppresses
+        // this: a Stop then Start from the menu, in the same session as the setup, is a
+        // person waiting for something to happen like any other.
         XCTAssertTrue(Lifecycle.shouldOpenBrowser(
-            newState: .running, trigger: .app, isFirstRun: true, alreadyOpened: false),
-            "the end of a first run is the web app opening (plan §2 step 3)")
+            newState: .running, trigger: .person, alreadyOpened: false),
+            "a later click in the first run's own session still opens the browser")
 
         XCTAssertFalse(Lifecycle.shouldOpenBrowser(
-            newState: .running, trigger: .app, isFirstRun: false, alreadyOpened: false),
+            newState: .running, trigger: .app, alreadyOpened: false),
             "the auto-start at login must not pop a browser at every boot")
 
         XCTAssertFalse(Lifecycle.shouldOpenBrowser(
-            newState: .running, trigger: .notUs, isFirstRun: false, alreadyOpened: false),
+            newState: .running, trigger: .notUs, alreadyOpened: false),
             "already running when we launched — do not steal the screen")
 
         XCTAssertFalse(Lifecycle.shouldOpenBrowser(
-            newState: .running, trigger: .person, isFirstRun: true, alreadyOpened: true),
+            newState: .running, trigger: .person, alreadyOpened: true),
             "once per process, not once per poll")
 
         for state in [RuntimeState.stopped, .starting, .unhealthy] {
             XCTAssertFalse(Lifecycle.shouldOpenBrowser(
-                newState: state, trigger: .person, isFirstRun: true, alreadyOpened: false),
+                newState: state, trigger: .person, alreadyOpened: false),
                 "\(state) is not a server anyone can open yet")
         }
     }
@@ -259,20 +266,25 @@ final class LifecycleTests: XCTestCase {
         XCTAssertNil(Lifecycle.HeldFailures().message)
     }
 
-    /// The ready step takes itself away, and the couple of seconds it waits is long enough
-    /// for a poll to move the window on to something someone still needs — `.failed` carries
-    /// the `Try again` button, and a dismissal latches for the life of the process. So the
-    /// timer asks again before it closes anything.
-    func testTheReadyCloseAppliesOnlyWhileTheWindowIsStillReady() {
-        XCTAssertTrue(Lifecycle.readyCloseStillApplies(step: .ready))
+    /// The setting-up step has a floor under it: a first start here took under five
+    /// seconds, and a checklist that appears and vanishes is a window that "never showed".
+    func testTheSettingUpDisplayHasAFloorUnderIt() {
+        let clicked = Date()
+        XCTAssertFalse(Lifecycle.startingDisplayHasElapsed(
+            since: clicked, now: clicked.addingTimeInterval(1)))
+        XCTAssertTrue(Lifecycle.startingDisplayHasElapsed(
+            since: clicked,
+            now: clicked.addingTimeInterval(FirstRunPresentation.minimumStartingDisplay)))
 
-        for step in [FirstRunPresentation.Step.welcome, .starting, .failed] {
-            XCTAssertFalse(Lifecycle.readyCloseStillApplies(step: step),
-                           "\(step) is a window that is still saying something")
-        }
+        XCTAssertTrue(Lifecycle.startingDisplayHasElapsed(since: nil, now: clicked),
+                      "a start nobody clicked has no floor to wait out")
 
-        XCTAssertFalse(Lifecycle.readyCloseStillApplies(step: nil),
-                       "no window at all is nothing to close")
+        // An NTP correction backwards mid-start — ordinary on a Mac that just woke — would
+        // otherwise strand the window on a finished start until the clock caught up. The
+        // floor is a courtesy, not a guarantee.
+        XCTAssertTrue(Lifecycle.startingDisplayHasElapsed(
+            since: clicked, now: clicked.addingTimeInterval(-30)),
+            "a clock that moved backwards is not a reason to wait")
     }
 
     /// Polling is cheap but not free (it spawns a process), so it slows down once the

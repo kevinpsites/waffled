@@ -7,10 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/kevinpsites/waffled/apps/runtime/internal/backup"
+	"github.com/kevinpsites/waffled/apps/runtime/internal/datadir"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/ports"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/schedule"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/services"
@@ -83,7 +83,8 @@ func (s *Supervisor) Doctor(ctx context.Context) []Check {
 	}
 
 	// Backups: the one check whose answer someone only ever wants once it is too late.
-	b := backup.Describe(s.plan.Layout.Backups, s.scheduleInstalled())
+	scheduleInstalled, scheduleAt := s.scheduleFacts()
+	b := backup.Describe(s.plan.Layout.Backups, scheduleInstalled, scheduleAt)
 	switch {
 	case b.LastError != "":
 		add("backups", CheckFail, "the last backup failed (%s): %s", b.LastErrorAt, b.LastError)
@@ -116,7 +117,9 @@ func (s *Supervisor) Doctor(ctx context.Context) []Check {
 			"no nightly backup is scheduled — install one with `waffled-runtime backup --install-schedule`")
 	default:
 		if loaded, err := s.scheduleLoaded(); loaded {
-			add("backup schedule", CheckOK, "a nightly backup is installed and loaded (%s)", schedule.Label)
+			// The time comes from the plist launchd is holding, so "it is scheduled" and
+			// "it runs then" are one answer rather than two that can drift.
+			add("backup schedule", CheckOK, "%s", scheduleOKDetail(b.ScheduleAt))
 		} else {
 			add("backup schedule", CheckWarn,
 				"%s is installed but launchd does not have the job loaded, so no backup will run — "+
@@ -297,10 +300,4 @@ func writableCheck(dir string) error {
 	return os.Remove(probe)
 }
 
-func freeDiskBytes(path string) (uint64, error) {
-	var st syscall.Statfs_t
-	if err := syscall.Statfs(path, &st); err != nil {
-		return 0, err
-	}
-	return st.Bavail * uint64(st.Bsize), nil
-}
+func freeDiskBytes(path string) (uint64, error) { return datadir.FreeBytes(path) }
