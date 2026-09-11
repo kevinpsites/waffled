@@ -136,6 +136,42 @@ final class StagedMoveTests: XCTestCase {
         XCTAssertTrue(commands[move...].contains("start"), "the server the move stopped is started again: \(commands)")
     }
 
+    /// The move worked, so it is confirmed — and what it warned about is said beside it,
+    /// in the window, rather than dropped with the rest of a successful command's stderr.
+    func testAMoveThatWorkedButWarnedSaysSoInTheWindow() async throws {
+        let runner = RecordingRunner()
+        runner.warning["move"] = """
+            ! the nightly backup could not be pointed at \(destination.path): launchctl bootstrap: 5: Input/output error
+              re-install it with: waffled-runtime backup --install-schedule --data "\(destination.path)"
+            """
+        let model = try settingsModel(runner: runner)
+        defer { model.end() }
+
+        _ = model.stageMove(to: destination)
+        model.applySettings()
+        await waitUntil("Apply finishes") { !model.busy }
+
+        let after = try screen(model)
+        XCTAssertEqual(after.confirmation, "Moved, and Waffled restarted.")
+        XCTAssertNil(after.failure, "the move worked")
+        XCTAssertTrue(after.warning?.contains("nightly backup could not be pointed at") == true,
+                      String(describing: after.warning))
+
+        model.closeSettings()
+        model.openSettings()
+        XCTAssertNil(try screen(model).warning, "said once, for the move that caused it")
+    }
+
+    func testAMoveWithNothingToSayHasNoWarning() async throws {
+        let model = try settingsModel(runner: RecordingRunner())
+        defer { model.end() }
+
+        _ = model.stageMove(to: destination)
+        model.applySettings()
+        await waitUntil("Apply finishes") { !model.busy }
+        XCTAssertNil(try screen(model).warning)
+    }
+
     // MARK: what the window says
 
     func testTheMoveShowsWhileItRunsAndWhenItIsDone() async throws {

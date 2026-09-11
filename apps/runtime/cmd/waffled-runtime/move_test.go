@@ -220,12 +220,57 @@ func TestAScheduleThatCannotFollowDoesNotFailTheMove(t *testing.T) {
 	from := movable(t)
 	withFollower(t, false, errors.New("launchctl bootstrap: 5: Input/output error"))
 	to := filepath.Join(t.TempDir(), "Waffled")
-	if _, err := captureStdout(t, func() error {
-		return run([]string{"move", "--to", to, "--data", from})
-	}); err != nil {
+	stderr, err := moveQuietly(t, "--to", to, "--data", from)
+	if err != nil {
 		t.Fatalf("the move failed: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(to, "config.env")); err != nil {
 		t.Errorf("config.env did not arrive: %v", err)
 	}
+	if !hasWarning(stderr, "nightly backup could not be pointed at") {
+		t.Errorf("no `! ` warning line for the Mac app to show, stderr = %q", stderr)
+	}
+}
+
+// The household is whole at the new address, so the move reports success — and the
+// leftover is said, on the line the Mac app shows, rather than found on the next move.
+func TestAnOldFolderThatWillNotGoIsSaidAndTheScheduleStillFollows(t *testing.T) {
+	from := movable(t)
+	f := withFollower(t, true, nil)
+	parent := filepath.Dir(from)
+	if err := os.Chmod(parent, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(parent, 0o700) })
+	to := filepath.Join(t.TempDir(), "Waffled")
+
+	stderr, err := moveQuietly(t, "--to", to, "--data", from)
+	if err != nil {
+		t.Fatalf("a move whose old folder stayed behind failed: %v", err)
+	}
+	if len(f.from) != 1 || f.from[0] != from {
+		t.Errorf("the nightly backup was not followed from %q: %v", from, f.from)
+	}
+	if !hasWarning(stderr, "still there") {
+		t.Errorf("no `! ` warning line about the old folder, stderr = %q", stderr)
+	}
+}
+
+// moveQuietly runs `move`, dropping its summary, and returns what it said on stderr.
+func moveQuietly(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	return captureStderr(t, func() error {
+		_, err := captureStdout(t, func() error { return run(append([]string{"move"}, args...)) })
+		return err
+	})
+}
+
+// hasWarning is the Mac app's reading of stderr: a line that starts with "! ".
+func hasWarning(stderr, containing string) bool {
+	for _, line := range strings.Split(stderr, "\n") {
+		if strings.HasPrefix(line, "! ") && strings.Contains(line, containing) {
+			return true
+		}
+	}
+	return false
 }

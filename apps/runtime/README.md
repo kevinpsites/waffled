@@ -211,7 +211,9 @@ its `--keep`, and the binary and bundle it was installed with (`schedule.Agent.F
 plist backing up any other folder is left alone — the label is global, and another
 household's schedule is not this move's. A dry run touches nothing; a schedule that cannot
 be re-installed is printed as a warning with the command to fix it, and the move still
-succeeds.
+succeeds. So is an old folder that could not be removed. Both warnings are stderr lines
+that start with `! `, and the move exits 0 — that marker is what the Mac app reads to say
+them in its window, so keep it.
 
 Nothing on the Mac records where the data directory went — `--data` is how every command is
 told, and the Mac app is what remembers the household's answer between launches. The

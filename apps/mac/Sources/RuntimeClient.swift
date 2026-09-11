@@ -147,8 +147,22 @@ struct RuntimeClient {
     /// are values (`RuntimeCommand`) rather than methods so the argv the app would really
     /// have used is asserted without spawning anything, and so nothing that logs a
     /// failure can reach the value a `config set` carried.
-    func apply(_ command: RuntimeCommand) async throws {
-        _ = try await run(command.subcommand, extra: command.flags, trailing: command.trailing)
+    ///
+    /// Returns what it warned about on the way — see `warnings(_:)`.
+    @discardableResult
+    func apply(_ command: RuntimeCommand) async throws -> [String] {
+        let result = try await run(command.subcommand, extra: command.flags, trailing: command.trailing)
+        return Self.warnings(result.standardError)
+    }
+
+    /// What a command that worked still had to say. The runtime marks those lines `! ` and
+    /// exits 0 — a move whose nightly backup could not follow, or whose old folder stayed.
+    static func warnings(_ stderr: String) -> [String] {
+        stderr.split(separator: "\n").compactMap { line in
+            guard line.hasPrefix("! ") else { return nil }
+            let text = line.dropFirst(2).trimmingCharacters(in: .whitespaces)
+            return text.prefix(1).uppercased() + text.dropFirst()
+        }
     }
 
     // MARK: -

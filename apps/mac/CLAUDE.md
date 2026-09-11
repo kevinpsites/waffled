@@ -44,6 +44,9 @@ the shape of `status --json`. It must never learn more.
 - **Never poll anything heavier than `status`.** It is built to be cheap —
   `bonjour.advertised` is a pidfile check, `backups.scheduleInstalled` is a `stat`. `doctor`,
   `logs` and `backup` are clicks, never timers.
+- **A command that worked can still warn.** The runtime marks those stderr lines `! ` and
+  exits 0 (a move whose nightly backup could not follow, or whose old folder stayed);
+  `RuntimeClient.warnings` reads them, and Settings shows them beside the confirmation.
 - **Decode defensively, refuse only on `schema`.** The runtime adds fields without bumping it,
   so unknown keys and absent blocks are normal; a `state` word we do not recognise reads as
   `unhealthy` rather than throwing. If you find yourself adding a required field, you are

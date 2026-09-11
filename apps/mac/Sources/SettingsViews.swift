@@ -45,6 +45,9 @@ struct SettingsStep: View {
                         .foregroundStyle(SetupTheme.primary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                if let warning = screen.warning {
+                    WarningNote(text: warning)
+                }
                 if let moveNote = screen.moveNote, screen.activity == nil {
                     WarningNote(text: moveNote)
                 }

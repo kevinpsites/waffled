@@ -67,6 +67,8 @@ struct SettingsPresentation: Equatable {
     var activity: String?
     /// Why the last thing this window started did not work.
     var failure: String?
+    /// What a move that worked still had to say.
+    var warning: String?
 
     /// What this window has set going.
     enum Activity: Equatable {
@@ -188,6 +190,7 @@ struct SettingsPresentation: Equatable {
     ///   - activity: what this window has in flight.
     ///   - done: what this window's last Apply or restart finished, until it is closed.
     ///   - failure: why that last one did not work.
+    ///   - warning: what it said while working.
     static func make(
         options: SetupOptions,
         saved: SetupOptions,
@@ -200,6 +203,7 @@ struct SettingsPresentation: Equatable {
         activity: Activity? = nil,
         done: Done? = nil,
         failure: String? = nil,
+        warning: String? = nil,
         tab: Tab = .basic
     ) -> SettingsPresentation {
         let problems = options.problems(comparedTo: saved)
@@ -246,6 +250,7 @@ struct SettingsPresentation: Equatable {
             pendingMovePath: pendingMove?.path,
             moveNote: pendingMove.map { Copy.moveNote($0.path, restarts: running) },
             activity: activity.map(Copy.activity),
-            failure: activity == nil ? failure : nil)
+            failure: activity == nil ? failure : nil,
+            warning: activity == nil ? warning : nil)
     }
 }

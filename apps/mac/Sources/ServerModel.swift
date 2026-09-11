@@ -100,6 +100,8 @@ final class ServerModel {
     /// Why the last thing this window started did not work — said in the window, since the
     /// menu's own line is behind it.
     private(set) var settingsFailure: String?
+    /// What a move that worked still had to say — the runtime's `! ` lines.
+    private(set) var settingsWarning: String?
     /// A folder chosen in Settings and not moved to yet. Apply moves it, like every other
     /// setting on the screen; nothing is stopped or copied on the click that chose it.
     private(set) var pendingMove: URL?
@@ -596,6 +598,7 @@ final class ServerModel {
                                                    activity: settingsActivity,
                                                    done: settingsDone,
                                                    failure: settingsFailure,
+                                                   warning: settingsWarning,
                                                    tab: settingsTab))
     }
 
@@ -620,6 +623,7 @@ final class ServerModel {
         pendingMove = nil
         settingsDone = nil
         settingsFailure = nil
+        settingsWarning = nil
         showingSettings = true
         syncFirstRunWindow()
         NSApp.activate(ignoringOtherApps: true)
@@ -646,6 +650,7 @@ final class ServerModel {
         settingsActivity = move == nil ? .applying : .moving
         settingsDone = nil
         settingsFailure = nil
+        settingsWarning = nil
 
         operationTask = Task { [weak self] in
             defer { self?.finishOperation() }
@@ -711,6 +716,7 @@ final class ServerModel {
         pendingMove = destination
         settingsDone = nil
         settingsFailure = nil
+        settingsWarning = nil
         return nil
     }
 
@@ -736,7 +742,10 @@ final class ServerModel {
                 // says running.
                 status = nil
             }
-            try await client.apply(.move(to: destination))
+            // A move that worked can still leave something undone: the nightly backup, or
+            // the old folder. Said in the window beside the confirmation.
+            let warnings = try await client.apply(.move(to: destination))
+            settingsWarning = warnings.isEmpty ? nil : warnings.joined(separator: "\n")
         } catch {
             clearNote()
             failSettings(Self.describe(error))
@@ -779,6 +788,7 @@ final class ServerModel {
         settingsActivity = .restarting
         settingsDone = nil
         settingsFailure = nil
+        settingsWarning = nil
         note("Restarting Waffled…", clearAfter: nil)
 
         operationTask = Task { [weak self] in
