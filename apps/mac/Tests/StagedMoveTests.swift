@@ -184,6 +184,60 @@ final class StagedMoveTests: XCTestCase {
         await waitUntil("the move finishes") { !model.busy }
     }
 
+    /// The poll sits out a move, so the last status it read — running — would stand for the
+    /// whole copy, with Open Waffled offering a server that is down.
+    func testTheMenuDoesNotSayRunningWhileAMoveHasTheServerDown() async throws {
+        let runtime = FakeRuntime()
+        await runtime.hold("move")
+        let model = try settingsModel(runner: runtime)
+        defer { model.end() }
+
+        _ = model.stageMove(to: destination)
+        model.applySettings()
+        await waitUntil("the move is under way") { await runtime.isWaiting(for: "move") }
+
+        let menu = model.presentation(canCheckForUpdates: false)
+        XCTAssertEqual(menu.statusLine, "Moving Waffled's files…")
+        XCTAssertFalse(menu.openEnabled)
+        XCTAssertFalse(menu.addressEnabled)
+        XCTAssertFalse(menu.shareEnabled)
+
+        await runtime.finish("move")
+        await waitUntil("the move finishes") { !model.busy }
+        XCTAssertNotEqual(model.presentation(canCheckForUpdates: false).statusLine, "Moving Waffled's files…")
+    }
+
+    func testAFailedMoveDoesNotLeaveTheMenuSayingMoving() async throws {
+        let runner = RecordingRunner()
+        runner.refusing["move"] = "the destination already has something in it"
+        let model = try settingsModel(runner: runner)
+        defer { model.end() }
+
+        _ = model.stageMove(to: destination)
+        model.applySettings()
+        await waitUntil("Apply finishes") { !model.busy }
+
+        let line = model.presentation(canCheckForUpdates: false).statusLine
+        XCTAssertNotEqual(line, "Moving Waffled's files…")
+    }
+
+    func testTheMenuDoesNotSayRunningWhileARestartHasTheServerDown() async throws {
+        let runtime = FakeRuntime()
+        await runtime.hold("start")
+        let model = try settingsModel(runner: runtime)
+        defer { model.end() }
+
+        model.restartServer()
+        await waitUntil("the restart is under way") { await runtime.isWaiting(for: "start") }
+        let menu = model.presentation(canCheckForUpdates: false)
+        XCTAssertEqual(menu.statusLine, "Restarting Waffled…")
+        XCTAssertFalse(menu.openEnabled)
+
+        await runtime.finish("start")
+        await waitUntil("the restart finishes") { !model.busy }
+        XCTAssertNotEqual(model.presentation(canCheckForUpdates: false).statusLine, "Restarting Waffled…")
+    }
+
     func testARestartShowsWhileItRunsAndWhenItIsDone() async throws {
         let runtime = FakeRuntime()
         await runtime.hold("start")

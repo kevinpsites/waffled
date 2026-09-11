@@ -718,10 +718,17 @@ final class ServerModel {
     /// pointing at the folder the runtime last reported rather than the one it asked for.
     /// The move stays staged, so another Apply tries it again.
     private func performMove(to destination: URL, client: RuntimeClient, wasRunning: Bool) async {
+        note("Moving Waffled's files…", clearAfter: nil)
         do {
-            if wasRunning { try await client.stop() }
+            if wasRunning {
+                try await client.stop()
+                // The poll sits out the move, so nothing else would replace a status that
+                // says running.
+                status = nil
+            }
             try await client.apply(.move(to: destination))
         } catch {
+            clearNote()
             failSettings(Self.describe(error))
             // A move that refused leaves the household in the old folder, whole — but the
             // stop that came first really happened. Bring the server back, or a full disk
@@ -739,6 +746,7 @@ final class ServerModel {
             settingsDone = .moved(restarted: wasRunning)
             note("Waffled's files are in \(destination.lastPathComponent) now")
         } catch {
+            clearNote()
             failSettings(Self.describe(error))
         }
     }
@@ -761,16 +769,19 @@ final class ServerModel {
         settingsActivity = .restarting
         settingsDone = nil
         settingsFailure = nil
+        note("Restarting Waffled…", clearAfter: nil)
 
         operationTask = Task { [weak self] in
             defer { self?.finishOperation() }
             do {
                 try await client.stop()
+                self?.status = nil
                 try await client.start()
                 self?.serverStarted()
                 self?.settingsDone = .restarted
                 self?.note("Waffled restarted")
             } catch {
+                self?.clearNote()
                 self?.failSettings(Self.describe(error))
             }
             await self?.refresh()
@@ -1077,9 +1088,13 @@ final class ServerModel {
     /// The `Stopping…` note has to go with it: `transient` outranks everything in the
     /// status line, and this one was left up deliberately until something replaced it.
     private func recordStopFailure(_ message: String) {
+        clearNote()
+        stopFailure = message
+    }
+
+    private func clearNote() {
         transientTask?.cancel()
         transient = nil
-        stopFailure = message
     }
 
     /// A few seconds of answer in the status line. `clearAfter: nil` leaves it up until
