@@ -209,7 +209,17 @@ run succeeds. Full config in [Backup & restore](/operations/backup/).
 ./waffled admin prune-sessions        # invalidate active sessions if needed
 ```
 
-These are Docker-install commands; [Waffled for Mac](/install/mac/) has no equivalent yet.
+**On [Waffled for Mac](/install/mac/)**, the same commands are `waffled-runtime admin`:
+
+```bash
+R=/Applications/Waffled.app/Contents/Resources/runtime/bin/waffled-runtime
+$R admin reset-password --email you@example.com
+$R admin make-admin --email you@example.com
+$R admin help                         # the full command list
+```
+
+Waffled doesn't have to be running: with the server stopped, the database is started for
+the command and shut down again afterwards.
 
 ---
 

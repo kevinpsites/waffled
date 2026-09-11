@@ -340,10 +340,24 @@ $R doctor          # checks a server that will not start; exits non-zero on a pr
 $R logs api -n 100 # also postgres, migrate, powersync, caddy, bonjour, runtime; -f follows
 ```
 
+**Locked out — nobody can sign in as an admin?** `$R admin` is the break-glass operator
+CLI, and it reaches the database directly, with no login:
+
+```sh
+$R admin reset-password --email you@example.com
+$R admin make-admin --email you@example.com
+$R admin list-members
+$R admin help      # the full command list
+```
+
+Waffled doesn't have to be running — if the server is stopped, the database is started for
+the command and shut down again afterwards. Put `--data DIR` *before* the command if you
+moved Waffled's files; everything after the command belongs to the admin CLI.
+
 Inside the web app, **Settings → System Health** reports the same things it does on a
 Docker install. The symptoms on [Troubleshooting](/operations/troubleshooting/) are the
 same on a Mac, but its fixes are written for Docker — use the commands above in place of
-`./waffled doctor`, `status` and `logs`.
+`./waffled doctor`, `status`, `logs` and `admin`.
 
 ## Uninstalling
 
