@@ -87,6 +87,7 @@ struct SettingsPresentation: Equatable {
             Mac keeps working.
             """
         static let applied = "Settings applied."
+        static let alreadyThere = "Waffled is already in that folder — nothing to move."
         static let folderInsideItself = """
             That folder is inside the one Waffled is in, so moving there would put it \
             inside itself. Pick one somewhere else.

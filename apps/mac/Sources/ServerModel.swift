@@ -87,6 +87,9 @@ final class ServerModel {
     private(set) var configAwaitingRestart = false
     /// Which of Settings' three tabs is showing. Reset to Basic each time it opens.
     var settingsTab = SettingsPresentation.Tab.basic
+    /// What the files drawer says about the last folder chosen there, when it is not a
+    /// failure — shown in the drawer, because the menu's own note is behind this window.
+    private(set) var folderNote: String?
     /// The last Apply succeeded and this window has not been closed since — so the window
     /// can say so. The menu's own note is behind it and cannot be read.
     private(set) var settingsApplied = false
@@ -565,6 +568,7 @@ final class ServerModel {
         setupOptions.providerKey = ""
         setupOptions.secrets = [:]
         settingsTab = .basic
+        folderNote = nil
         settingsApplied = false
         showingSettings = true
         syncFirstRunWindow()
@@ -625,15 +629,22 @@ final class ServerModel {
             recordFailure(SettingsPresentation.Copy.pinnedFolder)
             return
         }
+        // The panel opens beside the folder Waffled is in, so choosing it — or its parent —
+        // is the likeliest click there is. It means "leave it", not a failure.
+        let from = dataDirectory.standardizedFileURL.path
+        let to = destination.standardizedFileURL.path
+        if to == from {
+            folderNote = SettingsPresentation.Copy.alreadyThere
+            return
+        }
+        folderNote = nil
         if let refusal = Setup.refusal(for: destination) {
             recordFailure(refusal)
             return
         }
         // The runtime refuses a destination inside the folder being moved, and it refuses
         // it AFTER this app has stopped the server. Asked here, the server stays up.
-        let from = dataDirectory.standardizedFileURL.path
-        if destination.standardizedFileURL.path == from
-            || destination.standardizedFileURL.path.hasPrefix(from + "/") {
+        if to.hasPrefix(from + "/") {
             recordFailure(SettingsPresentation.Copy.folderInsideItself)
             return
         }
