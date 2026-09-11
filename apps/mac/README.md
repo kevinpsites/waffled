@@ -222,8 +222,8 @@ behind the browser someone was reading) and walks five steps:
      `--keep` is passed only when it is not 14, the runtime's own default. Off installs
      nothing rather than uninstalling something (this runs on a Mac with nothing of ours on
      it yet), and `Back up now` in the menu still works.
-   - **Address on your network** — this Mac's name, its IP address, or a name the household
-     set up themselves, plus the preferred port. The address is always written as
+   - **Address on your network** — its IP address (the default), this Mac's name, or a name
+     the household set up themselves, plus the preferred port. The address is always written as
      `WAFFLED_PUBLIC_HOST`, because an absent one means "keep the address this install has
      always had" and a first run has none. `HTTP_PORT` is written only when someone chose a
      port that is not the default: it is the preference for the first allocation, so an

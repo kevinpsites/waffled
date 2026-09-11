@@ -23,7 +23,7 @@ final class RetentionTests: XCTestCase {
 
     func testAFirstRunStatesOnlyARetentionThatWasChosen() {
         XCTAssertEqual(SetupOptions().commandsBeforeFirstStart(), [
-            .configSet("WAFFLED_PUBLIC_HOST", "name"),
+            .configSet("WAFFLED_PUBLIC_HOST", "ip"),
             install("--at", "03:00"),
         ])
 

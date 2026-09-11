@@ -141,8 +141,8 @@ struct FirstRunPresentation: Equatable {
                 """
         )
         static let addressModes: [(SetupOptions.AddressMode, String, String)] = [
-            (.name, "This Mac's name", "What phones and tablets discover on their own."),
-            (.ip, "Its IP address", "For networks where .local names don't resolve."),
+            (.ip, "Its IP address", "Works on every network."),
+            (.name, "This Mac's name", "A .local name, which some networks don't resolve."),
             (.custom, "A name I've set up myself", "A domain or router entry aimed at this Mac."),
         ]
         static let provider = (

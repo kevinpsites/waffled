@@ -24,7 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   data in — it makes a **Waffled** folder inside whatever you pick, so choosing Documents
   does not scatter a database through Documents, and it says so rather than failing later
   if it cannot write there — what time it backs up each night, how the house reaches it
-  (this Mac's name, its IP address, or a name you've set up yourself) and on which port
+  (its IP address unless you choose this Mac's `.local` name or a name you've set up
+  yourself) and on which port
   (1024 or above: below that needs an administrator), whether it starts when the Mac does,
   and — optionally — who powers meal and week suggestions: Claude, any OpenAI-compatible
   server, or Ollama, which the window checks is running on the Mac and lists the models of.

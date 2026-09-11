@@ -18,10 +18,10 @@ final class SettingsChangeTests: XCTestCase {
 
     func testANewAddressIsWritten() {
         var changed = SetupOptions()
-        changed.addressMode = .ip
+        changed.addressMode = .name
 
         XCTAssertEqual(changed.commandsForChange(from: SetupOptions()),
-                       [.configSet("WAFFLED_PUBLIC_HOST", "ip")])
+                       [.configSet("WAFFLED_PUBLIC_HOST", "name")])
     }
 
     func testANewBackupTimeReinstallsTheSchedule() {
@@ -170,7 +170,7 @@ final class SettingsChangeTests: XCTestCase {
     /// has not taken effect yet, and saying nothing would look like it had not worked.
     func testChangingTheAddressSaysItNeedsARestart() throws {
         var changed = SetupOptions()
-        changed.addressMode = .ip
+        changed.addressMode = .name
         let screen = SettingsPresentation.make(options: changed, saved: SetupOptions(),
                                                dataDirectory: URL(fileURLWithPath: "/tmp/Waffled"),
                                                status: try running())

@@ -52,7 +52,7 @@ laptop there is a paragraph about the lid here: close it and the household's ser
 with it.
 
 The defaults are sensible, so **Set up Waffled** is a fine answer: Waffled's files in
-`~/Library/Application Support/Waffled`, a nightly backup at 3:00 AM, this Mac's own name
+`~/Library/Application Support/Waffled`, a nightly backup at 3:00 AM, this Mac's IP address
 as the address, port 8080, and Waffled starting whenever the Mac does. **Settings first…**
 is how you change any of that — or anything else `Settings…` has — first.
 
@@ -80,9 +80,11 @@ closes it again.
   off schedules nothing; **Back up now** in the menu still works whenever you want it. A
   backup holds the database — your photos stay in Waffled's folder.
 - **Address on your network** — how the kitchen tablet and everyone's phones reach this Mac.
-  - **This Mac's name**, a `.local` name phones and tablets discover on their own. The
-    default, and the right answer on most home networks.
-  - **Its IP address**, for networks where `.local` names do not resolve.
+  - **Its IP address**, the default: it works on every network. If your router hands this
+    Mac a different one later, devices need the new address — a DHCP reservation on the
+    router keeps it the same.
+  - **This Mac's name**, a `.local` name that stays put when the IP changes, but some
+    networks do not resolve `.local` names.
   - **A name I've set up myself**, such as `waffled.home`. You have to have made that name
     point at this Mac yourself — a DNS entry on your router, or a real domain aimed at this
     Mac's address. Waffled does not create it.
@@ -113,9 +115,9 @@ this window: it carries on without it, and the menu-bar icon shows the same prog
 ### 4. Ready
 
 The address to type into the kitchen tablet, a **QR code** to point a phone's camera at,
-and — when it is different from the name — the plain IP address underneath, which is the one
-to use if a device cannot find the name. If the port you asked for was busy, a line here
-says which port Waffled took instead.
+and — when you chose a name rather than the IP address — the plain IP address underneath,
+which is the one to use if a device cannot find the name. If the port you asked for was
+busy, a line here says which port Waffled took instead.
 
 **Copy address** puts it on the clipboard. **Open Waffled** opens the web app in your
 browser, where Waffled's own setup wizard creates your household and the first adult,
@@ -180,7 +182,7 @@ screen and closing it does nothing at all.
 | | Takes effect |
 |---|---|
 | **Nightly backup** — on or off, the hour, and how many to keep | Straight away. Turning it off removes the scheduled job. |
-| **Address on your network** — this Mac's name, its IP, or a name you set up | After a restart. |
+| **Address on your network** — its IP, this Mac's name, or a name you set up | After a restart. |
 | **AI settings** — the provider, its key or address | After a restart. The key field is always blank when the screen opens — Waffled never reads your key back out of `config.env` — so leaving it blank means "don't change it", not "delete it". Choosing **Not now** is how you remove saved keys. |
 | **Start when this Mac starts up** | Straight away. |
 | **Waffled's files** | See [below](#moving-waffleds-files). |

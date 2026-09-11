@@ -40,6 +40,20 @@ final class AppliedOptionsTests: XCTestCase {
         XCTAssertEqual(read.port, "8081")
     }
 
+    /// The default address is not the one every household chose: a household that took
+    /// this Mac's name keeps it, or every phone holding that address would lose the server.
+    func testAHouseholdThatChoseTheNameKeepsIt() {
+        let memory = Memory()
+        var applied = SetupOptions()
+        applied.addressMode = .name
+        Setup.remember(applied, in: memory)
+
+        let settings = Setup.appliedOptions(in: memory)
+        XCTAssertEqual(settings.addressMode, .name)
+        XCTAssertTrue(settings.commandsForChange(from: settings).isEmpty,
+                      "opening Settings and pressing Apply rewrites nothing")
+    }
+
     /// The provider key is a secret. It goes into config.env, which is owner-only, and
     /// never into the app's own preferences file — which is neither owner-only nor
     /// something a household would think to look in.

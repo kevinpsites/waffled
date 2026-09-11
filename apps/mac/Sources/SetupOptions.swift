@@ -57,7 +57,7 @@ struct SetupOptions: Equatable, Codable {
     var openAIBaseURL = ""
     var ollamaHost = SetupOptions.defaultOllamaHost
     var startAtLogin = true
-    var addressMode = AddressMode.name
+    var addressMode = AddressMode.ip
     var customHost = ""
     var port = String(SetupOptions.defaultPort)
     /// Advanced and Diagnostics values as typed, keyed by the variable they write — see
@@ -197,8 +197,7 @@ struct SetupOptions: Equatable, Codable {
     ///   dev run would take the household's real schedule over and point it at /tmp.
     func commandsBeforeFirstStart(isDevMode: Bool = false) -> [RuntimeCommand] {
         guard problems.isEmpty else { return [] }
-        // The address is always written: `name` is a choice even when it is the default
-        // one, and the runtime reads an ABSENT setting as "keep the address this install
+        // The address is always written: the default is a choice too, and the runtime reads an ABSENT setting as "keep the address this install
         // has always had" — which is right for an upgrade and wrong for a first run.
         var out: [RuntimeCommand] = [.configSet("WAFFLED_PUBLIC_HOST", publicHost)]
         // The port is not. An assignment nobody asked for is a preference on record that a
