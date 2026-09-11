@@ -698,6 +698,16 @@ final class ServerModel {
         // The runtime refuses a destination inside the folder being moved, and it refuses
         // it AFTER this app has stopped the server. Asked here, the server stays up.
         if to.hasPrefix(from + "/") { return SettingsPresentation.Copy.folderInsideItself }
+        // Likewise `relocate.checkDestination`: any entry at all, `.DS_Store` included.
+        do {
+            if try !FileManager.default.contentsOfDirectory(atPath: to).isEmpty {
+                return SettingsPresentation.Copy.folderNotEmpty(to)
+            }
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            // Not there yet: the runtime makes it.
+        } catch {
+            return SettingsPresentation.Copy.folderUnreadable(to)
+        }
         pendingMove = destination
         settingsDone = nil
         settingsFailure = nil

@@ -149,6 +149,52 @@ final class FolderPickerFlowTests: XCTestCase {
         XCTAssertTrue(runner.calls.isEmpty)
     }
 
+    /// The runtime refuses a destination with anything in it, and it refuses it AFTER the
+    /// server has been stopped. Asked here, by the runtime's rule — any entry, `.DS_Store`
+    /// included — the server stays up.
+    func testAFolderWithAnythingInItIsRefusedBeforeAnythingStops() throws {
+        try makeDirectory(current, with: ["runtime.json", "config.env"])
+        try makeDirectory(documents.appendingPathComponent("Waffled"), with: [".DS_Store"])
+        let runner = RecordingRunner()
+        let model = makeModel(runner: runner)
+        defer { model.end() }
+        model.openSettings()
+
+        let refusal = model.stageMove(to: documents.appendingPathComponent("Waffled"))
+        XCTAssertTrue(refusal?.contains("already has something in it") == true, String(describing: refusal))
+        XCTAssertNil(model.pendingMove)
+        XCTAssertTrue(runner.calls.isEmpty)
+    }
+
+    /// An empty folder someone made in Finder first is the ordinary case, and the runtime
+    /// moves into it.
+    func testAnEmptyFolderIsStillSomewhereToMove() throws {
+        try makeDirectory(current, with: ["runtime.json", "config.env"])
+        try makeDirectory(documents.appendingPathComponent("Waffled"))
+        let model = makeModel(runner: RecordingRunner())
+        defer { model.end() }
+        model.openSettings()
+
+        XCTAssertNil(model.stageMove(to: documents.appendingPathComponent("Waffled")))
+        XCTAssertEqual(model.pendingMove?.path, documents.appendingPathComponent("Waffled").path)
+    }
+
+    /// What a status poll during an earlier move left in the default folder.
+    func testTheDefaultFolderWithALeftoverInItIsRefusedBeforeAnythingStops() throws {
+        let away = documents.appendingPathComponent("Waffled")
+        try makeDirectory(away, with: ["runtime.json", "config.env"])
+        try makeDirectory(current.appendingPathComponent("pids"), with: [])
+        try makeDirectory(current, with: ["bundle-verified.json"])
+        let runner = RecordingRunner()
+        let model = makeModel(runner: runner, at: away)
+        defer { model.end() }
+        model.openSettings()
+
+        XCTAssertTrue(model.useDefaultFolder()?.contains("already has something in it") == true)
+        XCTAssertNil(model.pendingMove)
+        XCTAssertTrue(runner.calls.isEmpty)
+    }
+
     // MARK: back to the default folder
 
     /// ~/Library is hidden, so no open panel shows Application Support: once Waffled is

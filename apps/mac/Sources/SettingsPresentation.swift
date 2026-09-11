@@ -148,6 +148,12 @@ struct SettingsPresentation: Equatable {
             That folder is inside the one Waffled is in, so moving there would put it \
             inside itself. Pick one somewhere else.
             """
+        static func folderNotEmpty(_ path: String) -> String {
+            "\(path) already has something in it — Waffled needs a folder of its own."
+        }
+        static func folderUnreadable(_ path: String) -> String {
+            "\(path) cannot be read, so Waffled cannot move there."
+        }
         static let pinnedFolder = """
             WAFFLED_DATA_DIR is set, so this run does not decide where Waffled's files \
             live and cannot move them.
