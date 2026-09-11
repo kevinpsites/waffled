@@ -248,6 +248,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     your calendar.
 ### Changed
 
+- **Cutting a release on the signing Mac is now one command.** After `./waffled release
+  X.Y.Z` pushes the tag, it offers to run the Mac half — the signed, notarized DMG and the
+  Sparkle appcast — and does it on Enter, so the two-step release is only two steps where
+  the second one could not have run anyway. It asks first and says why it is slow (it waits
+  for the GitHub Release the tag creates, then builds and notarizes a 670 MB app), skips the
+  offer on any machine that cannot sign or with nothing on stdin to ask, and takes
+  `--no-mac` from anyone who would rather do it later. A failed DMG build no longer looks
+  like a failed release: the tag is pushed either way, and the Mac half can simply be run
+  again.
+
 - **API bind address is configurable.** Set `HOST` to pin the API to one interface (the
   native Mac runtime uses `127.0.0.1`, since without Docker's private network nothing else
   keeps the API off the LAN); unset keeps today's bind-all-interfaces behaviour, so Compose
