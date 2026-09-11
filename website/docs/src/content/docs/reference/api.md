@@ -13,7 +13,7 @@ OpenAPI/Swagger document** — this page is the reference.
 
 ## Authentication
 
-Every non-public request is authenticated at a single global gate. There are three ways in:
+Every non-public request is authenticated at a single global gate. There are four ways in:
 
 1. **Bearer JWT (default).** `Authorization: Bearer <token>` — how the web and iOS clients
    authenticate. The token carries a `household_id` claim; the api resolves it to a person +
@@ -22,10 +22,13 @@ Every non-public request is authenticated at a single global gate. There are thr
 2. **API key.** `x-api-key: waffled_…` — for external tools and scripts. See below.
 3. **Kiosk device token.** A paired tablet exchanges a device secret for a short-lived device
    token; tapping a profile mints a real person session. See [Kiosk & devices](/administration/kiosk/).
+4. **Waffled-Bite device token.** A kid's paired Bite does the same exchange for its own token,
+   which works only on the [Bite's device routes](#waffled-bites--modulewaffledbites).
 
 **Public endpoints** (no auth): `/healthz`, `/api/auth/keys` (JWKS), the auth
 status/setup/login/refresh/logout and OIDC start/callback/exchange routes, `/api/kiosk/pair`,
-`/api/kiosk/device/token`, and the Google calendar OAuth callback.
+`/api/kiosk/device/token`, `/api/waffled-bites/pair`, `/api/waffled-bites/device/token`, and
+the Google and Microsoft calendar OAuth callbacks.
 
 Authorization beyond "signed in" is a small [capability grid](/concepts/permissions/): routes are
 guarded by `tenantRoute` (any member), `adminRoute` (admin/owner), or `capRoute(<cap>)` (a
@@ -68,9 +71,9 @@ listed in their own right rather than inherited from `/api/chores`, `/api/goals`
 part of the grocery board and the route sits behind the `lists` module gate.
 
 Everything else always 403s for a key — auth and self-service account, household creation and
-invites, api-keys, `/api/kiosk` and the `/api/waffled-bites` device routes, permissions,
+invites, api-keys, `/api/kiosk`, `/api/waffled-bites`, permissions,
 powersync, capture, media, countdowns, family-night, goal-calendar, the rest of `/api/calendar`
-(Google + ICS feeds), today-layout, rhythms, health and updates. Writes under a read-only
+(Google, Outlook and ICS feeds), today-layout, rhythms, weekly-planning, health and updates. Writes under a read-only
 resource are refused too, so `POST /api/persons/:id/award` and
 `/saving-toward` stay session-only even though they belong to the rewards feature. In-route
 capability **and** module checks still apply on top of the scope, so a key can never do more
@@ -82,7 +85,8 @@ than its owner person can.
 
 Auth column: **tenant** = any signed-in member · **admin** = admin/owner · **cap:X** = requires
 capability X · **module(X)** = requires module X enabled · **device** = kiosk device token ·
-**public** = no auth.
+**bite** = Waffled-Bite device token · **public** = no auth. The two device tokens are separate:
+neither works on the other's routes.
 
 ### Core
 
@@ -132,9 +136,16 @@ capability X · **module(X)** = requires module X enabled · **device** = kiosk 
 | GET · PATCH · DELETE | `/api/events/:id` | Get / update / delete an event | tenant |
 | GET · POST · PATCH · DELETE | `/api/countdowns[/:id]` · PUT `/config` | Countdowns + config | tenant |
 | GET | `/api/calendar/heads-up` · `/api/events/:id/insight` | AI heads-up / insight | tenant |
-| POST | `/api/calendar/google/connect` · GET `/status` · PATCH `/calendars/:id` · DELETE `/accounts/:id` | Google connect / status / config / disconnect | admin |
-| GET | `/auth/google/calendar/callback` | Google OAuth callback | public |
+| POST | `/api/calendar/google/connect` · `/api/calendar/microsoft/connect` | Start a Google / Outlook connect — returns the consent URL (501 if that provider isn't configured) | admin |
+| GET | `/auth/google/calendar/callback` · `/auth/microsoft/calendar/callback` | OAuth callbacks | public |
+| GET · PATCH · DELETE | `/api/calendar/google/status` · `/google/calendars/:id` · `/google/accounts/:id` | Connected accounts, calendars and feeds / map or toggle a calendar / disconnect | admin |
+| GET | `/api/calendar/feeds` | List ICS feed subscriptions | tenant |
+| POST · PATCH · DELETE | `/api/calendar/feeds[/:id]` | Subscribe / edit / remove an ICS feed (removing it removes its events) | admin |
+| POST | `/api/calendar/feeds/:id/sync` | Poll one ICS feed now | admin |
 | POST | `/api/calendar/sync` | Trigger inbound sync | tenant |
+
+The `/google/status`, `/google/calendars/:id` and `/google/accounts/:id` paths predate Outlook
+support and keep the `google` segment, but they cover accounts from **every** provider.
 
 ### Chores & rewards — `module(chores)`
 
@@ -245,6 +256,45 @@ only way to unlink.
 | GET · PUT | `/api/family-night` · `/config` | Current night / config | tenant / admin |
 | POST · DELETE | `/api/family-night/occurrence` · `/schedule` | Occurrence / schedule | tenant / admin |
 
+### Weekly Planning — `module(weeklyPlanning)`
+
+The session itself:
+
+| Method | Path | Purpose | Auth |
+|---|---|---|---|
+| GET | `/api/weekly-planning` | The week (`?weekStart=`), its session if one exists, config and steps | module(weeklyPlanning) tenant |
+| GET | `/api/weekly-planning/config` | Config, the step catalog, and the lists step 1 can ask about | module(weeklyPlanning) tenant |
+| PUT | `/api/weekly-planning/config` | Update config | module(weeklyPlanning) admin (`dayOfWeek`, `time`, `showOnToday`, `steps`) · cap:planning.manage (`lists`) |
+| POST | `/api/weekly-planning/session` | Start the week's session (returns the existing one if it's already started) | module(weeklyPlanning) tenant |
+| PATCH · DELETE | `/api/weekly-planning/session/:id` | Move to a step / set status · discard the session | module(weeklyPlanning) tenant |
+| POST | `/api/weekly-planning/session/:id/step` | Mark a step `pending`, `done` or `skipped` | module(weeklyPlanning) tenant |
+| POST | `/api/weekly-planning/session/:id/complete` | Save the week | module(weeklyPlanning) tenant |
+
+Each step's own reads and writes:
+
+| Method | Path | Purpose | Auth |
+|---|---|---|---|
+| GET | `/api/weekly-planning/loose-ends` | Step 1: what's still open, where each item can go, what's been routed | module(weeklyPlanning) tenant |
+| POST | `/api/weekly-planning/loose-ends/route` · `/resolve` · `/parked` | Send an item to a step / mark it done or drop a parked note / park a new note | module(weeklyPlanning) tenant |
+| PATCH | `/api/weekly-planning/loose-ends/parked/:id` | Fix a parked note's text or tag | module(weeklyPlanning) tenant |
+| GET | `/api/weekly-planning/horizon` | Step 3: the tags the park bar offers and what this session parked | module(weeklyPlanning) tenant |
+| GET | `/api/weekly-planning/familyNight` | Step 4: the week's family night and its parts | module(weeklyPlanning) + module(familyNight) tenant |
+| GET | `/api/weekly-planning/connection` · `/connection/slots` | Step 5: pairs ranked by time since one-on-one / free slots for people you pick | module(weeklyPlanning) tenant |
+| PUT | `/api/weekly-planning/connection/links` | Link a pairing to an existing event | module(weeklyPlanning) tenant |
+| GET · PUT | `/api/weekly-planning/goals` · `/goals/focus` | Step 6: goals by list / set a list's focus for the week | module(weeklyPlanning) + module(goals) tenant |
+| GET · POST | `/api/weekly-planning/meals` · `/meals/fill` · `/meals/undo` | Step 7: the week's meals / fill only the empty dinners / undo that fill | module(weeklyPlanning) + module(meals) tenant |
+| PUT | `/api/weekly-planning/meals/shopper` | Set the week's shopping trip (a one-off chore) | module(weeklyPlanning) + module(meals) + module(chores) tenant · cap:chore.manage to assign someone else |
+| GET | `/api/weekly-planning/tasks` | Step 8: chores by member, plus the unclaimed ones | module(weeklyPlanning) + module(chores) tenant |
+| GET | `/api/weekly-planning/kids` | Step 9: a card per kid with their week and options | module(weeklyPlanning) tenant |
+| PUT · POST | `/api/weekly-planning/kids/answer` · `/kids/repeat` | Answer a kid's card / copy last week's answers forward | module(weeklyPlanning) tenant |
+| GET | `/api/weekly-planning/recap` | Step 10: the week the session decided | module(weeklyPlanning) tenant |
+
+`PUT /config` checks each field against its own gate, and a body that mixes admin fields with
+`lists` is refused whole if the caller lacks either. Step 2 (Calendar) has no routes: it reads
+and writes the real calendar through `/api/events`. The steps' writes land in the modules that
+own the data — family-night changes, event creation and chore hand-outs go through those
+modules' own endpoints — so discarding a session removes only the session record.
+
 ### Photos, media, capture, weather
 
 | Method | Path | Purpose | Auth |
@@ -265,6 +315,37 @@ only way to unlink.
 | POST | `/api/kiosk/profile/:personId` · `/heartbeat` | Claim a profile / heartbeat | device |
 | GET · PATCH · DELETE | `/api/kiosk/devices[/:id]` · PUT `/display` | Manage devices / display | admin |
 | PUT · DELETE | `/api/persons/:id/pin` | Set/remove a kiosk PIN | tenant (self or admin) |
+
+### Waffled-Bites — `module(waffledBites)`
+
+The parent side, from a signed-in session:
+
+| Method | Path | Purpose | Auth |
+|---|---|---|---|
+| POST | `/api/persons/:id/waffled-bite/pairing-code` | Mint a pairing code for a kid's Bite (valid 10 minutes) | module(waffledBites) admin |
+| GET | `/api/persons/:id/waffled-bite` | The member's paired Bite: settings, quiet/timer/wake-light state, last seen | module(waffledBites) tenant |
+| PATCH | `/api/waffled-bites/:id/settings` | Update a Bite's settings (merged into what's stored) | module(waffledBites) admin |
+| POST | `/api/waffled-bites/:id/quiet/start` · `/pause` · `/resume` · `/add-time` · `/end` | Run quiet time | module(waffledBites) tenant |
+| POST | `/api/waffled-bites/:id/timer/start` · `/pause` · `/resume` · `/add-time` · `/end` | Run a timer | module(waffledBites) tenant |
+| POST | `/api/waffled-bites/:id/nudge` | Send a message, shown on the device's next poll | module(waffledBites) tenant |
+| DELETE | `/api/waffled-bites/:id` | Unpair (revoke) a Bite | module(waffledBites) admin |
+
+The device side:
+
+| Method | Path | Purpose | Auth |
+|---|---|---|---|
+| POST | `/api/waffled-bites/pair` · `/device/token` | Claim a pairing code / exchange the device secret for a short-lived token | public |
+| GET | `/api/waffled-bites/device/state` | The poll: the kid, their stars, today's routines by time of day, settings, quiet/timer/wake-light state, and any pending nudge (handed over once) | bite |
+| POST | `/api/waffled-bites/device/tasks/:instanceId/complete` · `/uncomplete` | Tick or untick one of the kid's own chores | bite |
+| PATCH | `/api/waffled-bites/device/settings` | The on-device grown-up controls — `sound` and `night` only | bite |
+| POST | `/api/waffled-bites/device/timer/start` · `/end` | The kid starts or ends their own timer | bite |
+| POST | `/api/waffled-bites/device/unpair` | "Forget this device" — the Bite revokes itself | bite |
+
+Pairing follows the kiosk's shape: `/pair` returns the device secret once, and the device trades
+it at `/device/token` for a token each time it needs one. The device routes authenticate on
+that token alone. A kid can have one paired Bite at a
+time; pairing a second returns 409. The device can start and end a timer but not pause it, add
+time, or touch quiet time — those stay with the parent routes.
 
 ### Layout, sync, health, updates
 
