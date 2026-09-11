@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/kevinpsites/waffled/apps/runtime/internal/atomicfile"
@@ -38,6 +39,9 @@ type Agent struct {
 	// DefaultHour:DefaultMinute — a string rather than two ints so that a household
 	// choosing midnight is not read as one that chose nothing.
 	At string
+	// Keep is how many routine dumps the nightly run retains, passed to it as --keep.
+	// Zero means the runtime's default, and writes no --keep at all.
+	Keep int
 	// UID is the user's, for the gui/<uid> domain launchctl bootstraps into.
 	UID int
 
@@ -142,20 +146,47 @@ func (a *Agent) Loaded() (bool, error) {
 // directory installed it. Anything deciding whether that schedule is *theirs* to remove
 // has to ask this rather than trust the plist's presence.
 func (a *Agent) ScheduledDataDir() (string, error) {
-	raw, err := os.ReadFile(a.PlistPath())
+	dir, found, err := a.scheduledFlag("--data")
 	if err != nil {
 		return "", err
 	}
+	if !found {
+		return "", fmt.Errorf("%s names no --data directory", a.PlistPath())
+	}
+	return dir, nil
+}
+
+// ScheduledKeep reports how many routine dumps the installed schedule keeps, read out of
+// its own ProgramArguments like the data directory is. Zero when it passes no --keep —
+// a schedule installed before retention was configurable, which keeps the default.
+func (a *Agent) ScheduledKeep() (int, error) {
+	raw, found, err := a.scheduledFlag("--keep")
+	if err != nil || !found {
+		return 0, err
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 {
+		return 0, fmt.Errorf("%s passes --keep %q, which is not a number of backups", a.PlistPath(), raw)
+	}
+	return n, nil
+}
+
+// scheduledFlag is the value after flag in the installed plist's ProgramArguments.
+func (a *Agent) scheduledFlag(flag string) (value string, found bool, err error) {
+	raw, err := os.ReadFile(a.PlistPath())
+	if err != nil {
+		return "", false, err
+	}
 	args, err := programArguments(raw)
 	if err != nil {
-		return "", fmt.Errorf("read %s: %w", a.PlistPath(), err)
+		return "", false, fmt.Errorf("read %s: %w", a.PlistPath(), err)
 	}
 	for i := 0; i+1 < len(args); i++ {
-		if args[i] == "--data" {
-			return args[i+1], nil
+		if args[i] == flag {
+			return args[i+1], true, nil
 		}
 	}
-	return "", fmt.Errorf("%s names no --data directory", a.PlistPath())
+	return "", false, nil
 }
 
 // programArguments pulls the ProgramArguments array back out of a plist. It reads the
@@ -252,6 +283,12 @@ func (a *Agent) Plist() ([]byte, error) {
 	}
 	if a.DataDir != "" {
 		args = append(args, "--data", a.DataDir)
+	}
+	if a.Keep < 0 {
+		return nil, fmt.Errorf("retention must keep at least one backup, got %d", a.Keep)
+	}
+	if a.Keep > 0 {
+		args = append(args, "--keep", strconv.Itoa(a.Keep))
 	}
 
 	d := dict{}

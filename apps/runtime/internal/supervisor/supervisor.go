@@ -727,8 +727,9 @@ func (s *Supervisor) Status(ctx context.Context) *status.Report {
 		r.Services = append(r.Services, s.serviceStatus(ctx, spec))
 	}
 
-	scheduleInstalled, scheduleAt := s.scheduleFacts()
+	scheduleInstalled, scheduleAt, keep := s.scheduleFacts()
 	r.Backups = backup.Describe(s.plan.Layout.Backups, scheduleInstalled, scheduleAt)
+	r.Backups.Keep = keep
 	// Reported beside the services, never as one of them: nothing about the
 	// advertisement feeds DeriveState (see bonjour.go).
 	r.Bonjour = s.BonjourStatus()

@@ -70,7 +70,8 @@ logs:
   -n N           lines to show (default 200)
 backup:
   --out FILE            write here instead of the backups folder (retention is then skipped)
-  --keep N              how many backups to keep (default 14)
+  --keep N              how many backups to keep (default: what the nightly backup
+                        keeps, else 14); with --install-schedule, what it keeps
   --install-schedule    install a nightly backup as a launchd agent
   --at HH:MM            the time it runs, 24-hour local (default 03:00)
   --uninstall-schedule  remove it
@@ -263,7 +264,7 @@ func cmdBackup(args []string) error {
 	fs := flag.NewFlagSet("backup", flag.ContinueOnError)
 	common := addCommon(fs)
 	out := fs.String("out", "", "write the dump here instead of the backups folder")
-	keep := fs.Int("keep", 0, "how many backups to keep (default 14)")
+	keep := fs.Int("keep", 0, "how many backups to keep (default: what the nightly backup keeps, else 14)")
 	install := fs.Bool("install-schedule", false, "install the nightly backup launchd agent")
 	uninstall := fs.Bool("uninstall-schedule", false, "remove the nightly backup launchd agent")
 	at := fs.String("at", "", "the nightly time to back up, HH:MM in 24-hour form (default 03:00)")
@@ -282,6 +283,13 @@ func cmdBackup(args []string) error {
 		if _, _, err := schedule.ParseAt(*at); err != nil {
 			return err
 		}
+	}
+	// Asked of the flag having been given, not of its value: the default is 0, and a
+	// `--keep 0` typed on purpose would otherwise quietly mean "the default".
+	keepGiven := false
+	fs.Visit(func(f *flag.Flag) { keepGiven = keepGiven || f.Name == "keep" })
+	if keepGiven && *keep < 1 {
+		return fmt.Errorf("--keep %d would keep no backups at all; it takes a count of at least 1", *keep)
 	}
 
 	// Tolerant, like status and doctor. Backing up needs Postgres and nothing else, so a
@@ -310,15 +318,7 @@ func cmdBackup(args []string) error {
 		if previous, err := agent.ScheduledDataDir(); err == nil && previous != agent.DataDir {
 			fmt.Printf("Note: this replaces the nightly backup of %s\n", previous)
 		}
-		// Omitting --at means "leave the time alone", not "put it back to 03:00". A
-		// household that chose 01:00 and re-ran this — following the docs, or after an
-		// update — had their choice silently replaced by the default.
-		agent.At = *at
-		if *at == "" {
-			if existing, err := agent.ScheduledAt(); err == nil && existing != "" {
-				agent.At = existing
-			}
-		}
+		chooseSchedule(agent, *at, *keep)
 		if err := agent.Install(); err != nil {
 			return err
 		}
@@ -327,6 +327,9 @@ func cmdBackup(args []string) error {
 			return err
 		}
 		fmt.Printf("Waffled will back up nightly at %s → %s\n", scheduled, s.Plan().Layout.Backups)
+		if agent.Keep > 0 {
+			fmt.Printf("  keeping the last %d\n", agent.Keep)
+		}
 		fmt.Printf("  agent: %s\n", agent.PlistPath())
 		fmt.Printf("  log:   %s\n", s.Plan().Layout.LogPath("backup"))
 		return nil
@@ -340,6 +343,25 @@ func cmdBackup(args []string) error {
 	}
 	fmt.Println(path)
 	return nil
+}
+
+// chooseSchedule sets what an --install-schedule run asked for, and keeps whatever it did
+// not restate from the plist already installed. Omitting --at or --keep means "leave it
+// alone", not "put it back to the default": a household that chose 01:00 and 30 backups,
+// then re-ran this — following the docs, after an update, or from Settings changing only
+// one of the two — would otherwise have the other silently replaced.
+func chooseSchedule(agent *schedule.Agent, at string, keep int) {
+	agent.At, agent.Keep = at, keep
+	if at == "" {
+		if existing, err := agent.ScheduledAt(); err == nil && existing != "" {
+			agent.At = existing
+		}
+	}
+	if keep == 0 {
+		if existing, err := agent.ScheduledKeep(); err == nil {
+			agent.Keep = existing
+		}
+	}
 }
 
 func cmdRestore(args []string) error {
