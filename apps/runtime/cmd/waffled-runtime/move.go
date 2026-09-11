@@ -11,6 +11,7 @@ import (
 
 	"github.com/kevinpsites/waffled/apps/runtime/internal/datadir"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/relocate"
+	"github.com/kevinpsites/waffled/apps/runtime/internal/schedule"
 )
 
 // `move` takes a household's data directory somewhere else on this Mac — off a full
@@ -70,17 +71,58 @@ func cmdMove(args []string) error {
 	// household is whole at the new address. Reporting it as a failure leaves whoever
 	// asked pointing at the old folder — and a retry is then refused, because the
 	// destination now "already has something in it".
-	if errors.Is(err, relocate.ErrOldFolderRemains) {
-		if reportErr := reportMove(plan, *asJSON, false); reportErr != nil {
-			return reportErr
-		}
-		fmt.Fprintf(os.Stderr, "! %v\n", err)
-		return nil
-	}
-	if err != nil {
+	remains := errors.Is(err, relocate.ErrOldFolderRemains)
+	if err != nil && !remains {
 		return err
 	}
-	return reportMove(plan, *asJSON, false)
+	followed := followSchedule(common.bundle, layout.Root, plan.To)
+	if reportErr := reportMove(plan, *asJSON, false); reportErr != nil {
+		return reportErr
+	}
+	if followed && !*asJSON {
+		fmt.Printf("The nightly backup moved with it: it now backs up %s\n", plan.To)
+	}
+	if remains {
+		fmt.Fprintf(os.Stderr, "! %v\n", err)
+	}
+	return nil
+}
+
+// scheduleFollower is the part of *schedule.Agent a move uses. An interface for the
+// reason uninstall's is: following re-installs the global launchd label, so no test may
+// hold a real one.
+type scheduleFollower interface {
+	Follow(from string) (bool, error)
+}
+
+// newFollower builds the nightly-backup agent for the folder a household moved to.
+var newFollower = func(bundle string, to datadir.Layout) (scheduleFollower, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	agent, err := schedule.For(exe, bundle, to.Root, to.LogPath("backup"))
+	if err != nil {
+		return nil, err
+	}
+	return agent, nil
+}
+
+// followSchedule points the nightly backup at the new folder when it was backing up the
+// old one. Left alone, it would recreate the old folder empty every night and back that
+// up, while the household went unprotected. A failure is said, not returned: the move
+// itself has worked.
+func followSchedule(bundle, from, to string) bool {
+	agent, err := newFollower(bundle, datadir.At(to))
+	if err == nil {
+		var followed bool
+		if followed, err = agent.Follow(from); err == nil {
+			return followed
+		}
+	}
+	fmt.Fprintf(os.Stderr, "! the nightly backup could not be pointed at %s: %v\n"+
+		"  re-install it with: waffled-runtime backup --install-schedule --data %q\n", to, err, to)
+	return false
 }
 
 // looksLikeAHousehold is uninstall's rule, asked here too: one of our own files, or a

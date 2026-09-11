@@ -360,9 +360,7 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   folder of their own, backups that include photos, keeping every backup ("Forever"), an
   offsite copy to S3/B2/R2, a hostname Caddy actually serves with a certificate, and a beta
   update channel. Listed with the reason each is not a setting yet in §3d of
-  [`mac-settings-redesign.md`](./mac-settings-redesign.md). First, a bug found on the way
-  (§6 there): **Move…** must re-point the nightly backup at the new folder — today it
-  keeps backing up the folder the household left.
+  [`mac-settings-redesign.md`](./mac-settings-redesign.md).
 - **Observability on the Mac — a gap today.** Docker installs can export OpenTelemetry
   traces and metrics to a collector (`./waffled observability up`, or your own). A Mac
   install cannot: the bundle ships neither the `otel.js` preload nor the ~100 MB of

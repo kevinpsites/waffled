@@ -216,24 +216,21 @@ What shipped:
    table: any key outside the allowlist is written and reaches nothing. A Mac test reads
    `passthroughKeys` out of `services.go` and fails if the app can write a key nothing
    reads. Offsite backup, media/backup folders and the update channel are not on screen.
-5. A way back to the standard folder. A click test showed that no open panel reaches
+5. A way back to the default folder. A click test showed that no open panel reaches
    `~/Library/Application Support` — `~/Library` is hidden — so once the files were
-   anywhere else they could not be moved back. The files row now offers *Use the standard
-   folder* (first run) or *Move to the standard folder* (Settings) whenever they are
+   anywhere else they could not be moved back. The files row now offers *Use the default
+   folder* (first run) or *Move to the default folder* (Settings) whenever they are
    elsewhere and `WAFFLED_DATA_DIR` does not pin them.
 
-Found while building this, not fixed here:
+Found while building this:
 
-- **Move… leaves the nightly backup pointed at the old folder.** `cmdMove`
-  (`apps/runtime/cmd/waffled-runtime/move.go`) never touches the launchd plist, whose
-  `--data` still names the folder the household left. `backup` is a writing construction,
-  so the next nightly run recreates that folder with fresh secrets and backs up an empty
-  database there, while the real one is not backed up at all — and its retention falls
-  back to 14, since the schedule no longer names its data directory. The fix belongs in
-  `move`: when the plist's `--data` is the moved-from folder, re-install it for the new
-  one with the same `--at` and `--keep`. Until then, re-run
-  `waffled-runtime backup --install-schedule --data NEW --keep N` after a move (`--keep`
-  too: a schedule for a different folder does not inherit the old one's).
+- **Move… left the nightly backup pointed at the old folder** — fixed in this branch after
+  all. `cmdMove` never touched the launchd plist, whose `--data` still named the folder the
+  household left, so the next nightly run recreated that folder with fresh secrets and
+  backed up an empty database there while the real one went unprotected. `move` now
+  re-installs the schedule for the new folder when the plist's `--data` is the moved-from
+  one, keeping `--at`, `--keep`, the binary and the bundle (`schedule.Agent.Follow`), and
+  leaves a plist for any other folder alone.
 
 *Originally audited against `mac-setup-flow` at the tip of PR #202; re-audited for §6. If
 `passthroughKeys` or `Plan.API` have moved since, re-run the audit before trusting §3.*

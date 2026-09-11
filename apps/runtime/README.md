@@ -203,6 +203,16 @@ value when it pointed inside, and keeps it when it is the short `wfl*` temp dire
 for a data path too long for a unix socket, which is still valid afterwards. The
 `Caddyfile` needs nothing: the supervisor writes it on every start.
 
+**The nightly backup moves with it.** The launchd plist names its data directory, so left
+alone it would back up the folder that was just removed — recreating it empty, with fresh
+secrets, every night — while the household went unprotected. When the installed plist's
+`--data` is the folder being moved, `move` re-installs it for the new one, keeping its time,
+its `--keep`, and the binary and bundle it was installed with (`schedule.Agent.Follow`). A
+plist backing up any other folder is left alone — the label is global, and another
+household's schedule is not this move's. A dry run touches nothing; a schedule that cannot
+be re-installed is printed as a warning with the command to fix it, and the move still
+succeeds.
+
 Nothing on the Mac records where the data directory went — `--data` is how every command is
 told, and the Mac app is what remembers the household's answer between launches. The
 summary prints the `start --data` line to use.

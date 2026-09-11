@@ -71,7 +71,7 @@ closes it again.
   live, and the window says so if you pick one — as it does if it cannot write there.
   Waffled makes a **Waffled** folder inside whatever you pick, so choosing your Documents
   folder does not scatter a database through it. Wandered off to another folder and want
-  the default back? **Use the standard folder** does that — the folder window cannot show
+  the default back? **Use the default folder** does that — the folder window cannot show
   it, because macOS hides `~/Library`. You can move it later from `Settings…` — see
   [Moving Waffled's files](#moving-waffleds-files) — but picking it now avoids the copy.
 - **Nightly backup.** On, at 3:00 AM, unless you say otherwise — 1:00 AM, 3:00 AM, 5:00 AM
@@ -226,11 +226,11 @@ somewhere else yourself for now.
 
 `Settings…` → *Move…* takes everything — the database, your photos and every backup — to
 another folder on this Mac. Waffled stops the server, copies, and starts it again. Once
-it lives anywhere but `~/Library/Application Support/Waffled`, *Move to the standard
-folder* appears beside it and takes it back there — the folder window cannot, because
-macOS hides `~/Library`.
+it lives anywhere but `~/Library/Application Support/Waffled`, *Move to the default
+folder* appears beside it, with that path underneath, and takes it back there — the folder
+window cannot, because macOS hides `~/Library`.
 
-Three things to know before you click it:
+Four things to know before you click it:
 
 - **The new folder must be empty and on a disk that stays plugged in**, formatted APFS or
   Mac OS Extended. An external drive that could be unplugged, or a network folder, would
@@ -239,6 +239,7 @@ Three things to know before you click it:
   fills up, the drive disappears — your household is still in the old folder, untouched.
 - **It needs room for a second copy** while it runs, plus a little headroom. Waffled
   checks first and tells you if there isn't enough.
+- **The nightly backup moves with it**, at the same time and keeping the same number.
 
 If you would rather do it from Terminal, it is the same command underneath:
 
