@@ -330,6 +330,25 @@ func TestAdminRunsTheBundledAdminCLIWithTheAPIsDatabase(t *testing.T) {
 	}
 }
 
+// A pin, not a red-green test: the three node processes that open the database must carry
+// the same credentials, so a variable added to the api later cannot reach two of them and
+// leave `admin` connecting but unable to sign or decrypt.
+func TestEveryDatabaseServiceCarriesTheSameCredentials(t *testing.T) {
+	p := testPlan(t)
+	api := envMap(p.API().Env)
+	for name, spec := range map[string]Spec{"migrate": p.Migrate(), "admin": p.Admin(nil)} {
+		e := envMap(spec.Env)
+		for _, key := range []string{
+			"NODE_ENV", "DATABASE_URL", "LOCAL_JWT_SECRET",
+			"TOKEN_ENCRYPTION_KEY", "POWERSYNC_JWT_PRIVATE_KEY",
+		} {
+			if e[key] != api[key] {
+				t.Errorf("%s: %s = %q, want the api's %q", name, key, e[key], api[key])
+			}
+		}
+	}
+}
+
 func TestHealthURLsMatchTheServicesTheyProbe(t *testing.T) {
 	p := testPlan(t)
 	// The api's own health gate is /healthz: /api/health is admin-only and answers 401.

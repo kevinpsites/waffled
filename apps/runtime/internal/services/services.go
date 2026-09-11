@@ -173,18 +173,27 @@ func (p Plan) storageURL() string {
 	return p.Env.DatabaseURL(p.Ports.Postgres, StorageDatabase)
 }
 
+// dbEnv is what every node process that opens this household's database needs: the api
+// itself, the migrator, and the operator CLI. Shared so a new required variable cannot
+// reach two of the three — the api would serve, and `admin` would connect and then fail
+// to sign or decrypt.
+func (p Plan) dbEnv() []string {
+	return []string{
+		"NODE_ENV=production",
+		"DATABASE_URL=" + p.databaseURL(),
+		"LOCAL_JWT_SECRET=" + p.Env.Get(configenv.KeyLocalJWTSecret),
+		"TOKEN_ENCRYPTION_KEY=" + p.Env.Get(configenv.KeyTokenEncryptionKey),
+		"POWERSYNC_JWT_PRIVATE_KEY=" + p.Env.Get(configenv.KeyPowerSyncJWTPrivateKey),
+	}
+}
+
 // API mirrors the compose `api` service. HOST is set even though the api only honours it
 // once the HOST change lands (PR #177) — setting it now means the day it merges, the
 // api is on loopback with no runtime change.
 func (p Plan) API() Spec {
-	env := append(p.baseEnv(),
-		"NODE_ENV=production",
+	env := append(append(p.baseEnv(), p.dbEnv()...),
 		"HOST=127.0.0.1",
 		"PORT="+strconv.Itoa(p.Ports.API),
-		"DATABASE_URL="+p.databaseURL(),
-		"LOCAL_JWT_SECRET="+p.Env.Get(configenv.KeyLocalJWTSecret),
-		"TOKEN_ENCRYPTION_KEY="+p.Env.Get(configenv.KeyTokenEncryptionKey),
-		"POWERSYNC_JWT_PRIVATE_KEY="+p.Env.Get(configenv.KeyPowerSyncJWTPrivateKey),
 		"STORAGE_DRIVER=local",
 		"MEDIA_DIR="+p.Layout.Media,
 		"MEDIA_BASE_URL=/media",
@@ -225,13 +234,7 @@ func (p Plan) API() Spec {
 // bundle's own dist/migrate.js, which resolves the .sql files at ../migrations relative
 // to itself — the reason api/dist stays a directory in the bundle.
 func (p Plan) Migrate() Spec {
-	env := append(p.baseEnv(),
-		"NODE_ENV=production",
-		"DATABASE_URL="+p.databaseURL(),
-		"LOCAL_JWT_SECRET="+p.Env.Get(configenv.KeyLocalJWTSecret),
-		"TOKEN_ENCRYPTION_KEY="+p.Env.Get(configenv.KeyTokenEncryptionKey),
-		"POWERSYNC_JWT_PRIVATE_KEY="+p.Env.Get(configenv.KeyPowerSyncJWTPrivateKey),
-	)
+	env := append(p.baseEnv(), p.dbEnv()...)
 	return Spec{
 		Name:    Migrate,
 		Path:    p.node(),
@@ -248,13 +251,7 @@ func (p Plan) Migrate() Spec {
 // Not a OneShot: admin.js prompts for a typed confirmation on a TTY, so the supervisor
 // streams the caller's own stdio through rather than capturing it.
 func (p Plan) Admin(args []string) Spec {
-	env := append(p.baseEnv(),
-		"NODE_ENV=production",
-		"DATABASE_URL="+p.databaseURL(),
-		"LOCAL_JWT_SECRET="+p.Env.Get(configenv.KeyLocalJWTSecret),
-		"TOKEN_ENCRYPTION_KEY="+p.Env.Get(configenv.KeyTokenEncryptionKey),
-		"POWERSYNC_JWT_PRIVATE_KEY="+p.Env.Get(configenv.KeyPowerSyncJWTPrivateKey),
-	)
+	env := append(p.baseEnv(), p.dbEnv()...)
 	// The same settings the api runs with — token lifetimes and TZ change what a reset or
 	// a session prune actually writes.
 	env = append(env, p.passthrough()...)
