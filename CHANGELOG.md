@@ -25,7 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   does not scatter a database through Documents, and it says so rather than failing later
   if it cannot write there — what time it backs up each night, how the house reaches it
   (this Mac's name, its IP address, or a name you've set up yourself) and on which port
-  (1024 or above: below that needs an administrator), whether it starts when the Mac does, and — optionally — an Anthropic or OpenAI key for meal and week suggestions.
+  (1024 or above: below that needs an administrator), whether it starts when the Mac does,
+  and — optionally — who powers meal and week suggestions: Claude, any OpenAI-compatible
+  server, or Ollama, which the window checks is running on the Mac and lists the models of.
   The menu keeps it running: start at login, the server
   address to type into the kitchen tablet or a phone, a backup on demand, **Settings…**,
   which brings that same screen back whenever you want to change your mind, and
@@ -37,10 +39,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Change your mind about any of it later, and move Waffled's files to another disk.**
   **Settings…** in the Mac app's menu reopens the setup screen on a Mac where Waffled is
-  already running: the nightly backup time (or turning it off), how the house reaches this
-  Mac, your provider key, and whether Waffled starts when the Mac does. Only what you
-  actually changed is applied, and anything that waits for a restart says so instead of
-  looking like it did not work. **Move…** takes the whole household — database, photos and
+  already running, in three tabs. **Basic** has the nightly backup time and how many
+  backups to keep (7, 14, 30 or 90 — "Back up now" keeps the same number), how the house
+  reaches this Mac, the suggestions provider, and whether Waffled starts when the Mac does.
+  **Advanced** covers households running their own AI, calendar sync or sign-in: default
+  models and timeouts, Google and Microsoft OAuth apps, how long people stay signed in, and
+  the rate limits on sign-in, pairing and uploads. **Diagnostics** sets how much the server
+  logs, and in JSON or readable text. Only what you actually changed is applied, and
+  anything that waits for a restart says so — and turns Apply into **Restart Waffled** —
+  instead of looking like it did not work. **Move…** takes the whole household — database, photos and
   every backup — to another folder, which is how you get Waffled off a full startup disk:
   it stops the server, copies, and starts it again, and nothing is deleted until the copy
   has arrived. From Terminal it is `waffled-runtime move --to DIR`, which refuses a
@@ -55,10 +62,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of the house is told (this Mac's IP address, its own `.local` name, or a name you have
   pointed at this Mac yourself), and `HTTP_PORT` names the public port you would rather
   have — still falling forward to the next free one when something else already answers
-  there. `backup --install-schedule --at HH:MM` puts the nightly backup at an hour that
-  suits the household rather than 03:00, and `status --json` now reports both the time it
-  will run (`backups.scheduleAt`) and the address in its always-dependable IP form
-  (`urls.lanIp`).
+  there. `backup --install-schedule --at HH:MM --keep N` puts the nightly backup at an hour
+  that suits the household rather than 03:00 and keeps the last N rather than 14 — leaving
+  either flag out keeps what the schedule already says, and a `backup` run with no `--keep`
+  keeps what the nightly one does. `status --json` now reports the time it will run
+  (`backups.scheduleAt`), how many it keeps (`backups.keep`) and the address in its
+  always-dependable IP form (`urls.lanIp`). The api on a Mac now also reads `LOG_LEVEL`,
+  `LOG_FORMAT`, `AI_TIMEOUT_MS`, `AI_MAX_RETRIES`, `OIDC_NATIVE_REDIRECT_URI` and the
+  `RATE_LIMIT_*_MAX` throttles from `config.env`, as it does from a Docker `.env`.
 
 - **Weekly Planning is on iPhone and iPad.** The whole guided session — the lobby, all ten
   steps, the agenda sheet, the parked-note handoff, the recap and the saved record — now

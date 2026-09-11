@@ -264,7 +264,11 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   or a name the household points at it) and the port, all before anything is created. The
   same screen comes back as **Settings…** afterwards, applying only what changed, with a
   **Move…** that takes the whole household to another folder when the startup disk fills
-  up. It **updates itself** via Sparkle — one download that swaps the
+  up. Settings has three tabs: **Basic** (those rows as drawers, plus how many nightly
+  backups to keep and a provider segment — Not now, Claude, OpenAI-compatible, or Ollama
+  detected on the Mac), **Advanced** (AI model and limits, calendar sync, sessions and
+  sign-in, rate limits) and **Diagnostics** (log level and format) — every control one the
+  runtime really forwards ([`mac-settings-redesign.md`](./mac-settings-redesign.md)). It **updates itself** via Sparkle — one download that swaps the
   app, the runtime and the schema together, snapshotting and rolling back if the new version
   cannot come up healthy. Signed with a Developer ID, **notarized and stapled**, and shipped
   as a DMG built by `apps/mac/Scripts/release-mac.sh`, so Gatekeeper opens it with no
@@ -350,6 +354,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Planned 🚧
 
+- **The rest of the Mac Settings design** — each its own piece of runtime work before a
+  control can appear: photos in a folder of their own (media relocation), backups in a
+  folder of their own, backups that include photos, keeping every backup ("Forever"), an
+  offsite copy to S3/B2/R2, a hostname Caddy actually serves with a certificate, a beta
+  update channel, and OpenTelemetry (the bundle ships none of it). Listed with the reason
+  each is not a setting yet in §3d of [`mac-settings-redesign.md`](./mac-settings-redesign.md).
 - **Waffled for Windows** — the same Go runtime, a different wrapper (a tray app rather
   than a menu-bar one), and a bundle of Windows binaries instead of Mach-O ones. Nothing in
   the Mac work forecloses it; §9 of [`native-mac-plan.md`](./native-mac-plan.md) records

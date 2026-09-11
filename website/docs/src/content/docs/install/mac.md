@@ -46,18 +46,19 @@ and asks before it sets one up.
 ### 1. Welcome
 
 What Waffled is, which versions of the database, the server, sync and the web app are
-already inside the download, and three ways on: **Set up Waffled**, **Choose where things
-go…**, or **Not on this Mac**. Closing this window quits — no database, no household. On a
+already inside the download, and three ways on: **Set up Waffled**, **Settings first…**,
+or **Not on this Mac**. Closing this window quits — no database, no household. On a
 laptop there is a paragraph about the lid here: close it and the household's server sleeps
 with it.
 
 The defaults are sensible, so **Set up Waffled** is a fine answer: Waffled's files in
 `~/Library/Application Support/Waffled`, a nightly backup at 3:00 AM, this Mac's own name
-as the address, port 8080, and Waffled starting whenever the Mac does. **Choose where things
-go…** is how you change any of that first.
+as the address, port 8080, and Waffled starting whenever the Mac does. **Settings first…**
+is how you change any of that first.
 
 ### 2. Where things go
 
+Each row says what is in force; **Change…** opens it and **Done** closes it again.
 Everything on this screen is applied **before** the first start, so that start already
 uses it.
 
@@ -69,8 +70,10 @@ uses it.
   folder does not scatter a database through it. You can move it later from `Settings…` —
   see [Moving Waffled's files](#moving-waffleds-files) — but picking it now avoids the copy.
 - **Nightly backup.** On, at 3:00 AM, unless you say otherwise — 1:00 AM, 3:00 AM, 5:00 AM
-  or noon — noon is there for a Mac that sleeps at night. Switching it off schedules
-  nothing; **Back up now** in the menu still works whenever you want it.
+  or noon — noon is there for a Mac that sleeps at night. **Keep the last** 7, 14, 30 or 90
+  backups (14 unless you change it); the oldest goes when a new one arrives. Switching it
+  off schedules nothing; **Back up now** in the menu still works whenever you want it. A
+  backup holds the database — your photos stay in Waffled's folder.
 - **Address on your network** — how the kitchen tablet and everyone's phones reach this Mac.
   - **This Mac's name**, a `.local` name phones and tablets discover on their own. The
     default, and the right answer on most home networks.
@@ -85,9 +88,13 @@ uses it.
   Whichever you pick, Waffled serves plain **HTTP** on your own network. A nicer name is a
   nicer address, not HTTPS — there is no certificate, and none of this puts Waffled on the
   public internet.
-- **Smart suggestions** *(optional)*. An Anthropic or OpenAI key turns on meal ideas and
-  week planning. It is stored on this Mac only, in Waffled's own config, and you can add it
-  later instead — nothing else depends on it.
+- **Smart suggestions** *(optional)* — meal ideas and week planning, from a provider you
+  choose: **Not now** (Waffled's built-in parser, no account needed), **Claude** (an
+  Anthropic key), **OpenAI-compatible** (a key, plus a server address if it is not OpenAI
+  itself — LM Studio, vLLM and the like), or **Ollama** (its address; Waffled checks
+  whether Ollama answers there and lists the models it has). The key is stored on this Mac
+  only, in Waffled's own config. Adding one makes that provider *available*; you pick which
+  one Waffled uses in the web app, under **Settings → AI & Capture**.
 - **Start Waffled when this Mac starts up.** On, and worth leaving on: the tablet and the
   phones expect the server to be there.
 
@@ -127,7 +134,7 @@ directory, brings the server back up, and the icon goes solid.
 | **Server address** | `host:port` for the kitchen tablet and the iOS app — click to copy. |
 | **Start at login** | Brings the server back after a reboot, with no browser window. |
 | **Back up now** | A `pg_dump` into `backups/`. Works even while the server is stopped. See [Backups](#backups). |
-| **Settings…** | The setup screen again — backup time, address, provider key, login item, and the folder. See [Changing settings later](#changing-settings-later). |
+| **Settings…** | The setup screen again, plus Advanced and Diagnostics. See [Changing settings later](#changing-settings-later). |
 | **Check for updates…** | See [Updating](#updating). |
 | **Show logs** | Appears only when something has gone wrong. |
 | **Quit Waffled** | Confirms, **stops the server**, then quits. |
@@ -159,24 +166,56 @@ Three things worth knowing:
 
 ## Changing settings later
 
-`Settings…` in the menu opens the same screen the setup window showed, on a Mac where
-Waffled is already running. You can change:
+`Settings…` in the menu opens on a Mac where Waffled is already running, in three tabs
+with one **Apply** between them. Only what you actually changed is applied, so opening the
+screen and closing it does nothing at all.
+
+**Basic** is the setup screen's rows again:
 
 | | Takes effect |
 |---|---|
-| **Nightly backup** — on or off, and the hour | Straight away. Turning it off removes the scheduled job. |
-| **Address on your network** — this Mac's name, its IP, or a name you set up | **Next time Waffled starts.** The screen says so when you change it; stop and start from the menu when it suits you. |
-| **Smart suggestions** — the provider key | Straight away. The field is always blank when the screen opens — Waffled never reads your key back out of `config.env` — so leaving it blank means "don't change it", not "delete it". |
+| **Nightly backup** — on or off, the hour, and how many to keep | Straight away. Turning it off removes the scheduled job. |
+| **Address on your network** — this Mac's name, its IP, or a name you set up | After a restart. |
+| **Smart suggestions** — the provider, its key or address | After a restart. The key field is always blank when the screen opens — Waffled never reads your key back out of `config.env` — so leaving it blank means "don't change it", not "delete it". Choosing **Not now** is how you remove saved keys. |
 | **Start when this Mac starts up** | Straight away. |
-| **Waffled's files** | See below. |
+| **Waffled's files** | See [below](#moving-waffleds-files). |
 
-Only what you actually changed is applied, so opening the screen and closing it does
-nothing at all.
+**Advanced** is for households running their own sign-in, calendar sync or AI. Leave a
+field blank and Waffled uses the default shown in it; each field shows the `config.env`
+variable it writes, matching the [environment variables](/install/environment-variables/)
+Docker uses.
+
+- **AI model and limits** — the default model for each provider (the web app can still
+  choose another per household), how long to wait for an answer, and how many times to retry.
+- **Calendar sync** — your own Google and Microsoft OAuth apps: client ID, client secret
+  (never shown back) and the redirect address registered on the app.
+- **Sessions and sign-in** — how long sign-in tokens last, how many days people stay signed
+  in, the break-glass **Always show the password form**, the address single sign-on
+  returns to, and the app's sign-in callback.
+- **Rate limits** — how many tries the sensitive routes allow (setup, sign-in, single
+  sign-on, kiosk pairing, photo uploads) before they make someone wait. The time windows
+  are built in; only the counts change.
+- **Address and ports** — the address and the port in use, shown but not changeable (see
+  below).
+
+**Diagnostics** sets how much the server writes to `api.log` — everything, normal,
+warnings, or errors only — and in which format: structured JSON, or readable text (easier
+to scan, but its lines carry no timestamp). **Show logs** opens the logs folder.
+
+Everything on Advanced and Diagnostics takes effect **after a restart**. Whenever something
+you applied is waiting for one, the screen says so and **Apply** becomes **Restart
+Waffled** — nothing is lost by waiting, and anything already pointed at this Mac keeps
+working.
 
 **The port is shown but cannot be changed here.** Waffled picked it at setup and every
 phone, tablet and bookmark in the house points at it, so moving it is a job that has to
 tell them first. To move it deliberately, quit Waffled and edit `ports.public` in
 `runtime.json` in the folder above.
+
+Some things you may have seen in a design for this screen are **not here yet**, because
+nothing would act on them: a separate folder for photos or for backups, copying backups
+offsite from the Mac, OpenTelemetry, and a beta update channel. On a Mac, copy `backups/`
+somewhere else yourself for now.
 
 ## Moving Waffled's files
 
@@ -217,8 +256,11 @@ Terminal command does it:
   --install-schedule --at 01:00
 ```
 
-`--at` is 24-hour local time and defaults to `03:00`; `--uninstall-schedule` removes the
-schedule. One Mac keeps one nightly backup, so running this again simply moves the time.
+`--at` is 24-hour local time and defaults to `03:00`; add `--keep 30` to keep the last 30
+instead of 14. Leaving either flag out keeps what the installed schedule already says, so
+running this again changes only what you name. `--uninstall-schedule` removes the schedule.
+One Mac keeps one nightly backup. **Back up now**, and `waffled-runtime backup` on its own,
+keep the same number the nightly backup does.
 
 A backup on the same Mac survives a mistake, not a fire. Copy `backups/` somewhere else —
 another disk, or a cloud folder — the same advice as the

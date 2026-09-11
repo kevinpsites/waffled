@@ -202,29 +202,35 @@ behind the browser someone was reading) and walks five steps:
 1. **Welcome.** The three promises, the versions of Postgres, the server, Sync and the web
    build that are **really inside this app** — read from the bundle's own manifest by way of
    `status`, which answers with everything stopped — and three actions: `Set up Waffled`,
-   `Not on this Mac`, and `Choose where things go…`. The auto-start is **held** while this
+   `Not on this Mac`, and `Settings first…`. The auto-start is **held** while this
    step is up: the button is what starts a first run, and it spends the one attempt. Closing
    this window quits the app; nothing has been created yet to leave behind. On a **laptop**
    there is a plain paragraph here first: closing the lid puts the server to sleep for the
    whole house, and a Mac that stays awake is a better home. It is a warning, not a refusal.
 2. **Where things go.** Everything on this screen is applied **before** the first `start`, so
-   the first boot already uses the folder, the port and the name that were chosen.
+   the first boot already uses the folder, the port and the name that were chosen. Four of
+   the rows are drawers (`SettingsDrawer`): collapsed, each says what is in force;
+   `Change…` opens it and becomes `Done`.
    - **Waffled's files** — a folder picker, restricted to this Mac's own **internal** disk
      and to APFS or Mac OS Extended. A removable drive, a network folder or an ExFAT volume
      is refused in the row itself, with the reason. Once a data directory has been
      initialized the row stops offering `Change…` and offers `Reveal in Finder` instead:
      moving it afterwards is a migration, and that is not in this release.
-   - **Nightly backup** — on or off, and one of four times. Off installs nothing rather than
-     uninstalling something (this runs on a Mac with nothing of ours on it yet), and
-     `Back up now` in the menu still works.
+   - **Nightly backup** — on or off, one of four times, and how many to keep (7/14/30/90).
+     `--keep` is passed only when it is not 14, the runtime's own default. Off installs
+     nothing rather than uninstalling something (this runs on a Mac with nothing of ours on
+     it yet), and `Back up now` in the menu still works.
    - **Address on your network** — this Mac's name, its IP address, or a name the household
      set up themselves, plus the preferred port. The address is always written as
      `WAFFLED_PUBLIC_HOST`, because an absent one means "keep the address this install has
      always had" and a first run has none. `HTTP_PORT` is written only when someone chose a
      port that is not the default: it is the preference for the first allocation, so an
      assignment nobody asked for would put a number on record they never chose.
-   - **Smart suggestions** — an optional Anthropic or OpenAI key, written to that provider's
-     own variable.
+   - **Smart suggestions** — a segment: Not now, Claude (`ANTHROPIC_API_KEY`),
+     OpenAI-compatible (`OPENAI_API_KEY`, plus `OPENAI_BASE_URL` when it is not OpenAI) or
+     Ollama (`OLLAMA_HOST`). Choosing Ollama asks `<host>/api/tags` once — never on a timer —
+     and says whether it answered and with which models (`OllamaProbe`). These only make a
+     provider *available*: which one a household uses is chosen in the web app.
    - **Start Waffled when this Mac starts up** — the login item.
 3. **Setting up.** A tick per service as Postgres, the API, Sync and Web come up, each under
    a two-line label, with a progress bar, an elapsed clock and the last line the runtime
@@ -292,10 +298,20 @@ retries the stop, and `waffled-runtime stop` in Terminal is the way out if it ke
 ## Settings
 
 `Settings…` puts the **same five rows** the first run showed back in the app's one window,
-on a Mac where Waffled already lives. Literally the same view — `SetupOptionRows`, bound to
-the same `model.setupOptions` — so there is one place where a row's label, control and
-validation live. What differs is the frame (`SettingsPresentation` rather than
-`FirstRunPresentation`) and what three of the rows may do.
+on a Mac where Waffled already lives, as its **Basic** tab. Literally the same view —
+`SetupOptionRows`, bound to the same `model.setupOptions` — so there is one place where a
+row's label, control and validation live. What differs is the frame (`SettingsPresentation`
+rather than `FirstRunPresentation`) and what three of the rows may do.
+
+**Advanced** and **Diagnostics** are `SettingsCatalog`: a curated list of api settings, each
+one a key the runtime forwards (`services.go` `passthroughKeys`) or reads itself
+(`LOG_LEVEL`, `LOG_FORMAT`). It is deliberately not a free-form `KEY=VALUE` table — a key
+outside the allowlist is written to `config.env` and reaches nothing — and
+`SettingsCatalogTests` reads `passthroughKeys` out of the runtime's source and fails if the
+app can write a key nothing reads. Add a key to the runtime's allowlist first, then here.
+Blank is the api's default (shown as the placeholder), and a cleared field writes an empty
+value, which the runtime forwards as nothing. Secret fields (client secrets) behave like the
+provider key: blank means unchanged, and they are never remembered.
 
 **Only the difference is applied.** `SetupOptions.commandsForChange(from:)` diffs the
 working copy against what was applied last and emits just that. The first run's
@@ -303,26 +319,35 @@ working copy against what was applied last and emits just that. The first run's
 Apply would put preferences on record that nobody expressed, and that is how `HTTP_PORT`
 came to move a published port.
 
-Three rules fall out of that, and each has a test:
+The rules that fall out of that, and each has a test:
 
-- **The port is read-only here.** `HTTP_PORT` is the preference for the *first* allocation
-  and nothing after it, so a field would be a control that silently did nothing. The row
-  shows the running port and says where a port is really moved.
+- **The port is read-only here**, shown on Advanced. `HTTP_PORT` is the preference for the
+  *first* allocation and nothing after it, so a field would be a control that silently did
+  nothing. The row shows the running port and says where a port is really moved.
 - **A blank provider-key field means "unchanged".** The key is never read back out of
   `config.env` — `config set` is write-only by design — so the field opens blank every time.
   Reading blank as a deletion would turn the suggestions off for anyone who came to change
-  the backup time.
+  the backup time. Choosing **Not now** is the deletion: it clears all three credentials.
+- **Every `config set` waits for a restart.** The runtime builds the api's environment when
+  it starts it, and the api reads its keys once — provider keys included. Only the nightly
+  backup and the login item take effect straight away.
+- **`--keep` is stated only when the retention is what changed** — including a change back
+  to 14, because re-installing without it keeps whatever the plist already says.
 - **The backup toggle uninstalls when it goes off.** On the first run, off installs nothing
   because there is nothing of ours on the Mac yet; here there is. A dev run still touches the
   schedule in neither direction — launchd's label is global, so one Mac holds exactly one.
 
 What was applied is remembered through the injected `UpdateMemory`, not read back from
-`config.env`. The provider key is deliberately excluded from that (`SetupOptions.CodingKeys`):
-a secret belongs in owner-only `config.env`, not in the app's preferences file.
+`config.env`, and decoded field by field so preferences written before a field existed still
+come back. Secrets are deliberately excluded (`SetupOptions.CodingKeys`): they belong in
+owner-only `config.env`, not in the app's preferences file. The accepted cost: a value
+someone hand-edits into `config.env` is not what Settings shows.
 
 ### Moving the data directory
 
-The folder row becomes `Move…`, which is `ServerModel.moveDataDirectory(to:)`: stop, then
+The panel opens beside the folder Waffled is in, so the likeliest pick is that folder or its
+parent — both resolve to where Waffled already is, and the drawer says so and stops nothing.
+Otherwise the folder row's `Move…` is `ServerModel.moveDataDirectory(to:)`: stop, then
 `waffled-runtime move --to`, then repoint the client at the new folder, then start. That
 order is load-bearing — the runtime refuses to move a running cluster, and the `--data` the
 move is told about is the folder being moved **from**. The destination is checked with the

@@ -1,9 +1,13 @@
 # Waffled for Mac — the Settings redesign, and what has to exist first
 
-Follow-up plan. **Nothing in this document is built.** It records a design that landed
-after PR #202 and, more importantly, the audit of which of its controls would actually do
-something today — because most of them would not, and shipping a settings screen full of
-fields that silently change nothing is the failure this plan exists to prevent.
+Follow-up plan. **Status (2026-09-10): §4 items 1–4 are built** — retention through the
+schedule, the widened allowlist, logging from `config.env`, and the tabbed Settings — on
+branch `worktree-mac-settings-redesign`. The re-audit that preceded them corrected §3 in
+several places; §6 records what was built and where §3 was wrong. §3d beyond retention is
+still unbuilt. It records a design that landed after PR #202 and, more importantly, the
+audit of which of its controls would actually do something — because most of them would
+not, and shipping a settings screen full of fields that silently change nothing is the
+failure this plan exists to prevent.
 
 Design: the Claude Design project, `Waffled for Mac - Setup Flow.html` (with `mac-setup.css`
 and `mac-setup.js`). Companion to [`native-mac-plan.md`](./native-mac-plan.md) §7 Phase 3.
@@ -159,5 +163,48 @@ something that is read, or not be there yet.
 
 ---
 
-*Audited against `mac-setup-flow` at the tip of PR #202. If `passthroughKeys` or `Plan.API`
-have moved since, re-run the audit before trusting §3.*
+## 6. What was built, and where §3 was wrong
+
+Re-audited against `apps/api` before any key was added. Corrections to §3:
+
+- **`PUBLIC_BASE_URL`, `ACCESS_TOKEN_TTL_SECONDS`, `REFRESH_TOKEN_TTL_DAYS` and
+  `AUTH_FORCE_PASSWORD` were already forwarded** — §3b listed them as missing.
+- **The rate-limit keys are `RATE_LIMIT_*_MAX`**, and there are nine, not eight
+  (`RATE_LIMIT_OIDC_EXCHANGE_MAX` was missed). Their windows are fixed in the api; only
+  the counts are tunable.
+- **`OTEL_*` would do nothing natively.** The api loads OpenTelemetry only through the
+  Dockerfile's `NODE_OPTIONS=--require=/app/dist/otel.js` preload, and the bundle ships
+  neither `otel.js` nor `@opentelemetry/*` on purpose. Moved to §3d-shaped work.
+- **`UPDATE_CHECK_REPO` would do nothing** — the api reads it only after
+  `UPDATE_CHECK_ENABLED`, which the runtime forces off.
+- **`TZ` is forwarded but read by nothing in the api** — household time zones live in
+  the database. §3a's "the TZ row is real" was wrong, so no control writes it.
+- **There is no rolling-log-file setting anywhere** in the api; the runtime already writes
+  one file per service and rotates them.
+- **`LOG_FORMAT=pretty` works in the bundle** — the api's formatter is dependency-free —
+  but its lines carry no timestamp, which Diagnostics says.
+- **Provider keys need a restart too.** The api builds its AI config from its environment
+  once, at start, so a key written by Settings takes effect only after one. Settings used
+  to say only the address did.
+- **The active provider is not a Mac setting.** `config.env` makes a provider *available*;
+  which one a household uses, and its model, is chosen per household in the web app's
+  Settings → AI & Capture. The model fields on Advanced are defaults.
+
+What shipped:
+
+1. `backup --install-schedule --keep N` writes `--keep` into the plist, re-installing with
+   either flag omitted keeps what the plist says, a run with no `--keep` ("Back up now")
+   keeps what the nightly schedule keeps when it is this data directory's, and `status`
+   reports `backups.keep`. No "Forever" — the runtime has no keep-everything mode.
+2. Twelve keys added to `passthroughKeys`; the ones above that would do nothing are pinned
+   *out* by a test.
+3. `LOG_LEVEL` / `LOG_FORMAT` read from `config.env`, unknown values falling back to the
+   defaults.
+4. Settings in Basic / Advanced / Diagnostics tabs. Advanced and Diagnostics are a curated
+   catalog (`apps/mac/Sources/SettingsCatalog.swift`), not the free-form `KEY=VALUE`
+   table: any key outside the allowlist is written and reaches nothing. A Mac test reads
+   `passthroughKeys` out of `services.go` and fails if the app can write a key nothing
+   reads. Offsite backup, media/backup folders and the update channel are not on screen.
+
+*Originally audited against `mac-setup-flow` at the tip of PR #202; re-audited for §6. If
+`passthroughKeys` or `Plan.API` have moved since, re-run the audit before trusting §3.*

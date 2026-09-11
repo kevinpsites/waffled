@@ -22,7 +22,7 @@ waffled-runtime stop [--timeout 2m]
 waffled-runtime status [--json]
 waffled-runtime logs [service] [-f] [-n N]      # postgres migrate api powersync caddy bonjour runtime
 waffled-runtime backup [--out FILE] [--keep N]
-waffled-runtime backup --install-schedule [--at HH:MM] | --uninstall-schedule
+waffled-runtime backup --install-schedule [--at HH:MM] [--keep N] | --uninstall-schedule
 waffled-runtime restore FILE [--yes]
 waffled-runtime doctor [--json]
 waffled-runtime uninstall [--delete-data] [--dry-run] [--json] [--yes]
@@ -206,6 +206,21 @@ for a data path too long for a unix socket, which is still valid afterwards. The
 Nothing on the Mac records where the data directory went — `--data` is how every command is
 told, and the Mac app is what remembers the household's answer between launches. The
 summary prints the `start --data` line to use.
+
+### What in `config.env` reaches the api
+
+The api's environment is built from scratch (`services.Plan.API`), not inherited, and only
+an allowlist of household settings is forwarded from `config.env` (`passthroughKeys`): the
+AI provider keys, models, `OPENAI_BASE_URL`, `OLLAMA_HOST`, `AI_TIMEOUT_MS`,
+`AI_MAX_RETRIES`; Google and Microsoft calendar OAuth; `PUBLIC_BASE_URL`, the token
+lifetimes, `AUTH_FORCE_PASSWORD`, `OIDC_NATIVE_REDIRECT_URI`; the nine `RATE_LIMIT_*_MAX`
+throttles; and `TZ`. `LOG_LEVEL` (`debug|info|warn|error`) and `LOG_FORMAT`
+(`json|pretty`) are read by the runtime itself, defaulting to `info`/`json`. Anything
+else written to `config.env` reaches nothing — deliberately, and pinned by a test:
+`OTEL_*` (the api loads OpenTelemetry only through a `NODE_OPTIONS` preload the bundle does
+not ship), `UPDATE_CHECK_REPO` (the update notifier is off natively) and `AUTH0_DOMAIN`
+(it switches the api's auth mode). The api reads its environment once, so a change here
+takes effect at the next start.
 
 ### The address other devices use, and the port
 
@@ -535,7 +550,8 @@ The `backups` block is added to the same document:
   "count": 14,
   "lastError": "", "lastErrorAt": "",
   "scheduleInstalled": true,
-  "scheduleAt": "03:00"
+  "scheduleAt": "03:00",
+  "keep": 14
 }
 ```
 
@@ -552,6 +568,11 @@ menu-bar app polls this, and a process spawn per poll is not free.
 `StartCalendarInterval` — the schedule launchd obeys is the only record of it. Empty when
 nothing is installed, and empty when the plist is there and will not parse, which is a
 schedule nobody should be told the time of.
+
+`keep` is how many routine dumps retention holds on to: the `--keep` in the installed
+plist's own `ProgramArguments` when that schedule backs up **this** data directory, the
+default 14 otherwise (nothing installed, an older plist with no `--keep`, or another data
+directory's schedule).
 
 So is the `bonjour` block:
 
@@ -682,7 +703,7 @@ finding out afterwards is the failure this exists to prevent.
 ### Retention
 
 Two pools share `backups/` and are pruned separately by prefix: **14** `waffled-*.dump`
-and **3** `pre-migrate-*.dump`. A pruner that globbed `*.dump` would quietly eat the
+(or the nightly schedule's `--keep`) and **3** `pre-migrate-*.dump`. A pruner that globbed `*.dump` would quietly eat the
 rollback points every night. Pruning runs **whether or not the dump succeeded** — on a
 full disk, deleting what is beyond `keep` is the only thing in the command that frees
 space, and gating it on success means the next night fails the same way for good. It
@@ -729,6 +750,16 @@ time rather than of a bundle that had to be verified first. On its own, without
 `backups.scheduleAt` by reading the file's own `StartCalendarInterval`, so no second file
 can drift out of step with the schedule launchd actually obeys. Changing the time is
 `--install-schedule --at` again.
+
+**The plist is the record of the retention too.** `--install-schedule --keep N` writes
+`--keep N` into `ProgramArguments`, because the nightly run is that argv and nothing else —
+before this, `--keep` was accepted and dropped, so every schedule kept 14. Re-installing
+with `--at` or `--keep` left out keeps what the installed plist says for the one not
+restated (`chooseSchedule`), so changing only the time never resets the retention. A
+`backup` run with **no** `--keep` — "Back up now", or the command typed in Terminal — keeps
+what the nightly schedule keeps, when that schedule is this data directory's
+(`Supervisor.retention`); otherwise the first manual run would prune a 30-backup history
+back to 14. `--keep 0` or a negative count is refused rather than read as "the default".
 
 **One Mac holds one nightly backup.** The launchd label is global, so installing from a
 second data directory takes the existing schedule over. The command says so —
