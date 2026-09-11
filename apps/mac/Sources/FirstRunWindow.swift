@@ -432,7 +432,7 @@ private struct SetupOptionRows: View {
         folderRefusal = nil
         // Waffled gets a folder of its own inside their choice, so picking Documents does
         // not scatter a database through Documents.
-        let destination = Setup.dataDirectory(forChosen: picked)
+        let destination = Setup.dataDirectory(forChosen: picked, current: model.dataDirectory)
         // Before setup this is only a choice; afterwards it is a copy of everything the
         // household has, which the runtime does with the server stopped.
         if settings == nil {

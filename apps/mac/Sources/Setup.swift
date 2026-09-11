@@ -35,13 +35,15 @@ enum Setup {
     /// runtime's own `datadir.AppName`, so the default path and a chosen one read alike.
     static let folderName = "Waffled"
 
-    /// What marks a folder as already holding a household. Any one is enough, and the
-    /// directories matter as much as the files: the app's launch poll creates the tree
-    /// before anyone has clicked anything, while `config.env` and `runtime.json` are not
-    /// written until the first `start`. Without `postgres` in here, picking the folder
-    /// Waffled is already in — which the panel opens right beside — would nest a second
-    /// one inside it.
-    static let householdMarkers = ["runtime.json", "config.env", "postgres", "media", "backups"]
+    /// The files that prove a folder already holds a household — the same evidence the
+    /// runtime's own `looksLikeDataDir` accepts.
+    ///
+    /// Deliberately NOT the directory names. `media/` and `backups/` are things people
+    /// have in folders of their own, so accepting them meant a household who picked
+    /// `~/Documents` — which plenty of Macs have a `~/Documents/backups` in — had the
+    /// database written straight into Documents, which is the whole thing this is here
+    /// to stop.
+    static let householdMarkers = ["runtime.json", "config.env"]
 
     /// Where Waffled's data really goes, given the folder a person picked.
     ///
@@ -50,11 +52,20 @@ enum Setup {
     /// picking `~/Documents` would scatter a database through Documents. Waffled gets a
     /// folder of its own inside their choice instead.
     ///
-    /// Unless their choice already IS one: picking the folder Waffled lives in, from
-    /// `Settings…` or a second setup, must not bury it one level deeper each time. The
-    /// evidence is what is inside, never the name — an empty folder called Waffled is
-    /// still just a folder.
-    static func dataDirectory(forChosen url: URL) -> URL {
+    /// Unless their choice already IS one, in which case burying it a level deeper each
+    /// time it is picked would be worse. That is answered two ways, both exact:
+    ///
+    /// - it is the folder Waffled is using right now — the panel opens right beside it,
+    ///   so picking it is easy and means "leave it where it is";
+    /// - or it holds one of our own files.
+    ///
+    /// Not by the directories inside it. The launch poll lays those out before anyone has
+    /// clicked anything, and their names — `media`, `backups` — are names people use for
+    /// folders of their own.
+    static func dataDirectory(forChosen url: URL, current: URL? = nil) -> URL {
+        if let current, url.standardizedFileURL.path == current.standardizedFileURL.path {
+            return url
+        }
         let alreadyOurs = householdMarkers.contains {
             FileManager.default.fileExists(atPath: url.appendingPathComponent($0).path)
         }

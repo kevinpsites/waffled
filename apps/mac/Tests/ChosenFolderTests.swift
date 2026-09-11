@@ -36,16 +36,29 @@ final class ChosenFolderTests: XCTestCase {
     }
 
     /// The one the panel makes easy to hit: it opens at the data directory's PARENT, so
-    /// the Waffled folder is right there to be picked. By then the app's launch poll has
-    /// created the tree — but not runtime.json or config.env, which are written by the
-    /// first `start` — so the folders it did create have to count as evidence too, or a
-    /// household ends up in Waffled/Waffled.
-    func testAFolderHoldingAnUnstartedDataDirectoryIsUsedAsItIs() throws {
+    /// the folder Waffled is using is right there to be picked. Picking it means "leave it
+    /// where it is", and it is recognised by BEING that folder — not by whatever the
+    /// launch poll happened to lay out inside it.
+    func testPickingTheFolderWaffledIsAlreadyUsingLeavesItThere() throws {
         let picked = try tempDir()
         try FileManager.default.createDirectory(
             at: picked.appendingPathComponent("postgres"), withIntermediateDirectories: true)
-        XCTAssertEqual(Setup.dataDirectory(forChosen: picked), picked,
-                       "the tree the first status poll made is still Waffled's own folder")
+        XCTAssertEqual(Setup.dataDirectory(forChosen: picked, current: picked), picked)
+    }
+
+    /// `media` and `backups` are names people use for folders of their own, so accepting
+    /// them as proof meant picking `~/Documents` — which plenty of Macs have a
+    /// `~/Documents/backups` in — wrote the database straight into Documents. Which is
+    /// the whole thing this function exists to stop.
+    func testSomebodyElsesFoldersAreNotAHousehold() throws {
+        let picked = try tempDir()
+        for name in ["media", "backups", "postgres"] {
+            try? FileManager.default.createDirectory(
+                at: picked.appendingPathComponent(name), withIntermediateDirectories: true)
+        }
+        XCTAssertEqual(Setup.dataDirectory(forChosen: picked, current: nil),
+                       picked.appendingPathComponent(Setup.folderName),
+                       "directories somebody else made are not evidence of a household")
     }
 
     /// A folder already called Waffled but with nothing of ours in it is still just a
