@@ -135,8 +135,27 @@ func misplacedRuntimeFlag(forward []string) error {
 			return fmt.Errorf("--%s is the runtime's own flag and belongs before the command, "+
 				"as `waffled-runtime admin --%s DIR %s …`; everything after the command is passed "+
 				"to the operator CLI (use -- if you really meant to pass it through)",
-				name, name, forward[0])
+				name, name, operatorCommand(forward))
 		}
 	}
 	return nil
+}
+
+// operatorCommand is the word to show in that example. Not forward[0]: an unrecognised
+// flag ends the runtime's flags too, so it can sit in front of the command, and naming it
+// would hand back a line that does not work.
+func operatorCommand(forward []string) string {
+	for i := 0; i < len(forward); i++ {
+		arg := forward[i]
+		if !strings.HasPrefix(arg, "-") {
+			return arg
+		}
+		// A directory is not the command: --data and --bundle each swallow the word after
+		// them unless it was written as --data=DIR.
+		name, _, hasValue := strings.Cut(strings.TrimLeft(arg, "-"), "=")
+		if commonValueFlags[name] && !hasValue {
+			i++
+		}
+	}
+	return "<command>"
 }

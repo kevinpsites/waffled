@@ -80,6 +80,22 @@ func TestAdminRefusesARuntimeFlagAfterTheCommand(t *testing.T) {
 	}
 }
 
+// The refusal shows the line to type instead, so the command it names has to be the
+// operator command — not whatever word happened to come first. An unrecognised flag ends
+// the runtime's own flags, so it can sit in front of the command being corrected.
+func TestTheRefusalNamesTheOperatorCommandNotTheFirstWord(t *testing.T) {
+	_, _, err := splitAdminArgs([]string{"--verbose", "--data", "/tmp/x", "list-members"})
+	if err == nil {
+		t.Fatal("--data after the command must be refused")
+	}
+	if !strings.Contains(err.Error(), "list-members") {
+		t.Errorf("the example must name the real command, got %v", err)
+	}
+	if strings.Contains(err.Error(), "DIR --verbose") {
+		t.Errorf("the example must not hand back an unusable command line, got %v", err)
+	}
+}
+
 // `--` is the person saying "I meant that literally", so the refusal above steps aside.
 func TestAdminForwardsARuntimeFlagNameAfterADoubleDash(t *testing.T) {
 	_, forward, err := splitAdminArgs([]string{"--", "list-members", "--data", "/tmp/x"})
