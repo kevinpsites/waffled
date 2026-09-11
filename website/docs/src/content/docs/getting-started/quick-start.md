@@ -1,14 +1,22 @@
 ---
 title: Quick start
-description: Install and run Waffled as a small Docker Compose stack.
+description: Install Waffled — the Mac app on an Apple silicon Mac, or a small Docker Compose stack anywhere else.
 ---
+
+There are two ways to run Waffled, and they are the same server — same api, same data,
+same web app. Pick by machine:
+
+| You have | Install | Docker? |
+|---|---|---|
+| A Mac with Apple silicon, macOS 14+ | **[Waffled for Mac](/install/mac/)** — download it, drag it to Applications, open it | No |
+| Linux, a NAS, a Raspberry Pi, a VPS — or a Mac you'd rather run Docker on | **This page** — `git clone` + `./waffled up` | Yes |
+
+On a Mac, [Mac install](/install/mac/) is the whole walkthrough; the rest of this page is
+the Docker path.
 
 Waffled runs as a small Docker Compose stack — **Postgres · PowerSync · api · Caddy**. Auth
 is built in; no Auth0 or external identity provider is required. You can attach your own
 SSO later (optional).
-
-> **On an Apple silicon Mac?** [Waffled for Mac](/install/mac/) is the same server as a
-> download — drag it to Applications and open it. No Docker, no Terminal.
 
 ## Requirements
 
@@ -79,7 +87,7 @@ That's it — you're in. The admin account is the household owner.
 
 ## Adding family members
 
-**Settings → Family & people → Add a person** creates a profile (name, avatar, color).
+**Settings → Family & People → Add a person** creates a profile (name, avatar, color).
 To let someone sign in, open their card and use the **Login** section:
 
 - Give them an **email** (+ optional password). With a password they sign in with the form.
@@ -95,7 +103,7 @@ Set one of these in `infra/compose/.env` (keys live only on the server):
 - `OPENAI_API_KEY` (+ optional `OPENAI_BASE_URL`) — OpenAI-compatible
 - `OLLAMA_HOST` — a local model (e.g. `llama3.1:8b`)
 
-Then choose the active provider/model per household in **Settings → AI & capture**. With
+Then choose the active provider/model per household in **Settings → AI & Capture**. With
 nothing set, capture still works via an on-device heuristic.
 
 > Note: small local models (e.g. `llama3.2:3b`) are loose; a 7–8B model or hosted Claude

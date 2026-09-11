@@ -3,12 +3,13 @@ title: Requirements
 description: What you need to run a self-hosted Waffled.
 ---
 
-Waffled runs as a small Docker Compose stack. The bar to run it is deliberately low — no host
-toolchain, no cloud account.
+The bar to run Waffled is deliberately low — no host toolchain, no cloud account.
 
 **On an Apple silicon Mac you can skip all of this**: [Waffled for Mac](/install/mac/) is a
-download that runs the same server natively, with no Docker. Everything below is the Compose
-path — Linux, a NAS, a Raspberry Pi, a VPS, or a Mac you would rather run Docker on.
+download that runs the same server natively, with no Docker — its requirements (macOS 14+,
+~1 GB of disk, a Mac that stays awake) are on [that page](/install/mac/#requirements).
+Everything below is the Docker Compose path — Linux, a NAS, a Raspberry Pi, a VPS, or a Mac
+you would rather run Docker on.
 
 ## Host
 

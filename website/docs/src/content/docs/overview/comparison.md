@@ -12,9 +12,10 @@ suit you better.
 
 ## What makes Waffled different
 
-- **Self-hosted, no subscription.** Runs as a small Docker stack on any always-on machine
-  (an old laptop, a NUC, a Raspberry Pi). No monthly fee, no per-seat pricing, no account
-  with a third party.
+- **Self-hosted, no subscription.** Runs on any always-on machine — as a
+  [Mac app](/install/mac/) on a Mac mini with no Docker, or as a small Docker stack on an old
+  laptop, a NUC or a Raspberry Pi. No monthly fee, no per-seat pricing, no account with a
+  third party.
 - **Your data stays yours.** One Postgres database you control. No ads, no analytics selling,
   no vendor that can change the terms or shut the product down.
 - **One hub, many things.** Calendar *and* chores *and* meals *and* lists *and* goals *and*
@@ -41,8 +42,8 @@ suit you better.
 ## The trade-off, stated plainly
 
 Self-hosting means **you run the server**. That's the whole point — and the whole cost. You
-need a machine that stays on, a few minutes to `./waffled up`, and the willingness to own your
-backups. If you'd rather someone else keep the lights on and you're comfortable renting that,
+need a machine that stays on, a few minutes to install (the [Mac app](/install/mac/) or
+`./waffled up`), and the willingness to own your backups. If you'd rather someone else keep the lights on and you're comfortable renting that,
 a hosted product is a reasonable choice. Waffled is for people who want the opposite.
 
 ## Where each alternative fits

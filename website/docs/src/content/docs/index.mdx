@@ -14,6 +14,10 @@ hero:
       link: /getting-started/quick-start/
       icon: rocket
       variant: minimal
+    - text: Install on a Mac
+      link: /install/mac/
+      icon: apple
+      variant: minimal
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
@@ -24,8 +28,11 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 	<Card title="Overview" icon="open-book">
 		[What Waffled is, the three surfaces, and the core ideas behind it.](/getting-started/overview/)
 	</Card>
+	<Card title="Mac install" icon="apple">
+		[Download the Mac app and run the whole server natively — no Docker, no Terminal.](/install/mac/)
+	</Card>
 	<Card title="Quick start" icon="rocket">
-		[`git clone` + `./waffled up` — the whole install in one command.](/getting-started/quick-start/)
+		[Anywhere Docker runs: `git clone` + `./waffled up` — the whole install in one command.](/getting-started/quick-start/)
 	</Card>
 	<Card title="Features" icon="puzzle">
 		[Calendar, chores & stars, meals, lists, pantry, photos, and more — page by page.](/reference/features/)

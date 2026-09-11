@@ -351,12 +351,12 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 
 | Feature | Web / Kiosk | iPhone | iPad | Status |
 | --- | :---: | :---: | :---: | --- |
-| **Family & people** (CRUD + grant login/PIN + **permissions grid**) | ✅ | ✅ | ✅ | ✅ Done |
+| **Family & People** (CRUD + grant login/PIN + **permissions grid**) | ✅ | ✅ | ✅ | ✅ Done |
 | **Permissions grid** — per-role (Adult / Teen / Kid) capability switches: manage/approve chores, manage/approve/grant rewards, manage goals, and **set up planning** (which lists the weekly session's first step asks about — adults hold it by default) | ✅ | 🟡 | 🟡 | ✅ Done (web); iOS shows a subset of the capabilities on a member's own sheet (chores + rewards), so granting `goal.manage` or `planning.manage` to a teen is web-only |
 | **Calendars** (connect Google, write-targets, sync now) | ✅ | ✅ | ✅ | ✅ Done |
 | **Chores & rewards** (currencies, conversions, proof retention) | ✅ | ✅ | ✅ | ✅ Done |
 | **Meals** (meal calendar & meal times) | ✅ | ✅ | ✅ | ✅ Done |
-| **AI & capture** (provider/model selection) | ✅ | ✅ | ✅ | ✅ Done |
+| **AI & Capture** (provider/model selection) | ✅ | ✅ | ✅ | ✅ Done |
 | **Display & Kiosk** (screensaver, photo source, idle, night-dim, preview) | ✅ | ✅ | ✅ | ✅ Done |
 | **Modules** (toggle optional modules; see Modules & extensibility) | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
 | **API Keys** (per-user keys + scopes for external integrations) | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web; admin-gated) |

@@ -45,7 +45,7 @@ Both **adding** new things and **acting on existing things** (the mutate verbs a
 
 ## Settings
 
-**Settings → AI & capture** — pick your **provider** and **model**. Ollama has a warm-up step before its first parse (hosted providers are always warm). API keys live only in the server env; see the [AI providers](/administration/ai-providers/) admin page to set them.
+**Settings → AI & Capture** — pick your **provider** and **model**. Ollama has a warm-up step before its first parse (hosted providers are always warm). API keys live only in the server env; see the [AI providers](/administration/ai-providers/) admin page to set them.
 
 ## Module
 
@@ -54,5 +54,5 @@ The capture bar is **core — never gated**. It routes into whichever surfaces e
 ## Notes
 
 - 🛟 **Creates are offline-safe by design** — with no provider configured (or on a timeout) the route signals fallback and clients use the on-device heuristic, so *creating* always works, even offline. Changing an existing thing needs a connection to your server, because the server does the matching.
-- 🧠 **The on-device fallback handles simple phrasings** ("mark the dishes done") — for reliable "do anything" parsing of the trickier ones, add an AI provider in **Settings → AI & capture**. Either way, the parse never leaves your infrastructure unless you point it at a hosted provider.
+- 🧠 **The on-device fallback handles simple phrasings** ("mark the dishes done") — for reliable "do anything" parsing of the trickier ones, add an AI provider in **Settings → AI & Capture**. Either way, the parse never leaves your infrastructure unless you point it at a hosted provider.
 - 🚧 **Server-side fuzzy person resolution** (nicknames / aliases) is planned — for now, name matching resolves the family names it knows.
