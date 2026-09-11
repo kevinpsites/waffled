@@ -36,7 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which brings that same screen back whenever you want to change your mind, and
   **Check for updates…**, which stops the server, replaces the
   app and brings your household back up on the new version. The download is signed and
-  notarized by Apple, so it opens with no Gatekeeper warning. Self-hosting with Docker
+  notarized by Apple, so it opens with no Gatekeeper warning, and
+  `https://github.com/kevinpsites/waffled/releases/latest/download/Waffled.dmg` is always
+  the newest one — the link waffled.app's **Download for Mac** uses. Self-hosting with Docker
   Compose is unchanged and remains the way to run Waffled on Linux, a NAS, a Pi or a VPS —
   same api, same data, same web app. See [Mac install](https://docs.waffled.app/install/mac/).
 
