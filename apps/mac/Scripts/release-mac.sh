@@ -71,8 +71,13 @@ one, so if this appears to hang at 0% CPU, look at the screen.
 Output, all under apps/mac/dist/:
   runtime/                 the runtime bundle this release was built from
   app/Waffled.app          the signed, notarized, stapled app
-  release/vX.Y.Z/          one directory per version, holding the two files that
-                           get uploaded: Waffled-X.Y.Z.dmg and appcast.xml
+  release/vX.Y.Z/          one directory per version, holding Waffled-X.Y.Z.dmg
+                           and appcast.xml
+  Waffled.dmg              the same DMG under a fixed name — the file behind
+                           releases/latest/download/Waffled.dmg, which the website
+                           links to
+
+All three files get uploaded to the vX.Y.Z GitHub Release.
 USAGE
 }
 
@@ -110,6 +115,10 @@ APP="$APPOUT/Waffled.app"
 # at this tag's download URL.
 RELEASE="$DIST/release/v$VERSION"
 DMG="$RELEASE/Waffled-$VERSION.dmg"
+# The same DMG under a name with no version in it, so waffled.app and the docs can link
+# releases/latest/download/Waffled.dmg and never change. Kept OUT of $RELEASE: make-appcast.sh
+# signs every archive in that directory, and the feed must name only the versioned file.
+LATEST_DMG="$DIST/Waffled.dmg"
 STAGING="$DIST/staging"
 # The DMG's volume icon, built from the app's own AppIcon slots so there is one master.
 ICONSET="$DIST/Waffled.iconset"
@@ -589,6 +598,12 @@ took
 # is pushed, which takes a few minutes — so this waits for it rather than failing on a race
 # and leaving a signed DMG nobody uploaded.
 step "13. upload to the GitHub Release"
+# Rebuilt from this run's DMG every time: an ad-hoc or unnotarized run must not leave an
+# earlier version's copy lying where a hand upload would pick it up.
+rm -f "$LATEST_DMG"
+if [ "$NOTARIZE" = yes ]; then
+  cp -c "$DMG" "$LATEST_DMG" || die "could not copy $DMG to $LATEST_DMG"
+fi
 if [ "$UPLOAD" = yes ]; then
   command -v gh >/dev/null 2>&1 || die "gh is not installed — upload by hand, or --no-upload"
   say "  waiting for release v$VERSION (publish-images.yml creates it from the tag)…"
@@ -601,16 +616,23 @@ if [ "$UPLOAD" = yes ]; then
     waited=$((waited + 15))
     say "${c_dim}    ${waited}s${c_reset}"
   done
-  gh release upload -R "$REPO" "v$VERSION" "$DMG" "$RELEASE/appcast.xml" --clobber \
+  gh release upload -R "$REPO" "v$VERSION" "$DMG" "$LATEST_DMG" "$RELEASE/appcast.xml" --clobber \
     || die "gh release upload failed"
-  ok "uploaded Waffled-$VERSION.dmg + appcast.xml to v$VERSION"
+  assets="$(gh release view -R "$REPO" "v$VERSION" --json assets --jq '.assets[].name')" \
+    || die "could not list the assets on v$VERSION to check the upload"
+  for want in "Waffled-$VERSION.dmg" Waffled.dmg appcast.xml; do
+    printf '%s\n' "$assets" | grep -Fxq "$want" || die "v$VERSION has no $want after the upload"
+  done
+  ok "uploaded Waffled-$VERSION.dmg + Waffled.dmg + appcast.xml to v$VERSION"
   say "${c_dim}  https://github.com/$REPO/releases/latest/download/appcast.xml"
-  say "  now resolves to this feed — that is the URL every installed copy checks.${c_reset}"
+  say "  now resolves to this feed — that is the URL every installed copy checks — and"
+  say "  https://github.com/$REPO/releases/latest/download/Waffled.dmg"
+  say "  to this DMG, which is the website's Download for Mac.${c_reset}"
 else
   warn "skipped (--no-upload)"
   if [ "$NOTARIZE" = yes ]; then
     say "${c_dim}  Upload by hand with:"
-    say "    gh release upload -R $REPO v$VERSION '$DMG' '$RELEASE/appcast.xml' --clobber${c_reset}"
+    say "    gh release upload -R $REPO v$VERSION '$DMG' '$LATEST_DMG' '$RELEASE/appcast.xml' --clobber${c_reset}"
   else
     say "${c_dim}  This DMG is for local testing only: unnotarized, and with no feed, there is"
     say "  nothing here that may be uploaded.${c_reset}"
