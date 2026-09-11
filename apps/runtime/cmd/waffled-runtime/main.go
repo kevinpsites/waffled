@@ -310,7 +310,15 @@ func cmdBackup(args []string) error {
 		if previous, err := agent.ScheduledDataDir(); err == nil && previous != agent.DataDir {
 			fmt.Printf("Note: this replaces the nightly backup of %s\n", previous)
 		}
+		// Omitting --at means "leave the time alone", not "put it back to 03:00". A
+		// household that chose 01:00 and re-ran this — following the docs, or after an
+		// update — had their choice silently replaced by the default.
 		agent.At = *at
+		if *at == "" {
+			if existing, err := agent.ScheduledAt(); err == nil && existing != "" {
+				agent.At = existing
+			}
+		}
 		if err := agent.Install(); err != nil {
 			return err
 		}
@@ -338,10 +346,18 @@ func cmdRestore(args []string) error {
 	fs := flag.NewFlagSet("restore", flag.ContinueOnError)
 	common := addCommon(fs)
 	yes := fs.Bool("yes", false, "skip the typed confirmation")
-	if err := fs.Parse(args); err != nil {
+	// Hoisted, like `config set` and `move`: Go's flag package stops at the first
+	// non-flag word, so `restore dump.sql --data DIR` parsed DIR into nothing and
+	// restored over whichever household the DEFAULT directory holds — destructively, and
+	// reporting success.
+	flags, positional := hoistFlags(args, commonValueFlags)
+	if err := fs.Parse(flags); err != nil {
 		return err
 	}
-	file := fs.Arg(0)
+	var file string
+	if len(positional) > 0 {
+		file = positional[0]
+	}
 	if file == "" {
 		return errors.New("usage: waffled-runtime restore FILE [--yes]")
 	}
@@ -500,7 +516,10 @@ func cmdLogs(args []string) error {
 	common := addCommon(fs)
 	follow := fs.Bool("f", false, "follow the log")
 	lines := fs.Int("n", 200, "number of lines to show")
-	if err := fs.Parse(args); err != nil {
+	// `logs api --data DIR` has the same shape as `restore`: the service name is a
+	// positional, so everything after it was dropped and the wrong install was read.
+	flags, positional := hoistFlags(args, logsValueFlags)
+	if err := fs.Parse(flags); err != nil {
 		return err
 	}
 	s, err := newReader(common, supervisor.NewLogger(io.Discard, true))
@@ -509,7 +528,10 @@ func cmdLogs(args []string) error {
 	}
 	layout := s.Plan().Layout
 
-	name := fs.Arg(0)
+	var name string
+	if len(positional) > 0 {
+		name = positional[0]
+	}
 	if name == "" {
 		entries, err := os.ReadDir(layout.Logs)
 		if err != nil {

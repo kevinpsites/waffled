@@ -198,6 +198,13 @@ func New(opts Options) (*Supervisor, error) {
 			return nil, err
 		}
 	}
+	// Re-tightened separately, because the write that used to do it is now conditional.
+	// A chmod cannot lose somebody else's concurrent write the way a rewrite can.
+	if configExisted {
+		if err := os.Chmod(layout.ConfigEnv, 0o600); err != nil {
+			log.Warnf("could not re-secure %s: %v", layout.ConfigEnv, err)
+		}
+	}
 	if err := env.Validate(); err != nil {
 		return nil, err
 	}

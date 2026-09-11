@@ -31,6 +31,9 @@ var envKey = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
 // are named here so hoistFlags knows which of them swallow the word after them.
 var commonValueFlags = map[string]bool{"bundle": true, "data": true}
 
+// logsValueFlags is commonValueFlags plus `-n`, which takes a count. `-f` does not.
+var logsValueFlags = map[string]bool{"bundle": true, "data": true, "n": true}
+
 func cmdConfig(args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: waffled-runtime config set KEY=VALUE [--data DIR]")
