@@ -357,9 +357,13 @@ func chooseSchedule(agent *schedule.Agent, at string, keep int) {
 			agent.At = existing
 		}
 	}
+	// Only this household's own retention. The label is global, so the plist may be a
+	// schedule another data directory left behind, and its count is not ours to adopt.
 	if keep == 0 {
-		if existing, err := agent.ScheduledKeep(); err == nil {
-			agent.Keep = existing
+		if dir, err := agent.ScheduledDataDir(); err == nil && filepath.Clean(dir) == filepath.Clean(agent.DataDir) {
+			if existing, err := agent.ScheduledKeep(); err == nil {
+				agent.Keep = existing
+			}
 		}
 	}
 }
