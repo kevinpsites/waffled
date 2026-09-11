@@ -148,6 +148,7 @@ Full guide: [Backup & restore](/operations/backup/).
 ## Observability (optional, off by default)
 
 Bring up with `./waffled observability up`. See [System health](/administration/system-health/).
+Docker installs only — Waffled for Mac doesn't include OpenTelemetry yet, and ignores these.
 
 | Variable | Purpose | Default |
 |---|---|---|

@@ -358,11 +358,19 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **The rest of the Mac Settings design** — each its own piece of runtime work before a
   control can appear: photos in a folder of their own (media relocation), backups in a
   folder of their own, backups that include photos, keeping every backup ("Forever"), an
-  offsite copy to S3/B2/R2, a hostname Caddy actually serves with a certificate, a beta
-  update channel, and OpenTelemetry (the bundle ships none of it). Listed with the reason
-  each is not a setting yet in §3d of [`mac-settings-redesign.md`](./mac-settings-redesign.md).
-  First, a bug found on the way (§6 there): **Move…** must re-point the nightly backup at
-  the new folder — today it keeps backing up the folder the household left.
+  offsite copy to S3/B2/R2, a hostname Caddy actually serves with a certificate, and a beta
+  update channel. Listed with the reason each is not a setting yet in §3d of
+  [`mac-settings-redesign.md`](./mac-settings-redesign.md). First, a bug found on the way
+  (§6 there): **Move…** must re-point the nightly backup at the new folder — today it
+  keeps backing up the folder the household left.
+- **Observability on the Mac — a gap today.** Docker installs can export OpenTelemetry
+  traces and metrics to a collector (`./waffled observability up`, or your own). A Mac
+  install cannot: the bundle ships neither the `otel.js` preload nor the ~100 MB of
+  `@opentelemetry/*` packages, so `OTEL_*` in `config.env` reaches nothing and Diagnostics
+  offers only log level and format. What a Mac has instead is per-service logs, `waffled-runtime
+  doctor` and Settings → System Health — point-in-time, nothing continuous, nothing that
+  leaves the machine. Deferred on purpose (2026-09-11); the work and its forced order are
+  §3d item 8 of [`mac-settings-redesign.md`](./mac-settings-redesign.md).
 - **Waffled for Windows** — the same Go runtime, a different wrapper (a tray app rather
   than a menu-bar one), and a bundle of Windows binaries instead of Mach-O ones. Nothing in
   the Mac work forecloses it; §9 of [`native-mac-plan.md`](./native-mac-plan.md) records

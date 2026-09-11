@@ -129,6 +129,14 @@ Do not put these on the screen until they exist. Each is its own task.
    decision (§6) is the thing to revisit first.
 7. **Update channel — Stable / Beta.** Sparkle has one feed URL, baked into `project.yml`.
    A channel switch means a second appcast and a way to choose between them.
+8. **OpenTelemetry on the Mac.** Added by the §6 re-audit. Docker loads it through a
+   `NODE_OPTIONS=--require=dist/otel.js` preload plus a staged `@opentelemetry/*`
+   `node_modules` (~100 MB); `infra/native/bundle/build.sh` strips both. The order is
+   forced: ship `otel.js` and the pruned tree (and change the bundle's "no node_modules"
+   smoke checks), set the preload only when an endpoint is configured, widen
+   `passthroughKeys` (including the secret-shaped `OTEL_EXPORTER_OTLP_HEADERS`), and only
+   then give Diagnostics a Telemetry section. Until then, a Mac has logs, `doctor` and
+   System Health, and nothing continuous.
 
 ### 3e. Deliberately not built, and why
 
@@ -174,7 +182,7 @@ Re-audited against `apps/api` before any key was added. Corrections to §3:
   the counts are tunable.
 - **`OTEL_*` would do nothing natively.** The api loads OpenTelemetry only through the
   Dockerfile's `NODE_OPTIONS=--require=/app/dist/otel.js` preload, and the bundle ships
-  neither `otel.js` nor `@opentelemetry/*` on purpose. Moved to §3d-shaped work.
+  neither `otel.js` nor `@opentelemetry/*` on purpose. Now §3d item 8.
 - **`UPDATE_CHECK_REPO` would do nothing** — the api reads it only after
   `UPDATE_CHECK_ENABLED`, which the runtime forces off.
 - **`TZ` is forwarded but read by nothing in the api** — household time zones live in

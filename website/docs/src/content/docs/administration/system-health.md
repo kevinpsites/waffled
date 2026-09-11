@@ -128,6 +128,9 @@ exporter at it:
 - **Grafana** runs on **port 3001**, login **admin / admin**.
 - **OpenTelemetry is OFF by default** — there's no `OTEL_EXPORTER_OTLP_ENDPOINT` set
   until you bring the stack up (or point it at your own collector).
+- **Docker installs only.** Waffled for Mac doesn't include OpenTelemetry yet, so `OTEL_*`
+  in its `config.env` does nothing. On a Mac, use the logs (Settings → Diagnostics → **Show logs**),
+  `waffled-runtime doctor`, and this page.
 
 ## Logs
 
