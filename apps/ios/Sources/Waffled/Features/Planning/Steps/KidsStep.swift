@@ -32,7 +32,7 @@ struct KidsStepView: View {
                 WaffledEmptyState(
                     emoji: "🧒",
                     title: "No cards to read out",
-                    message: "No one in this household is set up as a child yet. Add them in Settings → People (member type “kid”) and this step will have something to ask. Skipping is a real answer in the meantime.")
+                    message: "No one in this household is set up as a child yet. Add them in Settings → Family & People (member type “kid”) and this step will have something to ask. Skipping is a real answer in the meantime.")
             } else {
                 Text(model.heading)
                     .font(WF.serif(20, .bold))
