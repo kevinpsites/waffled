@@ -281,6 +281,9 @@ final class ServerModel {
             while !Task.isCancelled {
                 let interval = self?.pollInterval ?? 2
                 try? await Task.sleep(for: .seconds(interval))
+                // Not the folder a move is carrying away: a `status` of it lays its folders
+                // back out, and the move then cannot remove it. Apply refreshes when it ends.
+                if self?.settingsActivity == .moving { continue }
                 await self?.refresh()
                 self?.considerAutoStart()
                 // The login item is not ours alone to change — someone can switch Waffled

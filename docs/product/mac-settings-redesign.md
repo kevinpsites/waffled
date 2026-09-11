@@ -236,6 +236,14 @@ Found while building this:
   re-installs the schedule for the new folder when the plist's `--data` is the moved-from
   one, keeping `--at`, `--keep`, the binary and the bundle (`schedule.Agent.Follow`), and
   leaves a plist for any other folder alone.
+- **The menu bar polled the folder a move was carrying away** — fixed in the app. A
+  read-only construction of a data directory that *exists* still runs `Layout.Ensure()` and
+  writes `bundle-verified.json` there, so a `status` poll during the copy re-created
+  `pids/` inside the old folder, the move could not remove it, and the move back was then
+  refused as not empty. The app now skips its poll while a move is in flight. **Not fixed
+  here:** the runtime side — a read-only command should arguably write nothing into an
+  existing data directory either. Changing that touches every read-only command, so it is
+  its own change.
 
 *Originally audited against `mac-setup-flow` at the tip of PR #202; re-audited for §6. If
 `passthroughKeys` or `Plan.API` have moved since, re-run the audit before trusting §3.*

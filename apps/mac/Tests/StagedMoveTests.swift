@@ -160,6 +160,30 @@ final class StagedMoveTests: XCTestCase {
         XCTAssertEqual(after.confirmation, "Moved, and Waffled restarted.")
     }
 
+    /// A `status` of the folder being moved lays its subfolders back out and writes its
+    /// bundle cache there — so a poll during the copy left the old folder behind, and the
+    /// move back to it was then refused as "not empty".
+    func testTheMenuBarStopsPollingTheFolderWhileItIsBeingMoved() async throws {
+        let runtime = FakeRuntime()
+        await runtime.answer(status: Fixtures.fullRunning)
+        await runtime.hold("move")
+        let model = try settingsModel(runner: runtime)
+        defer { model.end() }
+        model.begin()
+        await waitUntil("the first poll") { await runtime.count(of: "status") > 0 }
+
+        _ = model.stageMove(to: destination)
+        model.applySettings()
+        await waitUntil("the move is under way") { await runtime.isWaiting(for: "move") }
+        let polled = await runtime.count(of: "status")
+        try await Task.sleep(for: .milliseconds(2600))
+        let polledDuringTheMove = await runtime.count(of: "status") - polled
+        XCTAssertEqual(polledDuringTheMove, 0, "the old folder was polled while it was being moved")
+
+        await runtime.finish("move")
+        await waitUntil("the move finishes") { !model.busy }
+    }
+
     func testARestartShowsWhileItRunsAndWhenItIsDone() async throws {
         let runtime = FakeRuntime()
         await runtime.hold("start")
