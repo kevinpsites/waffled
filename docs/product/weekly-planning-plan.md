@@ -1,7 +1,8 @@
 # Weekly Planning — implementation plan
 
-Status: **in progress** — the module shell + settings have landed; the ten steps land one
-at a time behind it.
+Status: **built** — the module shell, settings and all ten steps, on web and on iPhone/iPad
+(listed under `[Unreleased]` in CHANGELOG.md until the next release). User docs:
+`website/docs/src/content/docs/features/weekly-planning.md`.
 
 Source of truth for the design is the `Weekly Planning v4 — Calendar + Meals` canvas in the
 Claude Design project. v4 supersedes the v1/v2/v3 canvases: the permanent agenda rail, the
@@ -294,8 +295,8 @@ Three steps aren't free to go in any order:
 **Wave 1 landed:** `looseEnds`, `calendar`, `goals`, `meals`, `tasks`.
 **Wave 2 landed:** `horizon`, `familyNight`, `connection`, `kids` — four agents in four
 worktrees, merged with zero conflicts. **`recap` landed last**, because it reads what every
-other step decided. **All ten steps are built on web.** What remains for the module is iOS
-parity.
+other step decided. **All ten steps are built on web**, and iOS parity followed — see
+"The iOS port" above.
 
 ### The recap stores nothing, and why that is the whole design
 

@@ -173,6 +173,7 @@ img { max-width: 100%; display: block; }
   text-decoration: none;
   padding: 8px 12px;
   border-radius: 10px;
+  white-space: nowrap;
   transition: color 0.15s ease, background 0.15s ease;
 }
 .nav-links a.navlink:hover { color: var(--wf-ink); background: rgba(40, 33, 24, 0.05); }
@@ -209,6 +210,9 @@ img { max-width: 100%; display: block; }
 }
 .hero-meta span { display: inline-flex; align-items: center; gap: 7px; }
 .hero-meta .dot { width: 7px; height: 7px; border-radius: 50%; }
+
+.hero-alt { margin-top: 22px; font-size: 14px; color: var(--wf-ink-2); }
+.hero-alt + .code-chip { margin-top: 8px; }
 
 /* code chip */
 .code-chip {
@@ -409,11 +413,13 @@ img { max-width: 100%; display: block; }
 .pillar h3 { font-size: 18px; margin-top: 12px; color: #fff; }
 .pillar p { margin-top: 8px; font-size: 14px; color: rgba(244, 239, 231, 0.66); }
 
-/* ── Install / CTA ───────────────────────────────────────────────────────── */
-.install .wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; }
-.install h2 { font-size: clamp(30px, 4vw, 40px); margin-top: 14px; }
-.install p { margin-top: 14px; color: var(--wf-ink-2); font-size: 17px; }
-.install .steps { margin-top: 26px; display: grid; gap: 20px; }
+/* ── Install: Mac or Docker, as two .plan cards ─────────────────────────── */
+/* min-width: a grid column will not shrink below the terminal's longest line on a phone. */
+.install .plan { min-width: 0; }
+.install .steps { margin: 26px 0 0; display: grid; gap: 20px; }
+.install .terminal { margin: 24px 0; }
+/* Buttons sit on the card's floor, so the two cards' rows line up. */
+.install .plan > .hero-actions { margin-top: auto; }
 /* Baseline-align the numeral with the first line of its text — a text-to-text
    baseline is metric-independent, so it never floats regardless of font/render. */
 .install .step { display: flex; gap: 16px; align-items: baseline; }
@@ -422,7 +428,7 @@ img { max-width: 100%; display: block; }
   font-family: var(--wf-serif); font-weight: 600; font-size: 24px; line-height: 1;
   color: var(--wf-coral); font-feature-settings: "lnum" 1, "tnum" 1;
 }
-.install .step p { line-height: 1.6; }
+.install .step p { line-height: 1.6; color: var(--wf-ink-2); font-size: 15px; }
 .terminal {
   background: var(--wf-night);
   border-radius: 16px;
@@ -466,11 +472,12 @@ img { max-width: 100%; display: block; }
 .plan-badge.soon { color: var(--wf-ink-2); background: rgba(40, 33, 24, 0.08); }
 .plan h3 { font-size: 24px; margin-top: 16px; }
 .plan-top p { margin-top: 10px; color: var(--wf-ink-2); font-size: 15px; }
-.plan code {
+/* Inline code in a card's prose only — the install section's .terminal sits in a .plan too. */
+.plan-top code {
   font-family: var(--wf-mono); font-size: 0.88em;
   background: var(--wf-panel); padding: 2px 6px; border-radius: 6px;
 }
-.plan-soon code { background: rgba(40, 33, 24, 0.06); }
+.plan-soon .plan-top code { background: rgba(40, 33, 24, 0.06); }
 .plan-list { list-style: none; margin: 22px 0; padding: 0; display: grid; gap: 11px; }
 .plan-list li { display: flex; align-items: center; gap: 10px; font-size: 15px; }
 .plan-list li::before { content: "✓"; color: var(--wf-mint); font-weight: 800; }
@@ -547,12 +554,10 @@ img { max-width: 100%; display: block; }
   .device-cluster { max-width: 620px; margin: 0 auto 24px; }
   .pillars { grid-template-columns: repeat(2, 1fr); }
   .plans { grid-template-columns: 1fr; }
-  .install .wrap { grid-template-columns: 1fr; gap: 32px; }
   .footer-grid { grid-template-columns: 1fr 1fr; }
 }
-@media (max-width: 620px) {
-  body { font-size: 16px; }
-  .hero { padding: 52px 0 24px; }
+/* The full nav row needs ~830px; below that it collapses to the menu button. */
+@media (max-width: 860px) {
   .nav-links { display: none; }
   .nav-links.open {
     display: flex; flex-direction: column; align-items: stretch;
@@ -565,6 +570,10 @@ img { max-width: 100%; display: block; }
     width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--wf-hairline);
     background: var(--wf-card); cursor: pointer;
   }
+}
+@media (max-width: 620px) {
+  body { font-size: 16px; }
+  .hero { padding: 52px 0 24px; }
   .features { grid-template-columns: 1fr; }
   .pillars { grid-template-columns: 1fr; }
   .download-card { gap: 32px; padding: 32px 24px; }

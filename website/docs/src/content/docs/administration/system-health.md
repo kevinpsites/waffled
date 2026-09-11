@@ -114,6 +114,10 @@ Waffled checks GitHub for new releases and shows **"Update available — vX.Y.Z"
 When one is offered, act on it with `./waffled upgrade` — see
 [Upgrading](/operations/upgrading/).
 
+**Off on Waffled for Mac, by design.** The Mac app handles its own updates — **Check for
+updates…** in its menu, which also checks once a day — so this check never runs there and
+`UPDATE_CHECK_*` in `config.env` does nothing. See [Updating](/install/mac/#updating).
+
 ## Optional metrics & traces
 
 Waffled can run a **local all-in-one observability stack** (Grafana / Prometheus /
@@ -140,6 +144,8 @@ Tune log output in `infra/compose/.env`:
 |---|---|
 | `LOG_LEVEL` | Verbosity |
 | `LOG_FORMAT` | Log format |
+
+On Waffled for Mac, both are on **Settings… → Diagnostics**, and take effect after a restart.
 
 ## See also
 

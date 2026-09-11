@@ -20,43 +20,54 @@ There's no subscription and no hosted version to sign up for. See the
 [comparison](/overview/comparison/).
 
 ### Do I need to be technical?
-You need to be comfortable running two or three terminal commands (`git clone`, `./waffled up`)
-and keeping a machine on. If you've ever run any Docker app, you're overqualified. The
-[quick start](/getting-started/quick-start/) is the whole install.
+Less than you might think. On a Mac with Apple silicon, [Waffled for Mac](/install/mac/) is a
+download: drag it to Applications, open it, and a setup window does the rest — no Docker, no
+Terminal. Anywhere else you need to be comfortable running two or three terminal commands
+(`git clone`, `./waffled up`) and keeping a machine on; if you've ever run any Docker app,
+you're overqualified. The [quick start](/getting-started/quick-start/) is the whole install.
 
 ### Does my data leave my house?
 Only if you opt in. Everything lives in your Postgres database on your machine. Outbound
 connections happen **only** for features you enable: AI providers (if you set a key), Google
 Calendar sync (if you connect it), offsite S3 backups (if you configure them), and a once-a-day
-GitHub check for "update available" (which you can turn off with `UPDATE_CHECK_ENABLED=false`).
+check for a newer version — on a Docker install a GitHub check you can turn off with
+`UPDATE_CHECK_ENABLED=false`; on the Mac app, the updater's daily check.
 
 ## Installing & running
 
 ### What are the requirements?
-Docker with the Compose v2 plugin, and a machine that's on when you want to use it. ~4 GB RAM is
-comfortable. Images are multi-arch, so x86 or ARM (a Raspberry Pi works). Full list:
-[Requirements](/install/requirements/).
+A machine that's on when you want to use it, and one of two things:
+
+- **A Mac with Apple silicon and macOS 14 or later** — [Waffled for Mac](/install/mac/) needs
+  nothing else, not even Docker.
+- **Docker with the Compose v2 plugin** anywhere else. ~4 GB RAM is comfortable. Images are
+  multi-arch, so x86 or ARM (a Raspberry Pi works). Full list:
+  [Requirements](/install/requirements/).
 
 ### Can I run it on a Raspberry Pi / old laptop / NAS?
 Yes — anything that runs Docker and stays on. The images are built for both `amd64` and `arm64`.
+An Intel Mac runs it through Docker too; the Mac app is Apple silicon only for now.
 
 ### How do I access it from a tablet or phone?
 Open `http://<your-machine-ip>:8080` on the device — sync works from there, because Waffled tells
 each device to sync at the address it used to reach the server. Run `./waffled setup` (it
 auto-detects your LAN IP) as well, so calendar and sign-in redirects point at the right address.
+On the Mac app there's nothing to run: its menu shows the **Server address** to type in.
 Details: [Reverse proxy & TLS](/install/reverse-proxy/) and the quick start's
 ["Accessing it from other devices"](/getting-started/quick-start/#accessing-it-from-other-devices).
 
 ### How do I upgrade?
-`./waffled upgrade` — it fast-forwards the repo, bumps the pinned version, snapshots the DB,
-pulls the new images, and re-runs migrations in one step. The app also flags "Update available"
-in Settings → System Health. See [Upgrading](/operations/upgrading/).
+On the Mac app, **Check for updates…** in the menu — it also checks daily, and asks before it
+installs. See [Mac install → Updating](/install/mac/#updating). On Docker, `./waffled upgrade` —
+it fast-forwards the repo, bumps the pinned version, snapshots the DB, pulls the new images,
+and re-runs migrations in one step; the app also flags "Update available" in Settings → System
+Health. See [Upgrading](/operations/upgrading/).
 
 ## Accounts & family
 
 ### How do family members sign in?
 The first account (created in the setup wizard) is the household owner/admin. Add people in
-**Settings → Family & people**; give each a login (email + optional password), or let them use
+**Settings → Family & People**; give each a login (email + optional password), or let them use
 **SSO** once you've configured OIDC. See [Users & members](/administration/users/).
 
 ### Can kids use it without an email?
@@ -71,7 +82,7 @@ See [Permissions & roles](/concepts/permissions/).
 
 ### I'm locked out / forgot the admin password.
 Break-glass from the host: `./waffled admin reset-password` (also `make-admin`, `list-members`).
-See [Troubleshooting → Locked out](/operations/troubleshooting/#locked-out--forgot-admin-password).
+That is a Docker-install command — [Waffled for Mac](/install/mac/) has no equivalent yet. See [Troubleshooting → Locked out](/operations/troubleshooting/#locked-out--forgot-admin-password).
 
 ## Features & integrations
 
@@ -106,9 +117,12 @@ areas (chores, lists, meals…) are online REST for now. See [Mobile app](/featu
 ## Data & safety
 
 ### How are backups handled?
-A backup sidecar dumps Postgres **nightly** out of the box. Point it at a host folder and/or an
-S3-compatible bucket, and optionally include media. Restore is `./waffled restore <file>`. See
-[Backup & restore](/operations/backup/).
+Nightly, out of the box, either way. On Docker a backup sidecar dumps Postgres; point it at a
+host folder and/or an S3-compatible bucket, and optionally include media. Restore is
+`./waffled restore <file>`. See [Backup & restore](/operations/backup/). The Mac app backs up
+at 3:00 AM into its own folder (or on demand with **Back up now**) and restores with one
+command; copying backups off the Mac is up to you. See
+[Mac install → Backups](/install/mac/#backups).
 
 ### ⚠️ Can I ever delete a Docker volume to "start fresh"?
 **No — never `docker volume rm` or `down -v`.** `pgdata` and `waffled_media` are irreplaceable,

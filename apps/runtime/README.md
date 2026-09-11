@@ -1,9 +1,8 @@
 # `waffled-runtime` — the native server supervisor
 
 The Go binary that runs a whole Waffled server on one Mac with no Docker. It is Phase 2
-of the "Waffled for Mac" plan (`docs/product/native-mac-plan.md`, currently on the
-`worktree-native-mac-plan` branch), and it is what the menu-bar app in Phase 3 will
-shell out to.
+of the "Waffled for Mac" plan (`docs/product/native-mac-plan.md`), and it is what the
+menu-bar app in `apps/mac/` shells out to.
 
 Everything Docker Compose does for the Linux deployment, this does natively:
 generate the secrets, lay out the data directory, create and configure a Postgres
@@ -364,9 +363,8 @@ Plan §5 replaces Compose's private network with loopback binding. Where that st
 
 - **Postgres is loopback-only.** Asserted by the integration test. This is the one that
   matters most: it is the data, and there is no container boundary in front of it now.
-- **The api still binds `0.0.0.0`.** It honours `HOST` only once PR #177 merges. The
-  runtime already passes `HOST=127.0.0.1`, so the day that lands the binding is correct
-  with no change here.
+- **The api is loopback-only.** The runtime passes `HOST=127.0.0.1`, and
+  `apps/api/src/server.ts` binds to it.
 - **PowerSync binds `0.0.0.0` and cannot currently be confined.** `host: '0.0.0.0'` is
   hardcoded in its own listen call (`modules/module-core`, `CoreModule`); there is no
   config key and no `PS_*`/`POWERSYNC_*` variable for it. Requests still need an RS256
@@ -474,8 +472,7 @@ set equality on files **and symlinks**, sha256 per file, the owner-exec bit, and
 `infra/native/bundle/build.sh` compiles it into `bin/waffled-runtime` before writing the
 manifest, so the supervisor verifies itself along with everything it is about to run, and a
 hand-built binary dropped into `bin/` afterwards is refused as a changed or extra file. It is a port of `manifest.mjs verify` from
-`infra/native/bundle/` (branch `native-bundle`), whose README is the interface this
-implements.
+`infra/native/bundle/`, whose README is the interface this implements.
 
 Symlinks are recorded and **never followed** — `bin/postgres/lib` has 17 relative links
 without which `postgres` dies at dyld time, and PowerSync's `node_modules` is a 1,321-link

@@ -10,6 +10,11 @@ Waffled already backs up the database nightly, out of the box, with no setup —
 [Backup & restore](/operations/backup/). This guide adds the **offsite copy** on
 top of that.
 
+> **On Waffled for Mac?** This guide is for Docker installs. The Mac app does not upload
+> backups — it ignores the `BACKUP_S3_*` settings — so copy the `backups/` folder in
+> Waffled's folder to another disk, or into a folder your cloud drive syncs, yourself. See
+> the Mac page's [Backups](/install/mac/#backups).
+
 ## 1. Create a bucket + access key
 
 Create a bucket at any **S3-compatible** provider and generate an access key:

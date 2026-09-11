@@ -36,7 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which brings that same screen back whenever you want to change your mind, and
   **Check for updates…**, which stops the server, replaces the
   app and brings your household back up on the new version. The download is signed and
-  notarized by Apple, so it opens with no Gatekeeper warning. Self-hosting with Docker
+  notarized by Apple, so it opens with no Gatekeeper warning, and
+  `https://github.com/kevinpsites/waffled/releases/latest/download/Waffled.dmg` is always
+  the newest one — the link waffled.app's **Download for Mac** uses. Self-hosting with Docker
   Compose is unchanged and remains the way to run Waffled on Linux, a NAS, a Pi or a VPS —
   same api, same data, same web app. See [Mac install](https://docs.waffled.app/install/mac/).
 
@@ -85,8 +87,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Weekly Planning is on iPhone and iPad.** The whole guided session — the lobby, all ten
   steps, the agenda sheet, the parked-note handoff, the recap and the saved record — now
   runs in the app, not just in the browser. On the phone it opens from a **Weekly
-  Planning** tile in the Family tab or from a Today card; on the family display it has its
-  own **Planning** page in the rail. (Settings → Weekly Planning configures the session —
+  Planning** tile in the Family tab; on the family display, from a Today card or a
+  **Planning** page you can pin to the rail. (Settings → Weekly Planning configures the session —
   its day, time and which steps run — rather than starting one.) Leaving a session part-way
   keeps it exactly where it was on that device, and another device can still pick it up.
 

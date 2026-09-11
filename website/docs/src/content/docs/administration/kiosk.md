@@ -42,6 +42,8 @@ You can set an optional **PIN (4–8 digits)** on a person in **Settings**. PIN 
 | `KIOSK_PIN_MAX_ATTEMPTS` | `5` | Tries before lockout |
 | `KIOSK_PIN_LOCKOUT_SECONDS` | `30` | Lockout duration |
 
+Docker installs only — Waffled for Mac doesn't pass these two on, so a Mac keeps the defaults.
+
 ## Manage devices
 
 In **Settings → Display & Kiosk** you can:

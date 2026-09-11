@@ -538,10 +538,13 @@ answer one, so a run that appears to hang at 0% CPU is a dialog waiting on the s
 *Always Allow* once.
 
 `dist/` (gitignored) holds `runtime/` (the bundle this release was built from), `app/`
-(the signed, notarized, stapled `Waffled.app` and its DerivedData) and `release/v<version>/`
-— the two files that get uploaded, `Waffled-<version>.dmg` and `appcast.xml`. One directory
-per version: `make-appcast.sh` signs a whole directory, so a shared one would re-point every
-DMG it ever built at the current tag. Every step replaces what it wrote last time *for that
+(the signed, notarized, stapled `Waffled.app` and its DerivedData), `release/v<version>/`
+— `Waffled-<version>.dmg` and `appcast.xml` — and `Waffled.dmg`, the same DMG under a
+fixed name. All three get uploaded. The fixed name is what the website links to, as
+`releases/latest/download/Waffled.dmg`, so publishing a version never means editing the
+site; Sparkle's feed names only the versioned file. One directory per version:
+`make-appcast.sh` signs a whole directory, so a shared one would re-point every DMG it ever
+built at the current tag — which is also why `Waffled.dmg` sits outside it. Every step replaces what it wrote last time *for that
 version*, so a run that failed at notarization can simply be run again.
 
 The signing order is not adjustable; the reasoning is in

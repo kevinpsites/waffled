@@ -5,6 +5,11 @@ description: Symptom → diagnosis → fix for common self-hosted Waffled issues
 
 Practical fixes for a self-hosted Waffled. Each entry is **symptom → diagnosis → fix**.
 
+> **On Waffled for Mac?** The symptoms are the same, but the commands here are Docker's. On a
+> Mac, `waffled-runtime doctor`, `status` and `logs` stand in for them, and **Settings… →
+> Diagnostics → Show logs** opens the logs folder — see
+> [When something is wrong](/install/mac/#when-something-is-wrong).
+
 ## Run `./waffled doctor` first
 
 `./waffled doctor` is a deep, in-container health report (db, migrations, jobs,
@@ -203,6 +208,8 @@ run succeeds. Full config in [Backup & restore](/operations/backup/).
 ./waffled admin list-members          # see who exists
 ./waffled admin prune-sessions        # invalidate active sessions if needed
 ```
+
+These are Docker-install commands; [Waffled for Mac](/install/mac/) has no equivalent yet.
 
 ---
 

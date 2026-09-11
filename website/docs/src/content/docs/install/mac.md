@@ -26,8 +26,9 @@ migrations, same PowerSync, same web build. Only the packaging differs.
 
 ## Download and install
 
-1. Download **`Waffled-<version>.dmg`** from the
-   [latest release](https://github.com/kevinpsites/waffled/releases/latest).
+1. **[Download Waffled for Mac](https://github.com/kevinpsites/waffled/releases/latest/download/Waffled.dmg)**
+   — always the latest version. Older versions are on the
+   [releases page](https://github.com/kevinpsites/waffled/releases).
 2. Open it and drag **Waffled** onto the **Applications** folder in the same window.
 3. Open Waffled from Applications.
 
@@ -282,8 +283,25 @@ you use the app, change the number there. `waffled-runtime backup` on its own ke
 number the nightly backup does.
 
 A backup on the same Mac survives a mistake, not a fire. Copy `backups/` somewhere else —
-another disk, or a cloud folder — the same advice as the
-[Docker backup guide](/operations/backup/), which explains restores in full.
+another disk, or a cloud folder — yourself; the Mac app does not upload backups anywhere.
+A backup holds the database only, so copy `media/` too if your photos matter.
+
+### Restoring a backup
+
+There is no menu item for this yet — it is one command, and it **replaces everything in
+the database** with the backup:
+
+```sh
+/Applications/Waffled.app/Contents/Resources/runtime/bin/waffled-runtime restore \
+  ~/Library/Application\ Support/Waffled/backups/waffled-20260901-030000.dump
+```
+
+It asks you to type `restore` before it touches anything, stops the server itself, loads
+the backup, and starts the server again — any migrations a newer Waffled needs run on the
+way back up, and phones and the tablet re-sync on their own. It takes a `.dump` from this
+app or a `.sql.gz` from a [Docker install's backups](/operations/backup/). It refuses a
+backup taken by a *newer* Waffled than the one installed — update first — and needs
+Waffled to have started once on this Mac. Add `--data DIR` if you moved Waffled's files.
 
 ## Updating
 
@@ -308,6 +326,24 @@ naming the file, rather than leaving you with a half-migrated database.
 To go back to an older version deliberately, quit, install the older DMG, and open it. It
 will refuse to serve data a newer version has already migrated — a database is not
 downgradable by reading it more carefully — and tell you which snapshot to restore and how.
+
+## When something is wrong
+
+The menu's status line says what the runtime sees, and **Show logs** appears there when
+something has gone wrong; **Settings… → Diagnostics → Show logs** opens the same folder
+any time. From Terminal:
+
+```sh
+R=/Applications/Waffled.app/Contents/Resources/runtime/bin/waffled-runtime
+$R status          # what is running, on which ports
+$R doctor          # checks a server that will not start; exits non-zero on a problem
+$R logs api -n 100 # also postgres, migrate, powersync, caddy, bonjour, runtime; -f follows
+```
+
+Inside the web app, **Settings → System Health** reports the same things it does on a
+Docker install. The symptoms on [Troubleshooting](/operations/troubleshooting/) are the
+same on a Mac, but its fixes are written for Docker — use the commands above in place of
+`./waffled doctor`, `status` and `logs`.
 
 ## Uninstalling
 
