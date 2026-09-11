@@ -53,6 +53,23 @@ final class ReviewFindingsTests: XCTestCase {
         XCTAssertNotNil(model.heldFailure, "and the person is told why")
     }
 
+    /// And nothing about that run is remembered either. Written before the guard, a
+    /// folder picked while the environment was pinning the data directory outlived the
+    /// run and pointed the next unpinned launch somewhere nobody chose.
+    func testAPinnedRunRemembersNoFolderForTheNextOne() {
+        let memory = InMemoryDefaults()
+        let model = ServerModel(
+            environment: [RuntimeLocator.binaryVariable: "/nonexistent/waffled-runtime",
+                          RuntimeLocator.dataVariable: NSTemporaryDirectory()],
+            resourceURL: nil, memory: memory, runner: RecordingRunner())
+        defer { model.end() }
+
+        model.chooseDataDirectory(URL(fileURLWithPath: "/tmp/somewhere-a-dev-run-picked"))
+
+        XCTAssertNil(memory.string(forKey: Setup.dataDirectoryKey),
+                     "a pinned run does not get to choose for the next one")
+    }
+
     // MARK: 3 · a button that cannot do anything is not offered
 
     /// `Back` from the options screen does not discard what was typed, so an invalid port

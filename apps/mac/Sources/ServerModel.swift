@@ -516,13 +516,15 @@ final class ServerModel {
     /// directory is never overridden by a choice made here.
     func chooseDataDirectory(_ url: URL?) {
         setupOptions.dataDirectory = url
+        guard var location, !location.dataDirIsFromEnvironment else { return }
+        // Remembered only when it is ours to remember. Written before this guard, a folder
+        // picked during a run pinned by WAFFLED_DATA_DIR outlived that run and pointed the
+        // next unpinned launch somewhere nobody chose — the environment wins while it is
+        // set, and it does not get to leave anything behind when it is not.
         memory.set(url?.path, forKey: Setup.dataDirectoryKey)
-        guard var location else { return }
-        if !location.dataDirIsFromEnvironment {
-            location.dataDir = url
-            self.location = location
-            client = RuntimeClient(location: location, runner: runner)
-        }
+        location.dataDir = url
+        self.location = location
+        client = RuntimeClient(location: location, runner: runner)
     }
 
     // MARK: the settings screen
