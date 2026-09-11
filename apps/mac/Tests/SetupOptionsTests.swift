@@ -14,6 +14,8 @@ final class SetupOptionsTests: XCTestCase {
         XCTAssertEqual(options.addressMode, .name)
         XCTAssertEqual(options.port, "8080")
         XCTAssertTrue(options.providerKey.isEmpty)
+        XCTAssertEqual(options.provider, .none)
+        XCTAssertEqual(options.backupKeep, 14)
         XCTAssertTrue(options.problems.isEmpty)
     }
 

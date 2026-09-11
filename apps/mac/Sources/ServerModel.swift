@@ -80,11 +80,13 @@ final class ServerModel {
     /// What was applied last, so Settings can show it and work out what changed. Read
     /// from the injected memory, never from config.env — `config set` is write-only.
     private(set) var appliedOptions: SetupOptions
-    /// A setting the server only reads at start has been written since it started, so the
-    /// running server is still on the old value. Held here rather than derived from the
-    /// form: once Apply has run the form and what was saved agree, and comparing those two
-    /// made the warning disappear at the very moment it became true.
-    private(set) var addressAwaitingRestart = false
+    /// Something has been written to config.env since the server started, so the running
+    /// server is still on the old value. Held here rather than derived from the form: once
+    /// Apply has run the form and what was saved agree, and comparing those two made the
+    /// warning disappear at the very moment it became true.
+    private(set) var configAwaitingRestart = false
+    /// Which of Settings' three tabs is showing. Reset to Basic each time it opens.
+    var settingsTab = SettingsPresentation.Tab.basic
     /// The last Apply succeeded and this window has not been closed since — so the window
     /// can say so. The menu's own note is behind it and cannot be read.
     private(set) var settingsApplied = false
@@ -541,8 +543,9 @@ final class ServerModel {
                                                    dataDirectory: dataDirectory,
                                                    status: status, busy: busy,
                                                    pinned: dataDirectoryIsPinned,
-                                                   awaitingRestart: addressAwaitingRestart,
-                                                   applied: settingsApplied))
+                                                   awaitingRestart: configAwaitingRestart,
+                                                   applied: settingsApplied,
+                                                   tab: settingsTab))
     }
 
     /// Which of the two screens the window is showing.
@@ -551,8 +554,8 @@ final class ServerModel {
         case settings(SettingsPresentation)
     }
 
-    /// The menu item. The working copy starts from what was applied, with the provider key
-    /// blank: it is never read back out of config.env, and a blank field reads as "I did
+    /// The menu item. The working copy starts from what was applied, with every secret
+    /// blank: none is ever read back out of config.env, and a blank field reads as "I did
     /// not change it" rather than as a deletion.
     func openSettings() {
         // Refused only while the first-run window is actually up. A first run that has
@@ -560,6 +563,8 @@ final class ServerModel {
         guard !firstRunWindowIsUp else { return }
         setupOptions = appliedOptions
         setupOptions.providerKey = ""
+        setupOptions.secrets = [:]
+        settingsTab = .basic
         settingsApplied = false
         showingSettings = true
         syncFirstRunWindow()
@@ -576,24 +581,25 @@ final class ServerModel {
     func applySettings() {
         guard let client, operationTask == nil, showingSettings else { return }
         let options = setupOptions
-        guard options.problems.isEmpty else { return }
         let previous = appliedOptions
+        guard options.problems(comparedTo: previous).isEmpty else { return }
         let devMode = isDevMode
+        let commands = options.commandsForChange(from: previous, isDevMode: devMode)
 
         operationTask = Task { [weak self] in
             defer { self?.finishOperation() }
             do {
-                for command in options.commandsForChange(from: previous, isDevMode: devMode) {
+                for command in commands {
                     try await client.apply(command)
                 }
                 if !devMode, options.startAtLogin != previous.startAtLogin {
                     self?.loginItem.setEnabled(options.startAtLogin)
                 }
                 self?.rememberApplied(options)
-                // The address is the one setting a running server will not pick up, so
-                // this is what keeps the restart note on screen after the form settles.
-                if options.publicHost != previous.publicHost, self?.status?.state == .running {
-                    self?.addressAwaitingRestart = true
+                // A running server does not pick up config.env, so this is what keeps the
+                // restart note on screen after the form settles.
+                if commands.contains(where: \.writesConfig), self?.status?.state == .running {
+                    self?.configAwaitingRestart = true
                 }
                 self?.settingsApplied = true
                 self?.note("Settings applied")
@@ -695,7 +701,7 @@ final class ServerModel {
     /// than from one of them: the flag is about the running server, not about which
     /// button was pressed.
     private func serverStarted() {
-        addressAwaitingRestart = false
+        configAwaitingRestart = false
     }
 
     private func rememberApplied(_ options: SetupOptions) {

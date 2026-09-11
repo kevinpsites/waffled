@@ -75,7 +75,7 @@ struct FirstRunPresentation: Equatable {
     var menuBarNote: String?
     var primaryButton: String?
     var secondaryButton: String?
-    /// The quiet one on the left: `Choose where things go…`, `Back`, `Show logs`.
+    /// The quiet one on the left: `Settings first…`, `Back`, `Show logs`.
     var tertiaryButton: String?
     /// Closing the welcome window means "not on this Mac", and there is nothing on disk
     /// yet to leave behind, so it quits. Every later step is only a window in front of a
@@ -97,16 +97,25 @@ struct FirstRunPresentation: Equatable {
     /// live here as a table instead of on a presentation of their own — but they live
     /// here, where they are read without a window like the rest of them.
     enum OptionsCopy {
+        /// A drawer row's button once it is open.
+        static let done = "Done"
         static let files = (
             title: "Waffled's files",
             hint: "The database, your photos and every backup live in this folder.",
             change: "Change…",
+            choose: "Choose a folder…",
             reveal: "Reveal in Finder",
             settled: "Waffled is already set up here. You can move it later from Settings… in the menu bar."
         )
         static let backup = (
             title: "Nightly backup",
-            detail: "Every night at %@, kept alongside Waffled's files.",
+            toggle: "Back up every night",
+            at: "At",
+            keep: "Keep the last",
+            keepHint: """
+                Kept alongside Waffled's files; the oldest goes when a new one arrives. A \
+                backup holds the database — photos stay in Waffled's folder.
+                """,
             off: "No backup is scheduled. Waffled can still back up on demand from the menu bar."
         )
         static let address = (
@@ -135,12 +144,24 @@ struct FirstRunPresentation: Equatable {
         static let provider = (
             title: "Smart suggestions",
             optional: "— optional",
-            detail: "Meal ideas and week planning. Add a provider key to turn them on.",
             hint: """
-                Stored on this Mac only, in Waffled's own config. Skip it and add it later \
-                — nothing else depends on it.
+                Stored on this Mac only, in Waffled's own config. Once the server has \
+                restarted, choose it in Waffled under Settings → AI & Capture.
                 """,
-            placeholder: "sk-…"
+            notNow: """
+                Waffled uses its built-in parser, which needs no account and works offline. \
+                Add a provider whenever you like — nothing else depends on it.
+                """,
+            notNowClears: """
+                Apply takes the saved keys and the Ollama address off this Mac, and Waffled \
+                goes back to its built-in parser.
+                """,
+            placeholder: "sk-…",
+            savedPlaceholder: "Saved — type a new key to replace it",
+            secretPlaceholder: "Never shown — type to replace",
+            baseURLPlaceholder: "https://api.openai.com/v1",
+            baseURLHint: "Leave the address blank for OpenAI itself, or point it at LM Studio, vLLM or any server that speaks the same API.",
+            checkAgain: "Check again"
         )
         static let login = (
             title: "Start Waffled when this Mac starts up",
@@ -241,7 +262,7 @@ struct FirstRunPresentation: Equatable {
             portableNote: isPortable ? portableWarning : nil,
             primaryButton: "Set up Waffled",
             secondaryButton: "Not on this Mac",
-            tertiaryButton: "Choose where things go…",
+            tertiaryButton: "Settings first…",
             closeQuitsApp: true)
     }
 

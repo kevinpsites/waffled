@@ -8,6 +8,21 @@ import Foundation
 /// questions: the first run asks what a household wants, and this asks what they changed.
 /// The controls are shared; only what is done with them differs.
 struct SettingsPresentation: Equatable {
+    /// Basic is the rows the first run also shows; Advanced and Diagnostics are the api
+    /// settings in `SettingsCatalog`. One Apply covers all three.
+    enum Tab: String, CaseIterable, Equatable {
+        case basic, advanced, diagnostics
+
+        var label: String {
+            switch self {
+            case .basic: return "Basic"
+            case .advanced: return "Advanced"
+            case .diagnostics: return "Diagnostics"
+            }
+        }
+    }
+
+    var tab: Tab
     var title: String
     var message: String
     /// Where Waffled's files actually are, as the runtime reports them.
@@ -51,14 +66,25 @@ struct SettingsPresentation: Equatable {
             Change these whenever you like. Anything that needs the server restarted says \
             so before you apply it.
             """
+        static let advancedTitle = "Advanced"
+        static let advancedMessage = """
+            For households running their own sign-in, calendar sync or AI. Leave a field \
+            blank and Waffled uses the default shown in it.
+            """
+        static let diagnosticsTitle = "Diagnostics"
+        static let diagnosticsMessage = """
+            What the server writes down as it runs, and where to find it when something \
+            goes wrong.
+            """
+        static let showLogs = "Show logs"
         static let apply = "Apply"
         static let restart = "Restart Waffled"
         static let close = "Close"
         static let move = "Move…"
         static let restartNote = """
-            Phones and tablets that find Waffled on their own are still being handed the old \
-            address. Restart when it suits you — nothing is lost by waiting, and anything \
-            already pointed at this Mac keeps working.
+            The server is still running with the settings it started with. Restart when it \
+            suits you — nothing is lost by waiting, and anything already pointed at this \
+            Mac keeps working.
             """
         static let applied = "Settings applied."
         static let folderInsideItself = """
@@ -105,22 +131,32 @@ struct SettingsPresentation: Equatable {
         busy: Bool = false,
         pinned: Bool = false,
         awaitingRestart: Bool = false,
-        applied: Bool = false
+        applied: Bool = false,
+        tab: Tab = .basic
     ) -> SettingsPresentation {
-        let problems = options.problems
-        let changed = !options.commandsForChange(from: saved).isEmpty
+        let problems = options.problems(comparedTo: saved)
+        let changes = options.commandsForChange(from: saved)
+        let changed = !changes.isEmpty
         let port = status?.ports.public ?? 0
-        // Only the address is read at start. The nightly backup is installed into launchd
-        // there and then, and a provider key is read per request by the api.
-        let restartPending = (options.publicHost != saved.publicHost || awaitingRestart)
+        // Every config.env write waits for a restart: the runtime builds the api's
+        // environment when it starts it, and the api reads its keys once. Only the nightly
+        // backup (installed into launchd there and then) and the login item do not.
+        let restartPending = (changes.contains(where: \.writesConfig) || awaitingRestart)
             && status?.state == .running
         // Nothing left to apply, but something left to do: the button becomes that thing
         // rather than greying out and leaving the person to find it in the menu.
         let offerRestart = !changed && restartPending
 
+        let (title, message): (String, String) = switch tab {
+        case .basic: (Copy.title, Copy.message)
+        case .advanced: (Copy.advancedTitle, Copy.advancedMessage)
+        case .diagnostics: (Copy.diagnosticsTitle, Copy.diagnosticsMessage)
+        }
+
         return SettingsPresentation(
-            title: Copy.title,
-            message: Copy.message,
+            tab: tab,
+            title: title,
+            message: message,
             dataDirectoryPath: dataDirectory.path,
             moveEnabled: !busy && !pinned,
             moveRefusal: pinned ? Copy.pinnedFolder : nil,

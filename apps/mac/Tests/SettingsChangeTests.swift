@@ -135,6 +135,7 @@ final class SettingsChangeTests: XCTestCase {
         var changed = SetupOptions()
         changed.addressMode = .custom
         changed.customHost = "waffled.home"
+        changed.provider = .anthropic
         changed.providerKey = "sk-abc"
         changed.backupAt = "05:00"
 
