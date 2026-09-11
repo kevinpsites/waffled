@@ -8,6 +8,10 @@ stack) dumps Postgres on a nightly schedule; you can optionally push each dump o
 to S3-compatible storage and include uploaded media. Every run is recorded so
 **Settings → System Health** and `./waffled doctor` show you the last backup at a glance.
 
+> **On Waffled for Mac?** This page is the Docker install. The Mac app has its own nightly
+> backup, **Back up now** in the menu, and `waffled-runtime backup` / `restore` in Terminal —
+> see [Backups](/install/mac/#backups) and [Restoring a backup](/install/mac/#restoring-a-backup).
+
 After `./waffled up` and during `./waffled doctor`, the CLI also warns when uploaded
 media is excluded or every backup copy still lives on the Waffled host. These are
 planning warnings, not failed health checks; they disappear when the corresponding

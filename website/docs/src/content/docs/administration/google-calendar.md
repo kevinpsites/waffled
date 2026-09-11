@@ -46,6 +46,11 @@ project):
    Make sure `TOKEN_ENCRYPTION_KEY` is set too — the stored Google **refresh token is encrypted
    at rest** with it. Then `./waffled up`.
 
+   **On Waffled for Mac**, enter the three in the app's **Settings… → Advanced → Calendar
+   sync** and restart Waffled when it asks. `TOKEN_ENCRYPTION_KEY` is generated for you —
+   nothing to set. `GOOGLE_CALENDAR_SCOPES` has no field; set it with `waffled-runtime config
+   set` only if you need to.
+
 > **⚠️ Publish your consent screen.** While the OAuth app is in **"Testing"**, Google **expires
 > refresh tokens after 7 days**, so sync silently breaks about once a week. Moving the consent
 > screen out of *Testing* to *Published* (In production) stops this recurring failure. This is

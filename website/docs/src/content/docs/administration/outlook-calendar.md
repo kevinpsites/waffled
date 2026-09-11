@@ -53,9 +53,14 @@ no paid Azure services involved:
    Make sure `TOKEN_ENCRYPTION_KEY` is set too — the stored Microsoft **refresh token is
    encrypted at rest** with it. Then `./waffled up`.
 
+   **On Waffled for Mac**, enter the three in the app's **Settings… → Advanced → Calendar
+   sync** and restart Waffled when it asks. `TOKEN_ENCRYPTION_KEY` is generated for you —
+   nothing to set.
+
 The default scopes are `openid email offline_access User.Read Calendars.ReadWrite` (identity +
 calendar read/write + a refresh token). Override with `MS_CALENDAR_SCOPES` only if you know you
-need to — leave it unset otherwise.
+need to — leave it unset otherwise. (On a Mac it has no Settings field; it's
+`waffled-runtime config set MS_CALENDAR_SCOPES=…`.)
 
 ## Work & school accounts: admin consent
 

@@ -10,7 +10,7 @@ attach any **OpenID-Connect** provider later, without touching features.
 ## Built-in auth (the default)
 
 The setup wizard creates the first admin (the household owner). From there, each family member
-gets a login on their card in **Settings → Family & people** — see
+gets a login on their card in **Settings → Family & People** — see
 [Users & members](/administration/users/). That's the whole story for most households:
 
 - **Access tokens** last `ACCESS_TOKEN_TTL_SECONDS` (default 1 h); **refresh tokens** last
@@ -18,6 +18,7 @@ gets a login on their card in **Settings → Family & people** — see
 - Passwords are a minimum of 8 characters. The owner login is protected from removal.
 - Locked out? Break-glass from the host: `./waffled admin reset-password` (also `make-admin`,
   `prune-sessions`) — see [Troubleshooting](/operations/troubleshooting/#locked-out--forgot-admin-password).
+  That is a Docker-install command; [Waffled for Mac](/install/mac/) has no equivalent yet.
 
 ## Single sign-on (OIDC)
 
@@ -34,7 +35,8 @@ configured **in the app**, stored in your database, not via environment variable
 Configure in **Settings → Login & security** (admin only):
 
 1. **Set `TOKEN_ENCRYPTION_KEY`** in `infra/compose/.env` first — the OIDC **client secret is
-   encrypted at rest** with it. (It's auto-generated on first run; just make sure it's present.)
+   encrypted at rest** with it. (It's auto-generated on first run; just make sure it's present.
+   [Waffled for Mac](/install/mac/) generates it for you — nothing to set.)
 2. Create an **OIDC application** at your provider and note its **Client ID** and **Client
    secret**.
 3. In Waffled, enter the **Issuer URL** and click **Test** — this validates the provider's
@@ -50,7 +52,8 @@ Configure in **Settings → Login & security** (admin only):
 
 Once SSO works, you can **disable password login** to require it. This is guarded so you can't
 lock yourself out. If you ever do need the password form back in an SSO-only setup, the
-break-glass override is `AUTH_FORCE_PASSWORD=1` in `infra/compose/.env`.
+break-glass override is `AUTH_FORCE_PASSWORD=1` in `infra/compose/.env` — on the Mac app,
+**Settings… → Advanced → Always show the password form**, then restart Waffled.
 
 ### On iOS
 

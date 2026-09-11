@@ -82,6 +82,9 @@ If no one can sign in as an admin, you don't need a login — run these on the h
 ./waffled admin prune-sessions     # invalidate active sessions
 ```
 
+These are Docker-install commands. [Waffled for Mac](/install/mac/) has no equivalent yet —
+its `waffled-runtime` has no admin command.
+
 Full walkthrough in [Troubleshooting → Locked out](/operations/troubleshooting/).
 
 ## See also

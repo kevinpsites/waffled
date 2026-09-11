@@ -7,6 +7,14 @@ All configuration lives in **`infra/compose/.env`** (created from `.env.example`
 Change a value, then `./waffled up` to apply it. Defaults below come from the compose file and
 the api's config; "auto" means `./waffled` generates it for you when missing.
 
+> **On Waffled for Mac** these settings live in `~/Library/Application Support/Waffled/config.env`,
+> set from the app's **Settings…** or with `waffled-runtime config set KEY=VALUE`, and each
+> change takes effect after a restart. Only some reach the server: the ones **Settings…**
+> offers (the AI settings row, Advanced and Diagnostics), plus `GOOGLE_CALENDAR_SCOPES`,
+> `MS_CALENDAR_SCOPES` and `TZ`. The secrets are generated into `config.env` for you; the
+> database, ports, storage and sync address are set by the app itself; anything else in the
+> file is ignored. See [Changing settings later](/install/mac/#changing-settings-later).
+
 > **Secrets are generated for you.** `LOCAL_JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`,
 > `POWERSYNC_JWT_PRIVATE_KEY`, and `POSTGRES_PASSWORD` are auto-filled when missing (if
 > `openssl` is present). Existing values are preserved.
@@ -40,7 +48,9 @@ calling Compose directly so newly required values can be generated before valida
 | `CADDY_SITE_ADDRESS` | `:80` (plain HTTP) or a hostname (triggers Caddy auto-TLS) | `:80` |
 | `POWERSYNC_CADDY_ADDRESS` | Caddy's dedicated sync listener (`./waffled setup` manages it) | `:8090` |
 
-See [Reverse proxy & TLS](/install/reverse-proxy/) for the full remote-access story.
+See [Reverse proxy & TLS](/install/reverse-proxy/) for the full remote-access story. On a
+Mac, `PUBLIC_BASE_URL` is **Settings… → Advanced → Sign-in return address**; the app sets the
+other three itself.
 
 ## Auth & sessions
 
@@ -54,6 +64,11 @@ See [Reverse proxy & TLS](/install/reverse-proxy/) for the full remote-access st
 | `HOUSEHOLD_CLAIM` | Token claim carrying the household id | `https://waffled.app/household_id` |
 | `KIOSK_PIN_MAX_ATTEMPTS` | Kiosk PIN attempts before lockout | `5` |
 | `KIOSK_PIN_LOCKOUT_SECONDS` | Kiosk PIN lockout window | `30` |
+
+On a Mac, `ACCESS_TOKEN_TTL_SECONDS`, `REFRESH_TOKEN_TTL_DAYS`, `AUTH_FORCE_PASSWORD` and
+`OIDC_NATIVE_REDIRECT_URI` are on **Settings… → Advanced → Sessions and sign-in**; the
+`KIOSK_PIN_*`, `LOCAL_JWT_*` and `HOUSEHOLD_CLAIM` rows aren't passed on, so a Mac keeps
+their defaults.
 
 **OIDC/SSO is configured in-app** (Settings → Login & security), *not* via env — the encrypted
 client secret lives in the database. See [Authentication & SSO](/administration/authentication/).
@@ -72,8 +87,10 @@ self-hosters never touch these (built-in auth + in-app OIDC covers SSO).
 
 ## AI providers (optional)
 
-Set any subset; choose the active provider/model **per household** in Settings → AI & capture.
-Keys never leave the server. See [AI providers](/administration/ai-providers/).
+Set any subset; choose the active provider/model **per household** in Settings → AI & Capture.
+Keys never leave the server. See [AI providers](/administration/ai-providers/). On a Mac, the
+keys and addresses are the **AI settings** row on **Settings… → Basic**, and the models and
+timeout are on **Advanced → AI model and limits**; `CAPTURE_TIMEOUT_MS` isn't passed on.
 
 | Variable | Purpose | Default |
 |---|---|---|
@@ -104,6 +121,11 @@ Independent of login. See [Google Calendar](/administration/google-calendar/) an
 | `CALENDAR_SYNC_INTERVAL_MS` | Inbound sync poll interval (Google + Outlook) | `300000` (5m) |
 | `ICS_SYNC_INTERVAL_MS` | Calendar-feed (ICS) refresh interval; `0` disables | `900000` (15m) |
 
+On a Mac, the client IDs, secrets and redirects are on **Settings… → Advanced → Calendar
+sync**, and the two `*_SCOPES` go in with `waffled-runtime config set`.
+`CALENDAR_SYNC_INTERVAL_MS` and `ICS_SYNC_INTERVAL_MS` aren't passed on, so a Mac syncs on
+the defaults.
+
 ## Media / storage
 
 | Variable | Purpose | Default |
@@ -114,7 +136,10 @@ Independent of login. See [Google Calendar](/administration/google-calendar/) an
 
 ## Backups & S3
 
-Full guide: [Backup & restore](/operations/backup/).
+Full guide: [Backup & restore](/operations/backup/). Docker installs only, apart from `TZ` —
+Waffled for Mac ignores the `BACKUP_*` rows. It has its own nightly backup (time and how many
+to keep on **Settings… → Basic**), into `backups/` in Waffled's folder, with no S3 upload.
+See [Backups](/install/mac/#backups).
 
 | Variable | Purpose | Default |
 |---|---|---|
@@ -145,10 +170,15 @@ Full guide: [Backup & restore](/operations/backup/).
 | `UPDATE_CHECK_ENABLED` | In-app "update available" check (`false` = no outbound call) | `true` |
 | `UPDATE_CHECK_REPO` | GitHub repo to check | `kevinpsites/waffled` |
 
+Docker installs only — Waffled for Mac turns this check off and ignores both; the app's own
+**Check for updates…** replaces it. See [Updating](/install/mac/#updating).
+
 ## Observability (optional, off by default)
 
 Bring up with `./waffled observability up`. See [System health](/administration/system-health/).
-Docker installs only — Waffled for Mac doesn't include OpenTelemetry yet, and ignores these.
+Docker installs only — Waffled for Mac doesn't include OpenTelemetry yet, and ignores the
+`OTEL_*`, Grafana and OTLP rows. `LOG_FORMAT` and `LOG_LEVEL` do work there, on
+**Settings… → Diagnostics**.
 
 | Variable | Purpose | Default |
 |---|---|---|
