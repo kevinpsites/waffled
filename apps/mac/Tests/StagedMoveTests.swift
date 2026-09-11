@@ -27,14 +27,16 @@ final class StagedMoveTests: XCTestCase {
             of: "/Users/jerry/Library/Application Support/Waffled", with: folder.path)))
     }
 
-    /// Settings open over a server that is running from `current`.
-    private func settingsModel(runner: RuntimeProcessRunning) throws -> ServerModel {
+    /// Settings open over a server that is running from `current` — or stopped there.
+    private func settingsModel(runner: RuntimeProcessRunning, stopped: Bool = false) throws -> ServerModel {
         let memory = InMemoryDefaults()
         memory.set(current.path, forKey: Setup.dataDirectoryKey)
         let model = ServerModel(environment: [RuntimeLocator.binaryVariable: "/nonexistent/waffled-runtime"],
                                 resourceURL: nil, memory: memory, runner: runner,
                                 defaultDataDirectory: current)
-        model.pretendFirstRunForTesting(try running(at: current))
+        var status = try running(at: current)
+        if stopped { status.state = .stopped }
+        model.pretendFirstRunForTesting(status)
         model.dismissFirstRunWindow()
         model.openSettings()
         return model
@@ -110,6 +112,27 @@ final class StagedMoveTests: XCTestCase {
         XCTAssertNil(model.pendingMove)
         XCTAssertFalse(model.configAwaitingRestart, "the start after the move already read it")
         XCTAssertEqual(try screen(model).confirmation, "Moved, and Waffled restarted.")
+    }
+
+    /// A stopped server is moved as it is: nothing to stop first, and nothing started
+    /// after — a person who stopped it did not ask for it back.
+    func testAMoveWithTheServerStoppedNeitherStopsNorStartsIt() async throws {
+        let runner = RecordingRunner()
+        let model = try settingsModel(runner: runner, stopped: true)
+        defer { model.end() }
+
+        _ = model.stageMove(to: destination)
+        XCTAssertFalse(try screen(model).moveNote?.contains("restarts") == true,
+                       "nothing will be restarted")
+        model.applySettings()
+        await waitUntil("Apply finishes") { !model.busy }
+
+        let commands = runner.calls.map { $0.arguments.first ?? "" }
+        XCTAssertTrue(commands.contains("move"), "\(commands)")
+        XCTAssertFalse(commands.contains("stop"), "\(commands)")
+        XCTAssertFalse(commands.contains("start"), "\(commands)")
+        XCTAssertEqual(model.dataDirectory.path, destination.path)
+        XCTAssertEqual(try screen(model).confirmation, "Moved.")
     }
 
     /// The settings really were written, so they are remembered; the move is still wanted,

@@ -108,6 +108,8 @@ func TestFollowWithNoScheduleInstalledDoesNothing(t *testing.T) {
 func TestFollowKeepsAScheduleWithNoRetentionWithout(t *testing.T) {
 	a, _ := followerFor(t)
 	installedAs(t, a, oldFolder, "03:00", 0)
+	// What the follower held before it read the plist, so only reading it can drop this.
+	a.Keep = 30
 	if _, err := a.Follow(oldFolder); err != nil {
 		t.Fatal(err)
 	}

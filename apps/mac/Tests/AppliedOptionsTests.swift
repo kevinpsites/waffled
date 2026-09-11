@@ -42,16 +42,24 @@ final class AppliedOptionsTests: XCTestCase {
 
     /// The default address is not the one every household chose: a household that took
     /// this Mac's name keeps it, or every phone holding that address would lose the server.
+    @MainActor
     func testAHouseholdThatChoseTheNameKeepsIt() {
-        let memory = Memory()
+        XCTAssertNotEqual(SetupOptions().addressMode, .name, "precondition: the name is not the default")
+        let memory = InMemoryDefaults()
         var applied = SetupOptions()
         applied.addressMode = .name
         Setup.remember(applied, in: memory)
+        let model = ServerModel(environment: [RuntimeLocator.binaryVariable: "/nonexistent/waffled-runtime"],
+                                resourceURL: nil, memory: memory, runner: RecordingRunner())
+        defer { model.end() }
 
-        let settings = Setup.appliedOptions(in: memory)
-        XCTAssertEqual(settings.addressMode, .name)
-        XCTAssertTrue(settings.commandsForChange(from: settings).isEmpty,
-                      "opening Settings and pressing Apply rewrites nothing")
+        model.openSettings()
+        XCTAssertEqual(model.setupOptions.addressMode, .name)
+        model.setupOptions.backupAt = "01:00"
+        let commands = model.setupOptions.commandsForChange(from: model.appliedOptions)
+        XCTAssertFalse(commands.isEmpty, "precondition: something else changed")
+        XCTAssertFalse(commands.contains { $0.trailing.contains { $0.hasPrefix("WAFFLED_PUBLIC_HOST") } },
+                       "Apply rewrote the address: \(commands)")
     }
 
     /// The provider key is a secret. It goes into config.env, which is owner-only, and
