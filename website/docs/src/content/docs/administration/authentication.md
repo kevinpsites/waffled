@@ -18,7 +18,8 @@ gets a login on their card in **Settings → Family & People** — see
 - Passwords are a minimum of 8 characters. The owner login is protected from removal.
 - Locked out? Break-glass from the host: `./waffled admin reset-password` (also `make-admin`,
   `prune-sessions`) — see [Troubleshooting](/operations/troubleshooting/#locked-out--forgot-admin-password).
-  That is a Docker-install command; [Waffled for Mac](/install/mac/) has no equivalent yet.
+  On [Waffled for Mac](/install/mac/) the same commands are `waffled-runtime admin
+  reset-password` — see [Users & members](/administration/users/#break-glass-from-the-host).
 
 ## Single sign-on (OIDC)
 

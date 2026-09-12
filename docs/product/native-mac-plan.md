@@ -391,8 +391,9 @@ Throwaway bash under `infra/native/spike/`. Purpose: **learn**, not build.
 Done. The app exists, carries its own runtime, drives a real server from it, walks a
 household through its first run, updates itself, and is now signed with a Developer ID,
 notarized and shipped as a DMG anyone can download. CI assembles the `.app` and boots it on
-every change; a release is `./waffled release X.Y.Z` followed by
-`apps/mac/Scripts/release-mac.sh X.Y.Z` on the signing Mac.
+every change; a release is `./waffled release X.Y.Z`, which on the signing Mac offers to run
+`apps/mac/Scripts/release-mac.sh X.Y.Z` itself (`--no-mac` declines; anywhere else it prints
+the command to run there).
 
 1. `apps/mac/` SwiftUI `MenuBarExtra`, XcodeGen project like iOS, bundles the runtime and
    binaries under `Resources/runtime/`. *(done — PR #195 the app, PR #196 the embedding)* →

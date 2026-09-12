@@ -2,6 +2,7 @@ package services
 
 import (
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -50,7 +51,7 @@ func envMap(pairs []string) map[string]string {
 // NODE_ENV=development in someone's ~/.zshrc would silently win over ours.
 func TestChildEnvironmentIsBuiltFromScratch(t *testing.T) {
 	p := testPlan(t)
-	for _, spec := range []Spec{p.API(), p.PowerSync(), p.Caddy(), p.Migrate()} {
+	for _, spec := range []Spec{p.API(), p.PowerSync(), p.Caddy(), p.Migrate(), p.Admin(nil)} {
 		e := envMap(spec.Env)
 		if e["PATH"] != "/usr/bin:/bin" {
 			t.Errorf("%s: PATH = %q, want a minimal one", spec.Name, e["PATH"])
@@ -286,6 +287,65 @@ func TestMigrateIsAOneShotWithTheDatabaseURL(t *testing.T) {
 	// bundle's own dist directory layout — never a copy that flattens it.
 	if !strings.HasSuffix(spec.Args[len(spec.Args)-1], filepath.Join("api", "dist", "migrate.js")) {
 		t.Errorf("migrate must run the bundled dist/migrate.js so ../migrations resolves: %v", spec.Args)
+	}
+}
+
+// `admin` is the break-glass CLI the Docker install runs with `docker exec waffled-api
+// node dist/admin.js`. Natively it is the same file, run by the bundled node with the
+// api's database environment — and the path is derived from migrate's, so a bundle that
+// moves api/dist says so in one place.
+func TestAdminRunsTheBundledAdminCLIWithTheAPIsDatabase(t *testing.T) {
+	p := testPlan(t)
+	spec := p.Admin([]string{"reset-password", "--email", "a@b"})
+
+	if spec.Path != filepath.Join(p.Bundle, "bin", "node") {
+		t.Errorf("admin must run the bundled node, got %q", spec.Path)
+	}
+	want := []string{
+		spec.Path, filepath.Join(p.Bundle, "api", "dist", "admin.js"),
+		"reset-password", "--email", "a@b",
+	}
+	if !reflect.DeepEqual(spec.Args, want) {
+		t.Errorf("admin argv = %q, want %q", spec.Args, want)
+	}
+	p.Env.Set("ACCESS_TOKEN_TTL_SECONDS", "900")
+	e := envMap(p.Admin(nil).Env)
+	if e["DATABASE_URL"] != p.Env.DatabaseURL(5434, "waffled") {
+		t.Errorf("DATABASE_URL = %q", e["DATABASE_URL"])
+	}
+	// The api's own settings reach it too: a session prune and a password reset are
+	// governed by the same token lifetimes the api runs with.
+	if e["ACCESS_TOKEN_TTL_SECONDS"] != "900" {
+		t.Errorf("ACCESS_TOKEN_TTL_SECONDS = %q, want the household's own 900", e["ACCESS_TOKEN_TTL_SECONDS"])
+	}
+	// setPersonLogin encrypts and signs with these; without them a reset writes a login
+	// nothing can verify.
+	for _, key := range []string{"LOCAL_JWT_SECRET", "TOKEN_ENCRYPTION_KEY"} {
+		if e[key] == "" {
+			t.Errorf("%s was not passed to admin", key)
+		}
+	}
+	if e["PATH"] != "/usr/bin:/bin" {
+		t.Errorf("PATH = %q, want a minimal one", e["PATH"])
+	}
+}
+
+// A pin, not a red-green test: the three node processes that open the database must carry
+// the same credentials, so a variable added to the api later cannot reach two of them and
+// leave `admin` connecting but unable to sign or decrypt.
+func TestEveryDatabaseServiceCarriesTheSameCredentials(t *testing.T) {
+	p := testPlan(t)
+	api := envMap(p.API().Env)
+	for name, spec := range map[string]Spec{"migrate": p.Migrate(), "admin": p.Admin(nil)} {
+		e := envMap(spec.Env)
+		for _, key := range []string{
+			"NODE_ENV", "DATABASE_URL", "LOCAL_JWT_SECRET",
+			"TOKEN_ENCRYPTION_KEY", "POWERSYNC_JWT_PRIVATE_KEY",
+		} {
+			if e[key] != api[key] {
+				t.Errorf("%s: %s = %q, want the api's %q", name, key, e[key], api[key])
+			}
+		}
 	}
 }
 

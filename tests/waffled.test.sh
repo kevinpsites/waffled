@@ -583,6 +583,244 @@ t "report_release_failures is silent and succeeds when every step passed" '
   echo "PASS"
 '
 
+# --- 13. chaining the Mac half of a release ----------------------------------------
+# After the tag is pushed, `./waffled release` offers to run apps/mac/Scripts/release-mac.sh
+# for you — but only where that can possibly work. Every test below points both knobs
+# (MAC_RELEASE_SCRIPT, MAC_SIGNING_CONF) at a temp dir: on the real signing Mac every
+# default guard is TRUE, so a test that forgot would start a 40-minute notarized build.
+
+# The signing identity lives in one Mac's login Keychain. Everywhere else the release is
+# already finished — the note is information, not a failure.
+t "a machine that cannot sign gets the hand-off note, not a failed release" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  cat > "$tmp/release-mac.sh" <<EOF
+#!/bin/sh
+touch "$tmp/ran"
+EOF
+  chmod +x "$tmp/release-mac.sh"
+  MAC_RELEASE_SCRIPT="$tmp/release-mac.sh"
+  MAC_SIGNING_CONF="$tmp/absent.conf"      # the one missing piece
+  uname() { echo Darwin; }
+  gh() { :; }
+
+  set +e
+  out="$(mac_release_step 9.9.9 </dev/null 2>&1)"
+  rc=$?
+  set -e
+
+  [ "$rc" -eq 0 ] || { echo "FAIL: the release failed on a machine that cannot sign (rc=$rc)"; exit 0; }
+  mac_can_sign && { echo "FAIL: mac_can_sign said yes with no signing config"; exit 0; }
+  [ -f "$tmp/ran" ] && { echo "FAIL: release-mac.sh ran with no signing config"; exit 0; }
+  case "$out" in
+    *"Still to do on the signing Mac"*) ;;
+    *) echo "FAIL: no hand-off note: $out"; exit 0 ;;
+  esac
+  case "$out" in
+    *"$tmp/absent.conf"*) echo "PASS" ;;
+    *) echo "FAIL: the note never named what was missing: $out" ;;
+  esac
+'
+
+# The whole point: on the signing Mac, one command.
+t "answering yes runs release-mac.sh with this release version" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  cat > "$tmp/release-mac.sh" <<EOF
+#!/bin/sh
+printf "%s" "\$1" > "$tmp/ran"
+EOF
+  chmod +x "$tmp/release-mac.sh"
+  MAC_RELEASE_SCRIPT="$tmp/release-mac.sh"
+  MAC_SIGNING_CONF="$tmp/signing.conf"; : > "$MAC_SIGNING_CONF"
+  uname() { echo Darwin; }
+  gh() { :; }
+  stdin_is_terminal() { return 0; }        # [ -t 0 ] cannot be faked from a pipe
+  mac_can_sign || { echo "FAIL: mac_can_sign said no with every condition met"; exit 0; }
+
+  set +e
+  out="$(mac_release_step 1.2.3 <<< "" 2>&1)"   # Enter = yes
+  rc=$?
+  set -e
+
+  [ "$rc" -eq 0 ] || { echo "FAIL: a clean Mac release returned $rc: $out"; exit 0; }
+  [ -f "$tmp/ran" ] || { echo "FAIL: release-mac.sh never ran: $out"; exit 0; }
+  got="$(cat "$tmp/ran")"
+  [ "$got" = "1.2.3" ] || { echo "FAIL: release-mac.sh got version \"$got\", not 1.2.3"; exit 0; }
+  # …and no reminder to do the thing it just did.
+  case "$out" in
+    *"Still to do on the signing Mac"*) echo "FAIL: told to run what it already ran: $out"; exit 0 ;;
+  esac
+  echo "PASS"
+'
+
+# Ctrl-D at the prompt is someone backing out, and the read fails rather than returning a
+# line. Resolving that to the empty string would make it identical to Enter — consent to a
+# forty-minute notarized build, given at the moment they tried to leave.
+t "EOF at the prompt declines, it does not consent" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  cat > "$tmp/release-mac.sh" <<EOF
+#!/bin/sh
+touch "$tmp/ran"
+EOF
+  chmod +x "$tmp/release-mac.sh"
+  MAC_RELEASE_SCRIPT="$tmp/release-mac.sh"
+  MAC_SIGNING_CONF="$tmp/signing.conf"; : > "$MAC_SIGNING_CONF"
+  uname() { echo Darwin; }
+  gh() { :; }
+  stdin_is_terminal() { return 0; }
+
+  set +e
+  out="$(mac_release_step 1.2.3 < /dev/null 2>&1)"   # a read that fails, not an empty line
+  rc=$?
+  set -e
+
+  [ "$rc" -eq 0 ] || { echo "FAIL: backing out returned $rc: $out"; exit 0; }
+  [ -f "$tmp/ran" ] && { echo "FAIL: EOF started the build: $out"; exit 0; }
+  case "$out" in
+    *"Still to do on the signing Mac"*) echo "PASS" ;;
+    *) echo "FAIL: declining left no hand-off note: $out" ;;
+  esac
+'
+
+t "answering no leaves the hand-off note and runs nothing" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  cat > "$tmp/release-mac.sh" <<EOF
+#!/bin/sh
+touch "$tmp/ran"
+EOF
+  chmod +x "$tmp/release-mac.sh"
+  MAC_RELEASE_SCRIPT="$tmp/release-mac.sh"
+  MAC_SIGNING_CONF="$tmp/signing.conf"; : > "$MAC_SIGNING_CONF"
+  uname() { echo Darwin; }
+  gh() { :; }
+  stdin_is_terminal() { return 0; }
+
+  set +e
+  out="$(mac_release_step 1.2.3 <<< "n" 2>&1)"
+  rc=$?
+  set -e
+
+  [ "$rc" -eq 0 ] || { echo "FAIL: declining the Mac step failed the release (rc=$rc)"; exit 0; }
+  [ -f "$tmp/ran" ] && { echo "FAIL: release-mac.sh ran after a no"; exit 0; }
+  case "$out" in
+    *"Still to do on the signing Mac"*) echo "PASS" ;;
+    *) echo "FAIL: declining printed no hand-off note: $out" ;;
+  esac
+'
+
+# --no-mac is for the operator who will do the Mac half later (or on another Mac).
+t "--no-mac skips the offer even where signing would work" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  cat > "$tmp/release-mac.sh" <<EOF
+#!/bin/sh
+touch "$tmp/ran"
+EOF
+  chmod +x "$tmp/release-mac.sh"
+  MAC_RELEASE_SCRIPT="$tmp/release-mac.sh"
+  MAC_SIGNING_CONF="$tmp/signing.conf"; : > "$MAC_SIGNING_CONF"
+  uname() { echo Darwin; }
+  gh() { :; }
+  stdin_is_terminal() { return 0; }
+  mac_release_skip=yes
+
+  set +e
+  out="$(mac_release_step 1.2.3 <<< "" 2>&1)"
+  rc=$?
+  set -e
+
+  [ "$rc" -eq 0 ] || { echo "FAIL: --no-mac failed the release (rc=$rc)"; exit 0; }
+  [ -f "$tmp/ran" ] && { echo "FAIL: --no-mac still ran release-mac.sh"; exit 0; }
+  case "$out" in
+    *"Still to do on the signing Mac"*) echo "PASS" ;;
+    *) echo "FAIL: --no-mac printed no hand-off note: $out" ;;
+  esac
+'
+
+# The flag is position-independent and must not reach the version/`check` parsing —
+# `release check --no-mac` still has to satisfy the one-argument check.
+t "--no-mac is taken out of the release arguments wherever it appears" '
+  source "$WAFFLED" help >/dev/null 2>&1
+
+  release_mac_flag_scan check --no-mac
+  [ "$mac_release_skip" = yes ] || { echo "FAIL: the flag was not seen"; exit 0; }
+  [ "${#REL_ARGS[@]}" -eq 1 ] || { echo "FAIL: ${#REL_ARGS[@]} args left, not 1"; exit 0; }
+  [ "${REL_ARGS[0]}" = check ] || { echo "FAIL: wrong arg survived: ${REL_ARGS[0]}"; exit 0; }
+
+  release_mac_flag_scan --no-mac 1.2.3
+  [ "$mac_release_skip" = yes ] || { echo "FAIL: a leading flag was not seen"; exit 0; }
+  [ "${REL_ARGS[0]}" = 1.2.3 ] || { echo "FAIL: wrong arg survived: ${REL_ARGS[0]}"; exit 0; }
+
+  release_mac_flag_scan 1.2.3
+  [ "$mac_release_skip" = no ] || { echo "FAIL: the flag appeared out of nowhere"; exit 0; }
+  echo "PASS"
+'
+
+# `./waffled release` is a lane inside `./waffled release check` and runs from scripts.
+# A prompt with no terminal behind it would block the whole release forever.
+t "a release with no terminal on stdin prints the note instead of prompting" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  cat > "$tmp/release-mac.sh" <<EOF
+#!/bin/sh
+touch "$tmp/ran"
+EOF
+  chmod +x "$tmp/release-mac.sh"
+  MAC_RELEASE_SCRIPT="$tmp/release-mac.sh"
+  MAC_SIGNING_CONF="$tmp/signing.conf"; : > "$MAC_SIGNING_CONF"
+  uname() { echo Darwin; }
+  gh() { :; }
+  # no stdin_is_terminal stub: /dev/null makes [ -t 0 ] genuinely false
+
+  set +e
+  out="$(mac_release_step 1.2.3 </dev/null 2>&1)"
+  rc=$?
+  set -e
+
+  [ "$rc" -eq 0 ] || { echo "FAIL: a non-interactive run failed the release (rc=$rc)"; exit 0; }
+  [ -f "$tmp/ran" ] && { echo "FAIL: release-mac.sh ran unasked with no terminal"; exit 0; }
+  case "$out" in
+    *"Still to do on the signing Mac"*) echo "PASS" ;;
+    *) echo "FAIL: no hand-off note without a terminal: $out" ;;
+  esac
+'
+
+# The DMG failing is not the release failing: the commit, the tag and the push already
+# happened, and release-mac.sh is idempotent. Say both, and still exit non-zero.
+t "a failed release-mac.sh is reported without implying the tag failed" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  cat > "$tmp/release-mac.sh" <<EOF
+#!/bin/sh
+exit 3
+EOF
+  chmod +x "$tmp/release-mac.sh"
+  MAC_RELEASE_SCRIPT="$tmp/release-mac.sh"
+  MAC_SIGNING_CONF="$tmp/signing.conf"; : > "$MAC_SIGNING_CONF"
+  uname() { echo Darwin; }
+  gh() { :; }
+  stdin_is_terminal() { return 0; }
+
+  set +e
+  out="$(mac_release_step 1.2.3 <<< "" 2>&1)"
+  rc=$?
+  set -e
+
+  [ "$rc" -ne 0 ] || { echo "FAIL: a failed release-mac.sh reported success"; exit 0; }
+  case "$out" in
+    *"v1.2.3"*) ;;
+    *) echo "FAIL: the failure never named the tag that is already pushed: $out"; exit 0 ;;
+  esac
+  # The full path, not the bare name the prompt also prints.
+  case "$out" in
+    *"apps/mac/Scripts/release-mac.sh 1.2.3"*) echo "PASS" ;;
+    *) echo "FAIL: the failure never says to re-run release-mac.sh: $out" ;;
+  esac
+'
+
 echo
 if [ "$fails" -gt 0 ]; then
   echo "$fails/$runs waffled test(s) FAILED"

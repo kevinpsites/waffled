@@ -82,8 +82,16 @@ If no one can sign in as an admin, you don't need a login — run these on the h
 ./waffled admin prune-sessions     # invalidate active sessions
 ```
 
-These are Docker-install commands. [Waffled for Mac](/install/mac/) has no equivalent yet —
-its `waffled-runtime` has no admin command.
+On [Waffled for Mac](/install/mac/) the same commands are `waffled-runtime admin`:
+
+```bash
+R=/Applications/Waffled.app/Contents/Resources/runtime/bin/waffled-runtime
+$R admin reset-password --email you@example.com
+$R admin help                      # the full command list
+```
+
+Waffled doesn't have to be running — if it's stopped, the database is started for the
+command and shut down again afterwards.
 
 Full walkthrough in [Troubleshooting → Locked out](/operations/troubleshooting/).
 

@@ -510,12 +510,22 @@ watching by hand: the server stops, the app is replaced, and the relaunched app 
 
 ## Releasing
 
-Two commands, in this order, and the second only runs on the Mac that holds the keys.
+Two halves — the repo one anywhere, the Mac one only on the Mac that holds the keys.
 
 ```sh
 ./waffled release 0.15.0                 # anywhere: versions, changelog, tag, push
 apps/mac/Scripts/release-mac.sh 0.15.0   # the signing Mac: DMG, notarization, upload
 ```
+
+**On the signing Mac that is one command.** Once the tag is pushed, `./waffled release`
+offers to run the second line for you and does it on Enter — so `./waffled release 0.15.0`
+is the whole release. It offers only where the second half could actually work (macOS, an
+executable `release-mac.sh`, a `~/.config/waffled/signing.conf`, `gh` on `PATH`) and only
+with a terminal to ask on; anywhere else — and with `./waffled release 0.15.0 --no-mac` —
+it prints the reminder above and stops, with the release itself already done. Say yes and
+it is slow for the reasons below: it waits for the GitHub Release the tag creates, builds
+~670 MB and notarizes. If it fails, the tag is still pushed and the fix is to re-run
+`release-mac.sh 0.15.0`, which is idempotent.
 
 `./waffled release` bumps `project.yml`'s `MARKETING_VERSION` (which `CFBundleVersion`
 follows, which is what Sparkle compares) alongside api, web, compose and iOS, and refuses to

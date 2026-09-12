@@ -82,7 +82,7 @@ See [Permissions & roles](/concepts/permissions/).
 
 ### I'm locked out / forgot the admin password.
 Break-glass from the host: `./waffled admin reset-password` (also `make-admin`, `list-members`).
-That is a Docker-install command — [Waffled for Mac](/install/mac/) has no equivalent yet. See [Troubleshooting → Locked out](/operations/troubleshooting/#locked-out--forgot-admin-password).
+On [Waffled for Mac](/install/mac/) the same commands are `waffled-runtime admin reset-password`, and the server doesn't have to be running. See [Troubleshooting → Locked out](/operations/troubleshooting/#locked-out--forgot-admin-password).
 
 ## Features & integrations
 
