@@ -27,6 +27,7 @@ Then dig into logs for the flagged service: `./waffled logs <svc>` (`postgres`, 
 |---|---|
 | DB check down / can't connect | [Postgres unreachable](#postgres-unreachable) |
 | "schema behind" / migrations pending | [Migrations pending](#migrations-pending) |
+| Upgrade stuck on `waffled-migrate` / `lock timeout` | [Upgrade stuck on migrate](#upgrade-stuck-on-migrate) |
 | All clients show an **Offline** banner | [PowerSync offline](#powersync-offline-banner) |
 | One browser shows "Live sync is reconnecting" | [Live sync stalled](#live-sync-stalled-in-one-browser) |
 | Calendars stale / sync failing / `push_failed` | [Calendar sync](#calendar-sync-failing-google-or-outlook) |
@@ -68,6 +69,30 @@ available count); new features missing or erroring after an upgrade.
 
 Migrations normally auto-run on `up` via the one-shot `migrate` service; run
 `./waffled migrate` directly if you only need to apply them without a full restart.
+
+### Upgrade stuck on migrate
+
+**Symptom:** `./waffled upgrade` (or `up`) sits on `waffled-migrate` for a long time, or
+`migrate` exits with `lock timeout: … was not granted within 10000ms; gave up after 4 attempt(s)`
+followed by a list of **Blocking sessions**.
+
+**Diagnose:** a migration needs a table lock that another database session is holding,
+usually the previous `api` or `powersync`, which keep running while `migrate` applies the new
+schema. `./waffled logs migrate` shows the retries and each blocker's pid, user, application,
+state and query.
+
+**Fix:** stop the app services so nothing holds the tables, then bring the stack back up
+(pass your `--override` file to `up` too if you use one):
+
+```bash
+docker stop waffled-api waffled-powersync
+./waffled up        # migrate runs alone, then api and powersync start
+```
+
+If the blocker is something else, such as a `psql` session left inside a transaction, end it
+or terminate it by pid with `select pg_terminate_backend(<pid>);`. On a very busy database you
+can give each lock longer with `MIGRATE_LOCK_TIMEOUT=30s` in `infra/compose/.env` (`0` waits
+indefinitely).
 
 ### PowerSync "Offline" banner
 

@@ -176,15 +176,18 @@ beforeAll(async () => {
   })
 
   // Two days logged in the CURRENT household week plus a lifetime pile from long ago: the
-  // card must say "2 of 5 this week", never the lifetime 99. Anchored to date_trunc so it
-  // lands right on any weekday.
+  // card must say "2 of 5 this week", never the lifetime 99. Anchored to the HOUSEHOLD's
+  // week start (the `periodStartSQL` rule) so it lands right on any weekday; a bare
+  // date_trunc('week') is Monday-only and puts both logs in last week on a Sunday.
   const logAt = (goalId: string, amount: number, atSql: string) =>
     query(
       `insert into goal_logs (household_id, goal_id, person_id, amount, logged_at)
        select h.id, $2::uuid, $3::uuid, $4::numeric, ${atSql} from households h where h.id = $1`,
       [householdId, goalId, wallyId, amount]
     )
-  const wk = `date_trunc('week', (now() at time zone h.timezone))`
+  const wk = `((now() at time zone h.timezone)::date`
+    + ` - ((extract(dow from (now() at time zone h.timezone))::int`
+    + `     - case when h.week_start = 'monday' then 1 else 0 end + 7) % 7))`
   await logAt(gRead, 1, `(${wk} + interval '2 hours') at time zone h.timezone`)
   await logAt(gRead, 1, `(${wk} + interval '1 day 2 hours') at time zone h.timezone`)
   await logAt(gRead, 97, `now() - interval '200 days'`)

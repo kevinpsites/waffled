@@ -168,9 +168,13 @@ describe('person overview · this week\'s planning focus', () => {
     // The week we are actually in — not the week a session was planning. A session run on
     // Sunday plans the week ahead, so by Wednesday the focus is the session whose week
     // contains today.
-    const today = new Date()
-    const start = new Date(today)
-    start.setDate(start.getDate() - start.getDay()) // this household starts weeks on Sunday
+    // Today in the HOUSEHOLD's zone, walked back with UTC math: the runner's zone and hour
+    // must not decide which week this is.
+    const today = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date())
+    const start = new Date(`${today}T00:00:00Z`)
+    start.setUTCDate(start.getUTCDate() - start.getUTCDay()) // this household starts weeks on Sunday
     await sessionFor(iso(start), focus('Read 20 minutes a day'))
 
     const d = JSON.parse((await call('GET', `/api/persons/${kevinId}/overview`, kevin)).body)

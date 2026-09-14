@@ -101,6 +101,43 @@ describe('waffled upgrade safety', () => {
     expect(result).toContain('upgrade has been stopped')
   })
 
+  // `--override` is stripped from "$@" at parse time, so the handoff to a freshly pulled
+  // ./waffled must pass it back or the restarted upgrade drops the override compose file.
+  it('re-execs a changed script with every compose override and the upgrade args', () => {
+    const result = runShell(`
+      tmp="$(mktemp -d)"
+      printf 'old script body\\n' > "$tmp/waffled"
+      ROOT="$tmp"
+      before="$(script_checksum)"
+      printf '%s\\n' '#!/bin/sh' 'echo "guard=$WAFFLED_UPGRADE_REEXEC"' 'for a in "$@"; do echo "[$a]"; done' 'rm -rf "\${0%/*}"' > "$tmp/waffled"
+      chmod +x "$tmp/waffled"
+      COMPOSE_OVERRIDES=("infra/compose/docker-compose.oci.yml" "/srv/my overrides/extra.yml")
+      maybe_reexec_upgrade "$before" --skip-backup
+    `)
+
+    expect(result).toContain('guard=1')
+    const argv = result.split('\n').filter((line) => line.startsWith('[')).map((line) => line.slice(1, -1))
+    expect(argv[0]).toBe('upgrade')
+    expect(argv).toContain('--skip-backup')
+    const overrides = argv.flatMap((arg, i) => (arg === '--override' ? [argv[i + 1]] : []))
+    expect(overrides).toEqual(['infra/compose/docker-compose.oci.yml', '/srv/my overrides/extra.yml'])
+  })
+
+  it('re-execs with only the upgrade args when there are no compose overrides', () => {
+    const result = runShell(`
+      tmp="$(mktemp -d)"
+      printf 'old script body\\n' > "$tmp/waffled"
+      ROOT="$tmp"
+      before="$(script_checksum)"
+      printf '%s\\n' '#!/bin/sh' 'for a in "$@"; do echo "[$a]"; done' 'rm -rf "\${0%/*}"' > "$tmp/waffled"
+      chmod +x "$tmp/waffled"
+      COMPOSE_OVERRIDES=()
+      maybe_reexec_upgrade "$before"
+    `)
+
+    expect(result.split('\n').filter((line) => line.startsWith('['))).toEqual(['[upgrade]'])
+  })
+
   it('skips backup work only when explicitly requested', () => {
     const result = runShell(`
       docker() { return 99; }

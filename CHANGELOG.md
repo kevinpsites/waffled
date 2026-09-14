@@ -19,6 +19,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`./waffled upgrade` keeps your `--override` file when it restarts itself.** When an
+  upgrade pulls a newer copy of `./waffled`, the upgrade hands off to that new copy — and the
+  hand-off used to drop any `--override` you passed, so the rest of the upgrade recreated
+  containers from the base compose file alone. On the Oracle Cloud deploy that cost Caddy its
+  HTTPS port. The override now carries through the restart. The hand-off is run by the copy
+  you started, so the upgrade *onto* this release can still drop it once: finish with
+  `./waffled --override <file> up` if you use one.
+- **Migrations give up on a blocked table lock instead of hanging the upgrade.** The migrate step
+  runs while the previous api and PowerSync are still connected, and a migration that needed a
+  table another session was holding would wait forever, leaving `waffled-migrate` stuck with
+  nothing in its logs. It now waits up to 10 seconds per lock, retries three times, and if the
+  table is still busy it stops and names the sessions holding it, with the fix: stop `api` and
+  `powersync`, then bring the stack back up. Set `MIGRATE_LOCK_TIMEOUT` in `.env` (for example
+  `30s`, or `0` to wait indefinitely) to change the wait.
+
 ## [0.15.0] - 2026-09-11
 
 ### Added
