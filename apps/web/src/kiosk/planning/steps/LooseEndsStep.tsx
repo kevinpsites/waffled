@@ -138,8 +138,10 @@ function Body({ step, sessionId, weekStart, setDecisionData, busy }: StepBodyPro
       const seen = (known: string[], items: LooseEnd[]) =>
         [...known, ...items.map((i) => i.key).filter((k) => !known.includes(k))]
       setOrder((o) => ({ notDone: seen(o.notDone, next.notDone), parked: seen(o.parked, next.parked) }))
+      return next
     } catch {
       setView(null)
+      return null
     } finally {
       setLoading(false)
     }
@@ -304,7 +306,14 @@ function Body({ step, sessionId, weekStart, setDecisionData, busy }: StepBodyPro
     setRuling(id)
     try {
       await weeklyPlanningApi.setConfig({ lists: { [id]: on } })
-      await load()
+      const next = await load()
+      // Ruling a list out is not an answer: its cards leave the count as well as the deck,
+      // while anything already answered this sitting keeps counting.
+      if (next) {
+        const live = new Set([...next.notDone, ...next.parked].map((i) => i.key))
+        const keep = (k: string) => live.has(k) || settled.includes(k)
+        setOrder((o) => ({ notDone: o.notDone.filter(keep), parked: o.parked.filter(keep) }))
+      }
     } catch {
       setError('Couldn’t save that just now.')
     } finally {

@@ -523,6 +523,35 @@ private func model(_ feed: LooseEndsFeed) -> PlanningLooseEndsModel {
         #expect(m.total(.notDone) == 3)
     }
 
+    /// Ruling a list out is not an answer: its cards leave the count, not just the deck.
+    @Test func rulingAListOutDropsItsCardsFromTheCount() async {
+        let milk = looseEnd(key: "list:l1", kind: "list", id: "l1", title: "Milk", actions: ["done"])
+        let feed = LooseEndsFeed(snapshot: looseEndsView(notDone: [chore, milk]))
+        let m = model(feed)
+        await m.load(weekStart: "2026-09-06", sessionId: session)
+        #expect(m.total(.notDone) == 2)
+
+        feed.snapshot = looseEndsView(notDone: [chore])
+        #expect(await m.ruleList("l1", relevant: false, weekStart: "2026-09-06", sessionId: session))
+        #expect(m.total(.notDone) == 1)
+    }
+
+    /// …while a card already answered this sitting still counts after the rule-out re-read.
+    @Test func rulingAListOutKeepsWhatWasAlreadyAnswered() async {
+        let fish = looseEnd(key: "chore:c0", kind: "chore", id: "c0", title: "Feed the fish", actions: ["done"])
+        let milk = looseEnd(key: "list:l1", kind: "list", id: "l1", title: "Milk", actions: ["done"])
+        let feed = LooseEndsFeed(snapshot: looseEndsView(notDone: [fish, chore, milk]))
+        let m = model(feed)
+        await m.load(weekStart: "2026-09-06", sessionId: session)
+
+        feed.snapshot = looseEndsView(notDone: [chore, milk])
+        #expect(await m.settle(fish, action: "done", weekStart: "2026-09-06", sessionId: session))
+        feed.snapshot = looseEndsView(notDone: [chore])
+        #expect(await m.ruleList("l1", relevant: false, weekStart: "2026-09-06", sessionId: session))
+        #expect(m.total(.notDone) == 2)
+        #expect(m.remaining(.notDone) == 1)
+    }
+
     /// The trail names the STEP with the notDone label: "Parked"'s labels are verbs.
     @Test func theTrailNamesTheStepNotTheVerb() async {
         let feed = LooseEndsFeed(snapshot: looseEndsView(notDone: [chore]))

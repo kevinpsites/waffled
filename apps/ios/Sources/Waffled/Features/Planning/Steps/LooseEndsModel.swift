@@ -387,7 +387,16 @@ final class PlanningLooseEndsModel {
         await guarded {
             try await self.ruleListCall(listId, relevant)
             await self.reload(weekStart: weekStart, sessionId: sessionId)
+            self.forgetCardsNoLongerAsked()
         }
+    }
+
+    /// Ruling a list out is not an answer: its cards leave the count as well as the deck,
+    /// while anything already answered this sitting keeps counting.
+    private func forgetCardsNoLongerAsked() {
+        let live = Set((view?.notDone ?? []).map(\.key)).union((view?.parked ?? []).map(\.key))
+        let answered = Set(settled)
+        order = order.mapValues { keys in keys.filter { live.contains($0) || answered.contains($0) } }
     }
 
     /// "Leave it open" / "Keep it parked" — the answer that writes nothing at all.

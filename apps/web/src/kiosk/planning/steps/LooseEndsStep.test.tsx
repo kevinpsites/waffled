@@ -539,6 +539,32 @@ describe('loose ends · which lists it asks about', () => {
       .toBeGreaterThan(1))
   })
 
+  it('ruling a list out drops its cards from the count, not just from the deck', async () => {
+    mockApi()
+    // The server stops reporting the ruled-out list's cards once the config write lands.
+    const answer = globalThis.fetch as unknown as (u: string, i?: RequestInit) => Promise<{ json: () => Promise<Record<string, unknown>> }>
+    let ruled = false
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET'
+      const res = await answer(url, init)
+      if (method === 'PUT' && String(url).includes('/weekly-planning/config')) ruled = true
+      if (ruled && method === 'GET' && String(url).includes('/loose-ends')) {
+        const v = (await res.json()) as { notDone: { kind: string }[]; parked: unknown[]; counts: unknown }
+        v.notDone = v.notDone.filter((i) => i.kind !== 'list')
+        v.counts = { notDone: v.notDone.length, parked: v.parked.length }
+        return { ok: true, json: async () => v }
+      }
+      return res
+    }) as unknown as typeof fetch
+    renderStep()
+    expect(await screen.findByText('1 of 2')).toBeInTheDocument()
+
+    await openChooser()
+    fireEvent.click(screen.getByLabelText('Ask about Around the house in the weekly planning session'))
+
+    expect(await screen.findByText('1 of 1')).toBeInTheDocument()
+  })
+
   it('names each list the way the list itself is named', async () => {
     mockApi()
     renderStep()
