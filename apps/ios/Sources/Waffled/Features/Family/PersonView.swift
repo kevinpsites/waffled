@@ -34,17 +34,20 @@ final class PersonOverviewModel {
 
     var choresDone: Int { chores.filter { $0.status == "done" }.count }
 
-    /// Optimistic complete/uncomplete from the day list.
-    func toggleChore(_ inst: WaffledAPI.ChoreInstanceDTO) async {
-        guard let idx = chores.firstIndex(where: { $0.id == inst.id }) else { return }
+    /// Optimistic complete/uncomplete from the day list. Returns whether the write landed,
+    /// so the caller only broadcasts a change that happened.
+    @discardableResult
+    func toggleChore(_ inst: WaffledAPI.ChoreInstanceDTO) async -> Bool {
+        guard let idx = chores.firstIndex(where: { $0.id == inst.id }) else { return false }
         let isComplete = inst.status == "done" || inst.status == "awaiting"
-        let next = isComplete ? "pending" : (inst.requiresApproval ? "awaiting" : "done")
-        withAnimation { chores[idx].status = next }
+        withAnimation { chores[idx].status = ChoresModel.toggledStatus(inst) }
         do {
             if isComplete { try await api.uncompleteChore(id: inst.id) } else { try await api.completeChore(id: inst.id) }
             await load()
+            return true
         } catch {
             if let i = chores.firstIndex(where: { $0.id == inst.id }) { withAnimation { chores[i].status = inst.status } }
+            return false
         }
     }
 }
@@ -426,7 +429,7 @@ struct PersonView: View {
         ChoreCheckRow(chore: ch) {
             // A photo chore can't finish from a tick; the Chores screen takes the snapshot.
             if ch.requiresPhoto && ch.status == "pending" { path.append(.chores) }
-            else { Task { await model.toggleChore(ch); sync.bumpChores() } }
+            else { Task { if await model.toggleChore(ch) { sync.bumpChores() } } }
         }
     }
 
