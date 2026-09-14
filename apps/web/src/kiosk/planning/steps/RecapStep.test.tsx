@@ -342,4 +342,11 @@ describe('recap · review follow-ups', () => {
     expect(await screen.findByText('That didn’t take — the note is still on the board.')).toBeTruthy()
     expect(screen.getByTestId('wpr-parked-n1')).toBeTruthy()
   })
+
+  it('formats target amounts the way the rest of the app does', async () => {
+    mockApi({ ...VIEW, lastWeekTargets: [{ goalId: 'g-walk', title: 'Walk', emoji: null, unit: 'miles', target: 1000, done: 2.25 }] })
+    renderStep()
+    const card = await screen.findByTestId('wpr-targets')
+    expect(within(card).getByText('2.25 of 1,000 miles')).toBeTruthy()
+  })
 })

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { can, localToday, looseEndsApi, planningRecapApi, planningRecapDecision, useHousehold, type PlanningRecapView } from '../../../lib/api'
+import { can, fmtGoalNum, localToday, looseEndsApi, planningRecapApi, planningRecapDecision, useHousehold, type PlanningRecapView } from '../../../lib/api'
 import { moduleEnabled } from '../../../lib/modules'
 import { ChoreModal } from '../../components/ChoreModal'
 import { EventModal } from '../../components/EventModal'
@@ -21,7 +21,6 @@ import '../../../styles/planning-recap.css'
 // the Horizon month grid wasn't.
 
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const num = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
 
 /** "Sun" / "6" for a YYYY-MM-DD. Parsed at noon so no zone can shift the label a day. */
 function dayParts(iso: string): { name: string; num: number } {
@@ -213,7 +212,7 @@ export function RecapPanel({ sessionId, setDecisionData, busy, hrefForStep }: Re
                 <div key={t.goalId} className="wpr-row">
                   <span className="wpr-t">
                     {t.emoji ? `${t.emoji} ` : ''}{t.title}
-                    <s>{[num(t.done), 'of', num(t.target), t.unit].filter(Boolean).join(' ')}</s>
+                    <s>{[fmtGoalNum(t.done), 'of', fmtGoalNum(t.target), t.unit].filter(Boolean).join(' ')}</s>
                   </span>
                   <span className={`wpr-n ${t.done >= t.target ? 'is-met' : 'is-short'}`}>
                     {t.done >= t.target ? 'met' : 'short'}
