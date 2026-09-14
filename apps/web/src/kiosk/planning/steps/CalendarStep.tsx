@@ -77,10 +77,17 @@ interface Day {
 
 // One event, as the week draws it. `.ev-tint` + `evVars` is the same chip painting every other
 // calendar surface uses, so the unassigned/household case falls out of `useEventColor`.
-function Chip({ e, color }: { e: AgendaEvent; color: string }) {
+// A button: tapping an event opens the app's own modal on it, to change it.
+function Chip({ e, color, onOpen }: { e: AgendaEvent; color: string; onOpen: () => void }) {
   const avatar = e.personEmoji ?? (e.personName ? e.personName.slice(0, 1).toUpperCase() : null)
   return (
-    <span className={`wpc-chip ev-tint${avatar ? '' : ' bare'}`} style={evVars(color)}>
+    <button
+      type="button"
+      className={`wpc-chip ev-tint${avatar ? '' : ' bare'}`}
+      style={evVars(color)}
+      aria-label={`Edit ${e.title}`}
+      onClick={onOpen}
+    >
       <span className="wpc-chip-w">{chipWhen(e)}</span>
       <span className="wpc-chip-t">{e.title}</span>
       {avatar && (
@@ -88,7 +95,7 @@ function Chip({ e, color }: { e: AgendaEvent; color: string }) {
           {avatar}
         </i>
       )}
-    </span>
+    </button>
   )
 }
 
@@ -134,6 +141,8 @@ function Body({ weekStart, setDecisionData, refresh, busy }: StepBodyProps) {
   // Which day the event modal is open on. The header's button preselects today when today is
   // inside the week being planned, else the week's first day.
   const [addOn, setAddOn] = useState<string | null>(null)
+  // The event the modal is open on to change. An edit isn't an addition, so it leaves the count alone.
+  const [editing, setEditing] = useState<AgendaEvent | null>(null)
   // Per day, and never reset by a refetch: a row that collapsed under someone mid-read is worse.
   const [opened, setOpened] = useState<Set<string>>(() => new Set())
   // The crumb, and only ever a count: the recap reads through to the calendar itself.
@@ -199,7 +208,7 @@ function Body({ weekStart, setDecisionData, refresh, busy }: StepBodyProps) {
 
               <div className="wpc-evs">
                 {shown.map((e) => (
-                  <Chip key={`${e.id}-${e.occurrenceStart ?? ''}`} e={e} color={colorOf(e)} />
+                  <Chip key={`${e.id}-${e.occurrenceStart ?? ''}`} e={e} color={colorOf(e)} onOpen={() => setEditing(e)} />
                 ))}
                 {hidden > 0 && (
                   <button
@@ -239,6 +248,13 @@ function Body({ weekStart, setDecisionData, refresh, busy }: StepBodyProps) {
           {...(fromNote !== null ? { prefill: { title: fromNote } } : {})}
           onClose={onCloseModal}
           onSaved={onSaved}
+        />
+      )}
+      {editing && (
+        <EventModal
+          event={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { refetch(); refresh() }}
         />
       )}
     </div>

@@ -118,3 +118,7 @@
   .wpc-chip-t { white-space: normal; }
   .wpc-more { align-self: flex-start; }
 }
+
+/* A chip is a button, so it opens the shared modal on its event; keep the chip's own look. */
+button.wpc-chip { border: 0; font: inherit; cursor: pointer; text-align: left; }
+button.wpc-chip:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }

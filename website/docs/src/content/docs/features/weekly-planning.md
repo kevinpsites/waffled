@@ -86,7 +86,8 @@ about, because it rebuilds itself from the meal plan.
 
 **2 · Calendar** — *"Here's your week. Anything missing?"* The real week, seven days. Tap a
 day to add what's missing: a line, a time, and who it's for. It's an ordinary
-[calendar](/features/calendar/) event.
+[calendar](/features/calendar/) event. Tap an event that's already there to open it in the same
+editor and change it.
 
 **3 · Horizon scan** — *"Anything further out you should see now?"* The month view, so you
 see what's coming before it arrives. **＋** on a day adds a real event. The bar underneath

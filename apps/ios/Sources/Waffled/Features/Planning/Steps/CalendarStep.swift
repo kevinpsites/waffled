@@ -125,7 +125,9 @@ struct CalendarStepView: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 ForEach(shown) { event in
-                    chip(event)
+                    Button { openEditor(event) } label: { chip(event) }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Edit \(event.title)")
                 }
                 if hidden > 0 {
                     Button {
@@ -229,8 +231,8 @@ struct CalendarStepView: View {
     /// edit it. It fires after a successful write and before the dismiss, which is what
     /// makes "saved or cancelled?" answerable at all.
     private func eventSheet(_ c: PlanningCalendarComposer) -> EventEditSheet {
-        var sheet = EventEditSheet(event: nil, initialDate: c.day, prefillTitle: c.prefillTitle)
-        sheet.onSaved = { onSaved() }
+        var sheet = EventEditSheet(event: c.event, initialDate: c.day, prefillTitle: c.prefillTitle)
+        sheet.onSaved = { onSaved(c) }
         return sheet
     }
 
@@ -245,10 +247,17 @@ struct CalendarStepView: View {
             day: DateFmt.date(dayKey, "yyyy-MM-dd", tz) ?? Date(), prefillTitle: prefillTitle)
     }
 
+    /// Tapping an event opens the same sheet on that event.
+    private func openEditor(_ event: SyncedEvent) {
+        composerSaved = false
+        pending = PendingCalendarComposer(done: nil)
+        composer = PlanningCalendarComposer(day: event.startsAt ?? Date(), prefillTitle: nil, event: event)
+    }
+
     /// The sheet really wrote something.
-    private func onSaved() {
+    private func onSaved(_ c: PlanningCalendarComposer) {
         composerSaved = true
-        model.recordEventAdded()
+        if c.countsAsAdded { model.recordEventAdded() }
         // The shell's counter and its agenda sheet should agree with what just happened.
         props.refresh()
     }
@@ -264,11 +273,16 @@ struct CalendarStepView: View {
     }
 }
 
-/// What the shared event sheet is opening on.
-private struct PlanningCalendarComposer: Identifiable {
+/// What the shared event sheet is opening on: a day to add to, or an event to edit.
+/// Internal rather than private so the count rule is testable.
+struct PlanningCalendarComposer: Identifiable {
     let id = UUID().uuidString
     let day: Date
     let prefillTitle: String?
+    var event: SyncedEvent? = nil
+
+    /// The step's crumb counts additions; editing an event already on the week is not one.
+    var countsAsAdded: Bool { event == nil }
 }
 
 /// What must survive the sheet's item being cleared on dismissal.

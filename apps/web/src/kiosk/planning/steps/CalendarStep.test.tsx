@@ -54,6 +54,7 @@ function mockApi(initial: Record<string, unknown>[]) {
   const events = [...initial]
   const reads: string[] = []
   const posts: Record<string, unknown>[] = []
+  const patches: Record<string, unknown>[] = []
   globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
     const u = String(url)
     const method = init?.method ?? 'GET'
@@ -61,6 +62,14 @@ function mockApi(initial: Record<string, unknown>[]) {
     // useEventColorSource + useHousehold both read this; no household ⇒ the device zone, which
     // is the zone the fixtures were built in.
     if (u.startsWith('/api/household')) return { ok: true, json: async () => ({ household: null, person: null }) }
+    if (u.startsWith('/api/events/') && method === 'PATCH') {
+      const id = u.split('?')[0].split('/').pop()!
+      const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>
+      patches.push({ id, ...body })
+      const i = events.findIndex((e) => e.id === id)
+      if (i >= 0) events[i] = { ...events[i], ...body }
+      return { ok: true, json: async () => ({ event: events[i] }) }
+    }
     if (u.startsWith('/api/events') && method === 'POST') {
       const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>
       posts.push(body)
@@ -90,7 +99,7 @@ function mockApi(initial: Record<string, unknown>[]) {
     if (u.startsWith('/api/calendar/google/status')) return { ok: true, json: async () => ({ calendars: [] }) }
     return { ok: true, json: async () => ({}) }
   }) as unknown as typeof fetch
-  return { events, reads, posts }
+  return { events, reads, posts, patches }
 }
 
 function renderStep(over: Partial<StepBodyProps> = {}) {
@@ -306,6 +315,22 @@ describe('Weekly planning · step 2 · Calendar', () => {
     const row = day('2026-09-08')
     expect(await within(row).findByText('Four')).toBeInTheDocument()
     expect(within(row).queryByRole('button', { name: /more/ })).not.toBeInTheDocument()
+  })
+
+  it('opens the app’s own event modal on a tapped event, and an edit adds nothing to the count', async () => {
+    const { patches } = mockApi([ev({ id: 'e1', title: 'Dentist', startsAt: at('2026-09-09', '09:00') })])
+    const { setDecisionData, refresh } = renderStep()
+
+    fireEvent.click(await within(day('2026-09-09')).findByRole('button', { name: 'Edit Dentist' }))
+    const modal = (await screen.findByText('Edit event')).closest('.modal-card') as HTMLElement
+    expect(within(modal).getByLabelText('Title')).toHaveValue('Dentist')
+
+    fireEvent.change(within(modal).getByLabelText('Title'), { target: { value: 'Dentist with Nora' } })
+    fireEvent.click(within(modal).getByRole('button', { name: /^save$/i }))
+    await waitFor(() => expect(patches.length).toBe(1))
+    expect(patches[0]).toMatchObject({ id: 'e1', title: 'Dentist with Nora' })
+    await waitFor(() => expect(refresh).toHaveBeenCalled())
+    expect(setDecisionData).not.toHaveBeenCalled()
   })
 
   it('backs out of the modal without adding anything, and leaves no crumb', async () => {
