@@ -134,7 +134,6 @@ struct PhoneWeekRail: View {
     let countdownsByDay: [String: [WaffledAPI.Countdown]]
     let todayKey: String
     @Binding var selectedDay: String
-    let onPageWeek: (_ weeks: Int) -> Void
     let onEditEvent: (SyncedEvent) -> Void
     let onTapCountdown: (WaffledAPI.Countdown) -> Void
 
@@ -142,8 +141,8 @@ struct PhoneWeekRail: View {
 
     @State private var railDays: [String] = []
     @State private var railDay: String?
-    /// The side the next week's strip slides in from.
-    @State private var stripEdge: Edge = .trailing
+    /// The first day of the week the day strip is paged to.
+    @State private var stripWeek: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -168,15 +167,21 @@ struct PhoneWeekRail: View {
         .onAppear {
             recenter(on: selectedDay)
             railDay = selectedDay
+            stripWeek = days.first
         }
         .onChange(of: railDay) { _, key in
             guard let key, key != selectedDay else { return }
-            if !days.contains(key) { stripEdge = key > selectedDay ? .trailing : .leading }
             withAnimation(.snappy) { selectedDay = key }
+        }
+        .onChange(of: stripWeek) { _, week in
+            // Paging the strip lands on that week's first day.
+            guard let week, week != days.first else { return }
+            withAnimation(.snappy) { selectedDay = week }
         }
         .onChange(of: selectedDay) { _, key in
             if PhoneCalendar.railNeedsRecenter(selected: key, days: railDays) { recenter(on: key) }
             if railDay != key { withAnimation(.snappy) { railDay = key } }
+            if stripWeek != days.first { withAnimation(.snappy) { stripWeek = days.first } }
         }
     }
 
@@ -184,22 +189,29 @@ struct PhoneWeekRail: View {
         railDays = PhoneCalendar.railDays(around: key, weeksEachSide: Self.weeksEachSide, tz: tz, firstDay: firstDay)
     }
 
+    /// A real scroller paged by week, over the rail's own weeks, so it can only ever move the
+    /// same way the cards do.
     private var strip: some View {
-        ZStack {
-            HStack(spacing: 3) {
-                ForEach(days, id: \.self) { key in stripDay(key) }
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 0) {
+                ForEach(PhoneCalendar.railWeeks(railDays), id: \.self) { week in
+                    HStack(spacing: 3) {
+                        ForEach(daysOfWeek(startingAt: week), id: \.self) { key in stripDay(key) }
+                    }
+                    .padding(.horizontal, 12)
+                    .containerRelativeFrame(.horizontal)
+                }
             }
-            // Keyed on the week, so a new week pushes in from the side it came from.
-            .id(days.first)
-            .transition(.push(from: stripEdge))
+            .scrollTargetLayout()
         }
-        .padding(.horizontal, 12).clipped()
+        .scrollTargetBehavior(.paging)
+        .scrollPosition(id: $stripWeek)
         .padding(.top, 2).padding(.bottom, 10)
-        .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { value in
-            guard let step = HorizontalSwipe.step(value) else { return }
-            stripEdge = step > 0 ? .trailing : .leading
-            withAnimation(.snappy) { onPageWeek(step) }
-        })
+    }
+
+    private func daysOfWeek(startingAt week: String) -> ArraySlice<String> {
+        guard let i = railDays.firstIndex(of: week) else { return [] }
+        return railDays[i..<min(i + 7, railDays.count)]
     }
 
     private func stripDay(_ key: String) -> some View {

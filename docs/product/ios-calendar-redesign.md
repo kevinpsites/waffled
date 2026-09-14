@@ -43,9 +43,10 @@ below, unit-tested in `Tests/PhoneCalendarLayoutTests.swift`).
   ordinary card swipe into the **next week's first day**, and back from the first day into the
   previous week's last. (A first attempt paged only when the rail was pulled 60pt past its
   last card; behind the rubber-band that never fired on a normal swipe.)
-- Swiping the **day strip** pages a week either way and lands on that week's **first day**; the
-  rail slides there.
-- Whenever the week changes, the day strip **slides** in from the side the new week is on.
+- The **day strip** is its own scroller paged by week, over the same weeks as the rail, so it
+  always moves the same way as the cards. Swiping it pages a week and lands on that week's
+  **first day**; the rail slides there. (It was first built as a swap with a push transition,
+  whose direction came from state and ran opposite to the cards.)
 
 ## Layout rules
 

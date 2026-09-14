@@ -137,9 +137,10 @@ enum PhoneCalendar {
         return HorizontalSwipe.step(dx: dx, dy: dy)
     }
 
-    /// The first day of the week `weeks` away — where a swipe on the day strip lands.
-    static func pageWeek(from key: String, by weeks: Int, tz: TimeZone, firstDay: HouseholdWeekStart) -> String {
-        weekDays(containing: shift(key, byDays: 7 * weeks, tz: tz), tz: tz, firstDay: firstDay).first ?? key
+    /// The first day of each of the rail's weeks — the day strip's pages. `railDays` always
+    /// starts on a week boundary, so every seventh day opens a week.
+    static func railWeeks(_ days: [String]) -> [String] {
+        stride(from: 0, to: days.count, by: 7).map { days[$0] }
     }
 
     /// The week rail's days: whole weeks either side of `key`'s week, so swiping on from the

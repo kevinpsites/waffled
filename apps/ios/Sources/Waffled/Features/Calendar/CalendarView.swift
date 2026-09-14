@@ -176,9 +176,6 @@ struct CalendarView: View {
             }
             PhoneWeekRail(days: days, tz: tz, firstDay: firstDay, byDay: dayIndex, countdownsByDay: countdowns.byDate,
                           todayKey: Agenda.todayKey(tz), selectedDay: $selectedDay,
-                          onPageWeek: { weeks in
-                              selectedDay = PhoneCalendar.pageWeek(from: selectedDay, by: weeks, tz: tz, firstDay: firstDay)
-                          },
                           onEditEvent: { editing = .edit($0) },
                           onTapCountdown: openCountdown)
         }

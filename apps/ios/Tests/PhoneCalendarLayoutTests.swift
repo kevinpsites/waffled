@@ -184,17 +184,14 @@ private func timed(_ id: String, _ start: String, minutes: Double? = 60) -> Sync
 }
 
 @Suite struct PhoneCalendarWeekPagingTests {
-    @Test func pagingForwardLandsOnTheNextWeeksFirstDay() {
-        #expect(PhoneCalendar.pageWeek(from: "2026-09-19", by: 1, tz: ny, firstDay: .sunday) == "2026-09-20")
-        #expect(PhoneCalendar.pageWeek(from: "2026-09-16", by: 1, tz: ny, firstDay: .monday) == "2026-09-21")
+    @Test func theStripPagesThroughTheRailsWholeWeeks() {
+        let days = PhoneCalendar.railDays(around: "2026-09-16", weeksEachSide: 1, tz: ny, firstDay: .monday)
+        #expect(PhoneCalendar.railWeeks(days) == ["2026-09-07", "2026-09-14", "2026-09-21"])
     }
 
-    @Test func pagingBackLandsOnThePreviousWeeksFirstDay() {
-        #expect(PhoneCalendar.pageWeek(from: "2026-09-14", by: -1, tz: ny, firstDay: .monday) == "2026-09-07")
-    }
-
-    @Test func pagingCrossesMonthsAndYears() {
-        #expect(PhoneCalendar.pageWeek(from: "2026-12-31", by: 1, tz: ny, firstDay: .sunday) == "2027-01-03")
+    @Test func stripWeeksCrossMonthsAndYears() {
+        let days = PhoneCalendar.railDays(around: "2026-12-31", weeksEachSide: 1, tz: ny, firstDay: .sunday)
+        #expect(PhoneCalendar.railWeeks(days) == ["2026-12-20", "2026-12-27", "2027-01-03"])
     }
 
     @Test func theRailRunsWholeWeeksEitherSideOfTheSelectedDay() {
