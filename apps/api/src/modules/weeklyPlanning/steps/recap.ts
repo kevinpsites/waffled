@@ -4,6 +4,7 @@
 // the decision, so a decision undone elsewhere changes the line instead of making the
 // record lie. Session-relative counts come from provenance (`created_at >= started_at`).
 // Full rationale: docs/product/weekly-planning-plan.md § "The recap stores nothing".
+import { clockLabel } from '../../../platform/clock'
 import { query } from '../../../platform/db'
 import { moduleEnabled, type ModuleKey } from '../../../platform/modules'
 import { visibleTo } from '../../events/events'
@@ -95,14 +96,6 @@ const WD = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'S
 const weekdayOf = (iso: string) => WD[new Date(`${iso.slice(0, 10)}T00:00:00Z`).getUTCDay()]
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 const join = (bits: (string | null | undefined)[]) => bits.filter(Boolean).join(' · ')
-
-/** A stored 'HH:MM' wall-clock time as people say it ('17:00' → '5:00 PM'); left alone if malformed. */
-function clockLabel(hhmm: string): string {
-  const m = /^(\d{1,2}):(\d{2})/.exec(hhmm)
-  if (!m) return hhmm
-  const h = Number(m[1])
-  return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`
-}
 
 function whenLabel(at: Date | string, allDay: boolean, tz: string): string {
   const d = new Date(at)
