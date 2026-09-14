@@ -24,6 +24,14 @@ gated off**.
   - a live red **"now" line** on Week & Day
   - month cells show **event titles** (tap a day for times)
   - agenda **dims past events** so today reads first
+- 📱 **On iPhone: Month → Week → Day** — Month is home: a full-height grid with week
+  numbers down the side and up to four event titles a day (a countdown takes one of those
+  slots; the rest reads "+N more"). Tap a day to open its **Day** timeline — "‹ September"
+  or a swipe from the screen edge brings you back. The **M ›** button in the header steps
+  Month → Week → Day, and a pinch zooms between them. **Week** is a row of day cards: swipe
+  through the days, swipe the day strip above to change weeks, and tap an event to edit it.
+  **Agenda** (with the "Add an event…" bar) and the **per-person filter** are in the
+  header's menu.
 - **Full-screen event detail** — location with **Directions**, repeats, notes, and
   an activity timeline.
 - 🔁 **Recurring events** — full RRULE support:

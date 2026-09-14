@@ -88,10 +88,10 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | --- | :---: | :---: | :---: | --- |
 | Native events (create / edit / delete) | ✅ | ✅ | ✅ | ✅ Done |
 | **Multiple participants** per event (stacked avatars, per-person color) | ✅ | ✅ | ✅ | ✅ Done |
-| Views: **Month / Week / Day / Agenda** | ✅ | ✅ | ✅ | ✅ Done (iPad = `KioskCalendarView` grids) |
-| **People view** — one day, a column per family member | ✅ | ❌ | ✅ | ✅ Done (web/kiosk + iPad) — an event shows in its **owner's** column (`events.person_id`) *and* in every **participant's**, so a shared event reads from each person's lane; unclaimed events collect in a leading **Everyone** column. Same time grid as Week (`CalTimeGrid` generalised so a column can be a person), lanes packed per column. No schema/API change — participants already ride REST *and* PowerSync, so it works offline. **iPhone is out by design** — a phone splits into columns too narrow to read; use the person filter chips on Agenda/Month/Day instead |
+| Views: **Month / Week / Day / Agenda** | ✅ | ✅ | ✅ | ✅ Done (iPad = `KioskCalendarView` grids; iPhone = **Month → Week → Day** — a full-height month with week numbers, a swipeable week card rail where tapping an event opens its editor, and a pushed Day timeline with overlap lanes, stepped by the header's cycle button or a pinch; Agenda and the person filter sit in the header menu) |
+| **People view** — one day, a column per family member | ✅ | ❌ | ✅ | ✅ Done (web/kiosk + iPad) — an event shows in its **owner's** column (`events.person_id`) *and* in every **participant's**, so a shared event reads from each person's lane; unclaimed events collect in a leading **Everyone** column. Same time grid as Week (`CalTimeGrid` generalised so a column can be a person), lanes packed per column. No schema/API change — participants already ride REST *and* PowerSync, so it works offline. **iPhone is out by design** — a phone splits into columns too narrow to read; use the person filter in the calendar's header menu instead |
 | **Current-time "now" line** on the time grid (Week/Day) | ✅ | ✅ | ✅ | ✅ Done (live red rule; iPhone Day + iPad Week/Day) |
-| Month cells show **event titles** (tap a day for times) | ✅ | ✅ | ✅ | ✅ Done |
+| Month cells show **event titles** (tap a day for times) | ✅ | ✅ | ✅ | ✅ Done — iPhone fits up to four a day by row height, a countdown pill takes one slot, and the rest reads "+N more" |
 | Agenda **dims past events** | ✅ | ✅ | — | ✅ Done — the Calendar agenda **and** the Today dashboard's agenda card fade already-ended events (web + iPhone) |
 | Full-screen **event detail** (location/Directions, repeats, notes, timeline) | ✅ | ✅ | ✅ | ✅ Done (iPad detail is two-column) |
 | Per-person filter | ✅ | ✅ | ✅ | ✅ Done |
