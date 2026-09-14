@@ -488,6 +488,34 @@ private func model(_ feed: LooseEndsFeed) -> PlanningLooseEndsModel {
         #expect(m.view == nil)
     }
 
+    /// A re-read after an answer must not reshuffle the deck or shrink the count: a habit
+    /// logged once can still be short and come straight back.
+    @Test func settlingKeepsTheCardAwayAndTheCountHonest() async {
+        let fish = looseEnd(key: "chore:c0", kind: "chore", id: "c0", title: "Feed the fish", actions: ["done"])
+        let feed = LooseEndsFeed(snapshot: looseEndsView(notDone: [fish, chore]))
+        let m = model(feed)
+        await m.load(weekStart: "2026-09-06", sessionId: session)
+        #expect(m.total(.notDone) == 2)
+
+        #expect(await m.settle(fish, action: "done", weekStart: "2026-09-06", sessionId: session))
+        #expect(m.open(.notDone).map(\.key) == [chore.key])
+        #expect(m.total(.notDone) == 2)
+        #expect(m.remaining(.notDone) == 1)
+    }
+
+    @Test func aReReadThatReordersTheSourcesKeepsTheDeckOrder() async {
+        let fish = looseEnd(key: "chore:c0", kind: "chore", id: "c0", title: "Feed the fish", actions: ["done"])
+        let milk = looseEnd(key: "list:l1", kind: "list", id: "l1", title: "Milk", actions: ["done"])
+        let feed = LooseEndsFeed(snapshot: looseEndsView(notDone: [fish, chore, milk]))
+        let m = model(feed)
+        await m.load(weekStart: "2026-09-06", sessionId: session)
+
+        feed.snapshot = looseEndsView(notDone: [milk, chore])
+        #expect(await m.settle(fish, action: "done", weekStart: "2026-09-06", sessionId: session))
+        #expect(m.open(.notDone).map(\.key) == [chore.key, milk.key])
+        #expect(m.total(.notDone) == 3)
+    }
+
     /// The trail names the STEP with the notDone label: "Parked"'s labels are verbs.
     @Test func theTrailNamesTheStepNotTheVerb() async {
         let feed = LooseEndsFeed(snapshot: looseEndsView(notDone: [chore]))

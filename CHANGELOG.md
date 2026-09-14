@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shopping trip read "Thursday 6:30 PM", not "Thursday 18:30".
 - **Weekly Planning's grocery count is what's left to buy.** The Meals step and the recap
   counted ticked items too; they now say "12 to buy · 3 done".
+- **Weekly Planning's Loose ends keeps its place.** Marking a card done no longer
+  reshuffles the deck or resets the count, and a card you've answered doesn't come back
+  to the top.
 - **Purple, blue, green, red and pink events are easier to read.** Solid event chips on
   those colors now use white text instead of black, on the calendar, Today and the
   Weekly Planning recap. Gold and teal keep black, where white would wash out.

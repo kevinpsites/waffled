@@ -80,7 +80,8 @@ const calls: { url: string; method: string; body: Record<string, unknown> | null
 
 // A stateful double: a double that replayed the same view couldn't tell a route from a
 // no-op.
-function mockApi(initial: Record<string, unknown> = VIEW, opts: { capabilities?: string[] } = {}) {
+// `keep`: ids the module still reports after a resolve — a habit logged once can still be short.
+function mockApi(initial: Record<string, unknown> = VIEW, opts: { capabilities?: string[]; keep?: string[] } = {}) {
   calls.length = 0
   const state = JSON.parse(JSON.stringify(initial)) as typeof VIEW & {
     lists?: { id: string; name: string; emoji: string | null; relevant: boolean }[]
@@ -117,7 +118,7 @@ function mockApi(initial: Record<string, unknown> = VIEW, opts: { capabilities?:
       return { ok: true, json: async () => ({ routes: JSON.parse(JSON.stringify(state.routes)) }) }
     }
     if (method === 'POST' && u.endsWith('/loose-ends/resolve')) {
-      const drop = (list: typeof state.notDone) => list.filter((i) => i.id !== body.id)
+      const drop = (list: typeof state.notDone) => list.filter((i) => i.id !== body.id || (opts.keep ?? []).includes(body.id))
       state.notDone = drop(state.notDone)
       state.parked = drop(state.parked)
       state.counts = { notDone: state.notDone.length, parked: state.parked.length }
@@ -239,6 +240,31 @@ describe('loose ends · routing, which is the step', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Tasks/ }))
     expect(await screen.findByText(/not running in this household/i)).toBeInTheDocument()
     expect(screen.getByText('Take the bins out')).toBeInTheDocument()
+  })
+})
+
+describe('loose ends · the deck holds its order', () => {
+  it('an answered card stays answered, and the counter doesn’t start over', async () => {
+    const fish = end({ key: 'chore:c0', id: 'c0', title: 'Feed the fish', detail: '1 day late' })
+    mockApi({ ...VIEW, notDone: [fish, ...VIEW.notDone], counts: { notDone: 3, parked: 1 } }, { keep: ['c0'] })
+    renderStep()
+    expect(await screen.findByText('1 of 3')).toBeInTheDocument()
+    expect(screen.getByText('Feed the fish')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /It's done already/ }))
+    await waitFor(() => expect(resolveCalls()).toHaveLength(1))
+    expect(await screen.findByText('Take the bins out')).toBeInTheDocument()
+    expect(screen.getByText('2 of 3')).toBeInTheDocument()
+    expect(screen.queryByText('Feed the fish')).not.toBeInTheDocument()
+  })
+
+  it('a card done mid-deck leaves the rest where they were', async () => {
+    mockApi()
+    renderStep()
+    expect(await screen.findByText('1 of 2')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /It's done already/ }))
+    expect(await screen.findByText('Return the library books')).toBeInTheDocument()
+    expect(screen.getByText('2 of 2')).toBeInTheDocument()
   })
 })
 
