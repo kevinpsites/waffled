@@ -88,7 +88,9 @@ struct CalendarView: View {
         .task { restoreMode() }
         .task { openReminderEvent(openEventId.wrappedValue) }
         .task { await countdowns.load() }
-        .onChange(of: mode) { _, m in storedMode = m }
+        // The root, not `mode`: a Day tapped open from Month is a drill-in, and remembering it
+        // would reopen the tab on today's Day (the tab rebuilds this view, resetting the day).
+        .onChange(of: root) { _, m in storedMode = m }
         .onChange(of: showsDay) { _, pushed in
             // Back from a Day you paged through lands on that day's month.
             if !pushed, let d = dayKeyToDate(selectedDay) { monthAnchor = d }
