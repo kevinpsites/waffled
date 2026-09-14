@@ -85,6 +85,23 @@ t "maybe_reexec_upgrade hands off to the changed script (guard + args preserved)
   esac
 '
 
+# The deploy shape: `--override <file> upgrade` with no upgrade flags, so the overrides
+# are the only args handed back — the empty-"$@" expansion 3.2 is picky about under set -u.
+t "maybe_reexec_upgrade hands compose overrides back to the changed script" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  printf "%s\n" "old script body" > "$tmp/waffled"
+  ROOT="$tmp"
+  before="$(script_checksum)"
+  printf "%s\n" "#!/bin/sh" "for a in \"\$@\"; do printf \"[%s]\" \"\$a\"; done" > "$tmp/waffled"
+  chmod +x "$tmp/waffled"
+  out="$( "$BASH" -c "source \"$WAFFLED\" help >/dev/null 2>&1; ROOT=\"$tmp\"; COMPOSE_OVERRIDES=(infra/oci.yml \"/srv/my overrides/x.yml\"); maybe_reexec_upgrade \"$before\"" 2>&1 )"
+  case "$out" in
+    *"[upgrade][--override][infra/oci.yml][--override][/srv/my overrides/x.yml]") echo "PASS" ;;
+    *) echo "FAIL: unexpected handoff argv: $out" ;;
+  esac
+'
+
 t "maybe_reexec_upgrade is a no-op when the script is unchanged" '
   source "$WAFFLED" help >/dev/null 2>&1
   tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT

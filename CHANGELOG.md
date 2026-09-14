@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`./waffled upgrade` keeps your `--override` file when it restarts itself.** When an
+  upgrade pulls a newer copy of `./waffled`, the upgrade hands off to that new copy — and the
+  hand-off used to drop any `--override` you passed, so the rest of the upgrade recreated
+  containers from the base compose file alone. On the Oracle Cloud deploy that cost Caddy its
+  HTTPS port. The override now carries through the restart. The hand-off is run by the copy
+  you started, so the upgrade *onto* this release can still drop it once: finish with
+  `./waffled --override <file> up` if you use one.
+
 ## [0.15.0] - 2026-09-11
 
 ### Added
