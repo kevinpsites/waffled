@@ -48,8 +48,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that needs attention in the week you're planning, not just the late ones, with **✓ Done**
   for the ones you do yourself.
 
-### Changed
-
 ### Fixed
 
 - **Weekly Planning's recap says times the way people do.** Family night and the

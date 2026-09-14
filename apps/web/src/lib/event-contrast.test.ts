@@ -6,7 +6,7 @@
 //   1. the math — every preset, the family default, the unassigned grey, and
 //      adversarial custom hexes reach a readable APCA contrast in light *and* dark,
 //      and saturated mid-tones (purple, blue) get white. WCAG 2's ratio picks black
-//      there by a hair, which reads worse — reported on the planning recap;
+//      there by a hair, which reads worse;
 //   2. the stylesheet — the solid rules really consume those custom properties
 //      and mix the dark fill by exactly the ratio the math assumes. Without (2)
 //      a revert to `color: var(--on-accent)` would leave (1) green and the
