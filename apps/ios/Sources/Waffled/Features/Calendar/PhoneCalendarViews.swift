@@ -206,6 +206,8 @@ struct PhoneWeekRail: View {
         }
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $stripWeek)
+        // A horizontal ScrollView takes all the height it's offered; a day is ~52pt tall.
+        .frame(height: 54)
         .padding(.top, 2).padding(.bottom, 10)
     }
 
