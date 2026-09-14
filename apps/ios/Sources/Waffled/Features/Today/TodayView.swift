@@ -603,13 +603,17 @@ struct TodayView: View {
         }
     }
 
+    private var chorePeople: [ChorePerson] {
+        DashboardModel.chorePeople(synced: sync.members, roster: dash.choreRoster)
+    }
+
     private var chorePersonId: String? {
         DashboardModel.chorePersonId(stored: todayChorePersonId, currentPersonId: sync.currentPersonId,
-                                     fallbackId: greetingMember?.id, memberIds: Set(sync.members.map(\.id)))
+                                     fallbackId: greetingMember?.id, memberIds: Set(chorePeople.map(\.id)))
     }
 
     private var chorePersonTitle: String {
-        guard let id = chorePersonId, let m = sync.members.first(where: { $0.id == id }) else { return "Family chores" }
+        guard let id = chorePersonId, let m = chorePeople.first(where: { $0.id == id }) else { return "Family chores" }
         if id == sync.currentPersonId { return "My chores" }
         let first = m.name.split(separator: " ").first.map(String.init) ?? m.name
         return "\(first)’s chores"
@@ -619,7 +623,7 @@ struct TodayView: View {
     /// half-width family card has no room for a 15pt pill beside it.
     private var choreMenuLabel: some View {
         HStack(spacing: 5) {
-            if let id = chorePersonId, let m = sync.members.first(where: { $0.id == id }) {
+            if let id = chorePersonId, let m = chorePeople.first(where: { $0.id == id }) {
                 Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 22)
             }
             Text(chorePersonTitle).font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2).lineLimit(1)
@@ -634,7 +638,7 @@ struct TodayView: View {
                 get: { chorePersonId ?? DashboardModel.familyChoresKey },
                 set: { todayChorePersonId = $0 })) {
                 Label("Family", systemImage: "person.3").tag(DashboardModel.familyChoresKey)
-                ForEach(sync.members) { m in
+                ForEach(chorePeople) { m in
                     Text("\(m.emoji ?? "🙂") \(m.name)").tag(m.id)
                 }
             }

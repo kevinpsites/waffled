@@ -89,6 +89,8 @@ final class DashboardModel {
 
     var tonight: TonightMeal? { tonightD.value }
     var chores: [WaffledAPI.PersonChoresDTO] { choresD.value }
+    /// Everyone the chores call knows, including people with nothing due — the card's picker.
+    private(set) var choreRoster: [WaffledAPI.PersonChoresDTO] = []
     var groceryRemaining: Int { groceryD.value }
     var mealsState: RestState { tonightD.state }
     var choresState: RestState { choresD.state }
@@ -153,6 +155,16 @@ final class DashboardModel {
     var choreTotal: Int { chores.reduce(0) { $0 + $1.total } }
     var choreStars: Int { chores.reduce(0) { $0 + $1.stars } }
 
+    /// Everyone the chores card can show: the synced members, then anyone the chores call knows
+    /// that sync hasn't delivered yet, so the picker works before the first sync lands.
+    nonisolated static func chorePeople(synced: [SyncedMember],
+                                        roster: [WaffledAPI.PersonChoresDTO]) -> [ChorePerson] {
+        let fromSync = synced.map { ChorePerson(id: $0.id, name: $0.name, emoji: $0.emoji, colorHex: $0.colorHex) }
+        let known = Set(fromSync.map(\.id))
+        return fromSync + roster.filter { !known.contains($0.id) }
+            .map { ChorePerson(id: $0.id, name: $0.name, emoji: $0.avatarEmoji, colorHex: $0.colorHex) }
+    }
+
     /// The stored pick that means "the whole family" rather than one person.
     nonisolated static let familyChoresKey = "family"
 
@@ -193,6 +205,7 @@ final class DashboardModel {
                 .map(TonightMeal.init)
         })
         choresD.apply(c.map { $0.filter { $0.total > 0 } })
+        if let all = try? c.get() { choreRoster = all }
         groceryD.apply(g.map { $0.filter { !$0.checked }.count })
         choreInstancesD.apply(i)
     }
@@ -239,4 +252,12 @@ final class DashboardModel {
         recapD.apply(r)
         suggestionsD.apply(s)
     }
+}
+
+/// One person the Today chores card can show.
+struct ChorePerson: Identifiable, Equatable, Sendable {
+    let id: String
+    let name: String
+    let emoji: String?
+    let colorHex: String?
 }

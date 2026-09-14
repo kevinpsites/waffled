@@ -18,6 +18,17 @@ private func chore(_ title: String, person: String?, status: String = "pending",
     return try! JSONDecoder().decode(WaffledAPI.ChoreInstanceDTO.self, from: data)
 }
 
+private func person(_ id: String, total: Int = 1) -> WaffledAPI.PersonChoresDTO {
+    let json: [String: Any] = ["id": id, "name": id.capitalized, "avatarEmoji": "🙂", "colorHex": "#2F7FED",
+                               "total": total, "done": 0, "stars": 0]
+    let data = try! JSONSerialization.data(withJSONObject: json)
+    return try! JSONDecoder().decode(WaffledAPI.PersonChoresDTO.self, from: data)
+}
+
+private func member(_ id: String) -> SyncedMember {
+    SyncedMember(id: id, name: id.capitalized, colorHex: nil, emoji: nil, memberType: "adult")
+}
+
 /// Holds a stubbed write open until the test lets it finish.
 private actor WriteGate {
     private var waiters: [CheckedContinuation<Void, Never>] = []
@@ -179,5 +190,37 @@ private func model(_ feed: ChoreFeed) -> DashboardModel {
         await m.load(todayKey: "2026-09-14")
         #expect(await m.toggleChore(bins) == false)
         #expect(m.choreInstances.first?.status == "pending")
+    }
+}
+
+
+// The picker's people must not wait on sync: a fresh install, a first launch or a sync
+// hiccup leaves the synced members empty while the chores call already knows everyone.
+@MainActor
+@Suite struct TodayChoreRosterTests {
+    @Test func offersTheChoresRosterWhenSyncHasNotDelivered() {
+        let people = DashboardModel.chorePeople(synced: [], roster: [person("me"), person("kid")])
+        #expect(people.map(\.id) == ["me", "kid"])
+        #expect(people.map(\.name) == ["Me", "Kid"])
+    }
+
+    @Test func syncedMembersLeadAndTheRosterFillsTheGaps() {
+        let people = DashboardModel.chorePeople(synced: [member("kid")], roster: [person("me"), person("kid")])
+        #expect(people.map(\.id) == ["kid", "me"])
+    }
+
+    @Test func meResolvesFromTheRosterBeforeSyncArrives() {
+        let ids = Set(DashboardModel.chorePeople(synced: [], roster: [person("me"), person("kid")]).map(\.id))
+        #expect(DashboardModel.chorePersonId(stored: "", currentPersonId: "me", fallbackId: nil, memberIds: ids) == "me")
+    }
+
+    @Test func loadKeepsPeopleWithNothingDueForThePicker() async {
+        let m = DashboardModel(
+            fetchMeals: { _ in [] }, fetchChores: { [person("me", total: 0), person("kid", total: 2)] },
+            fetchGrocery: { [] }, fetchGoals: { [] }, fetchRecap: { [] }, fetchSuggestions: { [] },
+            fetchChoreInstances: { _ in [] }, setChoreComplete: { _, _ in })
+        await m.load(todayKey: "2026-09-14")
+        #expect(m.chores.map(\.id) == ["kid"])
+        #expect(m.choreRoster.map(\.id) == ["me", "kid"])
     }
 }
