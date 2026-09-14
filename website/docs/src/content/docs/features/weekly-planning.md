@@ -128,7 +128,8 @@ already decided, and only writes the nights you approve. Afterwards **Undo the t
 however many) takes back exactly what it wrote; a night changed by hand since is left alone,
 and the step says so. It uses the AI provider you set up — bring your own model or key. With
 Chores on, **Who's shopping?** turns the grocery trip into a real chore with a person and a
-day.
+day. Remembered something else you need? Type it into **Add to groceries** under the grocery
+line and it goes straight onto the list; the count beside it is what's still to buy.
 
 **8 · Tasks** — *"Who's doing what?"* A column per person, with everything nobody has taken in
 an **Up for grabs** strip across the top. Tap a face or drag a card to hand a chore over, or

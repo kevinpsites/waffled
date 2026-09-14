@@ -175,6 +175,8 @@ private final class MealsFeed {
     var shopperCalls: [(weekStart: String, dueOn: String?, personId: String?, dueTime: String?, choreId: String?)] = []
     var plannedSlots: [(date: String, recipeId: String?, title: String?)] = []
     var clearedSlots: [String] = []
+    var addedGroceries: [String] = []
+    var addGroceryFails = false
 
     init() throws {
         view = try WaffledAPI.decoder.decode(WaffledAPI.PlanningMealsView.self, from: weekJSON)
@@ -223,6 +225,10 @@ private func model(_ feed: MealsFeed) -> PlanningMealsModel {
         },
         clearSlot: { date in
             feed.clearedSlots.append(date)
+        },
+        addGrocery: { name in
+            if feed.addGroceryFails { throw MealsStepFailure.rejected }
+            feed.addedGroceries.append(name)
         })
 }
 
@@ -545,6 +551,30 @@ private func model(_ feed: MealsFeed) -> PlanningMealsModel {
 
 @MainActor
 @Suite struct PlanningMealsModelTests {
+
+    @Test func addingAGroceryTrimsItAndRereadsTheLine() async throws {
+        let feed = try MealsFeed()
+        let model = model(feed)
+        await model.load(weekStart: "2026-09-06", seed: [])
+        let reads = feed.fetchCount
+
+        #expect(await model.addGrocery("  Paper towels ", weekStart: "2026-09-06"))
+        #expect(feed.addedGroceries == ["Paper towels"])
+        #expect(feed.fetchCount == reads + 1)
+    }
+
+    @Test func aBlankOrFailedGroceryAddReportsItDidNotLand() async throws {
+        let feed = try MealsFeed()
+        let model = model(feed)
+        await model.load(weekStart: "2026-09-06", seed: [])
+
+        #expect(await model.addGrocery("   ", weekStart: "2026-09-06") == false)
+        #expect(feed.addedGroceries.isEmpty)
+
+        feed.addGroceryFails = true
+        #expect(await model.addGrocery("Milk", weekStart: "2026-09-06") == false)
+        #expect(model.errorMessage != nil)
+    }
 
     @Test func failedReadKeepsTheWeekItAlreadyHadAndStillLoads() async throws {
         let feed = try MealsFeed()

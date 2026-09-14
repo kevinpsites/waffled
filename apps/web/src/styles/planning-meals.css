@@ -94,6 +94,10 @@
   background: var(--panel); border-radius: var(--r-md); padding: 11px 14px;
 }
 .wpm-gro-i { font-size: 17px; line-height: 1; flex: none; }
+/* The grocery board's own add bar, compact, with a visible button for a touch screen. */
+.wpm-gro-add { flex: none; gap: 8px; }
+.wpm-gro-add input { flex: 1; min-width: 0; }
+.wpm-gro-add .btn { flex: none; }
 .wpm-gro-m { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .wpm-gro-m b { font-size: 13.5px; font-weight: 750; color: var(--ink); letter-spacing: -0.01em; }
 .wpm-gro-s { font-size: 11.5px; font-weight: 600; color: var(--ink-3); }

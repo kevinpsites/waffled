@@ -14,6 +14,7 @@ struct MealsStepView: View {
 
     @State private var editing: String?
     @State private var shopping = false
+    @State private var groceryDraft = ""
 
     /// The library the planner's manual-pick sheet browses, loaded only when it opens.
     @State private var plannerRecipes = RecipesModel()
@@ -239,6 +240,11 @@ struct MealsStepView: View {
     // MARK: - Groceries
 
     /// ONE LINE, not a panel: the board already builds itself from this plan.
+    private func addGrocery() {
+        let name = groceryDraft
+        Task { if await model.addGrocery(name, weekStart: props.weekStart) { groceryDraft = "" } }
+    }
+
     @ViewBuilder private var groceryLine: some View {
         if let groceries = model.view?.groceries {
             WaffledCard(padding: 13) {
@@ -255,6 +261,16 @@ struct MealsStepView: View {
                         Spacer(minLength: 6)
                     }
                     Pill(text: PlanningMealsText.groceryPill(groceries))
+
+                    HStack(spacing: 8) {
+                        TextField("Add to groceries…", text: $groceryDraft)
+                            .submitLabel(.done)
+                            .onSubmit(addGrocery)
+                            .wfField()
+                        Button("Add item", action: addGrocery)
+                            .font(.system(size: 13, weight: .bold))
+                            .disabled(frozen || groceryDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
 
                     // The shopper pill is only here because the trip is REAL — a one-off
                     // chore on the Tasks board. With chores off the control GOES AWAY.

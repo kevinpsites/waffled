@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { mealBuilderApi, mealsApi, personsApi, planningMealsApi, useRecipes, type Meal, type Person } from '../../../lib/api'
+import { groceryApi } from '../../../lib/api/grocery'
 import { isEatingOut } from '../../components/MealsColumn'
 import { PlanWeek } from '../../components/PlanWeek'
 import { RecipeBrowser } from '../../components/RecipeBrowser'
@@ -88,6 +89,45 @@ async function reread(weekStart: string) {
   // trip instead of spawning a second one.
   const view = await planningMealsApi.get(weekStart, state.view?.shopping?.choreId ?? null)
   if (state.key === key) set({ view })
+}
+
+// The running list, the same route the grocery board's own add uses; it carries no week,
+// so it counts on the week being planned. Re-read so the line says so.
+async function addGrocery(weekStart: string, name: string): Promise<boolean> {
+  const n = name.trim()
+  if (!n || state.busy) return false
+  set({ busy: true, error: null })
+  try {
+    await groceryApi.addGroceryItem(n)
+    set({ busy: false })
+    await reread(weekStart)
+    return true
+  } catch {
+    set({ busy: false, error: "Couldn't add that to the grocery list — try again." })
+    return false
+  }
+}
+
+function GroceryAdd({ weekStart, disabled }: { weekStart: string; disabled: boolean }) {
+  const [draft, setDraft] = useState('')
+  return (
+    <form
+      className="ai-bar grocery-add wpm-gro-add"
+      onSubmit={(e) => {
+        e.preventDefault()
+        void addGrocery(weekStart, draft).then((ok) => { if (ok) setDraft('') })
+      }}
+    >
+      <input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder="Add to groceries…"
+        aria-label="Add to groceries"
+        disabled={disabled}
+      />
+      <button type="submit" className="btn btn-primary" disabled={disabled || !draft.trim()}>Add item</button>
+    </form>
+  )
 }
 
 async function setShopper(weekStart: string, t: { dueOn: string | null; personId: string | null; dueTime: string | null }, refresh: () => void) {
@@ -329,6 +369,7 @@ function Body(p: StepBodyProps) {
           )}
         </div>
       )}
+      {s.view.groceries && <GroceryAdd weekStart={p.weekStart} disabled={p.busy || s.busy} />}
 
       {shopping && s.view.choresOn && (
         <ShopperModal

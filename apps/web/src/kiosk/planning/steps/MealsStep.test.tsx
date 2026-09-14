@@ -238,6 +238,19 @@ describe('meals step · the week as it stands', () => {
     expect(line[0].querySelector('.wpm-gro-pill')!.textContent).toContain('aisle order')
   })
 
+  it('adds an item to the grocery list from the step, then re-reads the line', async () => {
+    mockApi()
+    draw()
+    await screen.findByText('Pasta bake')
+    const reads = sent('GET', '/api/weekly-planning/meals').length
+    fireEvent.change(screen.getByLabelText('Add to groceries'), { target: { value: '  Paper towels ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add item' }))
+    await waitFor(() => expect(sent('POST', '/api/lists/grocery/items')).toHaveLength(1))
+    expect(sent('POST', '/api/lists/grocery/items')[0].body).toEqual({ name: 'Paper towels' })
+    await waitFor(() => expect(sent('GET', '/api/weekly-planning/meals').length).toBeGreaterThan(reads))
+    expect((screen.getByLabelText('Add to groceries') as HTMLInputElement).value).toBe('')
+  })
+
   it('names who is cooking when the plan knows', async () => {
     mockApi()
     draw()

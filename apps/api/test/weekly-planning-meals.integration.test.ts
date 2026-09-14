@@ -228,6 +228,15 @@ describe('weekly planning · meals · the week as it stands', () => {
     expect(typeof view.groceries.items).toBe('number')
     expect(typeof view.groceries.checked).toBe('number')
   })
+
+  // The step's own "add to groceries" posts to the running list, the same route the
+  // grocery board uses; it carries no week, so it counts on the week being planned.
+  it('counts an item added to the running list on the planned week', async () => {
+    const before = (await stepView()).groceries.items
+    const res = await call('POST', '/api/lists/grocery/items', kevin, { name: 'Paper towels' })
+    expect(res.statusCode).toBeLessThan(300)
+    expect((await stepView()).groceries.items).toBe(before + 1)
+  })
 })
 
 describe('weekly planning · meals · plan the rest for me', () => {

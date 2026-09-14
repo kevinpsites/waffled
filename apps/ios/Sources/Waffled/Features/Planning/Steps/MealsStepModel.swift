@@ -209,6 +209,7 @@ final class PlanningMealsModel {
     /// COPIES it, which keeps next week's "BBQ Sunday" from rewriting the one already out.
     typealias PlanPlate = (_ date: String, _ mealId: String) async throws -> Void
     typealias ClearSlot = (_ date: String) async throws -> Void
+    typealias AddGrocery = (_ name: String) async throws -> Void
 
     private(set) var view: WaffledAPI.PlanningMealsView?
     private(set) var loaded = false
@@ -239,6 +240,7 @@ final class PlanningMealsModel {
     private let planSlot: PlanSlot
     private let planPlate: PlanPlate
     private let clearSlot: ClearSlot
+    private let addGroceryFn: AddGrocery
 
     init(
         fetchView: @escaping FetchView = { weekStart, choreId in
@@ -265,6 +267,9 @@ final class PlanningMealsModel {
         },
         clearSlot: @escaping ClearSlot = { date in
             try await WaffledAPI().clearMeal(date: date, mealType: PlanningMealsModel.mealType)
+        },
+        addGrocery: @escaping AddGrocery = { name in
+            _ = try await WaffledAPI().addGroceryItem(name: name)
         }
     ) {
         self.fetchView = fetchView
@@ -274,6 +279,7 @@ final class PlanningMealsModel {
         self.planSlot = planSlot
         self.planPlate = planPlate
         self.clearSlot = clearSlot
+        self.addGroceryFn = addGrocery
     }
 
     /// `nonisolated` so the pure narrowing in `PlanningMealsPlan` (and its tests) can spell
@@ -325,6 +331,23 @@ final class PlanningMealsModel {
 
     func reread(weekStart: String) async {
         if let fresh = try? await fetchView(weekStart, choreHint) { apply(fresh) }
+    }
+
+    /// Adds to the running grocery list (the grocery board's own route), then re-reads so the
+    /// line counts it. Returns whether it landed, so the field clears only then.
+    @discardableResult
+    func addGrocery(_ name: String, weekStart: String) async -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !busy else { return false }
+        errorMessage = nil
+        do {
+            try await addGroceryFn(trimmed)
+            await reread(weekStart: weekStart)
+            return true
+        } catch {
+            errorMessage = "Couldn’t add that to the grocery list — try again."
+            return false
+        }
     }
 
     // MARK: The planner the footer opens

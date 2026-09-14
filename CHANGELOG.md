@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Busy days open up in the Weekly Planning recap.** A day with more than four events
   shows "+N more"; tap it to see the rest of that day in place.
+- **Add to the grocery list from Weekly Planning's Meals step.** Type an item under the
+  grocery line and it goes straight onto the list, without leaving the session.
 
 ### Changed
 
