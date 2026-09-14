@@ -307,8 +307,8 @@ export function RecapPanel({ sessionId, setDecisionData, busy, hrefForStep }: Re
           ? 'The record was written when the week was saved: what was decided, what was deferred, what rolled over. Today is the surface now, not this session.'
           : 'Saving writes the record: what was decided, what was deferred, what rolled over, with a timestamp. After that Today is the surface, not this session.'}
       </div>
-      {/* Never a day already past: a new chore's date is floored at today, and the browser
-          refuses the form's submit below that, so Save would look dead. */}
+      {/* Never a day already past: both editors open on today at the earliest, and the
+          chore form refuses a submit below that, so Save would look dead. */}
       {making?.kind === 'task' && (
         <ChoreModal
           personId={null}
@@ -323,7 +323,7 @@ export function RecapPanel({ sessionId, setDecisionData, busy, hrefForStep }: Re
       )}
       {making?.kind === 'event' && (
         <EventModal
-          date={view.weekStart}
+          date={view.weekStart > localToday() ? view.weekStart : localToday()}
           prefill={{ title: making.note }}
           onClose={() => setMaking(null)}
           onSaved={() => void madeFromNote(making.id)}

@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import mod from './RecapStep'
-import type { PlanningStep } from '../../../lib/api'
+import { localToday, type PlanningStep } from '../../../lib/api'
 import type { StepBodyProps } from '../registry'
 
 // Step 10 · Recap. Almost everything on this screen is a claim ABOUT something else, so
@@ -311,5 +311,17 @@ describe('recap · a session that decided nothing', () => {
     expect(await screen.findByText(/Nothing was decided/i)).toBeTruthy()
     expect(screen.queryByTestId('wpr-group-calendar')).toBeNull()
     expect(screen.getAllByTestId(/^wpr-day-/)).toHaveLength(7)
+  })
+})
+
+describe('recap · review follow-ups', () => {
+  it('never puts an event made from a note on a day already past', async () => {
+    mockApi()
+    renderStep()
+    const row = await screen.findByTestId('wpr-parked-n2')
+    fireEvent.click(within(row).getByRole('button', { name: 'Make an event' }))
+    const modal = (await screen.findByText('New event')).closest('.modal-card') as HTMLElement
+    const today = localToday()
+    expect((within(modal).getByLabelText('Date') as HTMLInputElement).value).toBe(WEEK_START > today ? WEEK_START : today)
   })
 })
