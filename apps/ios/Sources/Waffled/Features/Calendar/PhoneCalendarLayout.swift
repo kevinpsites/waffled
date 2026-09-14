@@ -5,18 +5,10 @@ import CoreGraphics
 /// can be tested. Rationale for the numbers lives in `docs/product/ios-calendar-redesign.md`.
 enum PhoneCalendar {
 
-    /// `agenda` is not on the cycle: it's reached from the header menu, because it is the
-    /// only view that carries the AI capture bar.
+    /// Picked from the header's view menu. `agenda` sits outside the pinch order; it stays
+    /// because it is the only view that carries the AI capture bar.
     enum Mode: String, CaseIterable {
         case month, week, day, agenda
-
-        var cycled: Mode {
-            switch self {
-            case .month: return .week
-            case .week: return .day
-            case .day, .agenda: return .month
-            }
-        }
 
         /// Spread (`in`) moves Month → Week → Day; pinch moves back out. Stops at the ends.
         func zoomed(in zoomIn: Bool) -> Mode {
@@ -30,7 +22,6 @@ enum PhoneCalendar {
         }
 
         var label: String { rawValue.capitalized }
-        var letter: String { String(label.prefix(1)) }
         var icon: String {
             switch self {
             case .agenda: return "list.bullet"
@@ -146,10 +137,64 @@ enum PhoneCalendar {
         return HorizontalSwipe.step(dx: dx, dy: dy)
     }
 
+    enum WeekLanding { case first, last }
+
+    /// The day a week page lands on: the neighbouring week's first day going forward, and
+    /// either end going back (the rail lands on the last card so the swipe keeps going).
+    static func pageWeek(from key: String, by weeks: Int, landing: WeekLanding,
+                         tz: TimeZone, firstDay: HouseholdWeekStart) -> String {
+        let days = weekDays(containing: shift(key, byDays: 7 * weeks, tz: tz), tz: tz, firstDay: firstDay)
+        return (landing == .first ? days.first : days.last) ?? key
+    }
+
+    /// How far past either end the week rail must be pulled before it pages — past the
+    /// ordinary rubber-band of a flick that merely reaches the end.
+    static let railPageThreshold: CGFloat = 60
+
+    /// +1 when the rail is pulled past its last card, -1 before its first, else nil. Offsets
+    /// follow `ScrollGeometry`: at rest on the first card the offset is `-leadingInset`.
+    static func railOverscroll(offsetX: CGFloat, visibleWidth: CGFloat, contentWidth: CGFloat,
+                               leadingInset: CGFloat, trailingInset: CGFloat) -> Int? {
+        let maxOffset = contentWidth + trailingInset - visibleWidth
+        if offsetX - maxOffset > railPageThreshold { return 1 }
+        if -leadingInset - offsetX > railPageThreshold { return -1 }
+        return nil
+    }
+
     static func shift(_ key: String, byDays n: Int, tz: TimeZone) -> String {
         guard let date = DateFmt.date(key, "yyyy-MM-dd", tz),
               let moved = Cal.gregorian(tz).date(byAdding: .day, value: n, to: date) else { return key }
         return EventTime.dayKey(moved, tz)
+    }
+
+    // MARK: Meals
+
+    /// The Meals module mirrors each planned meal (`meal_plan`) and its thaw reminder
+    /// (`meal_prep`) into ordinary events; see apps/api/src/modules/meals/meal-events.ts.
+    enum EventKind: Equatable {
+        case regular, meal, prep
+
+        init(origin: String?) {
+            switch origin {
+            case "meal_plan": self = .meal
+            case "meal_prep": self = .prep
+            default: self = .regular
+            }
+        }
+    }
+
+    /// The week card's closing line: tonight's planned dinner, else what to thaw for it.
+    /// Reads the server-written titles ("🍽️ Dinner · Salmon", "🧊 Thaw for Dinner · Salmon").
+    static func dinnerFooter(_ events: [SyncedEvent]) -> String? {
+        func words(_ title: String) -> String { String(title.drop { !$0.isLetter }) }
+        if let meal = events.first(where: { EventKind(origin: $0.origin) == .meal && words($0.title).hasPrefix("Dinner") }) {
+            return words(meal.title)
+        }
+        if let prep = events.first(where: { EventKind(origin: $0.origin) == .prep && words($0.title).hasPrefix("Thaw for Dinner") }) {
+            let parts = words(prep.title).components(separatedBy: " · ")
+            return parts.count > 1 ? "Thaw · " + parts.dropFirst().joined(separator: " · ") : "Thaw for dinner"
+        }
+        return nil
     }
 
     // MARK: Day

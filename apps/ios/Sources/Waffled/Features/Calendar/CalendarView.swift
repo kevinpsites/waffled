@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Calendar tab on iPhone: Month is home, the header's cycle button moves Month → Week → Day,
-/// and a tapped day pushes Day. Agenda is kept in the header menu — it carries the AI capture
+/// Calendar tab on iPhone: Month is home, a tapped day pushes Day, and the header's view menu
+/// (or a pinch) switches between Month, Week, Day and Agenda — Agenda carries the AI capture
 /// bar. Screens live in `PhoneCalendarViews.swift`; see docs/product/ios-calendar-redesign.md.
 struct CalendarView: View {
     typealias CalMode = PhoneCalendar.Mode
@@ -176,7 +176,10 @@ struct CalendarView: View {
             }
             PhoneWeekRail(days: days, tz: tz, byDay: dayIndex, countdownsByDay: countdowns.byDate,
                           todayKey: Agenda.todayKey(tz), selectedDay: $selectedDay,
-                          onStepWeek: { selectedDay = PhoneCalendar.shift(selectedDay, byDays: 7 * $0, tz: tz) },
+                          onPageWeek: { weeks, landing in
+                              selectedDay = PhoneCalendar.pageWeek(from: selectedDay, by: weeks, landing: landing,
+                                                                   tz: tz, firstDay: firstDay)
+                          },
                           onEditEvent: { editing = .edit($0) },
                           onTapCountdown: openCountdown)
         }
@@ -198,7 +201,6 @@ struct CalendarView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    cycleButton
                     optionsMenu
                     addButton
                 }
@@ -215,13 +217,12 @@ struct CalendarView: View {
         }
     }
 
-    // MARK: header (title + cycle + view/filter menu + add)
+    // MARK: header (title + view/filter menu + add)
 
     private func header<Title: View>(@ViewBuilder _ title: () -> Title) -> some View {
         HStack(spacing: 8) {
             title()
             Spacer(minLength: 8)
-            cycleButton
             optionsMenu
             addButton
         }
@@ -229,23 +230,8 @@ struct CalendarView: View {
         .frame(height: 52)
     }
 
-    private var cycleButton: some View {
-        Button { withAnimation { show(mode.cycled) } } label: {
-            HStack(spacing: 4) {
-                Text(mode.letter).font(.system(size: 12, weight: .heavy)).foregroundStyle(WF.ink)
-                Image(systemName: "chevron.right").font(.system(size: 9, weight: .heavy)).foregroundStyle(WF.ink2)
-            }
-            .padding(.leading, 11).padding(.trailing, 9).frame(height: 32)
-            .background(WF.card, in: Capsule())
-            .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(mode.label) view")
-        .accessibilityHint("Switches to \(mode.cycled.label)")
-    }
-
-    /// Where the handoff draws search: the app has no event search, so this slot holds the
-    /// view list (with Agenda) and the per-person filter.
+    /// The view switcher: its icon names the current view, and the menu also holds the
+    /// per-person filter, marked by a dot while one is on.
     private var optionsMenu: some View {
         Menu {
             Picker("View", selection: Binding(get: { mode }, set: { m in withAnimation { show(m) } })) {
@@ -258,14 +244,21 @@ struct CalendarView: View {
             }
             .pickerStyle(.inline)
         } label: {
-            Image(systemName: filterPerson == nil ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
+            Image(systemName: mode.icon)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(filterPerson == nil ? WF.ink : WF.primary)
+                .foregroundStyle(WF.ink2)
                 .frame(width: 32, height: 32)
                 .background(WF.card, in: Circle())
                 .overlay(Circle().strokeBorder(WF.hair, lineWidth: 1))
+                .overlay(alignment: .topTrailing) {
+                    if filterPerson != nil {
+                        Circle().fill(WF.primary).frame(width: 9, height: 9)
+                            .overlay(Circle().strokeBorder(WF.canvas, lineWidth: 1.5))
+                    }
+                }
         }
-        .accessibilityLabel("View and people")
+        .accessibilityLabel("\(mode.label) view")
+        .accessibilityValue(filterPerson == nil ? "Everyone" : "Filtered to one person")
     }
 
     private var addButton: some View {

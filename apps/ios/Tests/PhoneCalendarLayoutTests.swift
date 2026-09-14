@@ -19,16 +19,6 @@ private func timed(_ id: String, _ start: String, minutes: Double? = 60) -> Sync
 }
 
 @Suite struct PhoneCalendarModeTests {
-    @Test func cycleRunsMonthWeekDayAndBackToMonth() {
-        #expect(PhoneCalendar.Mode.month.cycled == .week)
-        #expect(PhoneCalendar.Mode.week.cycled == .day)
-        #expect(PhoneCalendar.Mode.day.cycled == .month)
-    }
-
-    @Test func agendaIsOffTheCycleAndReturnsToMonth() {
-        #expect(PhoneCalendar.Mode.agenda.cycled == .month)
-    }
-
     @Test func spreadingZoomsInAndPinchingZoomsOut() {
         #expect(PhoneCalendar.Mode.month.zoomed(in: true) == .week)
         #expect(PhoneCalendar.Mode.week.zoomed(in: true) == .day)
@@ -190,6 +180,80 @@ private func timed(_ id: String, _ start: String, minutes: Double? = 60) -> Sync
     @Test func steppingAWeekMovesTheSelectedDaySevenDays() {
         #expect(PhoneCalendar.shift("2026-09-30", byDays: 7, tz: ny) == "2026-10-07")
         #expect(PhoneCalendar.shift("2026-09-03", byDays: -7, tz: ny) == "2026-08-27")
+    }
+}
+
+@Suite struct PhoneCalendarWeekPagingTests {
+    @Test func pagingForwardLandsOnTheNextWeeksFirstDay() {
+        #expect(PhoneCalendar.pageWeek(from: "2026-09-19", by: 1, landing: .first, tz: ny, firstDay: .sunday)
+                == "2026-09-20")
+        #expect(PhoneCalendar.pageWeek(from: "2026-09-16", by: 1, landing: .first, tz: ny, firstDay: .monday)
+                == "2026-09-21")
+    }
+
+    @Test func pagingBackCanLandOnThePreviousWeeksFirstOrLastDay() {
+        #expect(PhoneCalendar.pageWeek(from: "2026-09-14", by: -1, landing: .first, tz: ny, firstDay: .monday)
+                == "2026-09-07")
+        #expect(PhoneCalendar.pageWeek(from: "2026-09-14", by: -1, landing: .last, tz: ny, firstDay: .monday)
+                == "2026-09-13")
+    }
+
+    @Test func pagingCrossesMonthsAndYears() {
+        #expect(PhoneCalendar.pageWeek(from: "2026-12-31", by: 1, landing: .first, tz: ny, firstDay: .sunday)
+                == "2027-01-03")
+    }
+
+    // Rail geometry: 7 cards of 292 with 12 gaps = 2116 wide, 16 leading margin, 101 trailing, 393 visible.
+    // At rest on the first card the offset is -16; on the last card it is 2116 + 101 - 393 = 1824.
+    @Test func pullingPastTheLastCardAsksForTheNextWeek() {
+        #expect(PhoneCalendar.railOverscroll(offsetX: 1824 + 70, visibleWidth: 393, contentWidth: 2116,
+                                             leadingInset: 16, trailingInset: 101) == 1)
+    }
+
+    @Test func pullingBeforeTheFirstCardAsksForThePreviousWeek() {
+        #expect(PhoneCalendar.railOverscroll(offsetX: -16 - 70, visibleWidth: 393, contentWidth: 2116,
+                                             leadingInset: 16, trailingInset: 101) == -1)
+    }
+
+    @Test func ordinaryScrollingAndASmallBounceDoNothing() {
+        #expect(PhoneCalendar.railOverscroll(offsetX: 900, visibleWidth: 393, contentWidth: 2116,
+                                             leadingInset: 16, trailingInset: 101) == nil)
+        #expect(PhoneCalendar.railOverscroll(offsetX: 1824 + 20, visibleWidth: 393, contentWidth: 2116,
+                                             leadingInset: 16, trailingInset: 101) == nil)
+        #expect(PhoneCalendar.railOverscroll(offsetX: -16 - 20, visibleWidth: 393, contentWidth: 2116,
+                                             leadingInset: 16, trailingInset: 101) == nil)
+    }
+}
+
+@Suite struct PhoneCalendarMealEventTests {
+    private func event(_ title: String, origin: String?, at time: String = "2026-09-14 18:00") -> SyncedEvent {
+        var e = timed(title, time)
+        e.origin = origin
+        return e
+    }
+
+    @Test func mealPlanAndThawEventsAreRecognisedByOrigin() {
+        #expect(PhoneCalendar.EventKind(origin: "meal_plan") == .meal)
+        #expect(PhoneCalendar.EventKind(origin: "meal_prep") == .prep)
+        #expect(PhoneCalendar.EventKind(origin: nil) == .regular)
+        #expect(PhoneCalendar.EventKind(origin: "google") == .regular)
+    }
+
+    @Test func theFooterNamesTonightsPlannedDinner() {
+        let events = [event("🧊 Thaw for Dinner · Salmon", origin: "meal_prep", at: "2026-09-14 08:00"),
+                      event("🍽️ Dinner · Sheet-pan salmon", origin: "meal_plan")]
+        #expect(PhoneCalendar.dinnerFooter(events) == "Dinner · Sheet-pan salmon")
+    }
+
+    @Test func withOnlyAThawReminderTheFooterSaysWhatToThaw() {
+        let events = [event("🧊 Thaw for Dinner · Chicken thighs", origin: "meal_prep", at: "2026-09-14 08:00")]
+        #expect(PhoneCalendar.dinnerFooter(events) == "Thaw · Chicken thighs")
+    }
+
+    @Test func lunchIsNotDinnerAndAManualDinnerIsNotAPlannedMeal() {
+        let events = [event("🍽️ Lunch · Tacos", origin: "meal_plan", at: "2026-09-14 12:00"),
+                      event("Dinner at Monk's", origin: nil)]
+        #expect(PhoneCalendar.dinnerFooter(events) == nil)
     }
 }
 

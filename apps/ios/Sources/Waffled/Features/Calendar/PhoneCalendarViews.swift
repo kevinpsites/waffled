@@ -95,7 +95,7 @@ struct PhoneMonthGrid: View {
     }
 
     private func chip(_ ev: SyncedEvent) -> some View {
-        let paint = sync.eventPalette.chip(for: ev)
+        let paint = sync.eventPalette.phoneChip(for: ev)
         return Text(RhythmMark.prefixed(ev.title, isRhythm: ev.isRhythm))
             .font(.system(size: 9, weight: .bold)).foregroundStyle(paint.foreground)
             .lineLimit(1)
@@ -131,7 +131,7 @@ struct PhoneWeekRail: View {
     let countdownsByDay: [String: [WaffledAPI.Countdown]]
     let todayKey: String
     @Binding var selectedDay: String
-    let onStepWeek: (Int) -> Void
+    let onPageWeek: (_ weeks: Int, _ landing: PhoneCalendar.WeekLanding) -> Void
     let onEditEvent: (SyncedEvent) -> Void
     let onTapCountdown: (WaffledAPI.Countdown) -> Void
 
@@ -154,6 +154,16 @@ struct PhoneWeekRail: View {
                 .contentMargins(.trailing, max(16, geo.size.width - cardWidth - 16), for: .scrollContent)
                 .scrollTargetBehavior(.viewAligned)
                 .scrollPosition(id: $railDay, anchor: .leading)
+                // Pulling past the last card or before the first pages the week: forward lands on
+                // the next week's first day, back on the previous week's last, so the swipe keeps going.
+                .onScrollGeometryChange(for: Int?.self) { geo in
+                    PhoneCalendar.railOverscroll(offsetX: geo.contentOffset.x, visibleWidth: geo.containerSize.width,
+                                                 contentWidth: geo.contentSize.width,
+                                                 leadingInset: geo.contentInsets.leading,
+                                                 trailingInset: geo.contentInsets.trailing)
+                } action: { old, new in
+                    if old == nil, let new { onPageWeek(new, new > 0 ? .first : .last) }
+                }
             }
             dots.padding(.vertical, 12)
         }
@@ -161,8 +171,10 @@ struct PhoneWeekRail: View {
         .onChange(of: railDay) { _, key in
             if let key, key != selectedDay { selectedDay = key }
         }
-        .onChange(of: selectedDay) { _, key in
-            if railDay != key { withAnimation(.snappy) { railDay = key } }
+        .onChange(of: selectedDay) { old, key in
+            guard railDay != key else { return }
+            // A new week rebuilds every card, so jump to it rather than sliding across the rail.
+            if days.contains(old) { withAnimation(.snappy) { railDay = key } } else { railDay = key }
         }
     }
 
@@ -197,7 +209,7 @@ struct PhoneWeekRail: View {
         }
         .padding(.horizontal, 12).padding(.top, 2).padding(.bottom, 10)
         .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { value in
-            if let step = HorizontalSwipe.step(value) { onStepWeek(step) }
+            if let step = HorizontalSwipe.step(value) { onPageWeek(step, .first) }
         })
     }
 
@@ -230,6 +242,14 @@ struct PhoneWeekRail: View {
                     }
                 }
             }
+            if sync.module(.meals) {
+                Spacer(minLength: 0)
+                let dinner = PhoneCalendar.dinnerFooter(events)
+                Text(dinner ?? "No dinner planned")
+                    .font(.system(size: 11, weight: .bold)).foregroundStyle(dinner == nil ? WF.ink3 : WF.warn)
+                    .lineLimit(1)
+                    .padding(.top, 9).padding(.bottom, 12)
+            }
         }
         .padding(.horizontal, 15).padding(.top, 15)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -241,7 +261,7 @@ struct PhoneWeekRail: View {
 
     private func eventRow(_ ev: SyncedEvent) -> some View {
         row(time: ev.allDay ? "all day" : ev.startsAt.map { PhoneCalendar.shortTime($0, tz: tz) } ?? "",
-            timeColor: WF.ink3, bar: sync.eventPalette.color(for: ev)) {
+            timeColor: WF.ink3, bar: sync.eventPalette.phoneChip(for: ev).color) {
             RhythmEventMark(event: ev, size: 11)
             Text(ev.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
         }
@@ -279,10 +299,11 @@ struct PhoneWeekRail: View {
         .accessibilityHidden(true)
     }
 
-    /// Distinct event colors for a strip day — a whole-family event contributes the family color.
+    /// Distinct event colors for a strip day — a whole-family event contributes the family color;
+    /// meal and thaw events belong to nobody in particular, so they add no dot.
     private func personColors(_ key: String) -> [String] {
         var seen = Set<String>(), colors: [String] = []
-        for e in byDay[key] ?? [] {
+        for e in byDay[key] ?? [] where PhoneCalendar.EventKind(origin: e.origin) == .regular {
             let hex = sync.eventPalette.hex(for: e) ?? "#A6A29B"
             if seen.insert(hex).inserted { colors.append(hex) }
         }
@@ -367,7 +388,7 @@ struct PhoneDayTimeline: View {
                     .buttonStyle(.plain)
                 }
                 ForEach(allDay) { ev in
-                    let paint = sync.eventPalette.chip(for: ev)
+                    let paint = sync.eventPalette.phoneChip(for: ev)
                     Button { onTapEvent(ev) } label: {
                         stripChip(RhythmMark.prefixed(ev.title, isRhythm: ev.isRhythm),
                                   foreground: paint.foreground, background: paint.background)
@@ -436,7 +457,7 @@ struct PhoneDayTimeline: View {
             let height = min(max(22, CGFloat(minutes) / 60 * Self.hourHeight - 4), gridHeight - y)
             let laneWidth = laneArea / CGFloat(placed.lanes)
             let tight = minutes < 60
-            let paint = sync.eventPalette.chip(for: ev)
+            let paint = sync.eventPalette.phoneChip(for: ev)
             Button { onTapEvent(ev) } label: {
                 HStack(spacing: 0) {
                     Rectangle().fill(paint.color).frame(width: 3)
@@ -496,6 +517,19 @@ struct PhoneDayTimeline: View {
 
     private func format(_ pattern: String) -> String {
         DateFmt.date(day, "yyyy-MM-dd", tz).map { DateFmt.string($0, pattern, tz) } ?? ""
+    }
+}
+
+extension EventPalette {
+    /// The phone calendar's chip paint. People follow the household's Event style; a planned
+    /// meal is always an amber wash so it reads as a meal, and a thaw reminder the faintest
+    /// grey, because it's a daily constant that shouldn't compete with real events.
+    func phoneChip(for e: SyncedEvent) -> EventChipPaint {
+        switch PhoneCalendar.EventKind(origin: e.origin) {
+        case .meal: return EventChipPaint(WF.gold, style: .tinted)
+        case .prep: return EventChipPaint(WF.ink3, style: .tinted)
+        case .regular: return chip(for: e)
+        }
     }
 }
 

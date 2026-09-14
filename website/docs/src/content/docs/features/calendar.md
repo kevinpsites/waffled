@@ -27,11 +27,13 @@ gated off**.
 - 📱 **On iPhone: Month → Week → Day** — Month is home: a full-height grid with week
   numbers down the side and up to four event titles a day (a countdown takes one of those
   slots; the rest reads "+N more"). Tap a day to open its **Day** timeline — "‹ September"
-  or a swipe from the screen edge brings you back. The **M ›** button in the header steps
-  Month → Week → Day, and a pinch zooms between them. **Week** is a row of day cards: swipe
-  through the days, swipe the day strip above to change weeks, and tap an event to edit it.
-  **Agenda** (with the "Add an event…" bar) and the **per-person filter** are in the
-  header's menu.
+  or a swipe from the screen edge brings you back. **Week** is a row of day cards: swipe
+  through the days, keep swiping past the last one (or swipe the day strip above) to reach
+  the next week's first day, and tap an event to edit it. With **Meals** on, planned dinners
+  show as amber chips, thaw reminders as faint grey ones, and each week card ends with that
+  night's dinner. Switch views from the header's view button — its icon shows the view
+  you're on — or pinch to zoom between Month, Week and Day. **Agenda** (with the "Add an
+  event…" bar) and the **per-person filter** are in the same menu.
 - **Full-screen event detail** — location with **Directions**, repeats, notes, and
   an activity timeline.
 - 🔁 **Recurring events** — full RRULE support:

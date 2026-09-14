@@ -20,7 +20,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **iPhone calendar: Month → Week → Day** — the phone Calendar tab rebuilt from the design
   handoff: a full-height month grid with ISO week numbers and up to four titles a day, a
   horizontal week card rail (tap an event to edit it), and a pushed Day timeline with overlap
-  lanes, stepped by a header cycle button or a pinch. Agenda stays, in the header menu. The
+  lanes, switched from the header's view menu or a pinch. Planned meals and thaw reminders
+  get their own amber / faint styling, and week cards close on that night's dinner. Agenda
+  stays, in the same menu. The
   decisions behind it: [ios-calendar-redesign.md](ios-calendar-redesign.md).
 
 - **Per-person calendar columns (web/kiosk + iPad)** — a **People** view beside
