@@ -457,9 +457,14 @@ struct PhoneDayTimeline: View {
             VStack(spacing: 0) {
                 Color.clear.frame(height: topInset).id(hours.lowerBound)
                 ForEach(hours.lowerBound..<hours.upperBound, id: \.self) { h in
-                    Button { onAddAt(date(atHour: h)) } label: { hourRow(h, height: Self.hourHeight) }
-                        .buttonStyle(.plain)
+                    // A tap gesture, not a Button: a Button still fires when a sideways swipe
+                    // between days lifts on it, so each swipe would also open "New event".
+                    hourRow(h, height: Self.hourHeight)
+                        .onTapGesture { onAddAt(date(atHour: h)) }
+                        .accessibilityElement(children: .ignore)
                         .accessibilityLabel("Add an event at \(hourLabel(h))")
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { onAddAt(date(atHour: h)) }
                         .overlay(alignment: .bottom) {
                             Color.clear.frame(height: topInset).allowsHitTesting(false).id(h + 1)
                         }
