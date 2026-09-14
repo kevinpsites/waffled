@@ -42,6 +42,11 @@
 .wpr-line.ev { padding: 3px 7px; font-size: 11.5px; font-weight: 650; border-radius: 6px; }
 .wpr-line.mut { font-weight: 600; color: var(--ink-2); }
 .wpr-more { font-size: 11px; font-weight: 700; color: var(--ink-3); }
+button.wpr-more {
+  border: 0; background: none; padding: 0; font: inherit; font-size: 11px; font-weight: 700;
+  color: var(--ink-3); cursor: pointer; text-align: left;
+}
+button.wpr-more:hover, button.wpr-more:focus-visible { color: var(--ink); }
 
 /* ── The two cards ───────────────────────────────────────────────────────────── */
 .wpr-cols {

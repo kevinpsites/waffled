@@ -32,16 +32,20 @@ export interface RecapDay {
   cook: string | null
   // The inputs the CLIENT's own `eventColor` needs, so the week strip is tinted by the
   // same rule as the month view. The colour is deliberately not resolved here.
-  events: {
-    id: string
-    title: string
-    when: string
-    personId: string | null
-    personName: string | null
-    personColor: string | null
-    participantIds: string[]
-  }[]
+  events: RecapEvent[]
   more: number
+  // What the cap held back, so a busy day can open in place. `more` is its length.
+  hidden: RecapEvent[]
+}
+
+export interface RecapEvent {
+  id: string
+  title: string
+  when: string
+  personId: string | null
+  personName: string | null
+  personColor: string | null
+  participantIds: string[]
 }
 
 export interface RecapGroup {
@@ -259,11 +263,8 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
     : [[], [], []]
 
   const mealsOn = on('meals')
-  const days: RecapDay[] = week.nights.map((n) => ({
-    date: n.date,
-    meal: mealsOn ? (n.dinner?.title ?? null) : null,
-    cook: mealsOn ? (n.dinner?.cookName ?? null) : null,
-    events: n.events.slice(0, DAY_CAP).map((e) => ({
+  const days: RecapDay[] = week.nights.map((n) => {
+    const rows: RecapEvent[] = n.events.map((e) => ({
       id: e.id,
       title: e.title,
       when: whenLabel(e.startsAt, e.allDay, tz),
@@ -271,9 +272,16 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
       personName: e.personName,
       personColor: e.personColor,
       participantIds: e.participantIds,
-    })),
-    more: Math.max(0, n.events.length - DAY_CAP),
-  }))
+    }))
+    return {
+      date: n.date,
+      meal: mealsOn ? (n.dinner?.title ?? null) : null,
+      cook: mealsOn ? (n.dinner?.cookName ?? null) : null,
+      events: rows.slice(0, DAY_CAP),
+      more: Math.max(0, rows.length - DAY_CAP),
+      hidden: rows.slice(DAY_CAP),
+    }
+  })
 
   const groups: RecapGroup[] = []
   const leftAlone: RecapLeftAlone[] = []

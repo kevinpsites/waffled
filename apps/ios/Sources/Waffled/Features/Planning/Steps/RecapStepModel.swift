@@ -111,6 +111,7 @@ struct PlanningRecapDayRow: Identifiable, Equatable, Sendable {
     let mealLine: String?
     let events: [PlanningRecapEventRow]
     let more: Int
+    let hidden: [PlanningRecapEventRow]
 
     var id: String { date }
 }
@@ -226,19 +227,22 @@ final class PlanningRecapModel {
                 dayName: PlanningRecapText.dayName(day.date),
                 dayNumber: PlanningRecapText.dayNumber(day.date),
                 mealLine: PlanningRecapText.mealLine(meal: day.meal, cook: day.cook),
-                events: day.events.map { event in
-                    PlanningRecapEventRow(
-                        id: event.id, title: event.title, when: event.when,
-                        // The colour INPUTS, in the shape `EventPalette` reads. Only the four
-                        // fields that decide a colour are filled: an invented `startsAt` would
-                        // put a wrong instant somewhere.
-                        synced: SyncedEvent(
-                            id: event.id, title: event.title, startsAtRaw: nil, startsAt: nil,
-                            allDay: false, personId: event.personId, colorHex: event.personColor,
-                            emoji: nil, participantIds: event.participantIds))
-                },
-                more: day.more)
+                events: day.events.map(Self.eventRow),
+                more: day.more,
+                hidden: day.hidden.map(Self.eventRow))
         }
         rev += 1
+    }
+
+    private static func eventRow(_ event: WaffledAPI.PlanningRecapEvent) -> PlanningRecapEventRow {
+        PlanningRecapEventRow(
+            id: event.id, title: event.title, when: event.when,
+            // The colour INPUTS, in the shape `EventPalette` reads. Only the four fields that
+            // decide a colour are filled: an invented `startsAt` would put a wrong instant
+            // somewhere.
+            synced: SyncedEvent(
+                id: event.id, title: event.title, startsAtRaw: nil, startsAt: nil,
+                allDay: false, personId: event.personId, colorHex: event.personColor,
+                emoji: nil, participantIds: event.participantIds))
     }
 }

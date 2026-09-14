@@ -139,6 +139,17 @@ describe('recap · the week, one last time', () => {
     expect(within(fri).getByText('+2 more')).toBeTruthy()
     expect(within(fri).queryByText(/Thing 4/)).toBeNull()
   })
+
+  it('opens a busy day in place', async () => {
+    const extra = [4, 5].map((n) => ({ id: `x${n}`, title: `Thing ${n}`, when: 'Friday 9:00 AM', personName: 'Kevin' }))
+    mockApi({ ...VIEW, days: VIEW.days.map((d, i) => (i === 5 ? { ...d, hidden: extra } : d)) })
+    renderStep()
+    const fri = await dayCell('2026-09-11')
+    fireEvent.click(within(fri).getByRole('button', { name: '+2 more' }))
+    expect(within(fri).getByText('Thing 4')).toBeTruthy()
+    expect(within(fri).getByText('Thing 5')).toBeTruthy()
+    expect(within(fri).queryByText('+2 more')).toBeNull()
+  })
 })
 
 describe('recap · what tonight changed', () => {

@@ -44,6 +44,9 @@ extension WaffledAPI {
         let cook: String?
         let events: [PlanningRecapEvent]
         let more: Int
+        /// What the cap held back, so a busy day can open in place. Empty from an older
+        /// server, which sends only the count.
+        let hidden: [PlanningRecapEvent]
 
         var id: String { date }
 
@@ -54,9 +57,10 @@ extension WaffledAPI {
             cook = try c.decodeIfPresent(String.self, forKey: .cook)
             events = try c.decodeIfPresent([PlanningRecapEvent].self, forKey: .events) ?? []
             more = try c.decodeIfPresent(Int.self, forKey: .more) ?? 0
+            hidden = try c.decodeIfPresent([PlanningRecapEvent].self, forKey: .hidden) ?? []
         }
 
-        private enum CodingKeys: String, CodingKey { case date, meal, cook, events, more }
+        private enum CodingKeys: String, CodingKey { case date, meal, cook, events, more, hidden }
     }
 
     /// Grouped by THE MODULE THE DECISION LIVES IN: the group names where you'd change it,

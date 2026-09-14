@@ -144,8 +144,9 @@ one thing**.
 
 ### Close
 
-**10 · Recap** — *"Here's the week you just decided."* The week read back: what the session
-changed, grouped by where each decision lives (Calendar, Meals, Chores, Goals, Family Night,
+**10 · Recap** — *"Here's the week you just decided."* The week read back: the seven days
+with their dinners and events (a busy day shows **+N more** — tap it to see the rest), what
+the session changed, grouped by where each decision lives (Calendar, Meals, Chores, Goals, Family Night,
 Kids); **Still on the board** — a last call on notes nobody picked up, with how long they've
 waited; and **Left alone on purpose**. **Save the week** finishes the session.
 

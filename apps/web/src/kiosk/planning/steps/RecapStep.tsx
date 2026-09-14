@@ -66,6 +66,8 @@ export function RecapPanel({ sessionId, setDecisionData, busy, hrefForStep }: Re
   const [kept, setKept] = useState<string[]>([])
   const [dropped, setDropped] = useState<string[]>([])
   const [working, setWorking] = useState<string | null>(null)
+  // Busy days opened in place, showing the events the server held back.
+  const [openDays, setOpenDays] = useState<string[]>([])
 
   useEffect(() => { setDecisionData(planningRecapDecision(view)) }, [view, setDecisionData])
 
@@ -107,7 +109,7 @@ export function RecapPanel({ sessionId, setDecisionData, busy, hrefForStep }: Re
             <div key={d.date} className="wpr-day" data-testid={`wpr-day-${d.date}`}>
               <div className="wpr-d">{name}<span>{num}</span></div>
               {meal && <div className="wpr-line">{meal}</div>}
-              {d.events.map((e) => (
+              {(openDays.includes(d.date) ? [...d.events, ...(d.hidden ?? [])] : d.events).map((e) => (
                 <div
                   key={e.id}
                   className="wpr-line ev ev-tint"
@@ -123,7 +125,15 @@ export function RecapPanel({ sessionId, setDecisionData, busy, hrefForStep }: Re
                   {e.title}
                 </div>
               ))}
-              {d.more > 0 && <div className="wpr-more">+{d.more} more</div>}
+              {d.more > 0 && !openDays.includes(d.date) && (
+                d.hidden?.length ? (
+                  <button type="button" className="wpr-more" onClick={() => setOpenDays((o) => [...o, d.date])}>
+                    +{d.more} more
+                  </button>
+                ) : (
+                  <div className="wpr-more">+{d.more} more</div>
+                )
+              )}
             </div>
           )
         })}

@@ -69,6 +69,9 @@ struct RecapStepView: View {
         }
     }
 
+    /// Busy days opened in place, showing the events the server held back.
+    @State private var openDays: Set<String> = []
+
     private func day(_ row: PlanningRecapDayRow) -> some View {
         WaffledCard(padding: 12) {
             HStack(alignment: .top, spacing: 12) {
@@ -87,12 +90,21 @@ struct RecapStepView: View {
                             .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    ForEach(row.events) { event in
+                    let open = openDays.contains(row.date)
+                    ForEach(open ? row.events + row.hidden : row.events) { event in
                         eventChip(event)
                     }
-                    if row.more > 0 {
-                        Text("+\(row.more) more")
-                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+                    if row.more > 0 && !open {
+                        if row.hidden.isEmpty {
+                            Text("+\(row.more) more")
+                                .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+                        } else {
+                            Button { withAnimation { _ = openDays.insert(row.date) } } label: {
+                                Text("+\(row.more) more")
+                                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     if row.mealLine == nil && row.events.isEmpty && row.more == 0 {
                         Text("Nothing on")

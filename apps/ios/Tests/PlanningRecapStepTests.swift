@@ -37,7 +37,13 @@ private let recapJSON = Data("""
         { "id": "ev-4", "title": "Date night", "when": "Friday 8:00 PM", "personId": "p-kevin",
           "personName": "Kevin", "personColor": "#EC6049", "participantIds": ["p-wally", "p-lottie"] }
       ],
-      "more": 2 },
+      "more": 2,
+      "hidden": [
+        { "id": "ev-5", "title": "Soccer", "when": "Friday 6:00 PM", "personId": "p-wally",
+          "personName": "Wally", "personColor": "#25A368", "participantIds": [] },
+        { "id": "ev-6", "title": "Book club", "when": "Friday 7:30 PM", "personId": null,
+          "personName": null, "personColor": null, "participantIds": [] }
+      ] },
     { "date": "2026-09-12", "meal": null, "cook": null, "events": [], "more": 0 }
   ],
   "groups": [
@@ -156,6 +162,8 @@ private func model(_ feed: RecapFeed) -> PlanningRecapModel {
         let friday = try decodedRecap().days[5]
         #expect(friday.events.count == 4)
         #expect(friday.more == 2)
+        #expect(friday.hidden.map(\.title) == ["Soccer", "Book club"])
+        #expect(try decodedRecap().days[0].hidden.isEmpty)
     }
 
     @Test func aMissingParticipantIdsCostsATintAndNotTheSession() throws {
@@ -281,6 +289,8 @@ private func model(_ feed: RecapFeed) -> PlanningRecapModel {
         #expect(model.days[2].mealLine == "Sheet-pan chicken · Lottie")
         #expect(model.days[1].mealLine == "Crockpot chili")
         #expect(model.days[5].more == 2)
+        #expect(model.days[5].hidden.map(\.title) == ["Soccer", "Book club"])
+        #expect(model.days[5].hidden.first?.synced.personId == "p-wally")
     }
 
     @Test func handsTheColourResolverTheEventsOwnInputs() async throws {

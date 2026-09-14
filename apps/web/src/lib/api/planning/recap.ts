@@ -24,6 +24,9 @@ export interface PlanningRecapDay {
   }[]
   /** Events the column is holding back, so a busy day says "+2 more" instead of growing. */
   more: number
+  /** The held-back events themselves, so "+2 more" can open the day in place. Optional:
+   *  an older server sends only the count, and the pill stays a label. */
+  hidden?: PlanningRecapDay['events']
 }
 
 export interface PlanningRecapGroup {

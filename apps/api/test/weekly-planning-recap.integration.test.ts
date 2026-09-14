@@ -189,12 +189,16 @@ describe('planning · recap · the week, read back', () => {
     expect(dance).not.toHaveProperty('colorHex')
   })
 
-  // The strip caps and reports the remainder rather than growing.
-  it('caps a busy day and says how many it is holding back', async () => {
+  // The strip caps rather than growing, and ships what it held back so a day can open.
+  it('caps a busy day and ships what it held back', async () => {
     const r = await recap()
     expect(r.days[5].events.length).toBeLessThanOrEqual(4)
     expect(r.days[5].more).toBeGreaterThan(0)
     expect(r.days[5].events.length + r.days[5].more).toBe(6)
+    expect(r.days[5].hidden).toHaveLength(r.days[5].more)
+    expect(r.days[5].hidden[0]).toHaveProperty('when')
+    expect(r.days[5].hidden[0]).toHaveProperty('participantIds')
+    expect(r.days[1].hidden).toEqual([])
   })
 })
 
@@ -212,6 +216,17 @@ describe('planning · recap · grouped by the module the decision lives in', () 
     // THE POINTER RULE: undone elsewhere, the line stops claiming it.
     await call('DELETE', `/api/events/${added.event.id}`, kevin)
     expect(group(await recap(), 'calendar')).toBeUndefined()
+  })
+
+  it('counts only the groceries still to buy', async () => {
+    const toBuy = async () =>
+      Number(/(\d+) (?:grocery|groceries) to buy/.exec(group(await recap(), 'meals')?.headline ?? '')?.[1] ?? NaN)
+    await call('POST', '/api/meals/plan', kevin, { date: days[4], mealType: 'dinner', title: 'Tacos' })
+    const milk = json(await call('POST', '/api/lists/grocery/items', kevin, { name: 'Milk for the recap' })).item
+    const before = await toBuy()
+    expect(before).toBeGreaterThan(0)
+    await call('PATCH', `/api/list-items/${milk.id}`, kevin, { checked: true })
+    expect(await toBuy()).toBe(before - 1)
   })
 
   it('reads the meal plan and the grocery line back off the modules that own them', async () => {
