@@ -305,6 +305,7 @@ struct PhoneDayTimeline: View {
     let onTapEvent: (SyncedEvent) -> Void
     let onTapCountdown: (WaffledAPI.Countdown) -> Void
     let onAddAt: (Date) -> Void
+    let onSwipeDay: (Int) -> Void
 
     static let hourHeight: CGFloat = 56
     private let gutter: CGFloat = 46
@@ -324,6 +325,14 @@ struct PhoneDayTimeline: View {
                 ScrollView(showsIndicators: false) {
                     grid(timed, hours: hours)
                 }
+                // On the grid only: the all-day strip above scrolls sideways itself.
+                .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { value in
+                    if let step = PhoneCalendar.daySwipeStep(startX: value.startLocation.x,
+                                                             dx: value.translation.width,
+                                                             dy: value.translation.height) {
+                        onSwipeDay(step)
+                    }
+                })
                 // Keyed on the opening hour too: on a cold launch the day's events sync in after
                 // the first render, and the grid should still open on them.
                 .task(id: "\(day)|\(opening)") {

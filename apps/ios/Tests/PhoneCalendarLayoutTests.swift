@@ -193,6 +193,39 @@ private func timed(_ id: String, _ start: String, minutes: Double? = 60) -> Sync
     }
 }
 
+@Suite struct PhoneCalendarDaySwipeTests {
+    @Test func aSidewaysFlickStepsTheDay() {
+        #expect(PhoneCalendar.daySwipeStep(startX: 200, dx: -80, dy: 5) == 1)
+        #expect(PhoneCalendar.daySwipeStep(startX: 200, dx: 80, dy: 5) == -1)
+    }
+
+    @Test func aShortOrMostlyVerticalDragDoesNothing() {
+        #expect(PhoneCalendar.daySwipeStep(startX: 200, dx: 30, dy: 0) == nil)
+        #expect(PhoneCalendar.daySwipeStep(startX: 200, dx: 80, dy: 70) == nil)
+    }
+
+    @Test func aDragFromTheLeadingEdgeIsTheBackSwipeNotAPreviousDay() {
+        #expect(PhoneCalendar.daySwipeStep(startX: 12, dx: 150, dy: 0) == nil)
+    }
+}
+
+@Suite struct PhoneCalendarFocusDayTests {
+    @Test func aSelectedDayInsideTheMonthIsKept() {
+        #expect(PhoneCalendar.focusDay(selected: "2026-11-20", inMonthOf: day("2026-11-03"),
+                                       today: "2026-09-14", tz: ny) == "2026-11-20")
+    }
+
+    @Test func todayWinsWhenTheMonthHoldsItButNotTheSelection() {
+        #expect(PhoneCalendar.focusDay(selected: "2026-10-05", inMonthOf: day("2026-09-01"),
+                                       today: "2026-09-14", tz: ny) == "2026-09-14")
+    }
+
+    @Test func otherwiseTheMonthOpensOnItsFirstDay() {
+        #expect(PhoneCalendar.focusDay(selected: "2026-09-14", inMonthOf: day("2026-11-17"),
+                                       today: "2026-09-14", tz: ny) == "2026-11-01")
+    }
+}
+
 @Suite struct TimeLanesTests {
     @Test func overlappingEventsSplitIntoLanesAndReuseAFreedOne() {
         let placed = TimeLanes.place([

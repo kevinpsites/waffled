@@ -127,6 +127,25 @@ enum PhoneCalendar {
             + events.filter { !$0.allDay }.sorted { ($0.startsAt ?? .distantFuture) < ($1.startsAt ?? .distantFuture) }
     }
 
+    /// The day Week should show when you arrive from a month: your selection if it's in that
+    /// month, else today if it is, else the 1st.
+    static func focusDay(selected: String, inMonthOf anchor: Date, today: String, tz: TimeZone) -> String {
+        let month = DateFmt.string(anchor, "yyyy-MM", tz)
+        if selected.hasPrefix(month) { return selected }
+        if today.hasPrefix(month) { return today }
+        return month + "-01"
+    }
+
+    /// Width of the leading strip the system back-swipe owns on a pushed screen.
+    static let backSwipeEdge: CGFloat = 30
+
+    /// Day paging on a pushed Day: the shared flick thresholds, minus drags that start at the
+    /// leading edge — those are the back swipe, and paging too would shift the day on the way out.
+    static func daySwipeStep(startX: CGFloat, dx: CGFloat, dy: CGFloat) -> Int? {
+        guard startX >= backSwipeEdge else { return nil }
+        return HorizontalSwipe.step(dx: dx, dy: dy)
+    }
+
     static func shift(_ key: String, byDays n: Int, tz: TimeZone) -> String {
         guard let date = DateFmt.date(key, "yyyy-MM-dd", tz),
               let moved = Cal.gregorian(tz).date(byAdding: .day, value: n, to: date) else { return key }

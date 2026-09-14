@@ -118,13 +118,22 @@ struct CalendarView: View {
         withTransaction(t) { show(start) }
     }
 
+    /// Month pages by `monthAnchor`, Week by `selectedDay`; switching between them carries the
+    /// position across so you land on the same stretch of time.
     private func show(_ target: CalMode) {
         if target == .day {
             showsDay = true
-        } else {
-            root = target
-            showsDay = false
+            return
         }
+        if target == .month, root != .month, let d = dayKeyToDate(selectedDay) {
+            monthAnchor = d
+        }
+        if target == .week, root == .month, !showsDay {
+            selectedDay = PhoneCalendar.focusDay(selected: selectedDay, inMonthOf: monthAnchor,
+                                                 today: Agenda.todayKey(tz), tz: tz)
+        }
+        root = target
+        showsDay = false
     }
 
     // MARK: screens
@@ -181,12 +190,10 @@ struct CalendarView: View {
                          isToday: selectedDay == Agenda.todayKey(tz),
                          onTapEvent: { detailEvent = $0 },
                          onTapCountdown: openCountdown,
-                         onAddAt: { editing = .new($0) })
+                         onAddAt: { editing = .new($0) },
+                         onSwipeDay: stepDay)
             .padding(.bottom, WF.fixedBarClearance)
             .background(WF.canvas)
-            .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { value in
-                if let step = HorizontalSwipe.step(value) { stepDay(step) }
-            })
             .calendarPinchZoom { show(mode.zoomed(in: $0)) }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
