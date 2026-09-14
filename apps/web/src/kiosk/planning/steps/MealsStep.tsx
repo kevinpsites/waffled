@@ -312,8 +312,8 @@ function Body(p: StepBodyProps) {
             </span>
           </div>
           <span className="wpm-gro-pill">
-            {s.view.groceries.items} items · aisle order
-            {s.view.groceries.checked > 0 ? ` · ${s.view.groceries.checked} ticked` : ''}
+            {s.view.groceries.items - s.view.groceries.checked} to buy · aisle order
+            {s.view.groceries.checked > 0 ? ` · ${s.view.groceries.checked} done` : ''}
           </span>
           {/* The trip is a REAL one-off chore on the Tasks board; with the chores module off
               there is nowhere for it to live, so the control goes away rather than sit dead. */}

@@ -311,7 +311,9 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
         label: 'Meals + Lists',
         headline: join([
           `${planned} of 7 nights planned`,
-          week.groceries ? plural(week.groceries.items, 'grocery', 'groceries') : null,
+          week.groceries
+            ? `${plural(week.groceries.items - week.groceries.checked, 'grocery', 'groceries')} to buy`
+            : null,
         ]),
         detail: join([
           ...plannedNights.slice(0, DETAIL_CAP).map((n) => `${weekdayOf(n.date)} · ${n.title ?? 'planned'}`),

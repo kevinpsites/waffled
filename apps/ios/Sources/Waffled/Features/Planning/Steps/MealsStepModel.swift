@@ -75,9 +75,10 @@ enum PlanningMealsText {
         return "\(added) items added · staples skipped"
     }
 
+    /// What is left to buy, not the list's length: ticked items are already in the cart.
     static func groceryPill(_ g: WaffledAPI.PlanningMealsGroceries) -> String {
-        var s = "\(g.items) items · aisle order"
-        if g.checked > 0 { s += " · \(g.checked) ticked" }
+        var s = "\(g.items - g.checked) to buy · aisle order"
+        if g.checked > 0 { s += " · \(g.checked) done" }
         return s
     }
 

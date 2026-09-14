@@ -231,7 +231,10 @@ describe('meals step · the week as it stands', () => {
     const line = document.querySelectorAll('.wpm-gro')
     expect(line).toHaveLength(1)
     expect(line[0].querySelector('.wpm-gro-s')!.textContent).toMatch(/planned so far.*staples skipped/)
-    expect(line[0].querySelector('.wpm-gro-pill')!.textContent).toContain('24 items')
+    // 24 on the list, 3 already ticked: the pill counts what is left to buy.
+    expect(line[0].querySelector('.wpm-gro-pill')!.textContent).toContain('21 to buy')
+    expect(line[0].querySelector('.wpm-gro-pill')!.textContent).toContain('3 done')
+    expect(line[0].querySelector('.wpm-gro-pill')!.textContent).not.toContain('24')
     expect(line[0].querySelector('.wpm-gro-pill')!.textContent).toContain('aisle order')
   })
 
@@ -353,7 +356,7 @@ describe('meals step · who is shopping', () => {
     draw()
     await screen.findByText('Pasta bake')
     expect(document.querySelector('.wpm-shop')).toBeNull()
-    expect(document.querySelector('.wpm-gro-pill')!.textContent).toContain('24 items')
+    expect(document.querySelector('.wpm-gro-pill')!.textContent).toContain('21 to buy')
   })
 })
 
@@ -413,7 +416,7 @@ describe('meals step · plan the rest for me', () => {
     expect(screen.getByText('Pasta bake')).toBeTruthy()
     expect(screen.getByText('Leftovers')).toBeTruthy()
     await waitFor(() => expect(document.querySelector('.wpm-gro-s')!.textContent).toContain('7 items added'))
-    expect(document.querySelector('.wpm-gro-pill')!.textContent).toContain('31 items')
+    expect(document.querySelector('.wpm-gro-pill')!.textContent).toContain('28 to buy')
   })
 
   it('turns the same footer slot into "Undo the three"', async () => {

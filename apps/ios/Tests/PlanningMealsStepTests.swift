@@ -490,6 +490,15 @@ private func model(_ feed: MealsFeed) -> PlanningMealsModel {
         #expect(PlanningMealsText.grocerySub(added: 5) == "5 items added · staples skipped")
     }
 
+    @Test func theGroceryPillCountsWhatIsLeftToBuy() throws {
+        let some = try WaffledAPI.decoder.decode(WaffledAPI.PlanningMealsGroceries.self,
+                                                 from: Data(#"{"items": 9, "checked": 2}"#.utf8))
+        #expect(PlanningMealsText.groceryPill(some) == "7 to buy · aisle order · 2 done")
+        let none = try WaffledAPI.decoder.decode(WaffledAPI.PlanningMealsGroceries.self,
+                                                 from: Data(#"{"items": 4, "checked": 0}"#.utf8))
+        #expect(PlanningMealsText.groceryPill(none) == "4 to buy · aisle order")
+    }
+
     @Test func anAllDayEventSaysSoAndAnUnreadableInstantSaysNothing() throws {
         let allDay = try WaffledAPI.decoder.decode(
             WaffledAPI.PlanningNightEvent.self,
