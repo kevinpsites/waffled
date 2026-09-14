@@ -28,6 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Goal charts on iPad no longer lock you into Month, and fit on narrow screens.** Picking
+  Month on a goal's detail page could draw the calendar over its own card and hide the menu
+  you use to switch views, leaving no way back. The view menu now has its own row at the top
+  of the Progress card, the month grid sizes correctly the first time, and the other charts
+  rearrange instead of squeezing: the year ring's month labels are no longer cut off and its
+  list moves below the ring on iPhone, and Pace and Year stack their badges and stats when
+  there isn't room for one row.
 - **`./waffled upgrade` keeps your `--override` file when it restarts itself.** When an
   upgrade pulls a newer copy of `./waffled`, the upgrade hands off to that new copy — and the
   hand-off used to drop any `--override` you passed, so the rest of the upgrade recreated

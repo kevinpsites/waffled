@@ -6,7 +6,6 @@ import Charts
 /// hard-coded 365; everything derives from the goal's own start/end.
 struct PaceChartView: View {
     let ctx: GoalDataContext
-    var headerRight: AnyView?
 
     private var target: Double { ctx.goal.target ?? 0 }
     private var pace: GoalPace? { ctx.stats.pace }
@@ -44,22 +43,10 @@ struct PaceChartView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Path to \(GoalViewFmt.num(target))").font(WF.serif(17, .semibold)).foregroundStyle(WF.ink)
-                    Text("cumulative \(ctx.goal.unit ?? "") vs. the pace you need")
-                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
-                }
-                Spacer()
-                if let pace {
-                    Text("\(pace.delta >= 0 ? "+" : "")\(GoalViewFmt.num(pace.delta)) \(ctx.goal.unit ?? "") vs pace")
-                        .font(.system(size: 12, weight: .heavy))
-                        .foregroundStyle(pace.delta >= 0 ? WF.success : WF.danger)
-                        .padding(.horizontal, 11).padding(.vertical, 5)
-                        .background(pace.delta >= 0 ? WF.successT : WF.dangerT)
-                        .clipShape(Capsule())
-                }
-                headerRight
+            // Badge beside the title when it fits, under it on a narrow card — never squeezed.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 12) { titleBlock; Spacer(minLength: 0); paceBadge }
+                VStack(alignment: .leading, spacing: 8) { titleBlock; paceBadge }
             }
 
             Chart {
@@ -93,23 +80,51 @@ struct PaceChartView: View {
             .chartYScale(domain: 0...yUpper)
             .frame(height: 220)
 
-            HStack(spacing: 16) {
-                legendDot(Color(hex: 0x1c9160), "Logged so far")
-                if let pace {
-                    legendDot(WF.ink3, "Pace to hit \(GoalViewFmt.num(target)) by \(GoalViewFmt.monthDay(pace.endLabel))")
-                } else {
-                    legendDot(WF.ink3, "Target · \(GoalViewFmt.num(target)) \(ctx.goal.unit ?? "")")
-                }
-                Spacer()
-                if let pf = projectedFinish {
-                    (Text(pace != nil ? "Projected finish · " : "On track to finish ~ ")
-                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink2)
-                        + Text(GoalViewFmt.monthDay(pf)).font(WF.serif(12, .semibold)).foregroundStyle(WF.success))
-                } else if pace == nil {
-                    Text("Keep going — \(GoalViewFmt.num(max(0, target - total))) \(ctx.goal.unit ?? "") to go")
-                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink2)
-                }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 16) { legendKeys; Spacer(minLength: 0); finishNote }
+                VStack(alignment: .leading, spacing: 8) { HStack(spacing: 16) { legendKeys }; finishNote }
+                VStack(alignment: .leading, spacing: 8) { legendKeys; finishNote }
             }
+        }
+    }
+
+    private var titleBlock: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Path to \(GoalViewFmt.num(target))").font(WF.serif(17, .semibold)).foregroundStyle(WF.ink)
+            Text("cumulative \(ctx.goal.unit ?? "") vs. the pace you need")
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+        }
+    }
+
+    @ViewBuilder private var paceBadge: some View {
+        if let pace {
+            Text("\(pace.delta >= 0 ? "+" : "")\(GoalViewFmt.num(pace.delta)) \(ctx.goal.unit ?? "") vs pace")
+                .font(.system(size: 12, weight: .heavy))
+                .foregroundStyle(pace.delta >= 0 ? WF.success : WF.danger)
+                .padding(.horizontal, 11).padding(.vertical, 5)
+                .background(pace.delta >= 0 ? WF.successT : WF.dangerT)
+                .clipShape(Capsule())
+                .fixedSize()
+        }
+    }
+
+    @ViewBuilder private var legendKeys: some View {
+        legendDot(Color(hex: 0x1c9160), "Logged so far")
+        if let pace {
+            legendDot(WF.ink3, "Pace to hit \(GoalViewFmt.num(target)) by \(GoalViewFmt.monthDay(pace.endLabel))")
+        } else {
+            legendDot(WF.ink3, "Target · \(GoalViewFmt.num(target)) \(ctx.goal.unit ?? "")")
+        }
+    }
+
+    @ViewBuilder private var finishNote: some View {
+        if let pf = projectedFinish {
+            (Text(pace != nil ? "Projected finish · " : "On track to finish ~ ")
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink2)
+                + Text(GoalViewFmt.monthDay(pf)).font(WF.serif(12, .semibold)).foregroundStyle(WF.success))
+        } else if pace == nil {
+            Text("Keep going — \(GoalViewFmt.num(max(0, target - total))) \(ctx.goal.unit ?? "") to go")
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink2)
         }
     }
 
