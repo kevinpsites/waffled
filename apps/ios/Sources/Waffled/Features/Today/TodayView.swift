@@ -518,10 +518,10 @@ struct TodayView: View {
             }
         case "chores":
             VStack(spacing: 8) {
-                RestStateNotice(state: dash.choresState, retry: reloadDashboard, compact: true)
                 if let personId = chorePersonId {
                     personChoresCard(personId)
                 } else {
+                    RestStateNotice(state: dash.choresState, retry: reloadDashboard, compact: true)
                     // The menu sits over the button rather than inside its label, so it gets its own taps.
                     Button { path.append(.chores) } label: { choresCard }.buttonStyle(.plain)
                         .overlay(alignment: .topLeading) { chorePersonMenu.padding(15) }
@@ -666,7 +666,8 @@ struct TodayView: View {
                      + Text("★ \(summary.stars)").foregroundStyle(WF.gold).bold())
                         .font(.system(size: 12.5))
                 }
-                RestStateNotice(state: state, retry: reloadDashboard, compact: true)
+                // One banner for both fetches behind this card, not one each.
+                RestStateNotice(state: .combined([dash.choresState, state]), retry: reloadDashboard, compact: true)
                 if rows.isEmpty {
                     Text(state.isAuthoritative ? "Nothing on the list today"
                          : state == .loading ? "Loading…" : "Unavailable")
