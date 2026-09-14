@@ -449,3 +449,29 @@ describe('GoalsStep · making the goal that does not exist yet', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /New goal for this week/ })).toBeDisabled())
   })
 })
+
+describe('GoalsStep · a target that did not save', () => {
+  it('says so and puts the saved target back, instead of looking saved', async () => {
+    const v = VIEW()
+    v.groups[0].goals.push(goal({
+      id: 'g-guitar', title: 'Practice guitar', goalType: 'total', unit: 'hours', target: 750,
+      totalProgress: 120, periodDone: 0, habitPeriod: null, habitTargetPerPeriod: null, pace: null,
+      weekTargetable: true, weekTarget: 10, weekDone: 3,
+    }))
+    mockApi(v)
+    const answer = globalThis.fetch as unknown as (u: string, i?: RequestInit) => Promise<unknown>
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) =>
+      String(url).includes('/goals/week-target')
+        ? { ok: false, status: 500, headers: new Headers(), json: async () => ({ error: 'Boom' }), text: async () => '' }
+        : answer(url, init)
+    ) as unknown as typeof fetch
+    renderStep()
+
+    const box = (await screen.findByLabelText('This week’s target for Practice guitar')) as HTMLInputElement
+    fireEvent.change(box, { target: { value: '12' } })
+    fireEvent.blur(box)
+
+    expect(await screen.findByText('That didn’t take — try again.')).toBeTruthy()
+    await waitFor(() => expect(box.value).toBe('10'))
+  })
+})

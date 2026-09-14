@@ -116,7 +116,8 @@ function GoalOption({ goal, checked, disabled, onPick }: {
 function WeekTarget({ goal, disabled, onSave }: {
   goal: PlanningGoalGoal
   disabled: boolean
-  onSave: (target: number | null) => void
+  /** Resolves false when the write didn't take, so the box can show the saved target again. */
+  onSave: (target: number | null) => Promise<boolean>
 }) {
   const saved = goal.weekTarget != null ? String(goal.weekTarget) : ''
   const [draft, setDraft] = useState(saved)
@@ -125,7 +126,7 @@ function WeekTarget({ goal, disabled, onSave }: {
     const next = draft.trim() === '' ? null : Number(draft)
     if (next !== null && !(Number.isFinite(next) && next > 0)) { setDraft(saved); return }
     if (next === (goal.weekTarget ?? null)) return
-    onSave(next)
+    void onSave(next).then((ok) => { if (!ok) setDraft(saved) })
   }
   const done = goal.weekDone ?? 0
   const words = (bits: (string | null)[]) => bits.filter(Boolean).join(' ')
@@ -164,6 +165,7 @@ function Body({ sessionId, setDecisionData, refresh, busy }: StepBodyProps) {
   // Holding the LIST ID, not the group object, keeps this right across a refetch that
   // replaces every group.
   const [newForId, setNewForId] = useState<string | null>(null)
+  const [targetError, setTargetError] = useState<string | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -192,13 +194,16 @@ function Body({ sessionId, setDecisionData, refresh, busy }: StepBodyProps) {
   const settledCount = groups.filter((g) => g.settled).length
 
   // A week's target is its own write: it leaves the group's focus alone.
-  async function setTarget(goalId: string, target: number | null) {
-    if (busy || saving) return
+  async function setTarget(goalId: string, target: number | null): Promise<boolean> {
+    if (busy || saving) return false
     setSaving(goalId)
+    setTargetError(null)
     try {
       setView(await planningGoalsApi.setWeekTarget(sessionId, goalId, target))
+      return true
     } catch {
-      /* leave the last good target on screen */
+      setTargetError('That didn’t take — try again.')
+      return false
     } finally {
       setSaving(null)
     }
@@ -299,6 +304,7 @@ function Body({ sessionId, setDecisionData, refresh, busy }: StepBodyProps) {
             <AvatarStack members={active.members} max={4} />
           </div>
 
+          {targetError && <p className="wp-pne-err" role="alert">{targetError}</p>}
           <div className="wpg-opts" role="radiogroup" aria-label={`${active.name}’s focus this week`}>
             {active.goals.map((g) => (
               <Fragment key={g.id}>
@@ -309,7 +315,7 @@ function Body({ sessionId, setDecisionData, refresh, busy }: StepBodyProps) {
                   onPick={() => pick(active.listId, g.id)}
                 />
                 {g.weekTargetable && (
-                  <WeekTarget goal={g} disabled={frozen} onSave={(t) => void setTarget(g.id, t)} />
+                  <WeekTarget goal={g} disabled={frozen} onSave={(t) => setTarget(g.id, t)} />
                 )}
               </Fragment>
             ))}
