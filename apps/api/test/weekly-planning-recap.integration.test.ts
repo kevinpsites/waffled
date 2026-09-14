@@ -62,7 +62,7 @@ interface DayEvent {
   personId: string | null; personName: string | null; personColor: string | null
   participantIds: string[]
 }
-interface Day { date: string; meal: string | null; cook: string | null; events: DayEvent[]; more: number }
+interface Day { date: string; meal: string | null; cook: string | null; events: DayEvent[]; more: number; hidden: DayEvent[] }
 interface LastCall { id: string; note: string; detail: string | null }
 interface LeftAlone { key: string; label: string; detail: string; badge: string; stepKey: string | null }
 interface Recap {
