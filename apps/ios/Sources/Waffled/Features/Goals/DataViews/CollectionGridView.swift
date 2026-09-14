@@ -4,7 +4,6 @@ import SwiftUI
 /// not a percentage bar: `target` slots, the first `done` filled.
 struct CollectionGridView: View {
     let ctx: GoalDataContext
-    var headerRight: AnyView?
 
     private static let columns = [GridItem(.adaptive(minimum: 30), spacing: 4)]
 
@@ -18,11 +17,7 @@ struct CollectionGridView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
-                Text(ctx.goal.title).font(WF.serif(17, .semibold)).foregroundStyle(WF.ink)
-                Spacer()
-                headerRight
-            }
+            Text(ctx.goal.title).font(WF.serif(17, .semibold)).foregroundStyle(WF.ink)
 
             LazyVGrid(columns: Self.columns, spacing: 4) {
                 ForEach(0..<max(target, done), id: \.self) { i in
