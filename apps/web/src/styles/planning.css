@@ -109,7 +109,7 @@
   background: transparent; border: 1px solid var(--hair); border-radius: 999px;
   cursor: pointer;
 }
-.wp-pne-tag:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-3); }
+.wp-pne-tag:hover:not(:disabled):not(.on) { color: var(--ink); border-color: var(--ink-3); }
 .wp-pne-tag.on { background: var(--ink); border-color: var(--ink); color: var(--on-accent); }
 .wp-pne-tag:disabled { cursor: default; opacity: 0.6; }
 .wp-pne-err { margin: 0; font-size: 12px; font-weight: 600; color: var(--danger); }
