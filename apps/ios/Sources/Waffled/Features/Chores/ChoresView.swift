@@ -58,6 +58,12 @@ final class ChoresModel {
         return inst.requiresApproval ? "awaiting" : "done"
     }
 
+    /// A photo chore that is still open can't finish from a tick: it needs the camera flow
+    /// on this screen, and completing it bare is refused by the server.
+    nonisolated static func needsPhotoToFinish(_ inst: WaffledAPI.ChoreInstanceDTO) -> Bool {
+        inst.requiresPhoto && inst.status == "pending"
+    }
+
     /// Optimistic, then reload to pick up the true stars/streak/status.
     func toggle(_ inst: WaffledAPI.ChoreInstanceDTO) async {
         guard let idx = instances.firstIndex(where: { $0.id == inst.id }) else { return }
@@ -784,13 +790,13 @@ struct ChoresView: View {
                     if isGrabs { withAnimation { claiming = claiming == inst.id ? nil : inst.id } }
                     // A photo-required chore that isn't yet complete must capture a photo
                     // before it can finish — open the picker instead of toggling.
-                    else if inst.requiresPhoto && !isDone && !isAwaiting { startProof(inst) }
+                    else if ChoresModel.needsPhotoToFinish(inst) { startProof(inst) }
                     // Completing an approval-required chore creates an awaiting item. Bump
                     // choresRev so this tab's "Needs your OK" card, the Today tab and the
                     // badge all reload — not just the day's columns.
                     else { Task { await model.toggle(inst); sync.bumpChores() } }
                 } label: { tick(isDone: isDone, isAwaiting: isAwaiting, isGrabs: isGrabs,
-                                 needsPhoto: inst.requiresPhoto && !isDone && !isAwaiting) }
+                                 needsPhoto: ChoresModel.needsPhotoToFinish(inst)) }
                 .buttonStyle(.plain)
 
                 VStack(alignment: .leading, spacing: 2) {

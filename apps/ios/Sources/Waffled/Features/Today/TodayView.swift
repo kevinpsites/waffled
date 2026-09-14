@@ -685,8 +685,7 @@ struct TodayView: View {
     }
 
     private func tapChore(_ ch: WaffledAPI.ChoreInstanceDTO) {
-        // A photo chore can't finish from a tick; the Chores screen takes the snapshot.
-        if ch.requiresPhoto && ch.status == "pending" { path.append(.chores); return }
+        if ChoresModel.needsPhotoToFinish(ch) { path.append(.chores); return }
         Task { if await dash.toggleChore(ch) { sync.bumpChores() } }
     }
 

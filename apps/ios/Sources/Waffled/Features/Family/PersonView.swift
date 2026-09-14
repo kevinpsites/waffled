@@ -427,8 +427,7 @@ struct PersonView: View {
 
     private func choreRow(_ ch: WaffledAPI.ChoreInstanceDTO) -> some View {
         ChoreCheckRow(chore: ch) {
-            // A photo chore can't finish from a tick; the Chores screen takes the snapshot.
-            if ch.requiresPhoto && ch.status == "pending" { path.append(.chores) }
+            if ChoresModel.needsPhotoToFinish(ch) { path.append(.chores) }
             else { Task { if await model.toggleChore(ch) { sync.bumpChores() } } }
         }
     }
