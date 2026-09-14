@@ -43,6 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shopping trip read "Thursday 6:30 PM", not "Thursday 18:30".
 - **Weekly Planning's grocery count is what's left to buy.** The Meals step and the recap
   counted ticked items too; they now say "12 to buy · 3 done".
+- **Making a pairing in Weekly Planning's Connection step now looks like it worked.** Once
+  the event is saved the pairing bar closes and a line says what was added ("Added to the
+  calendar — Kevin and Lottie"), instead of sitting there with the same people still picked.
 - **Weekly Planning's Loose ends keeps its place.** Marking a card done no longer
   reshuffles the deck or resets the count, and a card you've answered doesn't come back
   to the top.

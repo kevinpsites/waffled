@@ -282,6 +282,14 @@ private let session = "session-1"
         #expect(PlanningConnectionCopy.monthDay("garbage") == "garbage")
     }
 
+    /// The pairing bar closes once a pairing is made, so something has to say what was added.
+    @Test func theMadeNoteNamesWhoItWasFor() {
+        #expect(PlanningConnectionCopy.madeNote(["Kevin", "Lottie"]) == "Added to the calendar — Kevin and Lottie")
+        #expect(PlanningConnectionCopy.madeNote(["Kevin", "Wally", "Lottie"])
+            == "Added to the calendar — Kevin, Wally and Lottie")
+        #expect(PlanningConnectionCopy.madeNote([]) == "Added to the calendar")
+    }
+
     @Test func durationWordsReadLikeWords() {
         #expect(PlanningConnectionCopy.durationWords(60) == "1 hour")
         #expect(PlanningConnectionCopy.durationWords(120) == "2 hours")
@@ -522,6 +530,23 @@ private let session = "session-1"
         #expect(m.links.isEmpty)
         #expect(feed.saved.isEmpty)
         #expect(m.decisionData["added"] == .int(1))
+    }
+
+    /// The bar's picks are its own state, so a save has to hand it a new identity to start empty.
+    @Test func makingAPairingResetsTheBarAndSaysWhatWasAdded() async {
+        let only = board([pairing(["a", "b"], who: "A and B")])
+        let feed = ConnectionFeed([only])
+        let m = model(feed)
+        await m.load(weekStart: week)
+        let before = m.madeGeneration
+
+        await m.settleAfterSave(
+            weekStart: week, sessionId: session, participantIds: ["a", "b"], names: ["Kevin", "Lottie"])
+
+        #expect(m.madeGeneration == before + 1)
+        #expect(m.madeNote == "Added to the calendar — Kevin and Lottie")
+        m.clearMadeNote()
+        #expect(m.madeNote == nil)
     }
 
     @Test func linkingWritesAPointerAndPickingItAgainUndoesIt() async {

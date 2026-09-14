@@ -6,6 +6,13 @@ import Observation
 // nothing here parses a household-local timestamp.
 
 enum PlanningConnectionCopy {
+    /// What a just-made pairing added, since the bar that made it closes.
+    static func madeNote(_ names: [String]) -> String {
+        guard let last = names.last else { return "Added to the calendar" }
+        let who = names.count > 1 ? "\(names.dropLast().joined(separator: ", ")) and \(last)" : last
+        return "Added to the calendar — \(who)"
+    }
+
 
     /// Rows the board draws — a LAYOUT cap: the server ranks every pairing (see `visible`).
     static let rows = 3
@@ -172,6 +179,10 @@ final class PlanningConnectionModel {
     /// back through the mid-step route: a link is the answer, so it must survive walking away.
     private(set) var links: [String: String] = [:]
     private(set) var added = 0
+    /// Bumped on every save, so the pairing bar is rebuilt empty: its picks are its own state
+    /// and only Cancel cleared them, so a made pairing looked like nothing had happened.
+    private(set) var madeGeneration = 0
+    private(set) var madeNote: String?
     /// Bumped on every observable change, so the view pushes the crumb from one `.onChange`.
     private(set) var revision = 0
 
@@ -275,8 +286,12 @@ final class PlanningConnectionModel {
     /// An event was really created here: re-read until the board agrees, then link what
     /// appeared. `participantIds` is what the composer was opened with, in household order, so
     /// a from-scratch pairing matches no row and links nothing, which is correct.
-    func settleAfterSave(weekStart: String, sessionId: String, participantIds: [String]) async {
+    func settleAfterSave(
+        weekStart: String, sessionId: String, participantIds: [String], names: [String] = []
+    ) async {
         added += 1
+        madeGeneration &+= 1
+        madeNote = PlanningConnectionCopy.madeNote(names)
         revision &+= 1
         // Read both BEFORE the re-read, so the difference afterwards names the new event.
         let was = PlanningConnectionCopy.credited(board)
@@ -325,6 +340,12 @@ final class PlanningConnectionModel {
             guard attempt < Self.catchup.count else { return }
             await wait(Self.catchup[attempt])
         }
+    }
+
+    /// A new pairing is being made, so the last one's note has done its job.
+    func clearMadeNote() {
+        madeNote = nil
+        revision &+= 1
     }
 
     /// Dismiss the read-failure banner. The board under it is the last SUCCESSFUL read.

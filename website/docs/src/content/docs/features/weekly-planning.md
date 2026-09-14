@@ -109,7 +109,8 @@ leaves the standing weekly event alone.
 which events. Time you're already spending together counts: **Link a time** lists every event
 on the week with both of you on it, whoever else is there, and lets you say that one *is* your
 time. Nobody's event is edited. **Make a pairing** takes any two people and any time, and
-offers the gaps your week actually left; what it makes is an ordinary calendar event.
+offers the gaps your week actually left; what it makes is an ordinary calendar event. Once it's
+saved the bar closes and a line says what was added, so the next pairing starts from nobody.
 
 **6 · Goals** — *"What's each group's focus this week?"* A tab per goal group — the family's
 list, one per person, a private one. Pick the goal that group's week is about and it's
