@@ -324,4 +324,22 @@ describe('recap · review follow-ups', () => {
     const today = localToday()
     expect((within(modal).getByLabelText('Date') as HTMLInputElement).value).toBe(WEEK_START > today ? WEEK_START : today)
   })
+
+  it('says so when a note could not be settled after its task was saved', async () => {
+    mockApi()
+    const answer = globalThis.fetch as unknown as (u: string, i?: RequestInit) => Promise<unknown>
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) =>
+      String(url).includes('loose-ends/resolve')
+        ? { ok: false, status: 500, headers: new Headers(), json: async () => ({ error: 'Boom' }), text: async () => '' }
+        : answer(url, init)
+    ) as unknown as typeof fetch
+    renderStep()
+    const row = await screen.findByTestId('wpr-parked-n1')
+    fireEvent.click(within(row).getByRole('button', { name: 'Make a task' }))
+    const modal = (await screen.findByText('New chore')).closest('.modal-card') as HTMLElement
+    fireEvent.click(within(modal).getByRole('button', { name: 'Add chore' }))
+
+    expect(await screen.findByText('That didn’t take — the note is still on the board.')).toBeTruthy()
+    expect(screen.getByTestId('wpr-parked-n1')).toBeTruthy()
+  })
 })

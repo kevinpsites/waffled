@@ -74,6 +74,7 @@ export function RecapPanel({ sessionId, setDecisionData, busy, hrefForStep }: Re
   const [openDays, setOpenDays] = useState<string[]>([])
   // A note being turned into a task or an event, through the app's own editors.
   const [making, setMaking] = useState<{ id: string; note: string; kind: 'task' | 'event' } | null>(null)
+  const [settleError, setSettleError] = useState<string | null>(null)
   const { household, person } = useHousehold()
 
   useEffect(() => { setDecisionData(planningRecapDecision(view)) }, [view, setDecisionData])
@@ -102,11 +103,13 @@ export function RecapPanel({ sessionId, setDecisionData, busy, hrefForStep }: Re
   // leaves it on the board.
   const madeFromNote = async (id: string) => {
     setMaking(null)
+    setSettleError(null)
     try {
       await looseEndsApi.resolve('parked', id, 'done', sessionId)
       setDropped((d) => [...d, id])
     } catch {
-      // The note stays on the board, where it can still be answered.
+      // Said out loud: a silent failure leaves the note answerable twice.
+      setSettleError('That didn’t take — the note is still on the board.')
     }
   }
 
@@ -224,6 +227,7 @@ export function RecapPanel({ sessionId, setDecisionData, busy, hrefForStep }: Re
           {(lastCall.length > 0 || view.lastCallMore > 0) && (
             <div className="wpr-card">
               <div className="wpr-h">Still on the board<span>last call</span></div>
+              {settleError && <p className="wp-pne-err" role="alert">{settleError}</p>}
               {lastCall.map((n) => (
                 <div key={n.id} className="wpr-row" data-testid={`wpr-parked-${n.id}`}>
                   <span className="wpr-t">
