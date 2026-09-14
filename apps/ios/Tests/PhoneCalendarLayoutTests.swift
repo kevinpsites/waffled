@@ -185,43 +185,38 @@ private func timed(_ id: String, _ start: String, minutes: Double? = 60) -> Sync
 
 @Suite struct PhoneCalendarWeekPagingTests {
     @Test func pagingForwardLandsOnTheNextWeeksFirstDay() {
-        #expect(PhoneCalendar.pageWeek(from: "2026-09-19", by: 1, landing: .first, tz: ny, firstDay: .sunday)
-                == "2026-09-20")
-        #expect(PhoneCalendar.pageWeek(from: "2026-09-16", by: 1, landing: .first, tz: ny, firstDay: .monday)
-                == "2026-09-21")
+        #expect(PhoneCalendar.pageWeek(from: "2026-09-19", by: 1, tz: ny, firstDay: .sunday) == "2026-09-20")
+        #expect(PhoneCalendar.pageWeek(from: "2026-09-16", by: 1, tz: ny, firstDay: .monday) == "2026-09-21")
     }
 
-    @Test func pagingBackCanLandOnThePreviousWeeksFirstOrLastDay() {
-        #expect(PhoneCalendar.pageWeek(from: "2026-09-14", by: -1, landing: .first, tz: ny, firstDay: .monday)
-                == "2026-09-07")
-        #expect(PhoneCalendar.pageWeek(from: "2026-09-14", by: -1, landing: .last, tz: ny, firstDay: .monday)
-                == "2026-09-13")
+    @Test func pagingBackLandsOnThePreviousWeeksFirstDay() {
+        #expect(PhoneCalendar.pageWeek(from: "2026-09-14", by: -1, tz: ny, firstDay: .monday) == "2026-09-07")
     }
 
     @Test func pagingCrossesMonthsAndYears() {
-        #expect(PhoneCalendar.pageWeek(from: "2026-12-31", by: 1, landing: .first, tz: ny, firstDay: .sunday)
-                == "2027-01-03")
+        #expect(PhoneCalendar.pageWeek(from: "2026-12-31", by: 1, tz: ny, firstDay: .sunday) == "2027-01-03")
     }
 
-    // Rail geometry: 7 cards of 292 with 12 gaps = 2116 wide, 16 leading margin, 101 trailing, 393 visible.
-    // At rest on the first card the offset is -16; on the last card it is 2116 + 101 - 393 = 1824.
-    @Test func pullingPastTheLastCardAsksForTheNextWeek() {
-        #expect(PhoneCalendar.railOverscroll(offsetX: 1824 + 70, visibleWidth: 393, contentWidth: 2116,
-                                             leadingInset: 16, trailingInset: 101) == 1)
+    @Test func theRailRunsWholeWeeksEitherSideOfTheSelectedDay() {
+        let days = PhoneCalendar.railDays(around: "2026-09-16", weeksEachSide: 2, tz: ny, firstDay: .monday)
+        #expect(days.count == 35)
+        #expect(days.first == "2026-08-31")
+        #expect(days.last == "2026-10-04")
+        #expect(days.contains("2026-09-16"))
     }
 
-    @Test func pullingBeforeTheFirstCardAsksForThePreviousWeek() {
-        #expect(PhoneCalendar.railOverscroll(offsetX: -16 - 70, visibleWidth: 393, contentWidth: 2116,
-                                             leadingInset: 16, trailingInset: 101) == -1)
+    @Test func theRailCrossesDaylightSavingWithoutSkippingOrRepeatingADay() {
+        let days = PhoneCalendar.railDays(around: "2026-11-01", weeksEachSide: 1, tz: ny, firstDay: .sunday)
+        #expect(Set(days).count == days.count)
+        #expect(days.contains("2026-11-01") && days.contains("2026-11-02"))
     }
 
-    @Test func ordinaryScrollingAndASmallBounceDoNothing() {
-        #expect(PhoneCalendar.railOverscroll(offsetX: 900, visibleWidth: 393, contentWidth: 2116,
-                                             leadingInset: 16, trailingInset: 101) == nil)
-        #expect(PhoneCalendar.railOverscroll(offsetX: 1824 + 20, visibleWidth: 393, contentWidth: 2116,
-                                             leadingInset: 16, trailingInset: 101) == nil)
-        #expect(PhoneCalendar.railOverscroll(offsetX: -16 - 20, visibleWidth: 393, contentWidth: 2116,
-                                             leadingInset: 16, trailingInset: 101) == nil)
+    @Test func theRailRecentersOnlyNearItsEnds() {
+        let days = PhoneCalendar.railDays(around: "2026-09-16", weeksEachSide: 4, tz: ny, firstDay: .monday)
+        #expect(PhoneCalendar.railNeedsRecenter(selected: "2026-09-16", days: days) == false)
+        #expect(PhoneCalendar.railNeedsRecenter(selected: days[3], days: days) == true)
+        #expect(PhoneCalendar.railNeedsRecenter(selected: days[days.count - 2], days: days) == true)
+        #expect(PhoneCalendar.railNeedsRecenter(selected: "2027-06-01", days: days) == true)
     }
 }
 

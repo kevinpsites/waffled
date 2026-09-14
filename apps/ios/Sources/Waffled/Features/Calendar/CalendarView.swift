@@ -174,11 +174,10 @@ struct CalendarView: View {
                 Text(PhoneCalendar.weekTitle(days, tz: tz)).font(.system(size: 20, weight: .bold))
                     .foregroundStyle(WF.ink).lineLimit(1)
             }
-            PhoneWeekRail(days: days, tz: tz, byDay: dayIndex, countdownsByDay: countdowns.byDate,
+            PhoneWeekRail(days: days, tz: tz, firstDay: firstDay, byDay: dayIndex, countdownsByDay: countdowns.byDate,
                           todayKey: Agenda.todayKey(tz), selectedDay: $selectedDay,
-                          onPageWeek: { weeks, landing in
-                              selectedDay = PhoneCalendar.pageWeek(from: selectedDay, by: weeks, landing: landing,
-                                                                   tz: tz, firstDay: firstDay)
+                          onPageWeek: { weeks in
+                              selectedDay = PhoneCalendar.pageWeek(from: selectedDay, by: weeks, tz: tz, firstDay: firstDay)
                           },
                           onEditEvent: { editing = .edit($0) },
                           onTapCountdown: openCountdown)

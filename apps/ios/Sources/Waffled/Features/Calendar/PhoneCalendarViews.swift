@@ -121,21 +121,29 @@ struct PhoneMonthGrid: View {
     }
 }
 
-/// One week as a horizontal rail of day cards, with a day strip above and position dots below.
-/// Tapping an event opens its editor; the card itself is not a way into Day.
+/// Day cards on one continuous rail — whole weeks either side of the selected one — so swiping
+/// on from a week's last day simply scrolls into the next week. The day strip above and the dots
+/// below show the selected day's week. Tapping an event opens its editor; the card is not a way
+/// into Day.
 struct PhoneWeekRail: View {
     @Environment(SyncManager.self) private var sync
     let days: [String]
     let tz: TimeZone
+    let firstDay: HouseholdWeekStart
     let byDay: [String: [SyncedEvent]]
     let countdownsByDay: [String: [WaffledAPI.Countdown]]
     let todayKey: String
     @Binding var selectedDay: String
-    let onPageWeek: (_ weeks: Int, _ landing: PhoneCalendar.WeekLanding) -> Void
+    let onPageWeek: (_ weeks: Int) -> Void
     let onEditEvent: (SyncedEvent) -> Void
     let onTapCountdown: (WaffledAPI.Countdown) -> Void
 
+    private static let weeksEachSide = 26
+
+    @State private var railDays: [String] = []
     @State private var railDay: String?
+    /// The side the next week's strip slides in from.
+    @State private var stripEdge: Edge = .trailing
 
     var body: some View {
         VStack(spacing: 0) {
@@ -144,7 +152,7 @@ struct PhoneWeekRail: View {
                 let cardWidth = max(220, geo.size.width - 101)
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 12) {
-                        ForEach(days, id: \.self) { key in
+                        ForEach(railDays, id: \.self) { key in
                             card(key).frame(width: cardWidth, height: max(0, geo.size.height - 8))
                         }
                     }
@@ -154,63 +162,71 @@ struct PhoneWeekRail: View {
                 .contentMargins(.trailing, max(16, geo.size.width - cardWidth - 16), for: .scrollContent)
                 .scrollTargetBehavior(.viewAligned)
                 .scrollPosition(id: $railDay, anchor: .leading)
-                // Pulling past the last card or before the first pages the week: forward lands on
-                // the next week's first day, back on the previous week's last, so the swipe keeps going.
-                .onScrollGeometryChange(for: Int?.self) { geo in
-                    PhoneCalendar.railOverscroll(offsetX: geo.contentOffset.x, visibleWidth: geo.containerSize.width,
-                                                 contentWidth: geo.contentSize.width,
-                                                 leadingInset: geo.contentInsets.leading,
-                                                 trailingInset: geo.contentInsets.trailing)
-                } action: { old, new in
-                    if old == nil, let new { onPageWeek(new, new > 0 ? .first : .last) }
-                }
             }
             dots.padding(.vertical, 12)
         }
-        .onAppear { railDay = selectedDay }
-        .onChange(of: railDay) { _, key in
-            if let key, key != selectedDay { selectedDay = key }
+        .onAppear {
+            recenter(on: selectedDay)
+            railDay = selectedDay
         }
-        .onChange(of: selectedDay) { old, key in
-            guard railDay != key else { return }
-            // A new week rebuilds every card, so jump to it rather than sliding across the rail.
-            if days.contains(old) { withAnimation(.snappy) { railDay = key } } else { railDay = key }
+        .onChange(of: railDay) { _, key in
+            guard let key, key != selectedDay else { return }
+            if !days.contains(key) { stripEdge = key > selectedDay ? .trailing : .leading }
+            withAnimation(.snappy) { selectedDay = key }
+        }
+        .onChange(of: selectedDay) { _, key in
+            if PhoneCalendar.railNeedsRecenter(selected: key, days: railDays) { recenter(on: key) }
+            if railDay != key { withAnimation(.snappy) { railDay = key } }
         }
     }
 
+    private func recenter(on key: String) {
+        railDays = PhoneCalendar.railDays(around: key, weeksEachSide: Self.weeksEachSide, tz: tz, firstDay: firstDay)
+    }
+
     private var strip: some View {
-        HStack(spacing: 3) {
-            ForEach(days, id: \.self) { key in
-                let on = key == selectedDay
-                Button { withAnimation(.snappy) { selectedDay = key } } label: {
-                    VStack(spacing: 3) {
-                        Text(format(key, "EEEEE")).font(.system(size: 9.5, weight: .heavy))
-                            .foregroundStyle(on ? WF.primary : WF.ink3)
-                        Text(format(key, "d")).font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(on ? WF.primary : WF.ink)
-                        HStack(spacing: 2) {
-                            ForEach(Array(personColors(key).prefix(3)), id: \.self) { hex in
-                                Circle().fill(Color(hexString: hex) ?? WF.ink3).frame(width: 4, height: 4)
-                            }
-                        }
-                        .frame(height: 4)
-                    }
-                    .padding(.vertical, 6).frame(maxWidth: .infinity)
-                    .background(on ? WF.card : Color.clear, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                    .overlay {
-                        if on { RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(WF.primary, lineWidth: 1.5) }
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(format(key, "EEEE, MMMM d"))
-                .accessibilityAddTraits(on ? .isSelected : [])
+        ZStack {
+            HStack(spacing: 3) {
+                ForEach(days, id: \.self) { key in stripDay(key) }
             }
+            // Keyed on the week, so a new week pushes in from the side it came from.
+            .id(days.first)
+            .transition(.push(from: stripEdge))
         }
-        .padding(.horizontal, 12).padding(.top, 2).padding(.bottom, 10)
+        .padding(.horizontal, 12).clipped()
+        .padding(.top, 2).padding(.bottom, 10)
         .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { value in
-            if let step = HorizontalSwipe.step(value) { onPageWeek(step, .first) }
+            guard let step = HorizontalSwipe.step(value) else { return }
+            stripEdge = step > 0 ? .trailing : .leading
+            withAnimation(.snappy) { onPageWeek(step) }
         })
+    }
+
+    private func stripDay(_ key: String) -> some View {
+        let on = key == selectedDay
+        return Button { withAnimation(.snappy) { selectedDay = key } } label: {
+            VStack(spacing: 3) {
+                Text(format(key, "EEEEE")).font(.system(size: 9.5, weight: .heavy))
+                    .foregroundStyle(on ? WF.primary : WF.ink3)
+                Text(format(key, "d")).font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(on ? WF.primary : WF.ink)
+                HStack(spacing: 2) {
+                    ForEach(Array(personColors(key).prefix(3)), id: \.self) { hex in
+                        Circle().fill(Color(hexString: hex) ?? WF.ink3).frame(width: 4, height: 4)
+                    }
+                }
+                .frame(height: 4)
+            }
+            .padding(.vertical, 6).frame(maxWidth: .infinity)
+            .background(on ? WF.card : Color.clear, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .overlay {
+                if on { RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(WF.primary, lineWidth: 1.5) }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(format(key, "EEEE, MMMM d"))
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 
     private func card(_ key: String) -> some View {

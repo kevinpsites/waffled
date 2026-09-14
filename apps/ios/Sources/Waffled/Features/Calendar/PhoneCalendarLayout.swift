@@ -137,28 +137,28 @@ enum PhoneCalendar {
         return HorizontalSwipe.step(dx: dx, dy: dy)
     }
 
-    enum WeekLanding { case first, last }
-
-    /// The day a week page lands on: the neighbouring week's first day going forward, and
-    /// either end going back (the rail lands on the last card so the swipe keeps going).
-    static func pageWeek(from key: String, by weeks: Int, landing: WeekLanding,
-                         tz: TimeZone, firstDay: HouseholdWeekStart) -> String {
-        let days = weekDays(containing: shift(key, byDays: 7 * weeks, tz: tz), tz: tz, firstDay: firstDay)
-        return (landing == .first ? days.first : days.last) ?? key
+    /// The first day of the week `weeks` away — where a swipe on the day strip lands.
+    static func pageWeek(from key: String, by weeks: Int, tz: TimeZone, firstDay: HouseholdWeekStart) -> String {
+        weekDays(containing: shift(key, byDays: 7 * weeks, tz: tz), tz: tz, firstDay: firstDay).first ?? key
     }
 
-    /// How far past either end the week rail must be pulled before it pages — past the
-    /// ordinary rubber-band of a flick that merely reaches the end.
-    static let railPageThreshold: CGFloat = 60
+    /// The week rail's days: whole weeks either side of `key`'s week, so swiping on from the
+    /// last day of a week simply scrolls into the next one.
+    static func railDays(around key: String, weeksEachSide: Int, tz: TimeZone,
+                         firstDay: HouseholdWeekStart) -> [String] {
+        guard let first = weekDays(containing: shift(key, byDays: -7 * weeksEachSide, tz: tz),
+                                   tz: tz, firstDay: firstDay).first,
+              let start = DateFmt.date(first, "yyyy-MM-dd", tz) else { return [] }
+        let cal = Cal.gregorian(tz)
+        return (0..<((2 * weeksEachSide + 1) * 7))
+            .compactMap { cal.date(byAdding: .day, value: $0, to: start) }
+            .map { EventTime.dayKey($0, tz) }
+    }
 
-    /// +1 when the rail is pulled past its last card, -1 before its first, else nil. Offsets
-    /// follow `ScrollGeometry`: at rest on the first card the offset is `-leadingInset`.
-    static func railOverscroll(offsetX: CGFloat, visibleWidth: CGFloat, contentWidth: CGFloat,
-                               leadingInset: CGFloat, trailingInset: CGFloat) -> Int? {
-        let maxOffset = contentWidth + trailingInset - visibleWidth
-        if offsetX - maxOffset > railPageThreshold { return 1 }
-        if -leadingInset - offsetX > railPageThreshold { return -1 }
-        return nil
+    /// Re-centre the rail once the selection is within a week of either end, or off it entirely.
+    static func railNeedsRecenter(selected: String, days: [String]) -> Bool {
+        guard let i = days.firstIndex(of: selected) else { return true }
+        return i < 7 || i >= days.count - 7
     }
 
     static func shift(_ key: String, byDays n: Int, tz: TimeZone) -> String {

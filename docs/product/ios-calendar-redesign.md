@@ -38,10 +38,14 @@ below, unit-tested in `Tests/PhoneCalendarLayoutTests.swift`).
 
 ## Week paging
 
-- Pulling the rail past its **last card** (60pt beyond the end) moves to the **next week's first
-  day**; pulling before the first card moves to the **previous week's last day**, so a swipe
-  back keeps going backwards.
-- Swiping the **day strip** pages a week either way and lands on that week's **first day**.
+- The card rail is **continuous**: 26 weeks of day cards either side of the selected week,
+  re-centred once you get within a week of an end. Swiping on from a week's last day is an
+  ordinary card swipe into the **next week's first day**, and back from the first day into the
+  previous week's last. (A first attempt paged only when the rail was pulled 60pt past its
+  last card; behind the rubber-band that never fired on a normal swipe.)
+- Swiping the **day strip** pages a week either way and lands on that week's **first day**; the
+  rail slides there.
+- Whenever the week changes, the day strip **slides** in from the side the new week is on.
 
 ## Layout rules
 
