@@ -27,7 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Set a goal's target for just this week.** In Weekly Planning's Goals step, a running count
   or total goal takes a target for the week you're planning — 10 hours this week toward 750 for
-  the year — with what's been logged that week beside it.
+  the year — with what's been logged that week beside it. Next week's recap reads each one
+  back: "7 of 10 hours", met or short.
 - **Act on a parked note from Weekly Planning's recap.** A note still on the board can become
   a task or a calendar event right there, in the usual editors with the note's words filled
   in; the note is settled once it's saved, and stays put if you back out.

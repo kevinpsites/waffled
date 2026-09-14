@@ -36,6 +36,7 @@ struct RecapStepView: View {
             } else {
                 week
                 changed
+                targetsCard
                 lastCall
                 leftAlone
                 footNote
@@ -326,6 +327,33 @@ struct RecapStepView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+    }
+
+    /// The targets last week's session set, against what was logged that week.
+    @ViewBuilder private var targetsCard: some View {
+        if !model.lastWeekTargets.isEmpty {
+            WaffledCard(padding: 14) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Last week’s targets")
+                        .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
+                    ForEach(model.lastWeekTargets) { t in
+                        HStack(alignment: .top, spacing: 8) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(t.emoji.map { "\($0) " } ?? "")\(t.title)")
+                                    .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Text(PlanningRecapText.targetLine(t))
+                                    .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                            }
+                            Spacer(minLength: 6)
+                            WaffledStatusBadge(
+                                text: t.done >= t.target ? "met" : "short",
+                                color: t.done >= t.target ? WF.success : WF.ink3)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     @ViewBuilder private var leftAlone: some View {

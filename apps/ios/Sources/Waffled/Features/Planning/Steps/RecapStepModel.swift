@@ -14,6 +14,12 @@ import Observation
 
 enum PlanningRecapText {
 
+    /// "7 of 10 hours" — one of last week's targets against what was logged that week.
+    static func targetLine(_ t: WaffledAPI.PlanningRecapWeekTarget) -> String {
+        let unit = t.unit.map { " \($0)" } ?? ""
+        return "\(goalFmt(t.done)) of \(goalFmt(t.target))\(unit)"
+    }
+
     /// The dinner line: "Lentil soup · Lottie". Mirrors the web's `mealLine`, including that a
     /// cook with no meal produces nothing.
     static func mealLine(meal: String?, cook: String?) -> String? {
@@ -194,6 +200,7 @@ final class PlanningRecapModel {
 
     var groups: [WaffledAPI.PlanningRecapGroup] { view?.groups ?? [] }
     var leftAlone: [WaffledAPI.PlanningRecapLeftAlone] { view?.leftAlone ?? [] }
+    var lastWeekTargets: [WaffledAPI.PlanningRecapWeekTarget] { view?.lastWeekTargets ?? [] }
     var counts: WaffledAPI.PlanningRecapCounts { view?.counts ?? .init() }
 
     var nothingDecided: Bool { groups.isEmpty && leftAlone.isEmpty }

@@ -423,3 +423,46 @@ export async function setWeekTarget(
   }
   return { ok: true, view: await getGoalsStepView(tenant, sessionId, session.weekStart) }
 }
+
+export interface WeekTargetReadBack {
+  goalId: string
+  title: string
+  emoji: string | null
+  unit: string | null
+  target: number
+  done: number
+}
+
+// One week's targets read back, for the recap of the week after, against what was logged in
+// that week. Only goals on lists the caller can see, so a private list's target stays private.
+export async function weekTargetsReadBack(tenant: Tenant, weekStart: string): Promise<WeekTargetReadBack[]> {
+  const [lists, { rows }] = await Promise.all([
+    visibleLists(tenant),
+    query<{
+      goal_id: string; goal_list_id: string | null; title: string; emoji: string | null
+      unit: string | null; target: string; done: string | null
+    }>(
+      `select t.goal_id, g.goal_list_id, g.title, g.emoji, g.unit, t.target,
+              (select sum(gl.amount) from goal_logs gl
+                where gl.goal_id = t.goal_id and gl.deleted_at is null and gl.counts_total
+                  and (gl.logged_at at time zone h.timezone)::date between t.week_start and t.week_start + 6) as done
+         from planning_goal_week_targets t
+         join goals g on g.id = t.goal_id and g.deleted_at is null
+         join households h on h.id = t.household_id
+        where t.household_id = $1 and t.week_start = $2::date
+        order by g.title`,
+      [tenant.householdId, weekStart]
+    ),
+  ])
+  const visible = new Set(lists.map((l) => l.id))
+  return rows
+    .filter((r) => r.goal_list_id !== null && visible.has(r.goal_list_id))
+    .map((r) => ({
+      goalId: r.goal_id,
+      title: r.title,
+      emoji: r.emoji,
+      unit: r.unit,
+      target: Number(r.target),
+      done: Number(r.done ?? 0),
+    }))
+}

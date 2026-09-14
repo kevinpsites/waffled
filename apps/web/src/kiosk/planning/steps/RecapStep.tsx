@@ -21,6 +21,7 @@ import '../../../styles/planning-recap.css'
 // the Horizon month grid wasn't.
 
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const num = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
 
 /** "Sun" / "6" for a YYYY-MM-DD. Parsed at noon so no zone can shift the label a day. */
 function dayParts(iso: string): { name: string; num: number } {
@@ -201,6 +202,23 @@ export function RecapPanel({ sessionId, setDecisionData, busy, hrefForStep }: Re
         </div>
 
         <div className="wpr-side">
+          {/* The targets last week's session set, against what was logged that week. */}
+          {(view.lastWeekTargets?.length ?? 0) > 0 && (
+            <div className="wpr-card" data-testid="wpr-targets">
+              <div className="wpr-h">Last week’s targets</div>
+              {view.lastWeekTargets!.map((t) => (
+                <div key={t.goalId} className="wpr-row">
+                  <span className="wpr-t">
+                    {t.emoji ? `${t.emoji} ` : ''}{t.title}
+                    <s>{[num(t.done), 'of', num(t.target), t.unit].filter(Boolean).join(' ')}</s>
+                  </span>
+                  <span className={`wpr-n ${t.done >= t.target ? 'is-met' : 'is-short'}`}>
+                    {t.done >= t.target ? 'met' : 'short'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
           {/* HONESTY 1 — the notes nobody routed anywhere. Two answers, and the quiet
               one writes nothing: a note kept parked is still open next Sunday. */}
           {(lastCall.length > 0 || view.lastCallMore > 0) && (

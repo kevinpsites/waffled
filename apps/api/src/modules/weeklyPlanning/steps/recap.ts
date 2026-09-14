@@ -11,7 +11,7 @@ import type { Tenant } from '../../households/households'
 import { STEPS, resolveSteps, type Session } from '../weeklyPlanning'
 import { mealsStepView, addDays } from './meals'
 import { getTasksBoard } from './tasks'
-import { getGoalsStepView } from './goals'
+import { getGoalsStepView, weekTargetsReadBack, type WeekTargetReadBack } from './goals'
 import { getFamilyNightBoard } from './familyNight'
 import { listParked } from './looseEnds'
 
@@ -82,6 +82,8 @@ export interface RecapView {
   lastCall: RecapLastCall[]
   lastCallMore: number
   leftAlone: RecapLeftAlone[]
+  // The targets last week's session set, against what was logged that week.
+  lastWeekTargets: WeekTargetReadBack[]
   // Derived on every read — never stored, never added up on the client, so the header
   // and the cards cannot disagree.
   counts: { decisions: number; deferred: number; parked: number }
@@ -242,7 +244,7 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
   const steps = await resolveSteps(householdId, session?.id ?? null)
   const byKey = new Map(steps.map((s) => [s.key, s]))
 
-  const [week, tasks, goals, night, kids, parked, parkedTags] = await Promise.all([
+  const [week, tasks, goals, night, kids, parked, parkedTags, lastWeekTargets] = await Promise.all([
     // The seven columns come from the MEALS step's own read: the one place that already
     // buckets a household-local day and drops the mirrors. A second read would drift.
     mealsStepView(tenant, weekStart),
@@ -252,6 +254,7 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
     session ? kidsReadBack(householdId, session.id) : Promise.resolve([]),
     listParked(householdId),
     parkedKeys(householdId),
+    on('goals') ? weekTargetsReadBack(tenant, addDays(weekStart, -7)) : Promise.resolve([]),
   ])
 
   const [addedEvents, plannedNights, rhythms] = since
@@ -484,6 +487,7 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
     lastCall,
     lastCallMore: Math.max(0, untagged.length - lastCall.length),
     leftAlone,
+    lastWeekTargets,
     counts: {
       decisions: groups.reduce((n, g) => n + g.count, 0),
       deferred: leftAlone.length,

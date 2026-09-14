@@ -143,6 +143,18 @@ extension WaffledAPI {
         private enum CodingKeys: String, CodingKey { case decisions, deferred, parked }
     }
 
+    /// One of last week's targets, read back against what was logged that week.
+    struct PlanningRecapWeekTarget: Decodable, Identifiable, Sendable, Equatable {
+        let goalId: String
+        let title: String
+        let emoji: String?
+        let unit: String?
+        let target: Double
+        let done: Double
+
+        var id: String { goalId }
+    }
+
     struct PlanningRecapView: Decodable, Sendable, Equatable {
         let weekStart: String
         let savedAt: String?
@@ -152,6 +164,7 @@ extension WaffledAPI {
         let lastCallMore: Int
         let leftAlone: [PlanningRecapLeftAlone]
         let counts: PlanningRecapCounts
+        let lastWeekTargets: [PlanningRecapWeekTarget]
 
         /// EVERY collection defaults: on the session's last screen, a missing array must cost
         /// that card and never the whole recap.
@@ -166,10 +179,11 @@ extension WaffledAPI {
             leftAlone = try c.decodeIfPresent([PlanningRecapLeftAlone].self, forKey: .leftAlone) ?? []
             counts = try c.decodeIfPresent(PlanningRecapCounts.self, forKey: .counts)
                 ?? PlanningRecapCounts()
+            lastWeekTargets = try c.decodeIfPresent([PlanningRecapWeekTarget].self, forKey: .lastWeekTargets) ?? []
         }
 
         private enum CodingKeys: String, CodingKey {
-            case weekStart, savedAt, days, groups, lastCall, lastCallMore, leftAlone, counts
+            case weekStart, savedAt, days, groups, lastCall, lastCallMore, leftAlone, counts, lastWeekTargets
         }
     }
 

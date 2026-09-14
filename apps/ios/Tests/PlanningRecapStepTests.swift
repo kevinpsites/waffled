@@ -69,6 +69,10 @@ private let recapJSON = Data("""
     { "key": "parked:tasks", "label": "Kelly’s parents in October?", "detail": "Parked for Tasks",
       "badge": "parked", "stepKey": "tasks" }
   ],
+  "lastWeekTargets": [
+    { "goalId": "g-guitar", "title": "Practice guitar", "emoji": "🎸", "unit": "hours",
+      "target": 10, "done": 7 }
+  ],
   "counts": { "decisions": 7, "deferred": 3, "parked": 2 }
 }
 """.utf8)
@@ -482,5 +486,21 @@ private func model(_ feed: RecapFeed) -> PlanningRecapModel {
         let saved = model(feed)
         await saved.load(sessionId: "s1", weekStart: "2026-09-06")
         #expect(saved.saved)
+    }
+}
+
+// The targets last week's session set, read back against what was logged that week.
+@Suite struct PlanningRecapWeekTargetTests {
+
+    @Test func lastWeeksTargetsDecodeWithWhatWasLogged() throws {
+        let r = try decodedRecap()
+        #expect(r.lastWeekTargets.map(\.title) == ["Practice guitar"])
+        #expect(PlanningRecapText.targetLine(r.lastWeekTargets[0]) == "7 of 10 hours")
+    }
+
+    @Test func anOlderPayloadWithNoTargetsStillDecodes() throws {
+        let bare = try WaffledAPI.decoder.decode(
+            WaffledAPI.PlanningRecapView.self, from: Data(#"{"weekStart":"2026-09-06"}"#.utf8))
+        #expect(bare.lastWeekTargets.isEmpty)
     }
 }

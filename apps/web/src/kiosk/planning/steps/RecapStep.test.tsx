@@ -273,6 +273,23 @@ describe('recap · the last call on what nobody tagged', () => {
   })
 })
 
+describe('recap · last week’s targets', () => {
+  it('reads each target back against what was logged that week', async () => {
+    mockApi({ ...VIEW, lastWeekTargets: [{ goalId: 'g-guitar', title: 'Practice guitar', emoji: '🎸', unit: 'hours', target: 10, done: 7 }] })
+    renderStep()
+    const card = await screen.findByTestId('wpr-targets')
+    expect(within(card).getByText(/Practice guitar/)).toBeTruthy()
+    expect(within(card).getByText('7 of 10 hours')).toBeTruthy()
+  })
+
+  it('draws no card when last week set no targets', async () => {
+    mockApi()
+    renderStep()
+    await screen.findByTestId('wpr-parked-n1')
+    expect(screen.queryByTestId('wpr-targets')).toBeNull()
+  })
+})
+
 describe('recap · left alone on purpose', () => {
   it('renders a skipped step and a deliberate non-answer as outcomes, not gaps', async () => {
     mockApi()

@@ -73,6 +73,7 @@ interface Recap {
   lastCall: LastCall[]
   lastCallMore: number
   leftAlone: LeftAlone[]
+  lastWeekTargets: { goalId: string; title: string; emoji: string | null; unit: string | null; target: number; done: number }[]
   counts: { decisions: number; deferred: number; parked: number }
 }
 
@@ -289,6 +290,30 @@ describe('planning · recap · grouped by the module the decision lives in', () 
     const g = group(await recap(), 'goals')!
     expect(g.count).toBe(1)
     expect(g.detail).toMatch(/Read every night/)
+  })
+
+  it('reads last week’s targets back, with what was logged against them that week', async () => {
+    const { query } = await import('../src/platform/db')
+    const listId = json(await call('POST', '/api/goal-lists', kevin, { name: 'Kevin practice', memberIds: [ownerId] })).list.id
+    const goalId = json(await call('POST', '/api/goals', kevin, {
+      title: 'Practice guitar', goalListId: listId, goalType: 'total', unit: 'hours', targetValue: 750,
+      trackingMode: 'shared_total', participantIds: [ownerId],
+    })).goal.id
+    const lastWeek = addDays(weekStart, -7)
+    await query(
+      `insert into planning_goal_week_targets (household_id, goal_id, week_start, target) values ($1, $2, $3::date, 10)`,
+      [householdId, goalId, lastWeek]
+    )
+    // Two days into last week counts; a day into THIS week belongs to this week, not last.
+    await query(
+      `insert into goal_logs (household_id, goal_id, amount, logged_at)
+       select h.id, $2::uuid, v.amount, (($3::date + v.day) + time '12:00') at time zone h.timezone
+         from households h, (values (7, 2), (4, 7)) as v(amount, day)
+        where h.id = $1`,
+      [householdId, goalId, lastWeek]
+    )
+    const t = (await recap()).lastWeekTargets.find((x: { goalId: string }) => x.goalId === goalId)
+    expect(t).toMatchObject({ title: 'Practice guitar', unit: 'hours', target: 10, done: 7 })
   })
 
   it('reports only PINNED family-night parts, never the rotation’s suggestion', async () => {
