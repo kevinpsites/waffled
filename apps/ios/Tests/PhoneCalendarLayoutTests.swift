@@ -19,6 +19,16 @@ private func timed(_ id: String, _ start: String, minutes: Double? = 60) -> Sync
 }
 
 @Suite struct PhoneCalendarModeTests {
+    @Test func aDaySavedByAnOlderBuildReopensOnMonth() {
+        #expect(PhoneCalendar.Mode.restored(stored: .day, override: nil) == .month)
+        #expect(PhoneCalendar.Mode.restored(stored: .week, override: nil) == .week)
+        #expect(PhoneCalendar.Mode.restored(stored: .agenda, override: nil) == .agenda)
+    }
+
+    @Test func aLaunchOverrideCanStillOpenDay() {
+        #expect(PhoneCalendar.Mode.restored(stored: .month, override: .day) == .day)
+    }
+
     @Test func spreadingZoomsInAndPinchingZoomsOut() {
         #expect(PhoneCalendar.Mode.month.zoomed(in: true) == .week)
         #expect(PhoneCalendar.Mode.week.zoomed(in: true) == .day)
@@ -76,33 +86,43 @@ private func timed(_ id: String, _ start: String, minutes: Double? = 60) -> Sync
 
 @Suite struct PhoneCalendarCellChipsTests {
     @Test func aTallCellShowsFourTitlesThenMore() {
-        let c = PhoneCalendar.cellChips(eventCount: 7, hasCountdown: false, rowHeight: 128)
+        let c = PhoneCalendar.cellChips(eventCount: 7, countdownCount: 0, rowHeight: 128)
         #expect(c.shown == 4)
         #expect(c.more == 3)
+        #expect(c.showsCountdown == false)
     }
 
     @Test func aCountdownCostsOneTitleSlot() {
-        let c = PhoneCalendar.cellChips(eventCount: 7, hasCountdown: true, rowHeight: 128)
+        let c = PhoneCalendar.cellChips(eventCount: 7, countdownCount: 1, rowHeight: 128)
+        #expect(c.showsCountdown)
         #expect(c.shown == 3)
         #expect(c.more == 4)
     }
 
+    @Test func onlyOneCountdownShowsAndTheRestCountTowardMore() {
+        let c = PhoneCalendar.cellChips(eventCount: 2, countdownCount: 3, rowHeight: 128)
+        #expect(c.showsCountdown)
+        #expect(c.shown == 2)
+        #expect(c.more == 2)
+    }
+
     @Test func aQuietDayShowsEverythingWithNoMoreLine() {
-        let c = PhoneCalendar.cellChips(eventCount: 2, hasCountdown: false, rowHeight: 128)
+        let c = PhoneCalendar.cellChips(eventCount: 2, countdownCount: 0, rowHeight: 128)
         #expect(c.shown == 2)
         #expect(c.more == 0)
     }
 
     @Test func aShorterSixRowCellHoldsFewerTitles() {
-        let c = PhoneCalendar.cellChips(eventCount: 7, hasCountdown: false, rowHeight: 100)
+        let c = PhoneCalendar.cellChips(eventCount: 7, countdownCount: 0, rowHeight: 100)
         #expect(c.shown < 4)
         #expect(c.shown + c.more == 7)
     }
 
-    @Test func aCellTooShortForAnyTitleStillCountsTheDay() {
-        let c = PhoneCalendar.cellChips(eventCount: 3, hasCountdown: true, rowHeight: 30)
+    @Test func aCellTooShortForAnyChipStillCountsEverything() {
+        let c = PhoneCalendar.cellChips(eventCount: 3, countdownCount: 2, rowHeight: 30)
         #expect(c.shown == 0)
-        #expect(c.more == 3)
+        #expect(c.showsCountdown == false)
+        #expect(c.more == 5)
     }
 }
 

@@ -54,8 +54,9 @@ struct PhoneMonthGrid: View {
 
     private func cell(_ d: PhoneCalendar.MonthDay, rowHeight: CGFloat) -> some View {
         let events = PhoneCalendar.displayOrder(byDay[d.key] ?? [])
-        let countdown = countdownsByDay[d.key]?.first
-        let chips = PhoneCalendar.cellChips(eventCount: events.count, hasCountdown: countdown != nil,
+        let countdowns = countdownsByDay[d.key] ?? []
+        let countdown = countdowns.first
+        let chips = PhoneCalendar.cellChips(eventCount: events.count, countdownCount: countdowns.count,
                                             rowHeight: rowHeight)
         let isToday = d.key == todayKey
         return Button { onPick(d.key) } label: {
@@ -77,7 +78,7 @@ struct PhoneMonthGrid: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(accessibilityLabel(d, count: events.count))
+        .accessibilityLabel(accessibilityLabel(d, count: events.count + countdowns.count))
     }
 
     private func dayNumber(_ d: PhoneCalendar.MonthDay, isToday: Bool, isSelected: Bool) -> some View {
@@ -183,6 +184,16 @@ struct PhoneWeekRail: View {
             if railDay != key { withAnimation(.snappy) { railDay = key } }
             if stripWeek != days.first { withAnimation(.snappy) { stripWeek = days.first } }
         }
+        // The rail's week boundaries follow the household's first day and zone, and either can
+        // arrive by sync while Week is open.
+        .onChange(of: firstDay) { _, _ in rebuildRail() }
+        .onChange(of: tz.identifier) { _, _ in rebuildRail() }
+    }
+
+    private func rebuildRail() {
+        recenter(on: selectedDay)
+        railDay = selectedDay
+        stripWeek = days.first
     }
 
     private func recenter(on key: String) {

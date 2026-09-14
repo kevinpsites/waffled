@@ -112,7 +112,8 @@ struct CalendarView: View {
     private func restoreMode() {
         guard !restoredMode else { return }
         restoredMode = true
-        let start = DemoHooks.kioskCalMode.flatMap(CalMode.init(rawValue:)) ?? storedMode
+        let start = CalMode.restored(stored: storedMode,
+                                     override: DemoHooks.kioskCalMode.flatMap(CalMode.init(rawValue:)))
         var t = Transaction()
         t.disablesAnimations = true
         withTransaction(t) { show(start) }

@@ -21,6 +21,13 @@ enum PhoneCalendar {
             }
         }
 
+        /// The view to open on: a launch override as-is, else the saved view — except Day, which
+        /// only an older build could save (Day is now a drill-in), so that reopens on Month.
+        static func restored(stored: Mode, override: Mode?) -> Mode {
+            if let override { return override }
+            return stored == .day ? .month : stored
+        }
+
         var label: String { rawValue.capitalized }
         var icon: String {
             switch self {
@@ -75,14 +82,16 @@ enum PhoneCalendar {
         let showsCountdown: Bool
     }
 
-    /// Titles per day cell: as many chips as the row height holds, never more than four, with
-    /// a countdown pill taking one of those slots. Room for the "+N more" line is always kept.
-    static func cellChips(eventCount: Int, hasCountdown: Bool, rowHeight: CGFloat) -> CellChips {
+    /// Titles per day cell: as many chips as the row height holds, never more than four. One
+    /// countdown pill takes a slot; further countdowns, like events that don't fit, count toward
+    /// "+N more". Room for that line is always kept.
+    static func cellChips(eventCount: Int, countdownCount: Int, rowHeight: CGFloat) -> CellChips {
         let room = rowHeight - cellTopPadding - dayNumberHeight - moreLineHeight - chipGap
         let slots = min(maxCellSlots, max(0, Int((room / (chipHeight + chipGap)).rounded(.down))))
-        let showsCountdown = hasCountdown && slots > 0
+        let showsCountdown = countdownCount > 0 && slots > 0
         let shown = min(eventCount, slots - (showsCountdown ? 1 : 0))
-        return CellChips(shown: shown, more: eventCount - shown, showsCountdown: showsCountdown)
+        let hiddenCountdowns = countdownCount - (showsCountdown ? 1 : 0)
+        return CellChips(shown: shown, more: eventCount - shown + hiddenCountdowns, showsCountdown: showsCountdown)
     }
 
     // MARK: Week
