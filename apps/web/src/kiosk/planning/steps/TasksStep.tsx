@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { choresApi } from '../../../lib/api/chores'
+import { looseEndsApi } from '../../../lib/api/planning/looseEnds'
 import { avTint } from '../../components/Avatar'
 import { Icon } from '../../icons'
 import { ChoreModal } from '../../components/ChoreModal'
@@ -209,7 +210,7 @@ function ChoreCard({
   )
 }
 
-function Body({ weekStart, setDecisionData, refresh, busy }: StepBodyProps) {
+function Body({ weekStart, sessionId, setDecisionData, refresh, busy }: StepBodyProps) {
   const [board, setBoard] = useState<PlanningTasksBoard | null>(null)
   const [error, setError] = useState(false)
   // A hand-over that failed, which is NOT the board failing to load: the board is fine,
@@ -344,6 +345,22 @@ function Body({ weekStart, setDecisionData, refresh, busy }: StepBodyProps) {
   const frozen = busy || saving !== null
   const isDropTarget = (colKey: string) => !!drag && overCol === colKey && colKey !== (drag.from ?? 'unassigned')
 
+  // Settled through step 1's resolve, the one writer Loose ends already uses for a rhythm.
+  const settleRhythm = async (id: string) => {
+    if (saving || busy) return
+    setSaving(id)
+    try {
+      await looseEndsApi.resolve('rhythm', id, 'done', sessionId)
+      setGiveError(null)
+      load()
+      refresh()
+    } catch {
+      setGiveError('That didn’t get marked done — try again.')
+    } finally {
+      setSaving(null)
+    }
+  }
+
   const markDone = async (chore: PlanningTasksChore) => {
     if (!chore.completableInstanceId || saving || busy) return
     setSaving(chore.id)
@@ -447,6 +464,34 @@ function Body({ weekStart, setDecisionData, refresh, busy }: StepBodyProps) {
           </div>
         ))}
       </div>
+
+      {board.rhythms && board.rhythms.length > 0 && (
+        <div className="wpt-rhythms" data-testid="wpt-rhythms">
+          <div className="wpt-strip-h">
+            <span className="wpt-strip-t">Rhythms this week</span>
+          </div>
+          {board.rhythms.map((r) => (
+            <div key={r.id} className="wpt-rhythm">
+              <span className="t">
+                {r.emoji ? `${r.emoji} ` : ''}
+                {r.title}
+              </span>
+              <span className={`wpt-chip ${r.overdue ? 'is-late' : ''}`}>{r.detail}</span>
+              {r.canComplete && (
+                <button
+                  type="button"
+                  className="wpt-chip wpt-done"
+                  aria-label={`Mark ${r.title} done`}
+                  disabled={frozen}
+                  onClick={() => void settleRhythm(r.id)}
+                >
+                  ✓ Done
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* The app's existing New chore modal, with Who already prefilled — never a
           second chore form of this step's own. '' prefills nobody (up for grabs).

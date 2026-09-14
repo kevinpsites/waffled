@@ -124,6 +124,7 @@ final class PlanningTasksModel {
     typealias HandOut = (_ chore: WaffledAPI.PlanningTasksChore, _ personId: String?) async throws -> Void
     typealias SaveChore = (_ choreId: String?, _ body: [String: JSONValue]) async throws -> Void
     typealias Complete = (_ instanceId: String) async throws -> Void
+    typealias SettleRhythm = (_ rhythmId: String, _ sessionId: String) async throws -> Void
 
     /// What the chore editor is open on. `.add(personId: nil)` is the strip's own "Add a task".
     enum Composer: Identifiable {
@@ -169,6 +170,7 @@ final class PlanningTasksModel {
     private let handOut: HandOut
     private let saveChore: SaveChore
     private let completeFn: Complete
+    private let settleRhythmFn: SettleRhythm
 
     init(
         fetchBoard: @escaping FetchBoard = { weekStart in
@@ -184,12 +186,18 @@ final class PlanningTasksModel {
         },
         complete: @escaping Complete = { instanceId in
             try await WaffledAPI().completeChore(id: instanceId)
+        },
+        // Step 1's resolve, the one writer Loose ends already uses for a rhythm.
+        settleRhythm: @escaping SettleRhythm = { rhythmId, sessionId in
+            try await WaffledAPI().resolvePlanningLooseEnd(
+                kind: "rhythm", id: rhythmId, action: "done", sessionId: sessionId)
         }
     ) {
         self.fetchBoard = fetchBoard
         self.handOut = handOut
         self.saveChore = saveChore
         self.completeFn = complete
+        self.settleRhythmFn = settleRhythm
     }
 
     /// The crumb kept on the session record: COUNTS ONLY. The recap reads through to chores.
@@ -252,6 +260,24 @@ final class PlanningTasksModel {
             return false
         }
         notice = chore.requiresApproval ? "\(chore.title) is waiting for a parent’s OK." : nil
+        if let fresh = try? await fetchBoard(weekStart) { apply(fresh) }
+        return true
+    }
+
+    /// Settles a rhythm due this week, then re-reads. A booking rhythm is settled by an event,
+    /// so it is refused here rather than skipped by accident.
+    @discardableResult
+    func settleRhythm(_ rhythm: WaffledAPI.PlanningTasksRhythm, sessionId: String, weekStart: String) async -> Bool {
+        guard rhythm.canComplete, savingChoreId == nil else { return false }
+        savingChoreId = rhythm.id
+        errorMessage = nil
+        defer { savingChoreId = nil }
+        do {
+            try await settleRhythmFn(rhythm.id, sessionId)
+        } catch {
+            errorMessage = "That didn’t get marked done — try again."
+            return false
+        }
         if let fresh = try? await fetchBoard(weekStart) { apply(fresh) }
         return true
     }

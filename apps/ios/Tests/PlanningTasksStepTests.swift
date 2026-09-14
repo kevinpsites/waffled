@@ -50,6 +50,12 @@ private let boardJSON = Data("""
       "carriedOver": false, "rewardAmount": 1.5, "rewardCurrency": null,
       "requiresApproval": false, "requiresPhoto": false,
       "pendingInstanceIds": [] }
+  ],
+  "rhythms": [
+    { "id": "r-plants", "title": "Water the plants", "emoji": "🪴", "personId": "p-wally",
+      "detail": "Due Wed", "overdue": false, "canComplete": true },
+    { "id": "r-dentist", "title": "Book the dentist", "emoji": null, "personId": null,
+      "detail": "Not booked yet", "overdue": false, "canComplete": false }
   ]
 }
 """.utf8)
@@ -89,6 +95,8 @@ private final class TasksBoardFeed {
     var handOuts: [(choreId: String, personId: String?)] = []
     var saves: [(choreId: String?, body: [String: JSONValue])] = []
     var completed: [String] = []
+    var settledRhythms: [String] = []
+    var settleSessions: [String] = []
     var completeFails = false
 
     init(_ board: WaffledAPI.PlanningTasksBoard) { self.board = board }
@@ -113,6 +121,10 @@ private func model(_ feed: TasksBoardFeed) -> PlanningTasksModel {
         complete: { instanceId in
             if feed.completeFails { throw PlanningTasksFailure.rejected }
             feed.completed.append(instanceId)
+        },
+        settleRhythm: { id, sessionId in
+            feed.settledRhythms.append(id)
+            feed.settleSessions.append(sessionId)
         })
 }
 
@@ -120,6 +132,43 @@ private func model(_ feed: TasksBoardFeed) -> PlanningTasksModel {
 
 @MainActor
 @Suite struct PlanningTasksStepTests {
+
+    @Test func theWeeksRhythmsDecodeWithWhetherDoneApplies() throws {
+        let board = try decodedBoard()
+        #expect(board.rhythms.map(\.title) == ["Water the plants", "Book the dentist"])
+        #expect(board.rhythms[0].canComplete)
+        #expect(!board.rhythms[1].canComplete)
+    }
+
+    @Test func aBoardFromBeforeRhythmsStillDecodes() throws {
+        let bare = try WaffledAPI.decoder.decode(
+            WaffledAPI.PlanningTasksBoard.self,
+            from: Data(#"{"weekStart":"2026-09-06","newTaskDay":"2026-09-06","people":[],"unassigned":[]}"#.utf8))
+        #expect(bare.rhythms.isEmpty)
+    }
+
+    @Test func settlingARhythmGoesThroughResolveAndRereads() async throws {
+        let feed = TasksBoardFeed(try decodedBoard())
+        let model = model(feed)
+        await model.load(weekStart: "2026-09-06")
+        let reads = feed.fetchCount
+        let plants = try #require(model.board?.rhythms.first)
+
+        #expect(await model.settleRhythm(plants, sessionId: "s-1", weekStart: "2026-09-06"))
+        #expect(feed.settledRhythms == ["r-plants"])
+        #expect(feed.settleSessions == ["s-1"])
+        #expect(feed.fetchCount == reads + 1)
+    }
+
+    @Test func aBookingRhythmIsNotSettledFromHere() async throws {
+        let feed = TasksBoardFeed(try decodedBoard())
+        let model = model(feed)
+        await model.load(weekStart: "2026-09-06")
+        let dentist = try #require(model.board?.rhythms.last)
+
+        #expect(await model.settleRhythm(dentist, sessionId: "s-1", weekStart: "2026-09-06") == false)
+        #expect(feed.settledRhythms.isEmpty)
+    }
 
     @Test func markingDoneCompletesTheOpenDayAndRereads() async throws {
         let feed = TasksBoardFeed(try decodedBoard())

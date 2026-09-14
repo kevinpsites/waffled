@@ -136,10 +136,10 @@ async function todayLocal(householdId: string): Promise<string> {
   return rows[0]?.today ?? new Date().toISOString().slice(0, 10)
 }
 
-const daysBetween = (fromIso: string, toIso: string) =>
+export const daysBetween = (fromIso: string, toIso: string) =>
   Math.round((Date.parse(`${toIso}T00:00:00Z`) - Date.parse(`${fromIso}T00:00:00Z`)) / 86_400_000)
 
-const lateBy = (n: number) => (n <= 0 ? 'Due today' : n === 1 ? '1 day late' : `${n} days late`)
+export const lateBy = (n: number) => (n <= 0 ? 'Due today' : n === 1 ? '1 day late' : `${n} days late`)
 
 function agoLabel(days: number): string {
   if (days <= 0) return 'today'

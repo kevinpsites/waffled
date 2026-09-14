@@ -56,6 +56,18 @@ extension WaffledAPI {
         let chores: [PlanningTasksChore]
     }
 
+    /// A rhythm needing attention in the planned week, late or not. `detail` is the server's
+    /// sentence; only the "I do it" shape completes from here.
+    struct PlanningTasksRhythm: Decodable, Identifiable, Hashable, Sendable {
+        let id: String
+        let title: String
+        let emoji: String?
+        let personId: String?
+        let detail: String
+        let overdue: Bool
+        let canComplete: Bool
+    }
+
     struct PlanningTasksBoard: Decodable, Sendable {
         /// The week the server resolved — echoed so nothing on the device does week arithmetic.
         let weekStart: String
@@ -65,6 +77,19 @@ extension WaffledAPI {
         let newTaskDay: String
         let people: [PlanningTasksPerson]
         let unassigned: [PlanningTasksChore]
+        /// Empty while the rhythms module is off, and from a server that predates the section.
+        let rhythms: [PlanningTasksRhythm]
+
+        private enum CodingKeys: String, CodingKey { case weekStart, newTaskDay, people, unassigned, rhythms }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            weekStart = try c.decode(String.self, forKey: .weekStart)
+            newTaskDay = try c.decode(String.self, forKey: .newTaskDay)
+            people = try c.decode([PlanningTasksPerson].self, forKey: .people)
+            unassigned = try c.decode([PlanningTasksChore].self, forKey: .unassigned)
+            rhythms = try c.decodeIfPresent([PlanningTasksRhythm].self, forKey: .rhythms) ?? []
+        }
     }
 
     /// The board for the week being planned. `weekStart` is the one the shell handed us.

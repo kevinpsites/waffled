@@ -8,6 +8,9 @@
 // SERVER-OWNED: a column is what someone is carrying, not a log of this sitting.
 import { query } from '../../../platform/db'
 import { householdTz, todayDate } from '../../chores/chores.service'
+import { moduleEnabled } from '../../../platform/modules'
+import { listAttention, type AttentionItem } from '../../rhythms/rhythms'
+import { daysBetween, lateBy } from './looseEnds'
 import type { QueryResultRow } from 'pg'
 
 export type Cadence = 'daily' | 'weekly' | 'once'
@@ -87,6 +90,19 @@ export interface TasksBoardPerson {
   chores: TasksBoardChore[]
 }
 
+// A rhythm needing attention in the planned week, late or not. Loose ends only asks about
+// what is already late, so without this an on-time weekly rhythm appeared nowhere.
+export interface TasksBoardRhythm {
+  id: string
+  title: string
+  emoji: string | null
+  personId: string | null
+  detail: string
+  overdue: boolean
+  // Only the "I do it" shape completes from here; a booking rhythm is settled by an event.
+  canComplete: boolean
+}
+
 export interface TasksBoard {
   weekStart: string
   // The day a task ADDED during this session should land on. Server-owned for the same
@@ -95,6 +111,8 @@ export interface TasksBoard {
   newTaskDay: string
   people: TasksBoardPerson[]
   unassigned: TasksBoardChore[]
+  // Empty while the rhythms module is off.
+  rhythms: TasksBoardRhythm[]
 }
 
 interface ChoreRowForBoard extends QueryResultRow {
@@ -206,12 +224,28 @@ function placeInWeek(
   return null
 }
 
+function rhythmRows(items: AttentionItem[], today: string, tz: string): TasksBoardRhythm[] {
+  const weekday = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' })
+  const localDay = new Intl.DateTimeFormat('en-CA', { timeZone: tz })
+  return items.map((item) => {
+    const r = item.rhythm
+    const base = { id: r.id, title: r.title, emoji: r.emoji, personId: r.personId }
+    if (item.kind === 'due') {
+      const at = new Date(item.dueAt)
+      const detail = item.overdue ? lateBy(daysBetween(localDay.format(at), today)) : `Due ${weekday.format(at)}`
+      return { ...base, detail, overdue: item.overdue, canComplete: true }
+    }
+    return { ...base, detail: 'Not booked yet', overdue: false, canComplete: false }
+  })
+}
+
 export async function getTasksBoard(householdId: string, weekStart: string): Promise<TasksBoard> {
   const dates = weekDates(weekStart)
   // The household's own today, taken from the chores module rather than computed here: a
   // chore day rolls at household-local midnight, not UTC's.
-  const today = todayDate(await householdTz(householdId))
-  const [{ rows: personRows }, chores, pending] = await Promise.all([
+  const tz = await householdTz(householdId)
+  const today = todayDate(tz)
+  const [{ rows: personRows }, chores, pending, { rows: settingsRows }] = await Promise.all([
     query<QueryResultRow>(
       `select p.id, p.name, p.avatar_emoji, p.color_hex, p.member_type, p.is_admin
          from persons p
@@ -221,7 +255,11 @@ export async function getTasksBoard(householdId: string, weekStart: string): Pro
     ),
     choreRows(householdId),
     pendingInstanceIds(householdId),
+    query<{ settings: unknown }>(`select settings from households where id = $1`, [householdId]),
   ])
+  const rhythms = moduleEnabled(settingsRows[0]?.settings ?? null, 'rhythms')
+    ? rhythmRows(await listAttention(householdId, dates[6]), today, tz)
+    : []
 
   const byPerson = new Map<string, TasksBoardChore[]>()
   const recurring = new Map<string, number>()
@@ -259,5 +297,5 @@ export async function getTasksBoard(householdId: string, weekStart: string): Pro
 
   const newTaskDay = today >= dates[0] && today <= dates[6] ? today : dates[0]
 
-  return { weekStart, newTaskDay, people, unassigned }
+  return { weekStart, newTaskDay, people, unassigned, rhythms }
 }

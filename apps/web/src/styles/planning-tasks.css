@@ -132,3 +132,9 @@
 .wpt-done { cursor: pointer; border: 0; background: var(--success-t, var(--panel)); color: var(--success, var(--ink)); font-weight: 750; }
 .wpt-done:disabled { opacity: .5; cursor: default; }
 .wpt-note { font-size: 12.5px; font-weight: 650; color: var(--ink-2); background: var(--panel); border-radius: var(--r-md); padding: 8px 12px; }
+
+/* Rhythms due in the planned week: a quiet list under the columns, one row each. */
+.wpt-rhythms { display: flex; flex-direction: column; gap: 8px; }
+.wpt-rhythm { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--hair-2); border-radius: var(--r-md); padding: 10px 12px; }
+.wpt-rhythm .t { flex: 1; min-width: 0; font-weight: 650; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wpt-chip.is-late { color: var(--danger, var(--ink)); }

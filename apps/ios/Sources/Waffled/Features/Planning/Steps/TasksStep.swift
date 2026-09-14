@@ -50,6 +50,7 @@ struct TasksStepView: View {
                 ForEach(board.people) { person in
                     personBlock(person, board: board)
                 }
+                if !board.rhythms.isEmpty { rhythmsBlock(board.rhythms) }
             } else if model.loaded {
                 WaffledEmptyState(
                     emoji: "🧹",
@@ -177,6 +178,36 @@ struct TasksStepView: View {
     // THE GRIP IS WHY THE CARD ITSELF ISN'T `.draggable`. Three of those regions are
     // Buttons; a drag on the card would have to win the gesture from each of them. A grip
     // owns one small rectangle and takes nothing away from the taps beside it.
+
+    /// Rhythms needing attention in the planned week. Done only where the server says it applies.
+    private func rhythmsBlock(_ rhythms: [WaffledAPI.PlanningTasksRhythm]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel(text: "RHYTHMS THIS WEEK")
+            ForEach(rhythms) { rhythm in
+                HStack(spacing: 8) {
+                    Text("\(rhythm.emoji.map { "\($0) " } ?? "")\(rhythm.title)")
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
+                    Spacer(minLength: 6)
+                    chip(rhythm.detail, unset: false)
+                    if rhythm.canComplete {
+                        Button {
+                            Task {
+                                await model.settleRhythm(rhythm, sessionId: props.sessionId, weekStart: props.weekStart)
+                            }
+                        } label: {
+                            chip("✓ Done", unset: false)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(frozen)
+                        .accessibilityLabel("Mark \(rhythm.title) done")
+                    }
+                }
+                .padding(12)
+                .background(WF.card)
+                .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            }
+        }
+    }
 
     @ViewBuilder
     private func choreCard(_ chore: WaffledAPI.PlanningTasksChore, owner: String?,

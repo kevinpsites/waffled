@@ -137,7 +137,9 @@ leave it up for grabs. Tap a task's name — or the day beside it — to open th
 fix the title, the stars or the day. Each column shows what that person already carries. A
 task whose day has come has **✓ Done** — anyone can press it, as on the Tasks board — and one
 that needs a parent's OK says it's waiting for one. A task that needs a photo is finished from
-the Tasks board, where the camera is.
+the Tasks board, where the camera is. With [Rhythms](/features/rhythms/) on, **Rhythms this
+week** lists every rhythm due in the week you're planning, late or not; the ones you do
+yourself have **✓ Done**, and the ones settled by booking say they aren't booked yet.
 
 **9 · Kids** — *"What's your week about?"* The step the children can read. A card per child
 with their week and their stars, and two questions: **one thing to focus on** (a goal they're

@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Mark tasks done in Weekly Planning's Tasks step.** A task whose day has come has a
   **✓ Done** button; one that needs a parent's OK says it's waiting for one. Tasks that need
   a photo are still finished from the Tasks board.
+- **Rhythms due this week show up in Weekly Planning.** The Tasks step lists every rhythm
+  that needs attention in the week you're planning, not just the late ones, with **✓ Done**
+  for the ones you do yourself.
 
 ### Changed
 
