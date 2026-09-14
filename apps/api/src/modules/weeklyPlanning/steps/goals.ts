@@ -433,8 +433,9 @@ export interface WeekTargetReadBack {
   done: number
 }
 
-// One week's targets read back, for the recap of the week after, against what was logged in
-// that week. Only goals on lists the caller can see, so a private list's target stays private.
+// The previous week's targets, read back in the recap of weekStart against what was logged in
+// that week: the latest target week that began in the fortnight before, so a household that moved
+// its week start in between still sees them. Only goals on lists the caller can see.
 export async function weekTargetsReadBack(tenant: Tenant, weekStart: string): Promise<WeekTargetReadBack[]> {
   const [lists, { rows }] = await Promise.all([
     visibleLists(tenant),
@@ -444,12 +445,16 @@ export async function weekTargetsReadBack(tenant: Tenant, weekStart: string): Pr
     }>(
       `select t.goal_id, g.goal_list_id, g.title, g.emoji, g.unit, t.target,
               (select sum(gl.amount) from goal_logs gl
-                where gl.goal_id = t.goal_id and gl.deleted_at is null and gl.counts_total
+                where gl.household_id = t.household_id and gl.goal_id = t.goal_id
+                  and gl.deleted_at is null and gl.counts_total
                   and (gl.logged_at at time zone h.timezone)::date between t.week_start and t.week_start + 6) as done
          from planning_goal_week_targets t
          join goals g on g.id = t.goal_id and g.deleted_at is null
          join households h on h.id = t.household_id
-        where t.household_id = $1 and t.week_start = $2::date
+        where t.household_id = $1
+          and t.week_start = (select max(p.week_start) from planning_goal_week_targets p
+                               where p.household_id = $1
+                                 and p.week_start < $2::date and p.week_start > $2::date - 14)
         order by g.title`,
       [tenant.householdId, weekStart]
     ),

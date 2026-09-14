@@ -254,7 +254,7 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
     session ? kidsReadBack(householdId, session.id) : Promise.resolve([]),
     listParked(householdId),
     parkedKeys(householdId),
-    on('goals') ? weekTargetsReadBack(tenant, addDays(weekStart, -7)) : Promise.resolve([]),
+    on('goals') ? weekTargetsReadBack(tenant, weekStart) : Promise.resolve([]),
   ])
 
   const [addedEvents, plannedNights, rhythms] = since

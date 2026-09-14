@@ -316,6 +316,29 @@ describe('planning · recap · grouped by the module the decision lives in', () 
     expect(t).toMatchObject({ title: 'Practice guitar', unit: 'hours', target: 10, done: 7 })
   })
 
+  it('still finds last week’s targets when the week start moved since that session', async () => {
+    const { query } = await import('../src/platform/db')
+    const listId = json(await call('POST', '/api/goal-lists', kevin, { name: 'Kevin reading', memberIds: [ownerId] })).list.id
+    const pages = json(await call('POST', '/api/goals', kevin, {
+      title: 'Read pages', goalListId: listId, goalType: 'total', unit: 'pages', targetValue: 5000,
+      trackingMode: 'shared_total', participantIds: [ownerId],
+    })).goal.id
+    const miles = json(await call('POST', '/api/goals', kevin, {
+      title: 'Walk miles', goalListId: listId, goalType: 'total', unit: 'miles', targetValue: 500,
+      trackingMode: 'shared_total', participantIds: [ownerId],
+    })).goal.id
+    // The last session's week began three days earlier than this one's (the household moved its
+    // week start in between), and a target from a fortnight ago is not "last week".
+    await query(
+      `insert into planning_goal_week_targets (household_id, goal_id, week_start, target)
+       values ($1, $2, $3::date, 40), ($1, $4, $5::date, 12)`,
+      [householdId, pages, addDays(weekStart, -3), miles, addDays(weekStart, -14)]
+    )
+    const targets = (await recap()).lastWeekTargets as { goalId: string; target: number }[]
+    expect(targets.find((x) => x.goalId === pages)).toMatchObject({ target: 40 })
+    expect(targets.find((x) => x.goalId === miles)).toBeUndefined()
+  })
+
   it('reports only PINNED family-night parts, never the rotation’s suggestion', async () => {
     expect(group(await recap(), 'familyNight')).toBeUndefined()
 
