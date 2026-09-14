@@ -89,15 +89,15 @@ private func landedIn(_ cols: [PeopleColumns.Column], _ eventId: String) -> [Str
 
 // The People view is iPad-only. A phone column is too narrow to be worth the mode —
 // at four members the titles already truncate to "Dinn…" — so the iPhone calendar
-// keeps Agenda/Month/Day. `PeopleColumns` itself stays: the iPad still uses it.
+// keeps Month/Week/Day/Agenda. `PeopleColumns` itself stays: the iPad still uses it.
 @Suite struct IPhoneCalendarModesTests {
     @Test func theIPhoneCalendarHasNoPeopleMode() {
-        #expect(CalendarView.CalMode.allCases.map(\.rawValue) == ["agenda", "month", "day"])
+        #expect(CalendarView.CalMode.allCases.map(\.rawValue) == ["month", "week", "day", "agenda"])
     }
 
     // A phone that had People selected has "people" persisted under
     // `waffled.calendarMode`. @AppStorage can't decode an unknown raw value, so it
-    // falls back to the property's default (.agenda) instead of crashing.
+    // falls back to the property's default (.month) instead of crashing.
     @Test func aPersistedPeopleModeNoLongerDecodes() {
         #expect(CalendarView.CalMode(rawValue: "people") == nil)
     }

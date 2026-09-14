@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A new iPhone calendar: Month, Week and Day.** Month now fills the screen, with week
+  numbers down the side and each day's event titles (a countdown shows as a small pill).
+  Tapping a day opens a full Day timeline you can swipe back from, and Week is a row of day
+  cards where tapping an event opens it for editing — swipe past the last day, or swipe the
+  day strip, to move to the next week. Planned dinners show in amber, thaw reminders stay
+  in the background, and each week card ends with that night's dinner. Switch views from the
+  header's view button (its icon shows where you are) or pinch; Agenda and the per-person
+  filter are in that menu too.
+
 ### Fixed
 
 - **`./waffled upgrade` keeps your `--override` file when it restarts itself.** When an

@@ -314,7 +314,7 @@ struct KioskCalendarView: View {
         .frame(maxHeight: .infinity)
     }
 
-    private func monthCell(_ cell: CalendarView.MonthCell, items: [SyncedEvent], today: String) -> some View {
+    private func monthCell(_ cell: PhoneCalendar.MonthDay, items: [SyncedEvent], today: String) -> some View {
         let isSelected = cell.key == selectedDay
         let isToday = cell.key == today
         return Button { withAnimation { selectedDay = cell.key } } label: {
@@ -483,7 +483,7 @@ struct KioskCalendarView: View {
         .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
-    private func miniCell(_ cell: CalendarView.MonthCell, events: [SyncedEvent], today: String) -> some View {
+    private func miniCell(_ cell: PhoneCalendar.MonthDay, events: [SyncedEvent], today: String) -> some View {
         let isToday = cell.key == today
         let colors = dotColors(events)
         return Button { withAnimation { selectedDay = cell.key; mode = .day } } label: {
@@ -626,7 +626,7 @@ struct KioskCalendarView: View {
         return DateFmt.string(d, "MMM d", tz)
     }
 
-    private func monthCells(_ anchor: Date) -> [CalendarView.MonthCell] {
+    private func monthCells(_ anchor: Date) -> [PhoneCalendar.MonthDay] {
         let cal = Cal.gregorian(tz)
         let comps = cal.dateComponents([.year, .month], from: anchor)
         guard let first = cal.date(from: comps) else { return [] }
@@ -634,7 +634,7 @@ struct KioskCalendarView: View {
         let start = Cal.weekStart(first, tz, firstDay)
         return (0..<42).compactMap { i in
             guard let d = cal.date(byAdding: .day, value: i, to: start) else { return nil }
-            return CalendarView.MonthCell(key: EventTime.dayKey(d, tz), day: cal.component(.day, from: d),
+            return PhoneCalendar.MonthDay(key: EventTime.dayKey(d, tz), day: cal.component(.day, from: d),
                                           inMonth: cal.component(.month, from: d) == anchorMonth)
         }
     }
@@ -912,43 +912,9 @@ struct CalTimeGrid: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    /// An event placed into a lane within its overlap cluster.
-    struct PlacedEvent { let event: SyncedEvent; let lane: Int; let lanes: Int }
+    typealias PlacedEvent = TimeLanes.Placed
 
-    /// Lay a day's timed events into side-by-side lanes so overlaps don't obscure each
-    /// other (interval partitioning: cluster transitively-overlapping events, then
-    /// greedily assign each the first free lane).
-    private func placedEvents(_ key: String) -> [PlacedEvent] {
-        func startOf(_ e: SyncedEvent) -> Date { e.startsAt ?? .distantPast }
-        func endOf(_ e: SyncedEvent) -> Date {
-            let s = e.startsAt ?? .distantPast
-            let dur = e.endsAt.map { max(1800, $0.timeIntervalSince(s)) } ?? 3600   // ≥30 min
-            return s.addingTimeInterval(dur)
-        }
-        let sorted = timed(key)
-        var result: [PlacedEvent] = []
-        var i = 0
-        while i < sorted.count {
-            var clusterEnd = endOf(sorted[i])
-            var j = i + 1
-            while j < sorted.count, startOf(sorted[j]) < clusterEnd {
-                clusterEnd = max(clusterEnd, endOf(sorted[j])); j += 1
-            }
-            let cluster = Array(sorted[i..<j])
-            var laneEnds: [Date] = []
-            var assigned: [(SyncedEvent, Int)] = []
-            for e in cluster {
-                if let li = laneEnds.firstIndex(where: { startOf(e) >= $0 }) {
-                    laneEnds[li] = endOf(e); assigned.append((e, li))
-                } else {
-                    laneEnds.append(endOf(e)); assigned.append((e, laneEnds.count - 1))
-                }
-            }
-            for (e, li) in assigned { result.append(PlacedEvent(event: e, lane: li, lanes: laneEnds.count)) }
-            i = j
-        }
-        return result
-    }
+    private func placedEvents(_ key: String) -> [PlacedEvent] { TimeLanes.place(timed(key)) }
 
     @ViewBuilder private func block(_ placed: PlacedEvent, colWidth: CGFloat) -> some View {
         let ev = placed.event
