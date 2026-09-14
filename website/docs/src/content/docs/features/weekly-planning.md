@@ -118,7 +118,10 @@ list, one per person, a private one. Pick the goal that group's week is about an
 featured, so it turns up on Today and the Goals page. Picking nothing is a real answer, and a
 goal you pinned yourself is never un-pinned. **＋ New goal for this week** opens the goal
 editor over the session; the new goal comes back as that group's suggestion. Adding a goal to
-a group that isn't just yours needs permission to manage goals.
+a group that isn't just yours needs permission to manage goals. A goal that counts up to a
+number — hours, pages, runs — can also take a target for **this week**, a slice of the bigger
+one ("10 hours this week toward 750"). What's been logged that week shows beside it, and next
+week's recap reads it back. Habits already have a target per period, so they don't get one.
 
 ### Run the household
 

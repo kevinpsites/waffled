@@ -482,3 +482,71 @@ describe('weekly planning · goals · privacy', () => {
     await call('PATCH', `/api/goal-lists/${coupleList}`, kevin, { memberIds: [kevinId, kellyId] })
   })
 })
+
+// "750 hours this year, 10 of them this week": a target for ONE week, keyed on the session's
+// own week start, with progress summed from that week's logs rather than stored.
+describe('weekly planning · goals · a target for this week', () => {
+  // The file's `query` is scoped to the top-level beforeAll, so this block takes its own.
+  const query = async <T,>(sql: string, params: unknown[]) =>
+    (await import('../src/platform/db')).query(sql, params) as unknown as Promise<{ rows: T[] }>
+  let gHours: string
+  type WeekGoal = { id: string; weekTarget: number | null; weekDone: number; weekTargetable: boolean }
+  const find = (view: { groups: { goals: WeekGoal[] }[] }, id: string) =>
+    view.groups.flatMap((g) => g.goals).find((g) => g.id === id)!
+  const weekOf = async () =>
+    (await query<{ w: string }>(`select week_start::text as w from planning_sessions where id = $1`, [sessionId])).rows[0].w
+  // Noon, household-local, on a day relative to the session's week start.
+  const logOn = (goalId: string, amount: number, week: string, offsetDays: number) =>
+    query(
+      `insert into goal_logs (household_id, goal_id, amount, logged_at)
+       select h.id, $2::uuid, $3::numeric, (($4::date + $5::int) + time '12:00') at time zone h.timezone
+         from households h where h.id = $1`,
+      [householdId, goalId, amount, week, offsetDays]
+    )
+
+  beforeAll(async () => {
+    gHours = json(await call('POST', '/api/goals', kevin, {
+      title: 'Practice guitar', goalListId: familyList, goalType: 'total', unit: 'hours',
+      targetValue: 750, trackingMode: 'shared_total', participantIds: [kevinId],
+    })).goal.id
+    const week = await weekOf()
+    await logOn(gHours, 3, week, 1)
+    // The day BEFORE the week: last week's practice, which this week's target must not count.
+    await logOn(gHours, 5, week, -1)
+  })
+
+  it('stores a target against the session’s week and counts only what was logged that week', async () => {
+    const res = await call('PUT', '/api/weekly-planning/goals/week-target', kevin, { sessionId, goalId: gHours, target: 10 })
+    expect(res.statusCode).toBe(200)
+    const g = find(json(res), gHours)
+    expect(g.weekTarget).toBe(10)
+    expect(g.weekDone).toBe(3)
+    expect(find(json(await call('GET', `/api/weekly-planning/goals?sessionId=${sessionId}`, kevin)), gHours).weekTarget).toBe(10)
+  })
+
+  it('clears the week’s target with null, leaving the goal’s own target alone', async () => {
+    const res = await call('PUT', '/api/weekly-planning/goals/week-target', kevin, { sessionId, goalId: gHours, target: null })
+    expect(res.statusCode).toBe(200)
+    expect(find(json(res), gHours).weekTarget).toBeNull()
+    const { rows } = await query<{ target_value: string }>(`select target_value from goals where id = $1`, [gHours])
+    expect(Number(rows[0].target_value)).toBe(750)
+  })
+
+  it('offers a week target only on a running count or total, not a habit or a checklist', async () => {
+    const view = json(await call('GET', `/api/weekly-planning/goals?sessionId=${sessionId}`, kevin))
+    expect(find(view, gHours).weekTargetable).toBe(true)
+    expect(find(view, gDate).weekTargetable).toBe(true)
+    expect(find(view, gWater).weekTargetable).toBe(false)
+    expect(find(view, gReading).weekTargetable).toBe(false)
+    expect((await call('PUT', '/api/weekly-planning/goals/week-target', kevin, { sessionId, goalId: gWater, target: 3 })).statusCode).toBe(404)
+  })
+
+  it('refuses a target that isn’t a positive number', async () => {
+    expect((await call('PUT', '/api/weekly-planning/goals/week-target', kevin, { sessionId, goalId: gHours, target: 0 })).statusCode).toBe(400)
+    expect((await call('PUT', '/api/weekly-planning/goals/week-target', kevin, { sessionId, goalId: gHours, target: 'ten' })).statusCode).toBe(400)
+  })
+
+  it('404s a goal on a private list the caller can’t see', async () => {
+    expect((await call('PUT', '/api/weekly-planning/goals/week-target', lottie, { sessionId, goalId: gDate, target: 2 })).statusCode).toBe(404)
+  })
+})

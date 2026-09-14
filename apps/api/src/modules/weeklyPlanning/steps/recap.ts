@@ -247,7 +247,7 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
     // buckets a household-local day and drops the mirrors. A second read would drift.
     mealsStepView(tenant, weekStart),
     on('chores') ? getTasksBoard(householdId, weekStart) : null,
-    on('goals') && session ? getGoalsStepView(tenant, session.id) : null,
+    on('goals') && session ? getGoalsStepView(tenant, session.id, session.weekStart) : null,
     on('familyNight') ? getFamilyNightBoard(householdId, weekStart) : null,
     session ? kidsReadBack(householdId, session.id) : Promise.resolve([]),
     listParked(householdId),

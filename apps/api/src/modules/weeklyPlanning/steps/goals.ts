@@ -28,6 +28,38 @@ type Goal = Awaited<ReturnType<typeof listGoals>>[number]
 // A goal as this step shows it: the goals screen's fields plus how it is going (`paceFor`).
 export interface GoalsStepGoal extends Goal {
   pace: Pace | null
+  // This week's slice of the goal ("10 of the 750 hours"), set in a session for the week it
+  // plans. Only a running count or total takes one: a habit already has a per-period target,
+  // and a checklist is measured in steps.
+  weekTargetable: boolean
+  weekTarget: number | null
+  // Summed from goal_logs whose household-local day falls in the planned week; never stored.
+  weekDone: number
+}
+
+const WEEK_TARGETABLE = new Set(['count', 'total'])
+
+// This week's targets and what was logged against every goal in it, for one household.
+async function weekNumbers(householdId: string, weekStart: string) {
+  const [targets, done] = await Promise.all([
+    query<{ goal_id: string; target: string }>(
+      `select goal_id, target from planning_goal_week_targets where household_id = $1 and week_start = $2::date`,
+      [householdId, weekStart]
+    ),
+    query<{ goal_id: string; done: string }>(
+      `select gl.goal_id, sum(gl.amount) as done
+         from goal_logs gl
+         join households h on h.id = gl.household_id
+        where gl.household_id = $1 and gl.deleted_at is null and gl.counts_total
+          and (gl.logged_at at time zone h.timezone)::date between $2::date and $2::date + 6
+        group by gl.goal_id`,
+      [householdId, weekStart]
+    ),
+  ])
+  return {
+    targets: new Map(targets.rows.map((r) => [r.goal_id, Number(r.target)])),
+    done: new Map(done.rows.map((r) => [r.goal_id, Number(r.done)])),
+  }
 }
 
 export interface GoalsStepMember {
@@ -243,20 +275,31 @@ async function visibleLists(tenant: Tenant): Promise<GoalList[]> {
   return lists.filter((l) => !l.isPrivate || l.members.some((m) => m.personId === tenant.personId))
 }
 
-export async function getGoalsStepView(tenant: Tenant, sessionId: string | null): Promise<GoalsStepView> {
-  const [lists, goals, focus, activity, people] = await Promise.all([
+export async function getGoalsStepView(
+  tenant: Tenant,
+  sessionId: string | null,
+  weekStart: string | null = null
+): Promise<GoalsStepView> {
+  const [lists, goals, focus, activity, people, week] = await Promise.all([
     visibleLists(tenant),
     listGoals(tenant.householdId),
     sessionId ? readFocus(sessionId) : Promise.resolve({} as FocusMap),
     recentActivity(tenant.householdId),
     householdPeople(tenant.householdId),
+    weekStart ? weekNumbers(tenant.householdId, weekStart) : Promise.resolve(null),
   ])
   return {
     groups: lists.map((l) => {
       const { id, goalCount: _goalCount, members, ...rest } = l
       const mine = goals
         .filter((g) => g.goalListId === id)
-        .map((g) => ({ ...g, pace: paceFor(g, activity.get(g.id)) }))
+        .map((g) => ({
+          ...g,
+          pace: paceFor(g, activity.get(g.id)),
+          weekTargetable: WEEK_TARGETABLE.has(g.goalType),
+          weekTarget: week?.targets.get(g.id) ?? null,
+          weekDone: week?.done.get(g.id) ?? 0,
+        }))
       const settled = Object.prototype.hasOwnProperty.call(focus, id)
       const picked = focus[id] ?? null
       const pinned = mine.filter((g) => g.isFeatured)
@@ -340,5 +383,43 @@ export async function setGroupFocus(
   } finally {
     client.release()
   }
-  return { ok: true, view: await getGoalsStepView(tenant, sessionId) }
+  return { ok: true, view: await getGoalsStepView(tenant, sessionId, session.weekStart) }
+}
+
+// Set, or with null clear, one goal's target for the session's own week. Refused (one 404 for
+// all of it) when the session isn't this household's, the goal is on a list the caller can't
+// see, or the goal isn't a running count or total.
+export async function setWeekTarget(
+  tenant: Tenant,
+  sessionId: string,
+  goalId: string,
+  target: number | null
+): Promise<SetFocusResult> {
+  const session = await getSessionById(tenant.householdId, sessionId)
+  if (!session) return { ok: false }
+  const [lists, { rows }] = await Promise.all([
+    visibleLists(tenant),
+    query<{ goal_type: string; goal_list_id: string | null }>(
+      `select goal_type, goal_list_id from goals where household_id = $1 and id = $2 and deleted_at is null and is_active`,
+      [tenant.householdId, goalId]
+    ),
+  ])
+  const goal = rows[0]
+  if (!goal || !WEEK_TARGETABLE.has(goal.goal_type) || !lists.some((l) => l.id === goal.goal_list_id)) {
+    return { ok: false }
+  }
+  if (target === null) {
+    await query(
+      `delete from planning_goal_week_targets where household_id = $1 and goal_id = $2 and week_start = $3::date`,
+      [tenant.householdId, goalId, session.weekStart]
+    )
+  } else {
+    await query(
+      `insert into planning_goal_week_targets (household_id, goal_id, week_start, target, created_by)
+       values ($1, $2, $3::date, $4, $5)
+       on conflict (goal_id, week_start) do update set target = excluded.target, updated_at = now()`,
+      [tenant.householdId, goalId, session.weekStart, target, tenant.personId ?? null]
+    )
+  }
+  return { ok: true, view: await getGoalsStepView(tenant, sessionId, session.weekStart) }
 }

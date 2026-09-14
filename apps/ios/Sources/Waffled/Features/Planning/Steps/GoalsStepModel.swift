@@ -14,6 +14,9 @@ final class PlanningGoalsStepModel {
     ) async throws -> WaffledAPI.PlanningGoalsView
     /// `POST /api/goals` — the goals module's own create; no planning-only endpoint.
     typealias CreateGoal = (_ body: [String: JSONValue]) async throws -> Void
+    typealias SetWeekTarget = (
+        _ sessionId: String, _ goalId: String, _ target: Double?
+    ) async throws -> WaffledAPI.PlanningGoalsView
 
     private(set) var view: WaffledAPI.PlanningGoalsView?
     private(set) var loaded = false
@@ -34,6 +37,7 @@ final class PlanningGoalsStepModel {
     private let fetchGoals: FetchGoals
     private let setFocus: SetFocus
     private let createGoal: CreateGoal
+    private let setWeekTargetFn: SetWeekTarget
 
     init(
         fetchGoals: @escaping FetchGoals = { sessionId in
@@ -45,11 +49,16 @@ final class PlanningGoalsStepModel {
         },
         createGoal: @escaping CreateGoal = { body in
             try await WaffledAPI().createGoal(body)
+        },
+        setWeekTarget: @escaping SetWeekTarget = { sessionId, goalId, target in
+            try await WaffledAPI().planningGoalsSetWeekTarget(
+                sessionId: sessionId, goalId: goalId, target: target)
         }
     ) {
         self.fetchGoals = fetchGoals
         self.setFocus = setFocus
         self.createGoal = createGoal
+        self.setWeekTargetFn = setWeekTarget
     }
 
     var groups: [WaffledAPI.PlanningGoalGroup] { view?.groups ?? [] }
@@ -98,6 +107,19 @@ final class PlanningGoalsStepModel {
         defer { savingListId = nil }
         do {
             apply(try await setFocus(sessionId, listId, goalId))
+        } catch {
+            errorMessage = "That didn’t take — try again."
+        }
+    }
+
+    /// This week's target for one goal. Its own write: the group's focus is left alone.
+    func setWeekTarget(sessionId: String, goalId: String, target: Double?) async {
+        guard savingListId == nil else { return }
+        savingListId = goalId
+        errorMessage = nil
+        defer { savingListId = nil }
+        do {
+            apply(try await setWeekTargetFn(sessionId, goalId, target))
         } catch {
             errorMessage = "That didn’t take — try again."
         }
@@ -184,6 +206,27 @@ final class PlanningGoalsStepModel {
 }
 
 enum PlanningGoalsText {
+
+    /// The line beside the week's target box: "3 of 10 hours this week".
+    static func weekLine(_ item: WaffledAPI.PlanningGoalGoal) -> String {
+        let unit = item.goal.unit.map { " \($0)" } ?? ""
+        if let target = item.weekTarget {
+            return "\(goalFmt(item.weekDone)) of \(goalFmt(target))\(unit) this week"
+        }
+        return item.weekDone > 0 ? "\(goalFmt(item.weekDone))\(unit) so far this week" : "No target for this week"
+    }
+
+    enum TargetEntry: Equatable { case set(Double), clear, invalid }
+
+    /// What the target box holds: a positive number, blank (clear the week's target), or neither.
+    static func parseTarget(_ text: String) -> TargetEntry {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { return .clear }
+        guard let n = Double(trimmed), n.isFinite, n > 0 else { return .invalid }
+        return .set(n)
+    }
+
+    static func targetText(_ target: Double?) -> String { target.map { goalFmt($0) } ?? "" }
 
     /// The axis label under the number, matching the rule `GoalDisplay` implements.
     static func axisLabel(_ g: WaffledAPI.Goal) -> String {

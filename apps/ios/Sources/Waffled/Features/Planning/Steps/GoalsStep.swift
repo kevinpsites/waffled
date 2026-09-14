@@ -136,7 +136,12 @@ struct GoalsStepView: View {
                 header(g)
 
                 VStack(spacing: 8) {
-                    ForEach(g.goals) { goalOption($0, group: g, frozen: frozen) }
+                    ForEach(g.goals) { item in
+                        goalOption(item, group: g, frozen: frozen)
+                        if item.weekTargetable {
+                            PlanningWeekTargetRow(item: item, frozen: frozen) { setTarget(item.id, $0) }
+                        }
+                    }
                     nothingOption(g, frozen: frozen)
                 }
 
@@ -321,6 +326,53 @@ struct GoalsStepView: View {
         Task {
             await model.pick(sessionId: props.sessionId, listId: listId, goalId: goalId)
             props.refresh()
+        }
+    }
+
+    private func setTarget(_ goalId: String, _ target: Double?) {
+        guard !model.isFrozen(shellBusy: props.busy) else { return }
+        Task { await model.setWeekTarget(sessionId: props.sessionId, goalId: goalId, target: target) }
+    }
+}
+
+/// This week's slice of a goal, under its option, which is itself a button.
+private struct PlanningWeekTargetRow: View {
+    let item: WaffledAPI.PlanningGoalGoal
+    let frozen: Bool
+    let onSave: (Double?) -> Void
+
+    @State private var text = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("This week")
+                .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
+            TextField("—", text: $text)
+                .keyboardType(.decimalPad)
+                .focused($focused)
+                .multilineTextAlignment(.center)
+                .frame(width: 64)
+                .wfField()
+                .disabled(frozen)
+                .accessibilityLabel("This week’s target for \(item.goal.title)")
+            Text(PlanningGoalsText.weekLine(item))
+                .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink2)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 36)
+        .onAppear { text = PlanningGoalsText.targetText(item.weekTarget) }
+        .onChange(of: item.weekTarget) { _, new in text = PlanningGoalsText.targetText(new) }
+        // Saved when the box is left; a decimal pad has no return key.
+        .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
+    }
+
+    private func commit() {
+        switch PlanningGoalsText.parseTarget(text) {
+        case .clear: if item.weekTarget != nil { onSave(nil) }
+        case let .set(n): if n != item.weekTarget { onSave(n) }
+        case .invalid: text = PlanningGoalsText.targetText(item.weekTarget)
         }
     }
 }

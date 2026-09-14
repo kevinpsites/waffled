@@ -109,6 +109,13 @@ function mockApi(view = VIEW()) {
     if (u.includes('/api/household')) {
       return { ok: true, json: async () => ({ household: { id: 'h1', name: 'Sites' }, person: { id: 'p1', name: 'Kevin', capabilities: ['goal.manage'] }, memberships: [], pendingInvites: [] }) }
     }
+    if (u.includes('/api/weekly-planning/goals/week-target')) {
+      for (const g of state.groups) {
+        const x = g.goals.find((y) => y.id === body.goalId) as (typeof g.goals)[number] & { weekTarget?: number | null }
+        if (x) x.weekTarget = body.target
+      }
+      return { ok: true, json: async () => JSON.parse(JSON.stringify(state)) }
+    }
     if (u.includes('/api/weekly-planning/goals/focus')) {
       // The server really answers the group: it settles, and the flag moves.
       const g = state.groups.find((x) => x.listId === body.listId)!
@@ -298,6 +305,54 @@ describe('GoalsStep · progress is shown on the goal’s own axis', () => {
     const card = await screen.findByRole('radio', { name: /dragon book/ })
     expect(within(card).getByText('1')).toBeInTheDocument()
     expect(within(card).getByText('/ 4')).toBeInTheDocument()
+  })
+})
+
+// "750 hours this year, 10 of them this week": a target for the planned week, beside the goal.
+describe('GoalsStep · a target for this week', () => {
+  const withGuitar = () => {
+    const v = VIEW()
+    v.groups[0].goals.push(goal({
+      id: 'g-guitar', title: 'Practice guitar', goalType: 'total', unit: 'hours', target: 750,
+      totalProgress: 120, periodDone: 0, habitPeriod: null, habitTargetPerPeriod: null, pace: null,
+      weekTargetable: true, weekTarget: 10, weekDone: 3,
+    }))
+    return v
+  }
+  const writes = () => calls.filter((c) => c.url.includes('/goals/week-target'))
+
+  it('shows this week’s target against what was logged this week', async () => {
+    mockApi(withGuitar())
+    renderStep()
+    expect(await screen.findByText('3 of 10 hours this week')).toBeTruthy()
+  })
+
+  it('saves a new target for the week without touching the focus', async () => {
+    mockApi(withGuitar())
+    renderStep()
+    const box = await screen.findByLabelText('This week’s target for Practice guitar')
+    fireEvent.change(box, { target: { value: '12' } })
+    fireEvent.blur(box)
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(writes()[0].body).toEqual({ sessionId: 's1', goalId: 'g-guitar', target: 12 })
+    expect(calls.some((c) => c.url.includes('/goals/focus'))).toBe(false)
+  })
+
+  it('clears the target when the box is emptied', async () => {
+    mockApi(withGuitar())
+    renderStep()
+    const box = await screen.findByLabelText('This week’s target for Practice guitar')
+    fireEvent.change(box, { target: { value: '' } })
+    fireEvent.blur(box)
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(writes()[0].body).toEqual({ sessionId: 's1', goalId: 'g-guitar', target: null })
+  })
+
+  it('offers no target on a habit, which already has one per period', async () => {
+    mockApi(withGuitar())
+    renderStep()
+    await screen.findByText('3 of 10 hours this week')
+    expect(screen.queryByLabelText('This week’s target for Water the garden')).toBeNull()
   })
 })
 
