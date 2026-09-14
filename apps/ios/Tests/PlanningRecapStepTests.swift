@@ -102,6 +102,8 @@ private final class RecapFeed {
     }
     var fetchArgs: [Ask] = []
     var drops: [(id: String, sessionId: String)] = []
+    var settles: [(id: String, sessionId: String)] = []
+    var choreBodies: [[String: JSONValue]] = []
 
     init() throws {
         view = try decodedRecap()
@@ -120,6 +122,12 @@ private func model(_ feed: RecapFeed) -> PlanningRecapModel {
         dropNote: { id, sessionId in
             feed.drops.append((id, sessionId))
             if feed.dropFails { throw RecapFailure.rejected }
+        },
+        settleNote: { id, sessionId in
+            feed.settles.append((id, sessionId))
+        },
+        saveChore: { body in
+            feed.choreBodies.append(body)
         })
 }
 
@@ -382,6 +390,37 @@ private func model(_ feed: RecapFeed) -> PlanningRecapModel {
         #expect(model.openLastCall.map(\.id) == ["n-camps"])
         #expect(model.errorMessage != nil)
         #expect(model.working == nil)
+    }
+
+    /// A note the family decided to act on becomes a real task, and is settled only once the
+    /// app's own editor has saved it.
+    @Test func aNoteMadeIntoATaskIsSettledOnlyOnceTheTaskSaved() async throws {
+        let feed = try RecapFeed()
+        let model = model(feed)
+        await model.load(sessionId: "s-1", weekStart: "2026-09-06")
+        let note = try #require(model.openLastCall.first)
+
+        model.makeTask(from: note)
+        #expect(await model.saveChoreFromNote(["title": .string(note.note)]) == nil)
+        await model.composerDismissed(sessionId: "s-1")
+
+        #expect(feed.choreBodies.count == 1)
+        #expect(feed.settles.map { $0.id } == [note.id])
+        #expect(feed.settles.map { $0.sessionId } == ["s-1"])
+        #expect(model.openLastCall.isEmpty)
+    }
+
+    @Test func aNoteWhoseEditorIsClosedWithoutSavingStaysOnTheBoard() async throws {
+        let feed = try RecapFeed()
+        let model = model(feed)
+        await model.load(sessionId: "s-1", weekStart: "2026-09-06")
+        let note = try #require(model.openLastCall.first)
+
+        model.makeEvent(from: note)
+        await model.composerDismissed(sessionId: "s-1")
+
+        #expect(feed.settles.isEmpty)
+        #expect(model.openLastCall.map { $0.id } == [note.id])
     }
 
     @Test func nothingDecidedIsAStateAndNotAnEmptyScreen() async throws {

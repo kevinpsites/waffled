@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Act on a parked note from Weekly Planning's recap.** A note still on the board can become
+  a task or a calendar event right there, in the usual editors with the note's words filled
+  in; the note is settled once it's saved, and stays put if you back out.
 - **Edit events from Weekly Planning's Calendar step.** Tap an event on the week to open it
   in the usual event editor and change it, without leaving the session.
 - **Busy days open up in the Weekly Planning recap.** A day with more than four events

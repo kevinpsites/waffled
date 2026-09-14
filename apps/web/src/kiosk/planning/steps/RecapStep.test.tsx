@@ -91,6 +91,19 @@ function mockApi(view: unknown = VIEW) {
     calls.push({ url: u, method, body: init?.body ? JSON.parse(String(init.body)) : null })
     if (u.startsWith('/api/weekly-planning/recap')) return { ok: true, json: async () => view }
     if (u.startsWith('/api/weekly-planning/loose-ends/resolve')) return { ok: true, json: async () => ({ ok: true }) }
+    // The chore and event editors a note can open read these; empty answers, but SHAPED.
+    if (u.startsWith('/api/persons')) {
+      return { ok: true, json: async () => ({ persons: [{ id: 'p1', name: 'Kevin', memberType: 'adult', isAdmin: true, avatarEmoji: '🧔', colorHex: '#7A5AF8' }] }) }
+    }
+    if (u.startsWith('/api/currencies')) {
+      return { ok: true, json: async () => ({ currencies: [{ key: 'stars', label: 'Stars', symbol: '⭐', isDefault: true }] }) }
+    }
+    if (u.startsWith('/api/goals')) return { ok: true, json: async () => ({ goals: [] }) }
+    if (u.startsWith('/api/calendar/google/status')) return { ok: true, json: async () => ({ calendars: [] }) }
+    if (u.startsWith('/api/chores') && method === 'POST') return { ok: true, json: async () => ({ chore: { id: 'new-chore' } }) }
+    if (u.startsWith('/api/events') && method === 'POST') {
+      return { ok: true, json: async () => ({ event: { id: 'new-event', title: 'x', participants: [] } }) }
+    }
     return { ok: true, json: async () => ({}) }
   }) as unknown as typeof fetch
   return calls
@@ -221,6 +234,33 @@ describe('recap · the last call on what nobody tagged', () => {
     const post = calls.find((c) => c.url.includes('loose-ends/resolve'))!
     expect(post.method).toBe('POST')
     expect(post.body).toMatchObject({ kind: 'parked', id: 'n1', action: 'drop', sessionId: 's1' })
+  })
+
+  it('turns a note into a task, and settles it only once the task was saved', async () => {
+    const calls = mockApi()
+    renderStep()
+    const row = await screen.findByTestId('wpr-parked-n1')
+    fireEvent.click(within(row).getByRole('button', { name: 'Make a task' }))
+    const modal = (await screen.findByText('New chore')).closest('.modal-card') as HTMLElement
+    fireEvent.click(within(modal).getByRole('button', { name: 'Add chore' }))
+
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url.startsWith('/api/chores'))).toBe(true))
+    expect(calls.find((c) => c.method === 'POST' && c.url.startsWith('/api/chores'))!.body).toMatchObject({ title: 'Look into summer camps' })
+    await waitFor(() => expect(screen.queryByTestId('wpr-parked-n1')).toBeNull())
+    expect(calls.find((c) => c.url.includes('loose-ends/resolve'))!.body).toMatchObject({ kind: 'parked', id: 'n1', action: 'done', sessionId: 's1' })
+  })
+
+  it('leaves a note on the board when its editor is closed without saving', async () => {
+    const calls = mockApi()
+    renderStep()
+    const row = await screen.findByTestId('wpr-parked-n2')
+    fireEvent.click(within(row).getByRole('button', { name: 'Make an event' }))
+    const modal = (await screen.findByText('New event')).closest('.modal-card') as HTMLElement
+    fireEvent.click(within(modal).getByRole('button', { name: /close/i }))
+
+    await waitFor(() => expect(screen.queryByText('New event')).toBeNull())
+    expect(screen.getByTestId('wpr-parked-n2')).toBeTruthy()
+    expect(calls.filter((c) => c.url.includes('loose-ends/resolve'))).toHaveLength(0)
   })
 
   it('keeps a note parked without writing anything — it is still open next Sunday', async () => {

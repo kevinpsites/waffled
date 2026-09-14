@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { looseEndsApi, planningRecapApi, planningRecapDecision, type PlanningRecapView } from '../../../lib/api'
+import { can, localToday, looseEndsApi, planningRecapApi, planningRecapDecision, useHousehold, type PlanningRecapView } from '../../../lib/api'
+import { moduleEnabled } from '../../../lib/modules'
+import { ChoreModal } from '../../components/ChoreModal'
+import { EventModal } from '../../components/EventModal'
 // The app's own event-colour resolver: the week strip has to agree with the calendar it
 // is describing, so it uses the same one the month and week views do.
 import { evVars, useEventColor } from '../../../lib/event-color'
@@ -68,6 +71,9 @@ export function RecapPanel({ sessionId, setDecisionData, busy, hrefForStep }: Re
   const [working, setWorking] = useState<string | null>(null)
   // Busy days opened in place, showing the events the server held back.
   const [openDays, setOpenDays] = useState<string[]>([])
+  // A note being turned into a task or an event, through the app's own editors.
+  const [making, setMaking] = useState<{ id: string; note: string; kind: 'task' | 'event' } | null>(null)
+  const { household, person } = useHousehold()
 
   useEffect(() => { setDecisionData(planningRecapDecision(view)) }, [view, setDecisionData])
 
@@ -90,6 +96,18 @@ export function RecapPanel({ sessionId, setDecisionData, busy, hrefForStep }: Re
     },
     [working, busy, sessionId]
   )
+
+  // Only an editor that really saved settles the note, the same way "Handled" does; a cancel
+  // leaves it on the board.
+  const madeFromNote = async (id: string) => {
+    setMaking(null)
+    try {
+      await looseEndsApi.resolve('parked', id, 'done', sessionId)
+      setDropped((d) => [...d, id])
+    } catch {
+      // The note stays on the board, where it can still be answered.
+    }
+  }
 
   if (loading && !view) return <div className="wpr-note">Reading the week back…</div>
   if (!view) return <div className="wpr-note">Couldn’t read the week back just now — the week itself is unaffected.</div>
@@ -195,6 +213,22 @@ export function RecapPanel({ sessionId, setDecisionData, busy, hrefForStep }: Re
                     {n.detail && <s>{n.detail}</s>}
                   </span>
                   <span className="wpr-acts">
+                    {moduleEnabled(household, 'chores') && (
+                      <button
+                        type="button" className="btn btn-ghost wpr-act"
+                        disabled={busy || working === n.id}
+                        onClick={() => setMaking({ id: n.id, note: n.note, kind: 'task' })}
+                      >
+                        Make a task
+                      </button>
+                    )}
+                    <button
+                      type="button" className="btn btn-ghost wpr-act"
+                      disabled={busy || working === n.id}
+                      onClick={() => setMaking({ id: n.id, note: n.note, kind: 'event' })}
+                    >
+                      Make an event
+                    </button>
                     <button
                       type="button" className="btn btn-ghost wpr-act"
                       disabled={busy || working === n.id}
@@ -255,6 +289,28 @@ export function RecapPanel({ sessionId, setDecisionData, busy, hrefForStep }: Re
           ? 'The record was written when the week was saved: what was decided, what was deferred, what rolled over. Today is the surface now, not this session.'
           : 'Saving writes the record: what was decided, what was deferred, what rolled over, with a timestamp. After that Today is the surface, not this session.'}
       </div>
+      {/* Never a day already past: a new chore's date is floored at today, and the browser
+          refuses the form's submit below that, so Save would look dead. */}
+      {making?.kind === 'task' && (
+        <ChoreModal
+          personId={null}
+          defaultFreq="once"
+          defaultDueOn={view.weekStart > localToday() ? view.weekStart : localToday()}
+          defaultTitle={making.note}
+          canAssignOthers={can(person, 'chore.manage')}
+          selfPersonId={person?.id ?? null}
+          onClose={() => setMaking(null)}
+          onSaved={() => void madeFromNote(making.id)}
+        />
+      )}
+      {making?.kind === 'event' && (
+        <EventModal
+          date={view.weekStart}
+          prefill={{ title: making.note }}
+          onClose={() => setMaking(null)}
+          onSaved={() => void madeFromNote(making.id)}
+        />
+      )}
     </div>
   )
 }

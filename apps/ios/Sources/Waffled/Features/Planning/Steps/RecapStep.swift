@@ -10,9 +10,9 @@ import SwiftUI
 /// web's strip.
 ///
 /// It deliberately builds no saved frame (the shell owns the finished record and renders
-/// this body above its own tick-list; the TENSE comes off the payload's `savedAt`), no
-/// second way to answer a note, and no write of any kind — saving the week is the shell's
-/// affirmative.
+/// this body in it; the TENSE comes off the payload's `savedAt`). Its only writes answer a
+/// parked note: drop it, or turn it into a task or an event through the app's own editors,
+/// settling the note only if one was saved. Saving the week is the shell's affirmative.
 struct RecapStepView: View {
     let props: PlanningStepProps
 
@@ -56,6 +56,46 @@ struct RecapStepView: View {
         // Withdrawn explicitly, because the verb is the SHELL's state and would otherwise
         // still be step 9's.
         .onAppear { props.lendVerb(nil) }
+        .sheet(item: composerBinding) { composer in noteEditor(composer) }
+    }
+
+    /// `.sheet(item:)` hands nil back for a cancel and a save alike; the model knows which.
+    private var composerBinding: Binding<PlanningRecapModel.NoteComposer?> {
+        Binding(
+            get: { model.composer },
+            set: { new in
+                guard new == nil else { return }
+                Task { await model.composerDismissed(sessionId: props.sessionId) }
+            })
+    }
+
+    @ViewBuilder
+    private func noteEditor(_ composer: PlanningRecapModel.NoteComposer) -> some View {
+        // Never a day already past: planning mid-week, or reading a saved week back later,
+        // puts the week's start behind today.
+        let day = max(DateFmt.date(props.weekStart, "yyyy-MM-dd", .current) ?? Date(),
+                      Calendar.current.startOfDay(for: Date()))
+        switch composer {
+        case let .task(_, note):
+            ChoreEditSheet(
+                assignableMembers: sync.can("chore.manage")
+                    ? sync.members : sync.members.filter { $0.id == sync.currentPersonId },
+                currencies: sync.currencies,
+                target: .new(personId: nil),
+                initialDate: day,
+                prefillTitle: note,
+                canDelete: false,
+                onSave: { _, body in await model.saveChoreFromNote(body) },
+                onDelete: { _, _ in "Deleting isn’t part of planning a week." })
+        case let .event(_, note):
+            eventEditor(day: day, note: note)
+        }
+    }
+
+    private func eventEditor(day: Date, note: String) -> EventEditSheet {
+        var sheet = EventEditSheet(event: nil, initialDate: day, prefillTitle: note)
+        sheet.onSaved = { model.eventSaved() }
+        return sheet
     }
 
     // MARK: - The week, one last time
@@ -206,6 +246,21 @@ struct RecapStepView: View {
                                 Text(detail)
                                     .font(.system(size: 12)).foregroundStyle(WF.ink3)
                                     .fixedSize(horizontal: false, vertical: true)
+                            }
+                            HStack(spacing: 12) {
+                                if sync.module(.chores) {
+                                    Button("Make a task") { model.makeTask(from: note) }
+                                        .font(.system(size: 12.5, weight: .bold))
+                                        .foregroundStyle(WF.primary)
+                                        .buttonStyle(.plain)
+                                        .disabled(props.busy || model.working != nil)
+                                }
+                                Button("Make an event") { model.makeEvent(from: note) }
+                                    .font(.system(size: 12.5, weight: .bold))
+                                    .foregroundStyle(WF.primary)
+                                    .buttonStyle(.plain)
+                                    .disabled(props.busy || model.working != nil)
+                                Spacer(minLength: 0)
                             }
                             HStack(spacing: 8) {
                                 Button("Keep it parked") { model.keepParked(note.id) }

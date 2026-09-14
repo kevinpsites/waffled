@@ -127,6 +127,21 @@ final class PlanningRecapModel {
     /// Dropping a note is step 1's `POST /loose-ends/resolve` — the writer that owns
     /// `planning_parked_items`. This step grows no second way to answer a note.
     typealias DropNote = (_ id: String, _ sessionId: String) async throws -> Void
+    /// Settling a note that became a task or an event: the same resolver, action "done".
+    typealias SettleNote = (_ id: String, _ sessionId: String) async throws -> Void
+    typealias SaveChore = (_ body: [String: JSONValue]) async throws -> Void
+
+    /// A parked note being turned into something real through the app's own editor.
+    enum NoteComposer: Identifiable {
+        case task(noteId: String, note: String)
+        case event(noteId: String, note: String)
+
+        var id: String {
+            switch self {
+            case let .task(noteId, _), let .event(noteId, _): return noteId
+            }
+        }
+    }
 
     private(set) var view: WaffledAPI.PlanningRecapView?
     private(set) var loaded = false
@@ -140,9 +155,14 @@ final class PlanningRecapModel {
     /// writes NOTHING, and the note turns up in next Sunday's step 1.
     private(set) var keptIds: Set<String> = []
     private(set) var droppedIds: Set<String> = []
+    /// Settable so the sheet's binding can read it; the model clears it on dismissal.
+    var composer: NoteComposer?
+    private var composerSaved = false
 
     private let fetchRecap: FetchRecap
     private let dropNote: DropNote
+    private let settleNote: SettleNote
+    private let saveChore: SaveChore
 
     init(
         fetchRecap: @escaping FetchRecap = { sessionId, weekStart in
@@ -151,10 +171,19 @@ final class PlanningRecapModel {
         dropNote: @escaping DropNote = { id, sessionId in
             _ = try await WaffledAPI().resolvePlanningLooseEnd(
                 kind: "parked", id: id, action: "drop", sessionId: sessionId)
+        },
+        settleNote: @escaping SettleNote = { id, sessionId in
+            _ = try await WaffledAPI().resolvePlanningLooseEnd(
+                kind: "parked", id: id, action: "done", sessionId: sessionId)
+        },
+        saveChore: @escaping SaveChore = { body in
+            try await WaffledAPI().createChore(body)
         }
     ) {
         self.fetchRecap = fetchRecap
         self.dropNote = dropNote
+        self.settleNote = settleNote
+        self.saveChore = saveChore
     }
 
     // MARK: Derived
@@ -216,6 +245,45 @@ final class PlanningRecapModel {
             droppedIds.insert(id)
         } catch {
             errorMessage = "That didn’t take — the note is still on the board."
+        }
+    }
+
+    /// "Make a task" / "Make an event": open the app's own editor on the note's words.
+    func makeTask(from note: WaffledAPI.PlanningRecapLastCall) {
+        composerSaved = false
+        composer = .task(noteId: note.id, note: note.note)
+    }
+
+    func makeEvent(from note: WaffledAPI.PlanningRecapLastCall) {
+        composerSaved = false
+        composer = .event(noteId: note.id, note: note.note)
+    }
+
+    /// The chore editor's save: nil on success, or the message the sheet shows.
+    func saveChoreFromNote(_ body: [String: JSONValue]) async -> String? {
+        do {
+            try await saveChore(body)
+            composerSaved = true
+            return nil
+        } catch {
+            return "Couldn’t save that — try again."
+        }
+    }
+
+    func eventSaved() { composerSaved = true }
+
+    /// The editor went away. Settle the note only if something was really made; a cancel
+    /// leaves it on the board, still needing an answer.
+    func composerDismissed(sessionId: String) async {
+        guard let made = composer else { return }
+        composer = nil
+        guard composerSaved else { return }
+        composerSaved = false
+        do {
+            try await settleNote(made.id, sessionId)
+            droppedIds.insert(made.id)
+        } catch {
+            errorMessage = "That was saved, but the note is still on the board — drop it when you’re ready."
         }
     }
 
