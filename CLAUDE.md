@@ -19,6 +19,11 @@ from an up-to-date `main` (e.g. via the EnterWorktree tool, or
 `git worktree add .claude/worktrees/<slug> -b <slug> origin/main`), and do all edits,
 builds, and commits there. This keeps `main` and other parallel work clean.
 
+**Ask which server the task uses before starting: `:8080` or `:8081`.** `:8080` is the main
+local stack (`./waffled`); `:8081` is the isolated demo stack (`./waffled-demo`, "The
+Seinfelds"). Confirm it up front — it decides which stack you rebuild or seed and what the
+apps and tests point at. iOS work also gets its own simulators (see `apps/ios/CLAUDE.md`).
+
 **Work is not done until it is TDD'd and green.** Follow the TDD flow below (failing test
 first), and before opening a PR **all tests and typechecking must pass** — run the full
 test suite (`npm test`) *and* typecheck/build for every app you touched (web: `npm run
