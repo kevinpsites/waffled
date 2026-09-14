@@ -36,6 +36,7 @@ export type MigrateOptions = {
 }
 
 const UNIT_MS: Record<string, number> = { ms: 1, s: 1_000, min: 60_000, h: 3_600_000 }
+const MAX_LOCK_TIMEOUT_MS = 2_147_483_647
 
 // MIGRATE_LOCK_TIMEOUT: a bare number is milliseconds (as in Postgres), or a number
 // with a Postgres time unit. Anything else throws so a typo can't silently mean "default".
@@ -48,7 +49,16 @@ export function parseLockTimeout(raw: string | undefined): number {
       `MIGRATE_LOCK_TIMEOUT must be milliseconds or a duration like 500ms, 15s or 2min (got "${raw}")`
     )
   }
-  return Math.round(Number(match[1]) * UNIT_MS[match[2] ?? 'ms'])
+  const amount = Number(match[1])
+  const ms = Math.round(amount * UNIT_MS[match[2] ?? 'ms'])
+  // 0 means "wait forever", so a tiny non-zero value must not round into it; above
+  // INT_MAX Postgres refuses the startup option and every connection fails.
+  if ((ms === 0 && amount !== 0) || ms > MAX_LOCK_TIMEOUT_MS) {
+    throw new Error(
+      `MIGRATE_LOCK_TIMEOUT must be 0, or between 1ms and ${MAX_LOCK_TIMEOUT_MS}ms (got "${raw}")`
+    )
+  }
+  return ms
 }
 
 // `count` limits how many *pending* migrations to apply (default: all). Tests use
