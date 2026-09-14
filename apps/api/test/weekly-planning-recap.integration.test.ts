@@ -289,6 +289,16 @@ describe('planning · recap · grouped by the module the decision lives in', () 
     expect(g.detail).toMatch(/rotation/)
   })
 
+  it('says family night’s time the way a person would, not in 24-hour form', async () => {
+    const board = json(await call('GET', `/api/weekly-planning/familyNight?weekStart=${weekStart}`, kevin))
+    await call('POST', '/api/family-night/occurrence', kevin, {
+      date: board.date, assignments: [{ partId: board.parts[0].partId, personId: lottieId }],
+    })
+    const g = group(await recap(), 'familyNight')!
+    expect(g.headline).toMatch(/\b\d{1,2}:\d{2} [AP]M\b/)
+    expect(g.headline).not.toMatch(/\b\d{1,2}:\d{2}\b(?! [AP]M)/)
+  })
+
   it('reads a kid back only when both of their questions are answered', async () => {
     expect((await call('PUT', '/api/weekly-planning/kids/answer', kevin, {
       sessionId, personId: wallyId, focus: { text: 'Reading' },

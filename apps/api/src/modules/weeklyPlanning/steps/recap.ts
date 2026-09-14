@@ -90,6 +90,14 @@ const weekdayOf = (iso: string) => WD[new Date(`${iso.slice(0, 10)}T00:00:00Z`).
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 const join = (bits: (string | null | undefined)[]) => bits.filter(Boolean).join(' · ')
 
+/** A stored 'HH:MM' wall-clock time as people say it ('17:00' → '5:00 PM'); left alone if malformed. */
+function clockLabel(hhmm: string): string {
+  const m = /^(\d{1,2}):(\d{2})/.exec(hhmm)
+  if (!m) return hhmm
+  const h = Number(m[1])
+  return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`
+}
+
 function whenLabel(at: Date | string, allDay: boolean, tz: string): string {
   const d = new Date(at)
   const day = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' }).format(d)
@@ -288,7 +296,7 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
     const count = plannedNights.length + (trip ? 1 : 0)
     if (count) {
       const tripLine = trip
-        ? `${trip.personName ?? 'Nobody yet'} shops ${weekdayOf(trip.dueOn)}${trip.dueTime ? ` ${trip.dueTime}` : ''}`
+        ? `${trip.personName ?? 'Nobody yet'} shops ${weekdayOf(trip.dueOn)}${trip.dueTime ? ` ${clockLabel(trip.dueTime)}` : ''}`
         : null
       groups.push({
         key: 'meals',
@@ -385,7 +393,7 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
         groups.push({
           key: 'familyNight',
           label: 'Family Night',
-          headline: join([`${weekdayOf(night.date)} ${night.time}`, night.theme]),
+          headline: join([`${weekdayOf(night.date)} ${clockLabel(night.time)}`, night.theme]),
           detail: join([
             ...pinned.slice(0, DETAIL_CAP).map((p) => `${p.label} · ${p.personName}`),
             rotating ? `${plural(rotating, 'part')} left on rotation` : null,

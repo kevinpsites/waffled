@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Weekly Planning's recap says times the way people do.** Family night and the
+  shopping trip read "Thursday 6:30 PM", not "Thursday 18:30".
+
 ## [0.15.0] - 2026-09-11
 
 ### Added
