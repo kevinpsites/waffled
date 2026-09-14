@@ -70,6 +70,9 @@ export interface TasksBoardChore {
   // EVERY such day comes back, and for an OWNED chore too — that is what makes handing
   // one out reversible.
   pendingInstanceIds: string[]
+  // The earliest open day on or before today: what Done completes. Null when nothing is due
+  // yet, or when the chore needs a photo, which only the camera flow can finish.
+  completableInstanceId: string | null
 }
 
 export interface TasksBoardPerson {
@@ -134,9 +137,13 @@ async function choreRows(householdId: string): Promise<ChoreRowForBoard[]> {
 // Every materialized instance still open, per chore — ALL the days a hand-out has to fix,
 // and taking it back has to fix again. Not filtered by person_id, because a move is
 // reversible. Only 'pending' rows: a day somebody completed keeps its owner.
-async function pendingInstanceIds(householdId: string): Promise<Map<string, string[]>> {
-  const { rows } = await query<{ chore_id: string; ids: string[] }>(
-    `select ci.chore_id, array_agg(ci.id order by ci.due_on) as ids
+interface PendingDays { ids: string[]; due: string[] }
+const NO_PENDING: PendingDays = { ids: [], due: [] }
+
+async function pendingInstanceIds(householdId: string): Promise<Map<string, PendingDays>> {
+  const { rows } = await query<{ chore_id: string; ids: string[]; due: string[] }>(
+    `select ci.chore_id, array_agg(ci.id order by ci.due_on) as ids,
+            array_agg(ci.due_on::text order by ci.due_on) as due
        from chore_instances ci
        join chores c on c.id = ci.chore_id and c.deleted_at is null
       where ci.household_id = $1
@@ -148,14 +155,15 @@ async function pendingInstanceIds(householdId: string): Promise<Map<string, stri
       group by ci.chore_id`,
     [householdId]
   )
-  return new Map(rows.map((r) => [r.chore_id, r.ids]))
+  return new Map(rows.map((r) => [r.chore_id, { ids: r.ids, due: r.due }]))
 }
 
 function present(
   r: ChoreRowForBoard,
   days: string[],
   carriedOver: boolean,
-  pendingInstanceIds: string[]
+  pending: PendingDays,
+  today: string
 ): TasksBoardChore {
   return {
     id: r.id,
@@ -171,7 +179,8 @@ function present(
     rewardCurrency: r.reward_currency,
     requiresApproval: r.requires_approval,
     requiresPhoto: r.requires_photo,
-    pendingInstanceIds,
+    pendingInstanceIds: pending.ids,
+    completableInstanceId: !r.requires_photo && pending.due[0] && pending.due[0] <= today ? pending.ids[0] : null,
   }
 }
 
@@ -225,13 +234,13 @@ export async function getTasksBoard(householdId: string, weekStart: string): Pro
       // The strip is everything nobody has taken — deliberately NOT week-scoped. Up for
       // grabs is up for grabs until someone takes it.
       const place = placeInWeek(r, dates, today) ?? { days: [], carriedOver: false }
-      unassigned.push(present(r, place.days, place.carriedOver, pending.get(r.id) ?? []))
+      unassigned.push(present(r, place.days, place.carriedOver, pending.get(r.id) ?? NO_PENDING, today))
       continue
     }
     const place = placeInWeek(r, dates, today)
     if (!place) continue
     const list = byPerson.get(r.person_id) ?? []
-    list.push(present(r, place.days, place.carriedOver, pending.get(r.id) ?? []))
+    list.push(present(r, place.days, place.carriedOver, pending.get(r.id) ?? NO_PENDING, today))
     byPerson.set(r.person_id, list)
   }
 

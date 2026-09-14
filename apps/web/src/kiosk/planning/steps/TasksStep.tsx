@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { choresApi } from '../../../lib/api/chores'
 import { avTint } from '../../components/Avatar'
 import { Icon } from '../../icons'
 import { ChoreModal } from '../../components/ChoreModal'
@@ -79,6 +80,7 @@ function ChoreCard({
   onGive,
   onEdit,
   onDragStart,
+  onDone,
   symbol,
 }: {
   chore: PlanningTasksChore
@@ -89,6 +91,7 @@ function ChoreCard({
   onGive: (personId: string | null) => void
   onEdit?: () => void
   onDragStart: (e: React.PointerEvent) => void
+  onDone?: () => void
   symbol: (currency: string | null) => string
 }) {
   const settable = canAssign && dayIsSettable(chore)
@@ -136,6 +139,17 @@ function ChoreCard({
             </button>
           ) : (
             <span className={`wpt-chip ${unset ? 'is-unset' : ''}`}>{chipText}</span>
+          )}
+          {onDone && (
+            <button
+              type="button"
+              className="wpt-chip wpt-done"
+              aria-label={`Mark ${chore.title} done`}
+              disabled={frozen}
+              onClick={onDone}
+            >
+              ✓ Done
+            </button>
           )}
         </div>
         {chore.rewardAmount > 0 && (
@@ -224,6 +238,8 @@ function Body({ weekStart, setDecisionData, refresh, busy }: StepBodyProps) {
   // Moving a chore between people is chore.manage (the server enforces it), so don't offer
   // a tap that 403s.
   const canAssign = can(person, 'chore.manage')
+  // After an approval task is marked done it waits for a parent, so the card can't just vanish.
+  const [doneNote, setDoneNote] = useState<string | null>(null)
 
   const load = useCallback(() => {
     planningTasksApi
@@ -328,6 +344,22 @@ function Body({ weekStart, setDecisionData, refresh, busy }: StepBodyProps) {
   const frozen = busy || saving !== null
   const isDropTarget = (colKey: string) => !!drag && overCol === colKey && colKey !== (drag.from ?? 'unassigned')
 
+  const markDone = async (chore: PlanningTasksChore) => {
+    if (!chore.completableInstanceId || saving || busy) return
+    setSaving(chore.id)
+    try {
+      await choresApi.completeInstance(chore.completableInstanceId)
+      setGiveError(null)
+      setDoneNote(chore.requiresApproval ? `${chore.title} is waiting for a parent’s OK.` : null)
+      load()
+      refresh()
+    } catch {
+      setGiveError('That didn’t get marked done — try again.')
+    } finally {
+      setSaving(null)
+    }
+  }
+
   const cardProps = (chore: PlanningTasksChore, owner: string | null) => ({
     chore,
     owner,
@@ -340,12 +372,15 @@ function Body({ weekStart, setDecisionData, refresh, busy }: StepBodyProps) {
     // title change and a day change can't race each other on the same chore.
     onEdit: canAssign ? () => setEditing({ chore, owner }) : undefined,
     onDragStart: (e: React.PointerEvent) => startDrag(e, chore, owner),
+    // Not gated on chore.manage: any member may finish a task, the server's own rule.
+    onDone: chore.completableInstanceId ? () => void markDone(chore) : undefined,
     symbol,
   })
 
   return (
     <div className="wpt">
       {giveError && <div className="wp-err" role="alert">{giveError}</div>}
+      {doneNote && <div className="wpt-note" role="status">{doneNote}</div>}
       {/* The strip: everything nobody has taken, faces underneath. It is also a drop
           target, which is what makes a hand-out reversible by drag as well as by tap. */}
       <div

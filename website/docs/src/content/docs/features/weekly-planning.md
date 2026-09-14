@@ -134,7 +134,10 @@ line and it goes straight onto the list; the count beside it is what's still to 
 **8 · Tasks** — *"Who's doing what?"* A column per person, with everything nobody has taken in
 an **Up for grabs** strip across the top. Tap a face or drag a card to hand a chore over, or
 leave it up for grabs. Tap a task's name — or the day beside it — to open the chore editor and
-fix the title, the stars or the day. Each column shows what that person already carries.
+fix the title, the stars or the day. Each column shows what that person already carries. A
+task whose day has come has **✓ Done** — anyone can press it, as on the Tasks board — and one
+that needs a parent's OK says it's waiting for one. A task that needs a photo is finished from
+the Tasks board, where the camera is.
 
 **9 · Kids** — *"What's your week about?"* The step the children can read. A card per child
 with their week and their stars, and two questions: **one thing to focus on** (a goal they're

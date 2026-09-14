@@ -127,3 +127,8 @@
   .wpt { padding: 4px 16px 22px; }
   .wpt-strip-list, .wpt-cols { grid-template-columns: 1fr; }
 }
+
+/* Done sits beside the day chip as its own chip, tinted so it reads as an action. */
+.wpt-done { cursor: pointer; border: 0; background: var(--success-t, var(--panel)); color: var(--success, var(--ink)); font-weight: 750; }
+.wpt-done:disabled { opacity: .5; cursor: default; }
+.wpt-note { font-size: 12.5px; font-weight: 650; color: var(--ink-2); background: var(--panel); border-radius: var(--r-md); padding: 8px 12px; }

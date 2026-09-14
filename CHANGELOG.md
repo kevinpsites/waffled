@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shows "+N more"; tap it to see the rest of that day in place.
 - **Add to the grocery list from Weekly Planning's Meals step.** Type an item under the
   grocery line and it goes straight onto the list, without leaving the session.
+- **Mark tasks done in Weekly Planning's Tasks step.** A task whose day has come has a
+  **✓ Done** button; one that needs a parent's OK says it's waiting for one. Tasks that need
+  a photo are still finished from the Tasks board.
 
 ### Changed
 

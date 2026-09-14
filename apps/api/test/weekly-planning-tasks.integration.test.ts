@@ -40,7 +40,7 @@ function call(method: string, path: string, token?: string, body?: unknown) {
 const kevin = mint('dev|kevin')
 const json = (r: { body: string }) => JSON.parse(r.body)
 
-interface BoardChore { id: string; title: string; cadence: string; days: string[]; dueOn: string | null; carriedOver: boolean; pendingInstanceIds: string[]; requiresApproval: boolean; requiresPhoto: boolean }
+interface BoardChore { id: string; title: string; cadence: string; days: string[]; dueOn: string | null; carriedOver: boolean; pendingInstanceIds: string[]; requiresApproval: boolean; requiresPhoto: boolean; completableInstanceId: string | null }
 interface BoardPerson { id: string; name: string; recurringChores: number; chores: BoardChore[] }
 interface Board { weekStart: string; newTaskDay: string; people: BoardPerson[]; unassigned: BoardChore[] }
 const board = async () => json(await call('GET', '/api/weekly-planning/tasks', kevin)) as Board
@@ -364,6 +364,41 @@ describe('planning · tasks · a brand-new task is not carried over', () => {
   it('and one nobody has taken says the same in the strip', async () => {
     await call('POST', '/api/chores', kevin, { title: 'Ring the plumber', personId: null, rrule: null })
     expect((await board()).unassigned.find((c) => c.title === 'Ring the plumber')!.carriedOver).toBe(false)
+  })
+})
+
+// Done completes the earliest open day that has already come. A day still ahead can't be
+// done yet, and a photo chore needs the camera, so neither is offered.
+describe('planning · tasks · marking a task done', () => {
+  it('offers the open day that has come, and completing it takes the offer away', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Post the forms', personId: wallyId, rrule: null })
+    const find = async () => who(await board(), 'Wally').chores.find((c) => c.title === 'Post the forms')
+
+    const before = (await find())!
+    expect(before.completableInstanceId).toBe(before.pendingInstanceIds[0])
+
+    const done = await call('POST', `/api/chore-instances/${before.completableInstanceId}/complete`, kevin, {})
+    expect(done.statusCode).toBeLessThan(300)
+    expect((await find())?.completableInstanceId ?? null).toBeNull()
+  })
+
+  it('offers nothing for a day still ahead', async () => {
+    const created = await call('POST', '/api/chores', kevin, { title: 'Pack for the trip', personId: null, rrule: null })
+    const d = new Date(`${(await board()).weekStart}T00:00:00Z`)
+    d.setUTCDate(d.getUTCDate() + 13)
+    const later = d.toISOString().slice(0, 10)
+    expect((await call('PATCH', `/api/chores/${json(created).chore.id}`, kevin, { dueOn: later })).statusCode).toBe(200)
+
+    const card = (await board()).unassigned.find((c) => c.title === 'Pack for the trip')!
+    expect(card.pendingInstanceIds).toHaveLength(1)
+    expect(card.completableInstanceId).toBeNull()
+  })
+
+  it('offers nothing on a photo chore, which has to be finished with the camera', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Clean the bike', personId: wallyId, rrule: null, requiresPhoto: true })
+    const card = who(await board(), 'Wally').chores.find((c) => c.title === 'Clean the bike')!
+    expect(card.requiresPhoto).toBe(true)
+    expect(card.completableInstanceId).toBeNull()
   })
 })
 

@@ -123,6 +123,7 @@ final class PlanningTasksModel {
     /// Hand a chore over, or take it back with `nil`: the PATCH **and** an assign per open instance.
     typealias HandOut = (_ chore: WaffledAPI.PlanningTasksChore, _ personId: String?) async throws -> Void
     typealias SaveChore = (_ choreId: String?, _ body: [String: JSONValue]) async throws -> Void
+    typealias Complete = (_ instanceId: String) async throws -> Void
 
     /// What the chore editor is open on. `.add(personId: nil)` is the strip's own "Add a task".
     enum Composer: Identifiable {
@@ -147,6 +148,8 @@ final class PlanningTasksModel {
     private(set) var rev = 0
     /// Settable so `DismissibleErrorBanner`'s ✕ can clear it.
     var errorMessage: String?
+    /// Set after an approval task is marked done: it waits for a parent rather than finishing.
+    private(set) var notice: String?
 
     private(set) var composer: Composer?
     private var composerSaved = false
@@ -165,6 +168,7 @@ final class PlanningTasksModel {
     private let fetchBoard: FetchBoard
     private let handOut: HandOut
     private let saveChore: SaveChore
+    private let completeFn: Complete
 
     init(
         fetchBoard: @escaping FetchBoard = { weekStart in
@@ -177,11 +181,15 @@ final class PlanningTasksModel {
             let api = WaffledAPI()
             if let choreId { try await api.updateChore(id: choreId, body) }
             else { try await api.createChore(body) }
+        },
+        complete: @escaping Complete = { instanceId in
+            try await WaffledAPI().completeChore(id: instanceId)
         }
     ) {
         self.fetchBoard = fetchBoard
         self.handOut = handOut
         self.saveChore = saveChore
+        self.completeFn = complete
     }
 
     /// The crumb kept on the session record: COUNTS ONLY. The recap reads through to chores.
@@ -226,6 +234,24 @@ final class PlanningTasksModel {
         }
         assigned = personId != nil ? assigned + 1 : max(0, assigned - 1)
         // Re-read rather than bookkeeping: the column is the week, and the server owns it.
+        if let fresh = try? await fetchBoard(weekStart) { apply(fresh) }
+        return true
+    }
+
+    /// Completes the chore's open day through the chores module, then re-reads the board.
+    @discardableResult
+    func markDone(_ chore: WaffledAPI.PlanningTasksChore, weekStart: String) async -> Bool {
+        guard let instanceId = chore.completableInstanceId, savingChoreId == nil else { return false }
+        savingChoreId = chore.id
+        errorMessage = nil
+        defer { savingChoreId = nil }
+        do {
+            try await completeFn(instanceId)
+        } catch {
+            errorMessage = "That didn’t get marked done — try again."
+            return false
+        }
+        notice = chore.requiresApproval ? "\(chore.title) is waiting for a parent’s OK." : nil
         if let fresh = try? await fetchBoard(weekStart) { apply(fresh) }
         return true
     }

@@ -37,6 +37,13 @@ struct TasksStepView: View {
             if let message = model.errorMessage {
                 DismissibleErrorBanner(message: message) { model.errorMessage = nil }
             }
+            if let notice = model.notice {
+                Text(notice)
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            }
 
             if let board = model.board {
                 strip(board)
@@ -209,6 +216,17 @@ struct TasksStepView: View {
                     .accessibilityLabel("Set the day for \(chore.title)")
                 } else {
                     chip(chipText, unset: unset)
+                }
+                // Not gated on chore.manage: any member may finish a task, the server's own rule.
+                if chore.completableInstanceId != nil {
+                    Button {
+                        Task { await model.markDone(chore, weekStart: props.weekStart) }
+                    } label: {
+                        chip("✓ Done", unset: false)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(frozen)
+                    .accessibilityLabel("Mark \(chore.title) done")
                 }
                 Spacer(minLength: 4)
                 if chore.rewardAmount > 0 {
