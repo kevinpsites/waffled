@@ -309,7 +309,7 @@ struct PhoneDayTimeline: View {
     static let hourHeight: CGFloat = 56
     private let gutter: CGFloat = 46
     private let trailing: CGFloat = 12
-    private let topInset: CGFloat = 8
+    private let topInset: CGFloat = 12
 
     var body: some View {
         let ordered = PhoneCalendar.displayOrder(events)
@@ -319,13 +319,16 @@ struct PhoneDayTimeline: View {
         VStack(spacing: 0) {
             header(count: events.count + countdowns.count)
             if !allDay.isEmpty || !countdowns.isEmpty { allDayStrip(allDay) }
+            let opening = PhoneCalendar.openingHour(timed, hours: hours, tz: tz)
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
                     grid(timed, hours: hours)
                 }
-                .task(id: day) {
+                // Keyed on the opening hour too: on a cold launch the day's events sync in after
+                // the first render, and the grid should still open on them.
+                .task(id: "\(day)|\(opening)") {
                     try? await Task.sleep(for: .milliseconds(60))
-                    proxy.scrollTo(openingHour(timed, hours: hours), anchor: .top)
+                    proxy.scrollTo(opening, anchor: .top)
                 }
             }
         }
@@ -378,16 +381,20 @@ struct PhoneDayTimeline: View {
     private func grid(_ timed: [SyncedEvent], hours: ClosedRange<Int>) -> some View {
         let gridHeight = CGFloat(hours.count - 1) * Self.hourHeight + topInset * 2
         return ZStack(alignment: .topLeading) {
+            // Scroll targets sit `topInset` above each hour line, so the hour a day opens on
+            // keeps its label (drawn half above the line) on screen.
             VStack(spacing: 0) {
+                Color.clear.frame(height: topInset).id(hours.lowerBound)
                 ForEach(hours.lowerBound..<hours.upperBound, id: \.self) { h in
                     Button { onAddAt(date(atHour: h)) } label: { hourRow(h, height: Self.hourHeight) }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Add an event at \(hourLabel(h))")
-                        .id(h)
+                        .overlay(alignment: .bottom) {
+                            Color.clear.frame(height: topInset).allowsHitTesting(false).id(h + 1)
+                        }
                 }
                 hourRow(hours.upperBound, height: 1)
             }
-            .padding(.top, topInset)
             GeometryReader { geo in
                 let laneArea = geo.size.width - gutter - trailing
                 ForEach(TimeLanes.place(timed), id: \.event.id) { placed in
@@ -466,13 +473,6 @@ struct PhoneDayTimeline: View {
     private func hourOffset(_ date: Date, firstHour: Int) -> CGFloat {
         let c = Cal.gregorian(tz).dateComponents([.hour, .minute], from: date)
         return (CGFloat((c.hour ?? 0) - firstHour) + CGFloat(c.minute ?? 0) / 60) * Self.hourHeight + topInset
-    }
-
-    /// An hour before the first timed event, so the morning's context shows above it.
-    private func openingHour(_ timed: [SyncedEvent], hours: ClosedRange<Int>) -> Int {
-        guard let first = timed.compactMap(\.startsAt).min() else { return hours.lowerBound }
-        let hour = Cal.gregorian(tz).component(.hour, from: first)
-        return max(hours.lowerBound, min(hours.upperBound - 1, hour - 1))
     }
 
     private func date(atHour h: Int) -> Date {

@@ -155,6 +155,16 @@ enum PhoneCalendar {
         }
         return lo...hi
     }
+
+    /// An hour before the first timed event, so its lead-in shows above it; the top of the
+    /// grid when nothing is timed.
+    static func openingHour(_ events: [SyncedEvent], hours: ClosedRange<Int>, tz: TimeZone) -> Int {
+        guard let first = events.filter({ !$0.allDay }).compactMap(\.startsAt).min() else {
+            return hours.lowerBound
+        }
+        let hour = Cal.gregorian(tz).component(.hour, from: first)
+        return max(hours.lowerBound, min(hours.upperBound - 1, hour - 1))
+    }
 }
 
 /// Side-by-side lanes for overlapping timed events (interval partitioning: cluster

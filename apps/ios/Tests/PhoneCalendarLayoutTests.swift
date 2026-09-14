@@ -136,6 +136,20 @@ private func timed(_ id: String, _ start: String, minutes: Double? = 60) -> Sync
         #expect(hours == 7...23)
     }
 
+    @Test func theDayOpensAnHourBeforeTheFirstTimedEvent() {
+        let events = [timed("late", "2026-09-14 16:00"), timed("early", "2026-09-14 11:30")]
+        #expect(PhoneCalendar.openingHour(events, hours: 7...20, tz: ny) == 10)
+    }
+
+    @Test func anEmptyDayOpensAtTheTopOfTheGrid() {
+        #expect(PhoneCalendar.openingHour([], hours: 7...20, tz: ny) == 7)
+    }
+
+    @Test func theOpeningHourStaysInsideTheGrid() {
+        #expect(PhoneCalendar.openingHour([timed("dawn", "2026-09-14 05:00")], hours: 5...20, tz: ny) == 5)
+        #expect(PhoneCalendar.openingHour([timed("night", "2026-09-14 22:00")], hours: 7...23, tz: ny) == 21)
+    }
+
     @Test func anEventRunningPastMidnightStopsTheGridAtMidnight() {
         let hours = PhoneCalendar.dayHours([timed("a", "2026-09-14 22:00", minutes: 240)], tz: ny)
         #expect(hours == 7...24)
