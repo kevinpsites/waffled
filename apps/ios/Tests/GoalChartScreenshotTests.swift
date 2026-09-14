@@ -16,8 +16,12 @@ final class GoalChartScreenshotTests: XCTestCase {
         guard ProcessInfo.processInfo.environment["WAFFLED_CAPTURE_GOALS"] == "1" else {
             throw XCTSkip("Opt-in simulator screenshot capture")
         }
-        let ctx = try GoalChartFixture.context()
+        // Every "total" view, plus the count and habit signature views, and the Week → Month switch.
+        let total = try GoalChartFixture.context()
+        let count = try GoalChartFixture.context(type: "count", target: 40)
+        let habit = try GoalChartFixture.context(type: "habit", target: 5)
         let offered = GoalStats.availableViews(goalType: "total", timeframe: .long)
+        let cases: [(GoalDataContext, GoalViewKey?)] = offered.map { (total, $0) } + [(count, .collection), (habit, .consistency), (total, nil)]
         let sync = SyncManager(initialMembers: [])
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("GoalChartScreenshots")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -27,9 +31,10 @@ final class GoalChartScreenshotTests: XCTestCase {
         let switcher = SwitchBox()
         for (layout, width, kiosk) in layouts {
             // `nil` = open on Week, then switch to Month in place — the user's path.
-            for key in offered.map(Optional.some) + [nil] {
+            for (ctx, key) in cases {
                 switcher.key = .week
-                let card = SwitchHost(box: switcher, fixed: key) { GoalDataViewCard(ctx: ctx, view: $0, offered: offered) { _ in } }
+                let menu = GoalStats.availableViews(goalType: ctx.goal.goalType, timeframe: .long)
+                let card = SwitchHost(box: switcher, fixed: key) { GoalDataViewCard(ctx: ctx, view: $0, offered: menu) { _ in } }
                 let root = ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         placeholder(160)

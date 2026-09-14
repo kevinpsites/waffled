@@ -2,14 +2,14 @@ import XCTest
 import SwiftUI
 @testable import Waffled
 
-/// A "750 hours outside" total goal with a log every day from Jul 7 to Sep 14 2026.
+/// A family goal ("750 hours outside" by default) with a log every day from Jul 7 to Sep 14 2026.
 enum GoalChartFixture {
     static let today = "2026-09-14"
 
-    static func goal() throws -> WaffledAPI.GoalDetail {
+    static func goal(type: String = "total", target: Double = 750) throws -> WaffledAPI.GoalDetail {
         let json = """
         {"id":"g-outside","goalListId":null,"title":"750 Hours Outside","emoji":null,"category":"physical",
-         "goalType":"total","unit":"hours","target":750,"trackingMode":"shared_total","participantMode":"count_once",
+         "goalType":"\(type)","unit":"hours","target":\(target),"trackingMode":"shared_total","participantMode":"count_once",
          "targetBasis":"family","habitPeriod":null,"habitTargetPerPeriod":null,"isFeatured":false,"isSpotlight":false,
          "hasRewards":false,"totalProgress":563,"periodDone":null,"stepTotal":0,"stepDone":0,"loggedTodayBy":[],
          "streakDays":81,"deadline":"2026-12-31","createdAt":"2026-07-07T12:00:00Z","thisWeek":0.33,
@@ -24,8 +24,8 @@ enum GoalChartFixture {
         return try JSONDecoder().decode(WaffledAPI.GoalDetail.self, from: Data(json.utf8))
     }
 
-    static func context() throws -> GoalDataContext {
-        let goal = try goal()
+    static func context(type: String = "total", target: Double = 750) throws -> GoalDataContext {
+        let goal = try goal(type: type, target: target)
         var days: [DayEntry] = []
         var key = "2026-07-07"
         var i = 0
@@ -36,7 +36,7 @@ enum GoalChartFixture {
             key = GoalDateKey.addDays(key, 1)
             i += 1
         }
-        let stats = GoalStats.compute(today: today, startDate: "2026-07-07", endDate: "2026-12-31", target: 750, days: days)
+        let stats = GoalStats.compute(today: today, startDate: "2026-07-07", endDate: "2026-12-31", target: target, days: days)
         return GoalDataContext(
             goal: goal, stats: stats,
             personMap: Dictionary(uniqueKeysWithValues: goal.participants.map { ($0.personId, $0) }),
