@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Undo the one you meant in Loose ends.** Everything you've sent ahead to a later step is
+  listed newest first, each with its own **Undo**; past three, **Show all** opens the rest.
+
 ### Added
 
 - **Busy days open up in the Weekly Planning recap.** A day with more than four events

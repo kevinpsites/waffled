@@ -527,8 +527,8 @@ private func model(_ feed: LooseEndsFeed) -> PlanningLooseEndsModel {
         #expect(m.stepName("meals") == "meals")
     }
 
-    /// Only the last three, most recent first — and only the newest one is undoable.
-    @Test func theTrailKeepsTheLastThreeMostRecentFirst() async {
+    /// Everything sent, most recent first; each row undoes itself, and the view folds past three.
+    @Test func theTrailListsEverythingSentMostRecentFirst() async {
         let feed = LooseEndsFeed(snapshot: looseEndsView(notDone: []))
         let m = model(feed)
         let ids = ["a", "b", "c", "d"]
@@ -540,7 +540,7 @@ private func model(_ feed: LooseEndsFeed) -> PlanningLooseEndsModel {
 
         await m.load(weekStart: "2026-09-06", sessionId: session)
 
-        #expect(m.trail.map(\.title) == ["d", "c", "b"])
+        #expect(m.trail.map(\.title) == ["d", "c", "b", "a"])
     }
 }
 

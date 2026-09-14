@@ -213,10 +213,34 @@ describe('loose ends · routing, which is the step', () => {
     expect(screen.getByText(/→ Tasks/)).toBeInTheDocument()
     expect(screen.getByTestId('wp-le-trail-h')).toHaveTextContent(/come up at that step/i)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Undo sending Take the bins out' }))
     await waitFor(() => expect(routeCalls()).toHaveLength(2))
     expect(routeCalls()[1].body).toMatchObject({ kind: 'chore', id: 'c1', to: null })
     await waitFor(() => expect(screen.getByText('1 of 2')).toBeInTheDocument())
+  })
+
+  it('gives each sent item its own undo, so an older one comes back without the newest', async () => {
+    mockApi()
+    renderStep()
+    fireEvent.click(await screen.findByRole('button', { name: /Tasks/ }))
+    await screen.findByText('Return the library books')
+    fireEvent.click(screen.getByRole('button', { name: /Calendar/ }))
+    await waitFor(() => expect(routeCalls()).toHaveLength(2))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo sending Take the bins out' }))
+    await waitFor(() => expect(routeCalls()).toHaveLength(3))
+    expect(routeCalls()[2].body).toMatchObject({ kind: 'chore', id: 'c1', to: null })
+    expect(await screen.findByRole('button', { name: 'Undo sending Return the library books' })).toBeInTheDocument()
+  })
+
+  it('lists everything sent, collapsing past three behind “Show all”', async () => {
+    const routes = ['a', 'b', 'c', 'd'].map((id) => ({ kind: 'chore', id, title: `Thing ${id}`, source: 'notDone', to: 'tasks' }))
+    mockApi({ ...VIEW, routes })
+    renderStep()
+    expect(await screen.findByRole('button', { name: 'Undo sending Thing d' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Undo sending Thing a' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show all 4' }))
+    expect(screen.getByRole('button', { name: 'Undo sending Thing a' })).toBeInTheDocument()
   })
 
   it('seeds what was already routed from the step’s own persisted data', async () => {

@@ -127,6 +127,7 @@ function Body({ step, sessionId, weekStart, setDecisionData, busy }: StepBodyPro
   // deck or shrink "2 of 3" back to "1 of 2".
   const [order, setOrder] = useState<Record<LooseEndGroup, string[]>>({ notDone: [], parked: [] })
   const [note, setNote] = useState('')
+  const [trailOpen, setTrailOpen] = useState(false)
   const sections = useRef<Partial<Record<LooseEndGroup, HTMLElement | null>>>({})
 
   const load = useCallback(async () => {
@@ -281,7 +282,9 @@ function Body({ step, sessionId, weekStart, setDecisionData, busy }: StepBodyPro
   const other: LooseEndGroup = group === 'parked' ? 'notDone' : 'parked'
   const otherLabel = LOOSE_END_GROUPS.find((g) => g.key === other)!.label
   const groupNote = LOOSE_END_GROUPS.find((g) => g.key === group)!.note
-  const trail = routes.slice(-3).reverse()
+  // Everything sent this sitting, newest first, like the done section of a list: each row
+  // undoes itself, and past three it folds behind "Show all".
+  const trail = [...routes].reverse()
   // Step NAMES for the trail: "Not done"'s destination labels ARE the step titles, while
   // "Parked"'s are verbs ("Make it a task") which read wrong after an arrow — so the trail
   // always uses the notDone label, falling back to the key for a step whose module is off.
@@ -496,14 +499,25 @@ function Body({ step, sessionId, weekStart, setDecisionData, busy }: StepBodyPro
           <span className="wp-le-trail-h" data-testid="wp-le-trail-h">
             Sent ahead — they&rsquo;ll come up at that step later tonight
           </span>
-          {trail.map((r, i) => (
+          {(trailOpen ? trail : trail.slice(0, 3)).map((r, i) => (
             <span key={routeKey(r)} className={`wp-le-trail-i${i === 0 ? ' last' : ''}`}>
-              <b>{r.title}</b> → {stepName(r.to)}
+              <b>{r.title}</b> → {stepName(r.to)}{' '}
+              <button
+                type="button"
+                className="wp-le-undo"
+                aria-label={`Undo sending ${r.title}`}
+                disabled={disabled}
+                onClick={() => void undoRoute(r)}
+              >
+                Undo
+              </button>
             </span>
           ))}
-          <button type="button" className="wp-le-undo" disabled={disabled} onClick={() => void undoRoute(trail[0])}>
-            Undo
-          </button>
+          {!trailOpen && trail.length > 3 && (
+            <button type="button" className="wp-le-undo" onClick={() => setTrailOpen(true)}>
+              Show all {trail.length}
+            </button>
+          )}
         </div>
       )}
 

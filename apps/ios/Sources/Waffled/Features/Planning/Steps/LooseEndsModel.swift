@@ -300,8 +300,9 @@ final class PlanningLooseEndsModel {
         return group == .notDone ? d.notDone : d.parked
     }
 
-    /// The trail: what was just routed, most recent first, capped at three.
-    var trail: [WaffledAPI.LooseEndRoute] { Array(routes.suffix(3).reversed()) }
+    /// The trail: everything routed this session, most recent first. The view shows three
+    /// until it is opened, and every row undoes itself.
+    var trail: [WaffledAPI.LooseEndRoute] { Array(routes.reversed()) }
 
     /// Step NAMES for the trail. "Not done"'s destination labels ARE the step titles;
     /// "Parked"'s are verbs ("Make it a task"), which read wrong after an arrow — so the
