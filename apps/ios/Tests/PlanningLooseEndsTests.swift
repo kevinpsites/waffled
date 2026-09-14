@@ -178,6 +178,13 @@ private let noteId = "22222222-2222-4222-8222-222222222222"
         #expect(built.quiet.first?.label == "Drop it")
     }
 
+    /// Only a weekly habit that is behind lands in Loose ends, so the card says so rather than
+    /// "Goal", which read like a deadline.
+    @Test func aGoalCardIsLabelledAWeeklyHabit() {
+        #expect(LooseEndCopy.kindLabel("goal") == "Weekly habit")
+        #expect(LooseEndCopy.kindLabel("chore") == "Chore")
+    }
+
     @Test func anItemWithNoActionsStillRoutes() {
         let built = LooseEndChoice.build(
             item: item(kind: "chore", actions: []), group: .notDone, destinations: notDoneDests)

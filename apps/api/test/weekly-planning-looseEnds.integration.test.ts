@@ -800,6 +800,8 @@ describe('loose ends · habit goals short for the week', () => {
     expect(item).toBeTruthy()
     expect(item!.kind).toBe('goal')
     expect(item!.detail).toMatch(/0 of 3/)
+    // Why a goal is here at all: it is a weekly habit that is behind, not a deadline.
+    expect(item!.detail).toMatch(/behind this week/i)
     expect(item!.actions).toEqual(['done'])
   })
 

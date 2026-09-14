@@ -360,7 +360,8 @@ async function shortHabits(householdId: string): Promise<SourceEnd[]> {
       ownerId: g.targetBasis !== 'family' && g.participants?.length === 1
         ? (g.participants[0] as { personId: string }).personId
         : null,
-      detail: `${g.periodDone} of ${Math.max(1, g.habitTargetPerPeriod ?? 1)} this week`,
+      // Says WHY it is here: only a weekly habit that is behind lands in Loose ends.
+      detail: `Behind this week: ${g.periodDone} of ${Math.max(1, g.habitTargetPerPeriod ?? 1)}`,
       actions: ['done'] as LooseEndAction[],
     }))
 }

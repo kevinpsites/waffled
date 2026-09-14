@@ -267,6 +267,17 @@ describe('loose ends · routing, which is the step', () => {
   })
 })
 
+describe('loose ends · why a goal is on the deck', () => {
+  it('labels a goal card as a weekly habit, since that is the only kind of goal that lands here', async () => {
+    const habit = end({ key: 'goal:g1', kind: 'goal', id: 'g1', title: 'Run three times', emoji: null, detail: 'Behind this week: 1 of 3' })
+    mockApi({ ...VIEW, notDone: [habit], counts: { notDone: 1, parked: 1 } })
+    renderStep()
+    expect(await screen.findByText('Run three times')).toBeInTheDocument()
+    expect(screen.getByText('Weekly habit')).toBeInTheDocument()
+    expect(screen.getByText('Behind this week: 1 of 3')).toBeInTheDocument()
+  })
+})
+
 describe('loose ends · the deck holds its order', () => {
   it('an answered card stays answered, and the counter doesn’t start over', async () => {
     const fish = end({ key: 'chore:c0', id: 'c0', title: 'Feed the fish', detail: '1 day late' })

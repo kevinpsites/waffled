@@ -33,7 +33,7 @@ const KIND_LABEL: Record<LooseEnd['kind'], string> = {
   chore: 'Chore',
   list: 'List',
   rhythm: 'Rhythm',
-  goal: 'Goal',
+  goal: 'Weekly habit',
   parked: 'Parked',
 }
 

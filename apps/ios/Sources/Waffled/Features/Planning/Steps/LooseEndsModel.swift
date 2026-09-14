@@ -43,7 +43,7 @@ enum LooseEndCopy {
         case "chore": return "Chore"
         case "list": return "List"
         case "rhythm": return "Rhythm"
-        case "goal": return "Goal"
+        case "goal": return "Weekly habit"
         case "parked": return "Parked"
         default: return kind.capitalized
         }
