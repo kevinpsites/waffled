@@ -332,7 +332,7 @@ already-featured goal — a flag found lying around, not an answer, so only `set
 step still `pending` is unreached rather than "left alone on purpose", so only `skipped` and the
 deliberate non-answers are outcomes.
 
-### The finished week is read back, and the tick-list is the second reading
+### The finished week is read back
 
 The saved record started as ten green ticks against ten step names. That says the session
 finished and nothing whatever about the week it decided — reported as "the web recap page
@@ -363,8 +363,11 @@ Two things had to be decided to close it:
   each screen passes down, which would be a second opinion about something the week
   already knows and could drift between clients.
 
-The per-step list stays, underneath, because it is the only place that records which steps
-were skipped **on purpose** — an outcome, not a gap.
+The per-step list used to stay underneath as the record of steps skipped **on purpose**. It
+was dropped from the record on both clients: the read-back's *Left alone on purpose* card
+already names every skipped step, so the list only repeated it. It still renders when there
+is no read-back to show (the recap step turned off), since then it is the only record left.
+**Plan another week** now leads the screen, under the title.
 
 ### A row has to say where it came from and who has it
 

@@ -454,13 +454,15 @@ export function WeeklyPlanning() {
               {weekLabel(view.weekStart)} · saved {new Date(session.completedAt ?? session.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
             </div>
           </div>
+          <div className="wp-record-week">Plan another week <WeekStepper {...weekNav} /></div>
           {readBack && (
             <div className="wp-record-read">
               <StepErrorBoundary key="record-recap" title="the week">{readBack}</StepErrorBoundary>
             </div>
           )}
-          {readBack && <div className="wp-record-steps">Step by step</div>}
-          <div className="wp-record-list">
+          {/* The read-back already names what was left alone on purpose, skipped steps included;
+              the list only stands in when there is no read-back, with the recap step off. */}
+          {!readBack && <div className="wp-record-list">
             {decided.map((s) => (
               <div key={s.key} className={`wp-record-row ${s.status}`}>
                 <div className="wp-record-n">{s.status === 'done' ? '✓' : '–'}</div>
@@ -471,7 +473,7 @@ export function WeeklyPlanning() {
               </div>
             ))}
             {!decided.length && <div className="wp-record-row"><div className="wp-record-main"><s>Nothing was decided in this session.</s></div></div>}
-          </div>
+          </div>}
           <div className="wp-record-f">
             <button
               type="button" className="btn btn-ghost" disabled={busy}
@@ -483,7 +485,6 @@ export function WeeklyPlanning() {
               Reopen the session
             </button>
           </div>
-          <div className="wp-record-week">Plan another week <WeekStepper {...weekNav} /></div>
           <DiscardBlock {...discardProps} />
         </div>
       </div>

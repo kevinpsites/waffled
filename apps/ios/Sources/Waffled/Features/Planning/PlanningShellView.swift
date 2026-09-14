@@ -135,6 +135,7 @@ struct PlanningShellView: View {
                     Text(model.savedAtLabel.map { "\(model.weekLabel) · saved \($0)" } ?? model.weekLabel)
                         .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
+                planAnotherWeek
                 // The recap step's body already reads the week back, so the record renders
                 // that rather than a second summary — reached through the seam so a renamed
                 // step body can't leave this screen behind.
@@ -143,11 +144,10 @@ struct PlanningShellView: View {
                    let week = model.view?.weekStart {
                     planningStepBody(stepProps(recap, sessionId: sessionId, weekStart: week))
                         .id("record-recap")
-                }
-
-                // The tick-list is demoted, not deleted: it carries the one thing the
-                // recap can't — which steps were skipped on purpose.
-                VStack(alignment: .leading, spacing: 8) {
+                } else {
+                    // Only without a read-back: the recap's "left alone on purpose" otherwise
+                    // names every skipped step, and the list just repeated it.
+                    VStack(alignment: .leading, spacing: 8) {
                     SectionLabel(text: "What each step decided")
                     WaffledCard(padding: 4) {
                         VStack(spacing: 0) {
@@ -164,6 +164,7 @@ struct PlanningShellView: View {
                             }
                         }
                     }
+                    }
                 }
                 Button {
                     Task { await model.reopen() }
@@ -174,7 +175,6 @@ struct PlanningShellView: View {
                         .wfField()
                 }
                 .buttonStyle(.plain).disabled(model.busy || stepBusy)
-                planAnotherWeek
                 discardBlock
             }
             .frame(maxWidth: .infinity, alignment: .leading)

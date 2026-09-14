@@ -348,8 +348,7 @@ describe('weekly planning · the record', () => {
     }))
     draw()
     expect(await screen.findByText('The week is decided')).toBeTruthy()
-    expect(screen.getByText('Loose ends')).toBeTruthy()
-    expect(screen.getByText(/Skipped — a real answer/)).toBeTruthy()
+    expect(await screen.findByTestId('wpr-day-2026-09-06')).toBeTruthy()
     expect(screen.queryByText('Recap')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: /Reopen the session/ }))
@@ -375,10 +374,38 @@ describe('weekly planning · the record', () => {
     expect(screen.getByText('2 decisions')).toBeTruthy()
     expect(screen.getByTestId('wpr-alone-none:goals')).toBeTruthy()
 
-    // …and the per-step list survives underneath, because it is the only record of what
-    // was skipped ON PURPOSE.
-    expect(screen.getByText(/Skipped — a real answer/)).toBeTruthy()
+    // No step-by-step list under it: the read-back's "left alone on purpose" already names
+    // anything skipped.
+    expect(screen.queryByText('Step by step')).toBeNull()
+    expect(screen.queryByText(/Skipped — a real answer/)).toBeNull()
     expect(screen.getByRole('button', { name: /Reopen the session/ })).toBeTruthy()
+  })
+
+  it('offers another week first, above the read-back', async () => {
+    mockApi(baseView({
+      session: session({ status: 'completed', completedAt: '2026-09-06T17:40:00.000Z' }),
+      steps: [
+        step('looseEnds', 1, 'Loose ends', 'Intake', { status: 'done' }),
+        step('recap', 2, 'Recap', 'Close'),
+      ],
+    }))
+    draw()
+    const week = await screen.findByTestId('wpr-day-2026-09-06')
+    const another = screen.getByText(/Plan another week/)
+    expect(another.compareDocumentPosition(week) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('still lists the steps when there is no read-back to show', async () => {
+    mockApi(baseView({
+      session: session({ status: 'completed', completedAt: '2026-09-06T17:40:00.000Z' }),
+      steps: [
+        step('looseEnds', 1, 'Loose ends', 'Intake', { status: 'done' }),
+        step('calendar', 2, 'Calendar', 'Frame the week', { status: 'skipped' }),
+      ],
+    }))
+    draw()
+    expect(await screen.findByText('The week is decided')).toBeTruthy()
+    expect(screen.getByText(/Skipped — a real answer/)).toBeTruthy()
   })
 
   it('reads the record in the past tense, not "what tonight changed"', async () => {

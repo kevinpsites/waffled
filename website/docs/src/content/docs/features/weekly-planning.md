@@ -67,8 +67,9 @@ card at a time or all at once with **See all**:
 
 - **Not done** — what's already in the app and still open: overdue chores, items left
   unchecked on your lists, rhythms past due, and habit goals that are short for the week.
-  Each card says where it came from (Chore, List, Rhythm, Goal) and who already has it, so
-  one with no name on it reads as up for grabs.
+  Each card says where it came from (Chore, List, Rhythm, Weekly habit) and who already has
+  it, so one with no name on it reads as up for grabs. A goal is only here when it's a weekly
+  habit that's behind, and its card says so ("Behind this week: 1 of 3").
 - **Parked** — notes somebody wrote down during the week that don't live anywhere else yet.
   You can park a new one from here too.
 
@@ -169,13 +170,13 @@ parked.
 
 ## The saved week
 
-A finished session opens as **The week is decided**: each day with its dinner and events, what
-changed grouped by module, the notes nobody tagged, and what was left alone on purpose. Under
-that is the step-by-step list, which is where skipped steps are recorded. On the web, a line
-for a calendar, meals, tasks or goals decision opens that page.
+A finished session opens as **The week is decided**, with **Plan another week** right under
+the title. Below that is the week itself: each day with its dinner and events, what changed
+grouped by module, the notes nobody tagged, and what was left alone on purpose, skipped steps
+included. On the web, a line for a calendar, meals, tasks or goals decision opens that page.
 
-**Reopen the session** takes you back in to change something. The week arrows let you plan
-another week, and **Start this week over** is here too.
+**Reopen the session** takes you back in to change something, and **Start this week over** is
+here too.
 
 ## Where it works
 
