@@ -51,12 +51,19 @@ final class ChoresModel {
     func shift(_ days: Int) async { date = ChoreDates.shift(date, days); await load() }
     func goToday() async { date = ChoreDates.today(); await load() }
 
+    /// The status a tick moves a chore to: done and awaiting untick to pending; pending
+    /// completes, or waits for a parent's OK when the chore needs one.
+    nonisolated static func toggledStatus(_ inst: WaffledAPI.ChoreInstanceDTO) -> String {
+        if inst.status == "done" || inst.status == "awaiting" { return "pending" }
+        return inst.requiresApproval ? "awaiting" : "done"
+    }
+
     /// Optimistic, then reload to pick up the true stars/streak/status.
     func toggle(_ inst: WaffledAPI.ChoreInstanceDTO) async {
         guard let idx = instances.firstIndex(where: { $0.id == inst.id }) else { return }
         let prev = instances[idx].status
         let isComplete = prev == "done" || prev == "awaiting"
-        let next = isComplete ? "pending" : (inst.requiresApproval ? "awaiting" : "done")
+        let next = ChoresModel.toggledStatus(instances[idx])
         withAnimation { instances[idx].status = next }
         do {
             if isComplete { try await api.uncompleteChore(id: inst.id) }
@@ -872,20 +879,7 @@ struct ChoresView: View {
     }
 
     private func tick(isDone: Bool, isAwaiting: Bool, isGrabs: Bool, needsPhoto: Bool = false) -> some View {
-        Group {
-            if isAwaiting {
-                Text("⏳").font(.system(size: 16)).frame(width: 26, height: 26)
-            } else if isDone {
-                Image(systemName: "checkmark.circle.fill").font(.system(size: 22)).foregroundStyle(FamilyColor.person3.solid)
-            } else if needsPhoto && !isGrabs {
-                // 📷 on the incomplete tick, so it's clear a snapshot is needed to finish.
-                Image(systemName: "camera.circle").font(.system(size: 22)).foregroundStyle(WF.primary)
-            } else {
-                Image(systemName: isGrabs ? "hand.raised.circle" : "circle").font(.system(size: 22))
-                    .foregroundStyle(isGrabs ? WF.gold : WF.ink3)
-            }
-        }
-        .frame(width: 30, height: 30).contentShape(Rectangle())
+        ChoreTick(isDone: isDone, isAwaiting: isAwaiting, isGrabs: isGrabs, needsPhoto: needsPhoto)
     }
 
     private func claimPicker(_ inst: WaffledAPI.ChoreInstanceDTO) -> some View {

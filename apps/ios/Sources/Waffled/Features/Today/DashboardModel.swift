@@ -110,19 +110,30 @@ final class DashboardModel {
     private var loadGeneration = 0
     private var goalsGeneration = 0
 
+    /// Today's individual chores, behind the card's one-person view. The per-person
+    /// totals above stay the server's (stars are approval-aware), never summed from these.
+    private let choreInstancesD = RestDomain<[WaffledAPI.ChoreInstanceDTO]>([], isEmpty: \.isEmpty)
+    var choreInstances: [WaffledAPI.ChoreInstanceDTO] { choreInstancesD.value }
+    var choreInstancesState: RestState { choreInstancesD.state }
+
     private let fetchMeals: @Sendable (String) async throws -> [WaffledAPI.WeekEntryDTO]
     private let fetchChores: @Sendable () async throws -> [WaffledAPI.PersonChoresDTO]
     private let fetchGrocery: @Sendable () async throws -> [WaffledAPI.GroceryItemDTO]
     private let fetchGoals: @Sendable () async throws -> [WaffledAPI.Goal]
     private let fetchRecap: @Sendable () async throws -> [WaffledAPI.GoalRecapItem]
     private let fetchSuggestions: @Sendable () async throws -> [WaffledAPI.GoalSuggestionItem]
+    private let fetchChoreInstances: @Sendable (String) async throws -> [WaffledAPI.ChoreInstanceDTO]
+    /// (instance id, true = complete / false = uncomplete)
+    private let setChoreComplete: @Sendable (String, Bool) async throws -> Void
 
     init(fetchMeals: (@Sendable (String) async throws -> [WaffledAPI.WeekEntryDTO])? = nil,
          fetchChores: (@Sendable () async throws -> [WaffledAPI.PersonChoresDTO])? = nil,
          fetchGrocery: (@Sendable () async throws -> [WaffledAPI.GroceryItemDTO])? = nil,
          fetchGoals: (@Sendable () async throws -> [WaffledAPI.Goal])? = nil,
          fetchRecap: (@Sendable () async throws -> [WaffledAPI.GoalRecapItem])? = nil,
-         fetchSuggestions: (@Sendable () async throws -> [WaffledAPI.GoalSuggestionItem])? = nil) {
+         fetchSuggestions: (@Sendable () async throws -> [WaffledAPI.GoalSuggestionItem])? = nil,
+         fetchChoreInstances: (@Sendable (String) async throws -> [WaffledAPI.ChoreInstanceDTO])? = nil,
+         setChoreComplete: (@Sendable (String, Bool) async throws -> Void)? = nil) {
         let api = WaffledAPI()
         self.fetchMeals = fetchMeals ?? { try await api.mealsWeek(start: $0) }
         self.fetchChores = fetchChores ?? { try await api.choresToday() }
@@ -130,6 +141,10 @@ final class DashboardModel {
         self.fetchGoals = fetchGoals ?? { try await api.goalsIn(listId: nil) }
         self.fetchRecap = fetchRecap ?? { try await api.goalRecap() }
         self.fetchSuggestions = fetchSuggestions ?? { try await api.goalSuggestions() }
+        self.fetchChoreInstances = fetchChoreInstances ?? { try await api.choreInstances(date: $0) }
+        self.setChoreComplete = setChoreComplete ?? { id, complete in
+            if complete { try await api.completeChore(id: id) } else { try await api.uncompleteChore(id: id) }
+        }
     }
 
     /// Aggregate chore progress across the family (for the compact summary card).
@@ -137,17 +152,39 @@ final class DashboardModel {
     var choreTotal: Int { chores.reduce(0) { $0 + $1.total } }
     var choreStars: Int { chores.reduce(0) { $0 + $1.stars } }
 
+    /// The stored pick that means "the whole family" rather than one person.
+    nonisolated static let familyChoresKey = "family"
+
+    /// Whose chores the card shows; nil is the family summary. An empty `stored` means
+    /// "me", and a pick who is no longer a member falls back the same way.
+    nonisolated static func chorePersonId(stored: String, currentPersonId: String?, fallbackId: String?,
+                                          memberIds: Set<String>) -> String? {
+        if stored == familyChoresKey { return nil }
+        if memberIds.contains(stored) { return stored }
+        if let me = currentPersonId, memberIds.contains(me) { return me }
+        if let fallbackId, memberIds.contains(fallbackId) { return fallbackId }
+        return nil
+    }
+
+    /// One person's chores for the card. Up-for-grabs rows are left to the Chores screen,
+    /// which owns claiming them.
+    nonisolated static func chores(for personId: String,
+                                   in instances: [WaffledAPI.ChoreInstanceDTO]) -> [WaffledAPI.ChoreInstanceDTO] {
+        ChoresModel.sortChores(instances.filter { $0.personId == personId })
+    }
+
     /// Load the meal/chores/grocery domains concurrently. Per `RestDomain.apply`, a
     /// domain that fails keeps its prior value; one that succeeds empty clears (e.g.
     /// tonight's dinner was removed elsewhere → back to "No dinner planned").
     func load(todayKey: String) async {
         loadGeneration &+= 1
         let generation = loadGeneration
-        tonightD.beginLoading(); choresD.beginLoading(); groceryD.beginLoading()
+        tonightD.beginLoading(); choresD.beginLoading(); groceryD.beginLoading(); choreInstancesD.beginLoading()
         async let meals = RestFetch.result { [fetchMeals] in try await fetchMeals(todayKey) }
         async let people = RestFetch.result(fetchChores)
         async let grocery = RestFetch.result(fetchGrocery)
-        let (m, c, g) = await (meals, people, grocery)
+        async let instances = RestFetch.result { [fetchChoreInstances] in try await fetchChoreInstances(todayKey) }
+        let (m, c, g, i) = await (meals, people, grocery, instances)
         guard !Task.isCancelled, generation == loadGeneration else { return }
 
         tonightD.apply(m.map { entries in
@@ -156,6 +193,29 @@ final class DashboardModel {
         })
         choresD.apply(c.map { $0.filter { $0.total > 0 } })
         groceryD.apply(g.map { $0.filter { !$0.checked }.count })
+        choreInstancesD.apply(i)
+    }
+
+    /// Tick or untick in place, optimistically; a failed write puts the row back. The
+    /// caller bumps the chores bus on success so the totals and approvals reload.
+    @discardableResult
+    func toggleChore(_ inst: WaffledAPI.ChoreInstanceDTO) async -> Bool {
+        var rows = choreInstances
+        guard let idx = rows.firstIndex(where: { $0.id == inst.id }) else { return false }
+        let prev = rows[idx].status
+        rows[idx].status = ChoresModel.toggledStatus(rows[idx])
+        choreInstancesD.value = rows
+        do {
+            try await setChoreComplete(inst.id, prev == "pending")
+            return true
+        } catch {
+            var restored = choreInstances
+            if let i = restored.firstIndex(where: { $0.id == inst.id }) {
+                restored[i].status = prev
+                choreInstancesD.value = restored
+            }
+            return false
+        }
     }
 
     /// Load the goals card + the goal-calendar review queues concurrently (keyed to

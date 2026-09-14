@@ -15,9 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Your chores, ticked off from the iPhone's Today.** The chores card now opens on whoever
+  is signed in and lists their chores for today, each with a tick. Tap the card's title to
+  see someone else's list or go back to the family summary — the phone remembers which.
+  Chores that need a parent's OK wait for one, and a chore that needs a photo opens the
+  Tasks board to take it.
+
 ### Changed
 
 ### Fixed
+
+- **Ticking a photo chore on someone's Family profile** now opens the Tasks board to take
+  the photo, instead of failing quietly.
 
 ## [0.15.0] - 2026-09-11
 

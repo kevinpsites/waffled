@@ -423,28 +423,11 @@ struct PersonView: View {
     }
 
     private func choreRow(_ ch: WaffledAPI.ChoreInstanceDTO) -> some View {
-        let done = ch.status == "done"
-        let awaiting = ch.status == "awaiting"
-        return Button { Task { await model.toggleChore(ch) } } label: {
-            HStack(spacing: 12) {
-                Image(systemName: awaiting ? "hourglass.circle.fill" : (done ? "checkmark.circle.fill" : "circle"))
-                    .font(.system(size: 22))
-                    .foregroundStyle(done ? FamilyColor.person3.solid : (awaiting ? WF.gold : WF.ink3))
-                Text("\(ch.emoji.map { "\($0) " } ?? "")\(ch.choreTitle)")
-                    .font(.system(size: 15, weight: .semibold))
-                    .strikethrough(done, color: WF.ink3)
-                    .foregroundStyle(done ? WF.ink3 : WF.ink).lineLimit(1)
-                Spacer(minLength: 8)
-                if ch.rewardAmount > 0 {
-                    HStack(spacing: 2) {
-                        Text(sync.currencySymbol(ch.rewardCurrency)).font(.system(size: 11))
-                        Text("\(ch.rewardAmount)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
-                    }
-                }
-            }
-            .padding(.horizontal, 14).padding(.vertical, 11).contentShape(Rectangle())
+        ChoreCheckRow(chore: ch) {
+            // A photo chore can't finish from a tick; the Chores screen takes the snapshot.
+            if ch.requiresPhoto && ch.status == "pending" { path.append(.chores) }
+            else { Task { await model.toggleChore(ch); sync.bumpChores() } }
         }
-        .buttonStyle(.plain)
     }
 
     private var divider: some View { Rectangle().fill(WF.hair2).frame(height: 1).padding(.leading, 14) }

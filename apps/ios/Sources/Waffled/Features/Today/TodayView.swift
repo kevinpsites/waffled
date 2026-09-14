@@ -27,6 +27,9 @@ struct TodayView: View {
     /// A specific goal pinned to the Today card (empty = auto/featured). Per-device; the
     /// hero's grouped picker sets it. Falls back to the featured pick if the goal is gone.
     @AppStorage("waffled.todayGoalId") private var todayGoalId = ""
+    /// Whose chores the chores card shows, per device: empty = me, `familyChoresKey` = the
+    /// family summary, else a person id. Resolved by `DashboardModel.chorePersonId`.
+    @AppStorage("waffled.todayChorePersonId") private var todayChorePersonId = ""
     /// The resolved card layout (order + hidden) from the server, plus whether this
     /// member may edit the shared family default. Drives which cards render and how.
     @State private var cardOrder: [String] = ["agenda", "tonight", "chores", "grocery", "goals"]
@@ -483,13 +486,18 @@ struct TodayView: View {
         }
     }
 
+    /// Chores only pairs up in its family summary; one person's list needs the full width.
+    private func isSmallCard(_ key: String) -> Bool {
+        Self.smallCards.contains(key) && !(key == "chores" && chorePersonId != nil)
+    }
+
     private var cardRows: [CardRow] {
         let visible = cardOrder.filter { !hiddenCards.contains($0) && moduleAllows($0) }
         var rows: [CardRow] = []
         var i = 0
         while i < visible.count {
             let k = visible[i]
-            if Self.smallCards.contains(k), i + 1 < visible.count, Self.smallCards.contains(visible[i + 1]) {
+            if isSmallCard(k), i + 1 < visible.count, isSmallCard(visible[i + 1]) {
                 rows.append(.pair(k, visible[i + 1])); i += 2
             } else {
                 rows.append(.single(k)); i += 1
@@ -511,7 +519,13 @@ struct TodayView: View {
         case "chores":
             VStack(spacing: 8) {
                 RestStateNotice(state: dash.choresState, retry: reloadDashboard, compact: true)
-                Button { path.append(.chores) } label: { choresCard }.buttonStyle(.plain)
+                if let personId = chorePersonId {
+                    personChoresCard(personId)
+                } else {
+                    // The menu sits over the button rather than inside its label, so it gets its own taps.
+                    Button { path.append(.chores) } label: { choresCard }.buttonStyle(.plain)
+                        .overlay(alignment: .topLeading) { chorePersonMenu.padding(15) }
+                }
             }
         case "grocery":
             VStack(spacing: 8) {
@@ -562,7 +576,8 @@ struct TodayView: View {
     private var choresCard: some View {
         WaffledCard(padding: 15) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Family chores").font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2)
+                // Reserves the header row; `chorePersonMenu` is drawn over it.
+                choreMenuLabel.hidden()
                 HStack(spacing: -8) {
                     ForEach(dash.chores.prefix(3)) { p in
                         Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 30)
@@ -586,6 +601,92 @@ struct TodayView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+    }
+
+    private var chorePersonId: String? {
+        DashboardModel.chorePersonId(stored: todayChorePersonId, currentPersonId: sync.currentPersonId,
+                                     fallbackId: greetingMember?.id, memberIds: Set(sync.members.map(\.id)))
+    }
+
+    private var chorePersonTitle: String {
+        guard let id = chorePersonId, let m = sync.members.first(where: { $0.id == id }) else { return "Family chores" }
+        if id == sync.currentPersonId { return "My chores" }
+        let first = m.name.split(separator: " ").first.map(String.init) ?? m.name
+        return "\(first)’s chores"
+    }
+
+    /// Styled as the card's title rather than a `WaffledMenuPill`: it IS the title, and the
+    /// half-width family card has no room for a 15pt pill beside it.
+    private var choreMenuLabel: some View {
+        HStack(spacing: 5) {
+            if let id = chorePersonId, let m = sync.members.first(where: { $0.id == id }) {
+                Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 22)
+            }
+            Text(chorePersonTitle).font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2).lineLimit(1)
+            Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(WF.ink3)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private var chorePersonMenu: some View {
+        Menu {
+            Picker("Whose chores", selection: Binding(
+                get: { chorePersonId ?? DashboardModel.familyChoresKey },
+                set: { todayChorePersonId = $0 })) {
+                Label("Family", systemImage: "person.3").tag(DashboardModel.familyChoresKey)
+                ForEach(sync.members) { m in
+                    Text("\(m.emoji ?? "🙂") \(m.name)").tag(m.id)
+                }
+            }
+        } label: { choreMenuLabel }
+    }
+
+    private func personChoresCard(_ personId: String) -> some View {
+        let rows = DashboardModel.chores(for: personId, in: dash.choreInstances)
+        let summary = dash.chores.first { $0.id == personId }
+        let state = dash.choreInstancesState
+        return WaffledCard(padding: 15) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    chorePersonMenu
+                    Spacer(minLength: 8)
+                    Button { path.append(.chores) } label: {
+                        HStack(spacing: 3) {
+                            Text("All chores")
+                            Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
+                        }
+                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink3)
+                    }
+                    .buttonStyle(.plain)
+                }
+                if let summary, summary.total > 0 {
+                    ProgressBar(value: Double(summary.done) / Double(summary.total),
+                                tint: WF.primary, track: WF.primary.opacity(0.18))
+                    (Text("\(summary.done) of \(summary.total) · ").foregroundStyle(WF.ink3)
+                     + Text("★ \(summary.stars)").foregroundStyle(WF.gold).bold())
+                        .font(.system(size: 12.5))
+                }
+                RestStateNotice(state: state, retry: reloadDashboard, compact: true)
+                if rows.isEmpty {
+                    Text(state.isAuthoritative ? "Nothing on the list today"
+                         : state == .loading ? "Loading…" : "Unavailable")
+                        .font(.system(size: 12.5)).foregroundStyle(WF.ink3).padding(.top, 2)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(rows) { ch in
+                            ChoreCheckRow(chore: ch, inset: 0) { tapChore(ch) }
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+    }
+
+    private func tapChore(_ ch: WaffledAPI.ChoreInstanceDTO) {
+        // A photo chore can't finish from a tick; the Chores screen takes the snapshot.
+        if ch.requiresPhoto && ch.status == "pending" { path.append(.chores); return }
+        Task { if await dash.toggleChore(ch) { sync.bumpChores() } }
     }
 
     private var groceryCard: some View {
