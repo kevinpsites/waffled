@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Weekly Planning's recap says times the way people do.** Family night and the
   shopping trip read "Thursday 6:30 PM", not "Thursday 18:30".
+- **Purple, blue, green, red and pink events are easier to read.** Solid event chips on
+  those colors now use white text instead of black, on the calendar, Today and the
+  Weekly Planning recap. Gold and teal keep black, where white would wash out.
 
 ## [0.15.0] - 2026-09-11
 

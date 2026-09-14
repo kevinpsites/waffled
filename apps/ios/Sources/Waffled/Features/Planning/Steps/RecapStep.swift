@@ -104,16 +104,12 @@ struct RecapStepView: View {
         }
     }
 
-    /// Tinted by THE EVENT'S OWNER — through `sync.eventPalette`, which is why the payload
+    /// Painted by THE EVENT'S OWNER through `sync.eventPalette`, which is why the payload
     /// carries `participantIds` rather than a resolved colour. The strip has to agree with
-    /// the calendar it is describing.
-    ///
-    /// Always the TINTED treatment, matching the web's `ev-tint`: this is an agenda
-    /// surface, not a calendar grid, and a row of solid blocks would shout over the week's
-    /// dinners.
+    /// the calendar it is describing, so it follows the household's solid-vs-tinted style
+    /// the way the web's `ev-tint` does.
     private func eventChip(_ event: PlanningRecapEventRow) -> some View {
-        let paint = EventChipPaint(
-            sync.eventPalette.color(for: event.synced, fallback: WF.ink3), style: .tinted)
+        let paint = sync.eventPalette.chip(for: event.synced)
         return Text(event.title)
             .font(.system(size: 12.5, weight: .semibold))
             .foregroundStyle(paint.foreground)

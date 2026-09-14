@@ -1,11 +1,12 @@
 // Solid event chips must stay readable. The chip fill is the person's (or the
-// family's) color, so a fixed white foreground fails WCAG AA on most of the
-// palette — gold and teal are barely 2.2–2.5:1. Every chip therefore carries the
-// foreground that wins on *its* fill (`--ev-on` / `--ev-on-dark`), and this spec
-// pins the contract from both ends:
+// family's) color, so a fixed white foreground fails on gold and teal. Every chip
+// therefore carries the foreground that wins on *its* fill (`--ev-on` /
+// `--ev-on-dark`), and this spec pins the contract from both ends:
 //
 //   1. the math — every preset, the family default, the unassigned grey, and
-//      adversarial custom hexes clear 4.5:1 in light *and* dark;
+//      adversarial custom hexes reach a readable APCA contrast in light *and* dark,
+//      and saturated mid-tones (purple, blue) get white. WCAG 2's ratio picks black
+//      there by a hair, which reads worse — reported on the planning recap;
 //   2. the stylesheet — the solid rules really consume those custom properties
 //      and mix the dark fill by exactly the ratio the math assumes. Without (2)
 //      a revert to `color: var(--on-accent)` would leave (1) green and the
@@ -18,12 +19,16 @@ import {
   DEFAULT_FAMILY_COLOR,
   UNASSIGNED_COLOR,
   SOLID_DARK_MIX,
+  apcaContrast,
   contrastRatio,
   solidChipBackground,
   solidChipInk,
   evVars,
 } from './event-color'
 
+// APCA Lc for bold chip text. Any fill has an ink at or above ~54 (the black/white
+// crossover), so 50 is always reachable.
+const READABLE_LC = 50
 const AA = 4.5
 
 // Read the stylesheet as text (Vitest stubs CSS imports to an empty string, so
@@ -53,11 +58,24 @@ function token(name: string, theme: 'light' | 'dark'): string {
 // can produce), a pale wash, and near-black.
 const CASES = [...COLOR_SWATCHES, DEFAULT_FAMILY_COLOR, UNASSIGNED_COLOR, '#757575', '#FFF3B0', '#111111']
 
-describe('solid event chips clear WCAG AA on every color', () => {
+describe('solid event chips are readable on every color', () => {
   it.each(CASES)('%s is readable in light and dark', (hex) => {
     const ink = solidChipInk(hex)
-    expect(contrastRatio(solidChipBackground(hex, 'light'), ink.light)).toBeGreaterThanOrEqual(AA)
-    expect(contrastRatio(solidChipBackground(hex, 'dark'), ink.dark)).toBeGreaterThanOrEqual(AA)
+    expect(apcaContrast(ink.light, solidChipBackground(hex, 'light'))).toBeGreaterThanOrEqual(READABLE_LC)
+    expect(apcaContrast(ink.dark, solidChipBackground(hex, 'dark'))).toBeGreaterThanOrEqual(READABLE_LC)
+  })
+
+  it('puts white on the saturated mid-tones, where black reads worse', () => {
+    // WCAG 2's ratio narrowly prefers black on these (4.96 vs 4.23 on purple).
+    expect(solidChipInk('#8B5CF6').light).toBe('#FFFFFF')
+    expect(solidChipInk('#2F7FED').light).toBe('#FFFFFF')
+    expect(contrastRatio('#8B5CF6', '#000000')).toBeGreaterThan(contrastRatio('#8B5CF6', '#FFFFFF'))
+  })
+
+  it('keeps black on the light fills a fixed white failed on', () => {
+    expect(solidChipInk('#E0A500').light).toBe('#000000')
+    expect(solidChipInk('#14B8A6').light).toBe('#000000')
+    expect(contrastRatio('#E0A500', '#FFFFFF')).toBeLessThan(AA)
   })
 
   it('ships the eight presets it thinks it does', () => {
