@@ -115,6 +115,7 @@ final class DashboardModel {
     private let choreInstancesD = RestDomain<[WaffledAPI.ChoreInstanceDTO]>([], isEmpty: \.isEmpty)
     var choreInstances: [WaffledAPI.ChoreInstanceDTO] { choreInstancesD.value }
     var choreInstancesState: RestState { choreInstancesD.state }
+    private var togglingChoreIds: Set<String> = []
 
     private let fetchMeals: @Sendable (String) async throws -> [WaffledAPI.WeekEntryDTO]
     private let fetchChores: @Sendable () async throws -> [WaffledAPI.PersonChoresDTO]
@@ -200,8 +201,12 @@ final class DashboardModel {
     /// caller bumps the chores bus on success so the totals and approvals reload.
     @discardableResult
     func toggleChore(_ inst: WaffledAPI.ChoreInstanceDTO) async -> Bool {
+        // A second tap mid-write would race the first one's rollback, so it is ignored.
+        guard !togglingChoreIds.contains(inst.id) else { return false }
         var rows = choreInstances
         guard let idx = rows.firstIndex(where: { $0.id == inst.id }) else { return false }
+        togglingChoreIds.insert(inst.id)
+        defer { togglingChoreIds.remove(inst.id) }
         let prev = rows[idx].status
         rows[idx].status = ChoresModel.toggledStatus(rows[idx])
         choreInstancesD.value = rows
