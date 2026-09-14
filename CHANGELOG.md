@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Park a note from any Weekly Planning step.** The session footer has **📌 Park a note** (a
+  pin on iPhone): write the thought down, tag it for a step still ahead or leave it untagged for
+  the recap, and carry on with the step you're on.
 - **Set a goal's target for just this week.** In Weekly Planning's Goals step, a running count
   or total goal takes a target for the week you're planning — 10 hours this week toward 750 for
   the year — with what's been logged that week beside it. Next week's recap reads each one

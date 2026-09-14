@@ -518,6 +518,13 @@ unanswered note on every screen), and anything past six on one step (a nudge, no
 inbox). It is **not** scoped to the session either: surviving the session that wrote it is
 what parking is FOR.
 
+**Parking is also the shell's, on every step but two.** The footer's **📌 Park a note**
+(`ParkNoteComposer` / `PlanningParkNoteSheet`) posts to the same park route with the
+session id, offering the same forward-only tags as Horizon's bar — runnable steps after the
+current one, minus `looseEnds` and `recap` — so a tag always names a step still ahead
+tonight. It is hidden on `looseEnds` and `horizon`, which draw their own bar; a second one
+there would be two inputs for one table.
+
 ### Family night grew two columns, and one of them is subtler than it looks
 
 `assignments.detail` is the obvious half: the tables recorded only WHO had a part, and

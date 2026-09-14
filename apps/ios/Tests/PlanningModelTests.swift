@@ -81,6 +81,7 @@ private final class PlanningFeed {
 
     var fetchFails = false
     var decideFails = false
+    var parkFails = false
 
     var fetchCount = 0
     var fetchedWeeks: [String?] = []
@@ -90,6 +91,7 @@ private final class PlanningFeed {
     var completes: [String] = []
     var discards: [String] = []
     var resolves: [(kind: String, id: String, action: String, sessionId: String?)] = []
+    var parks: [(note: String, stepKey: String?, sessionId: String?)] = []
     var configSaves: [(dayOfWeek: Int?, time: String?, showOnToday: Bool?, steps: [String: Bool]?, lists: [String: Bool]?)] = []
     var listCandidates: [WaffledAPI.PlanningListCandidate] = [
         .init(id: "l1", name: "Repairs", emoji: "🔧", relevant: true),
@@ -176,6 +178,10 @@ private func makeModel(_ feed: PlanningFeed, defaults: UserDefaults) -> Planning
         },
         resolveLooseEnd: { kind, id, action, sessionId in
             feed.resolves.append((kind, id, action, sessionId))
+        },
+        parkNote: { note, stepKey, sessionId in
+            if feed.parkFails { throw PlanningCallFailure.rejected }
+            feed.parks.append((note, stepKey, sessionId))
         },
         defaults: defaults)
 }
@@ -593,6 +599,70 @@ private func scratchDefaults() -> UserDefaults {
         #expect(resolve.id == "note-1")
         #expect(resolve.action == "done")
         #expect(resolve.sessionId == "session-1")
+    }
+
+    // MARK: the park bar on every step
+
+    private func parkSteps() -> [WaffledAPI.PlanningStep] {
+        [
+            step("looseEnds", number: 1, act: "Intake"),
+            step("calendar", number: 2),
+            step("horizon", number: 3, title: "Horizon scan"),
+            step("familyNight", number: 4, requiresModule: "familyNight", available: false),
+            step("tasks", number: 5, title: "Tasks"),
+            step("recap", number: 6, act: "Close"),
+        ]
+    }
+
+    @Test func theParkBarOffersOnlyTheStepsStillAheadThatCanRaiseIt() async {
+        let feed = PlanningFeed(session: session(currentStep: "calendar"))
+        feed.steps = parkSteps()
+        let model = makeModel(feed, defaults: scratchDefaults())
+        await model.load()
+
+        #expect(model.showsParkBar)
+        #expect(model.parkTags.map(\.stepKey) == ["horizon", "tasks"])
+        #expect(model.parkTags.map(\.label) == ["Horizon scan", "Tasks"])
+    }
+
+    @Test func theParkBarIsLeftToTheStepsThatHaveTheirOwn() async {
+        for key in ["looseEnds", "horizon"] {
+            let feed = PlanningFeed(session: session(currentStep: key))
+            feed.steps = parkSteps()
+            let model = makeModel(feed, defaults: scratchDefaults())
+            await model.load()
+            #expect(!model.showsParkBar, "\(key) has its own bar")
+        }
+    }
+
+    @Test func parkingANoteSendsItsTagAndThisSessionThenRefreshes() async throws {
+        let feed = PlanningFeed(session: session(currentStep: "calendar"))
+        feed.steps = parkSteps()
+        let model = makeModel(feed, defaults: scratchDefaults())
+        await model.load()
+        let fetched = feed.fetchCount
+
+        let ok = await model.parkNote("pack for camping", stepKey: "horizon")
+
+        #expect(ok)
+        let park = try #require(feed.parks.first)
+        #expect(park.note == "pack for camping")
+        #expect(park.stepKey == "horizon")
+        #expect(park.sessionId == "session-1")
+        #expect(feed.fetchCount == fetched + 1)
+    }
+
+    @Test func aRefusedParkSaysSoAndKeepsTheComposerOpen() async {
+        let feed = PlanningFeed(session: session(currentStep: "calendar"))
+        feed.steps = parkSteps()
+        feed.parkFails = true
+        let model = makeModel(feed, defaults: scratchDefaults())
+        await model.load()
+
+        let ok = await model.parkNote("pack for camping", stepKey: nil)
+
+        #expect(!ok)
+        #expect(model.parkError != nil)
     }
 
     // MARK: config

@@ -646,3 +646,59 @@ describe('the parked-note handoff', () => {
     })
   })
 })
+
+describe('weekly planning · parking a note from any step', () => {
+  const onCalendar = () => session({ currentStep: 'calendar' })
+
+  it('parks a note tagged for a step still ahead, against this session', async () => {
+    mockApi(baseView({ session: onCalendar() }))
+    draw()
+    fireEvent.click(await screen.findByRole('button', { name: /park a note/i }))
+
+    const card = await screen.findByTestId('wp-park')
+    fireEvent.change(within(card).getByLabelText('The note'), { target: { value: 'pack for camping' } })
+    fireEvent.click(within(card).getByRole('button', { name: 'Horizon scan' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Park it' }))
+
+    await waitFor(() => {
+      const post = sent('POST', '/loose-ends/parked')[0]
+      expect(post?.body).toEqual({ note: 'pack for camping', stepKey: 'horizon', sessionId: 's1' })
+    })
+    await waitFor(() => expect(screen.queryByTestId('wp-park')).toBeNull())
+  })
+
+  it('offers only the steps still ahead that can raise it, and No tag by default', async () => {
+    mockApi(baseView({ session: onCalendar() }))
+    draw()
+    fireEvent.click(await screen.findByRole('button', { name: /park a note/i }))
+
+    const tags = within(await screen.findByTestId('wp-park')).getByRole('group')
+    const labels = within(tags).getAllByRole('button').map((b) => b.textContent)
+    // Not Loose ends or Calendar (behind you), not Family night (module off), not Recap.
+    expect(labels).toEqual(['Horizon scan', 'No tag'])
+    expect(within(tags).getByRole('button', { name: 'No tag' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('sends no tag when none is chosen', async () => {
+    mockApi(baseView({ session: onCalendar() }))
+    draw()
+    fireEvent.click(await screen.findByRole('button', { name: /park a note/i }))
+    const card = await screen.findByTestId('wp-park')
+    fireEvent.change(within(card).getByLabelText('The note'), { target: { value: 'call grandma' } })
+    fireEvent.click(within(card).getByRole('button', { name: 'Park it' }))
+
+    await waitFor(() =>
+      expect(sent('POST', '/loose-ends/parked')[0]?.body).toEqual({ note: 'call grandma', sessionId: 's1' })
+    )
+  })
+
+  it('is left to the steps that already have their own park bar', async () => {
+    for (const currentStep of ['looseEnds', 'horizon']) {
+      mockApi(baseView({ session: session({ currentStep }) }))
+      const { unmount } = draw()
+      await waitFor(() => expect(screen.getByText(/of 4/)).toBeTruthy())
+      expect(screen.queryByRole('button', { name: /park a note/i })).toBeNull()
+      unmount()
+    }
+  })
+})

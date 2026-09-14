@@ -14,6 +14,7 @@ struct PlanningShellView: View {
 
     @State private var model = PlanningModel()
     @State private var sheet = false
+    @State private var parking = false
     @State private var confirmDiscard = false
     /// The verb the step on screen has lent the parked-note banner, paired with the step
     /// that lent it, so a verb whose owner is off screen is simply not READ. Do NOT swap
@@ -37,6 +38,13 @@ struct PlanningShellView: View {
             // once per appearance, so this screen would sit on launch-time data.
             .task(id: sync.refreshRev) { await model.load() }
             .sheet(isPresented: $sheet) { agendaSheet }
+            .sheet(isPresented: $parking, onDismiss: { model.clearParkError() }) {
+                PlanningParkNoteSheet(
+                    tags: model.parkTags,
+                    errorMessage: model.parkError,
+                    onPark: { note, stepKey in await model.parkNote(note, stepKey: stepKey) },
+                    onClose: { parking = false })
+            }
     }
 
     @ViewBuilder private var content: some View {
@@ -300,6 +308,16 @@ struct PlanningShellView: View {
                     .font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink3)
             }
             .buttonStyle(.plain).disabled(model.busy || stepBusy)
+
+            if model.showsParkBar {
+                Button { parking = true } label: {
+                    Image(systemName: "pin")
+                        .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink3)
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.plain).disabled(model.busy || stepBusy)
+                .accessibilityLabel("Park a note")
+            }
 
             if let step = model.current, let sessionId = model.session?.id, let week = model.view?.weekStart {
                 planningStepFooterExtra(stepProps(step, sessionId: sessionId, weekStart: week))

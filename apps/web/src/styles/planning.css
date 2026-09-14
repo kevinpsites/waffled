@@ -116,6 +116,12 @@
 .wp-pne-acts { display: flex; gap: 7px; }
 .wp-pne-act { padding: 7px 13px; font-size: 12.5px; }
 
+/* The footer's "Park a note" composer (ParkNoteComposer). */
+.wp-park { display: flex; flex-direction: column; gap: 10px; width: min(460px, 100%); text-align: left; }
+.wp-park-t { font-size: 20px; font-weight: 700; color: var(--ink); padding-right: 28px; }
+.wp-park-says { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.wp-park-says b { color: var(--ink); font-weight: 800; }
+
 .wp-foot {
   display: flex; align-items: center; gap: 12px;
   padding: 14px 28px; background: var(--card); border-top: 1px solid var(--hair);

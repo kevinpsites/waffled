@@ -18,6 +18,7 @@ import { StepPlaceholder } from './planning/StepPlaceholder'
 import { StepErrorBoundary } from './planning/StepErrorBoundary'
 import { HandoffCtx, type HandoffAction } from './planning/handoff'
 import { ParkedNoteEditor, type ParkedTag } from './planning/ParkedNoteEditor'
+import { ParkNoteComposer } from './planning/ParkNoteComposer'
 import '../styles/planning.css'
 
 // Weekly Planning — the session shell: a step counter, a title, the step's ONE question and
@@ -238,6 +239,17 @@ const writePaused = (id: string | null) => {
   } catch { /* the pause is a convenience; losing it costs a resumed session */ }
 }
 
+// These two steps carry their own park bar, so the footer's stays off there.
+const OWN_PARK_BAR = new Set(['looseEnds', 'horizon'])
+
+/** The steps still ahead tonight that can raise a parked note — never Loose ends or the Recap. */
+function parkTags(runnable: PlanningStep[], currentKey: string): ParkedTag[] {
+  return runnable
+    .slice(runnable.findIndex((s) => s.key === currentKey) + 1)
+    .filter((s) => s.key !== 'looseEnds' && s.key !== 'recap')
+    .map((s) => ({ stepKey: s.key, label: s.title }))
+}
+
 export function WeeklyPlanning() {
   const { step: urlStep } = useParams<{ step?: string }>()
   const [search] = useSearchParams()
@@ -249,6 +261,7 @@ export function WeeklyPlanning() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const [parking, setParking] = useState(false)
   // What the step wants kept on the record. A ref, not state: it only matters at the moment
   // the answer is sent, so keystrokes inside a step must not re-render the session.
   const decisionData = useRef<Record<string, unknown> | null>(null)
@@ -586,6 +599,11 @@ export function WeeklyPlanning() {
 
       <div className="wp-foot">
         <button type="button" className="wp-skip" disabled={busy} onClick={() => answer('skipped')}>Skip this step</button>
+        {current && !OWN_PARK_BAR.has(current.key) && (
+          <button type="button" className="wp-skip wp-park-open" disabled={busy} onClick={() => setParking(true)}>
+            📌 Park a note
+          </button>
+        )}
         {stepMod?.FooterExtra && stepProps && <stepMod.FooterExtra {...stepProps} />}
         <div className="wp-foot-sp" />
         <button type="button" className="btn btn-primary wp-primary" disabled={busy} onClick={() => answer('done')}>
@@ -593,6 +611,18 @@ export function WeeklyPlanning() {
           {next && <span className="wp-next">· next: {next.title}</span>}
         </button>
       </div>
+
+      {parking && current && (
+        <ParkNoteComposer
+          tags={parkTags(runnable, current.key)}
+          sessionId={session.id}
+          onClose={() => setParking(false)}
+          onParked={() => {
+            setParking(false)
+            refetch()
+          }}
+        />
+      )}
 
       {sheet && (
         <div className="modal-overlay" onClick={closeSheet}>

@@ -38,6 +38,7 @@ final class PlanningModel {
     typealias ResolveLooseEnd = (
         _ kind: String, _ id: String, _ action: String, _ sessionId: String?
     ) async throws -> Void
+    typealias ParkNote = (_ note: String, _ stepKey: String?, _ sessionId: String?) async throws -> Void
 
     private let fetchView: FetchView
     private let fetchConfig: FetchConfig
@@ -48,6 +49,7 @@ final class PlanningModel {
     private let completeSessionCall: CompleteSession
     private let discardSessionCall: DiscardSession
     private let resolveLooseEndCall: ResolveLooseEnd
+    private let parkNoteCall: ParkNote
 
     private let defaults: UserDefaults
 
@@ -84,6 +86,9 @@ final class PlanningModel {
             try await WaffledAPI().resolveWeeklyPlanningLooseEnd(
                 kind: kind, id: id, action: action, sessionId: sessionId)
         },
+        parkNote: @escaping ParkNote = { note, stepKey, sessionId in
+            _ = try await WaffledAPI().parkPlanningNote(note: note, stepKey: stepKey, sessionId: sessionId)
+        },
         defaults: UserDefaults = .standard
     ) {
         self.fetchView = fetchView
@@ -95,6 +100,7 @@ final class PlanningModel {
         self.completeSessionCall = completeSession
         self.discardSessionCall = discardSession
         self.resolveLooseEndCall = resolveLooseEnd
+        self.parkNoteCall = parkNote
         self.defaults = defaults
         self.pausedSessionId = defaults.string(forKey: Self.pausedKey)
     }
@@ -106,6 +112,8 @@ final class PlanningModel {
     private(set) var loaded = false
     private(set) var busy = false
     private(set) var errorMessage: String?
+    /// Why the footer's park composer couldn't park; the composer stays open on what was typed.
+    private(set) var parkError: String?
 
     /// The week the NEXT fetch asks for; `nil` means the server's default week.
     private(set) var requestedWeek: String?
@@ -143,6 +151,20 @@ final class PlanningModel {
     var next: WaffledAPI.PlanningStep? {
         guard let key = current?.key else { return nil }
         return PlanningFormat.nextStepAfter(steps, key: key)
+    }
+
+    /// Loose ends and Horizon carry their own park bar, so the footer's stays off there.
+    var showsParkBar: Bool {
+        guard let key = current?.key else { return false }
+        return key != "looseEnds" && key != "horizon"
+    }
+
+    /// The steps still ahead tonight that can raise a parked note — never Loose ends or the Recap.
+    var parkTags: [PlanningParkedTag] {
+        guard let key = current?.key else { return [] }
+        return runnable.drop(while: { $0.key != key }).dropFirst()
+            .filter { $0.key != "looseEnds" && $0.key != "recap" }
+            .map { PlanningParkedTag(stepKey: $0.key, label: $0.title) }
     }
 
     var position: Int { current.flatMap { stepNumbers[$0.key] } ?? 0 }
@@ -362,6 +384,22 @@ final class PlanningModel {
     }
 
     // MARK: - Parked notes (the shell's handoff banner)
+
+    /// Park a note from whichever step is on screen; true when the server took it.
+    func parkNote(_ note: String, stepKey: String?) async -> Bool {
+        guard let sessionId = session?.id else { return false }
+        parkError = nil
+        do {
+            try await parkNoteCall(note, stepKey, sessionId)
+            await load()
+            return true
+        } catch {
+            parkError = "That note didn’t park — try again."
+            return false
+        }
+    }
+
+    func clearParkError() { parkError = nil }
 
     /// Settle one parked note; true when the server took it, so the banner can hide the row.
     @discardableResult

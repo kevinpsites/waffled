@@ -43,6 +43,10 @@ Inside the session, every step looks the same:
 - **Skip this step** on the left of the footer, and the step's answer on the right —
   **All handled**, **Looks right**, **Accept**, **Handed out** — with the next step's name
   beside it
+- **📌 Park a note** in the footer (a pin on iPhone), so a thought that comes up mid-step
+  gets written down without leaving it. Tag it for a step still ahead and that step opens with
+  it; with no tag it waits in the Recap and at next week's Loose ends. Loose ends and Horizon
+  scan have their own bar, so the footer leaves it out there.
 
 Skipping is a real answer. The record shows which steps you skipped on purpose.
 
