@@ -18,9 +18,12 @@ gated off**.
 - 📅 **Native events** — create / edit / delete, with **multiple participants per
   event** (stacked avatars, each in the person's color) and a **per-person filter**.
 - 🧳 **Multi-day events** — an all-day event that runs several days (a trip synced from
-  Google, say) draws as one bar across its days in the iPhone month grid, and shows on each day
-  of the week cards, day view, agenda and Today, and only fades as past once its last day is over. On iPhone and iPad the event editor
-  has an **Ends** field: a last day for an all-day event, or an end date and time for a timed one.
+  Google, say) draws as one bar across its days in the month view on iPhone, iPad and web; a
+  trip that runs into the next week continues as a bar on that row. On iPhone and iPad it also
+  shows on each day of the week cards, day view, agenda and Today, and only fades as past once its
+  last day is over; on web, picking any of its days lists it in the month's day panel. On iPhone
+  and iPad the event editor's **When** card holds **All day**, **Starts** and **Ends**: a last
+  day for an all-day event, or an end date and time for a timed one. Tap a date or time to pick it.
 - 🎨 **Color you control** — solid or tinted event chips, any custom hex per person,
   and a **family color** for events that involve everyone. See
   [Colors on the calendar](#colors-on-the-calendar).
