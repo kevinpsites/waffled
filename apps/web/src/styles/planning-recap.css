@@ -105,7 +105,7 @@ a.wpr-row:hover { background: var(--panel); border-radius: var(--r-md); }
   color: var(--ink-3); border: 1px solid var(--hair); border-radius: 999px; padding: 2px 8px;
 }
 
-.wpr-acts { grid-column: 3; display: flex; gap: 6px; align-items: center; }
+.wpr-acts { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .wpr-act { padding: 5px 10px; font-size: 12px; white-space: nowrap; }
 .wpr-act.is-drop { color: var(--ink-3); }
 
