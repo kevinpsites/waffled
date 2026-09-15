@@ -10,7 +10,8 @@ import { query, getPool } from '../../platform/db'
 import { log } from '../../platform/logger'
 import { InvalidReferenceError } from '../../platform/household-refs'
 import { createEvent, type EventRow } from '../events/events'
-import { firstSlotOnOrAfter, isValidRrule, slotsBetween } from '../calendar/recurrence'
+import { DateTime } from 'luxon'
+import { firstSlotOnOrAfter, isValidRrule, localDayKey, slotsBetween } from '../calendar/recurrence'
 import { type Tenant } from '../households/households'
 
 export type SatisfiedBy = 'completion' | 'scheduling'
@@ -85,6 +86,12 @@ export interface RhythmWithPeriod extends Rhythm {
    * which is why the write paths refuse one on a rhythm.
    */
   hasSeries: boolean
+  /**
+   * The day this period's rule points at inside the booking window, as a household-local
+   * date. Null without a rule. A suggestion only: a booking on any other day inside the
+   * window settles the period all the same.
+   */
+  suggestedOn: string | null
 }
 
 interface Row {
@@ -185,6 +192,7 @@ export async function listRhythms(householdId: string): Promise<RhythmWithPeriod
     booked_at: Date | null
     booked_all_day: boolean | null
     has_series: boolean
+    tz: string
   }>(
     `with hh as (select timezone from households where id = $1),
           base as (
@@ -193,14 +201,15 @@ export async function listRhythms(householdId: string): Promise<RhythmWithPeriod
                 -- Tiled to the household's OWN today: against a bare now() the grid rolls
                 -- over at UTC midnight, mid-evening for a household west of UTC.
                 ${askingPeriodStart('(now() at time zone hh.timezone)::date')}
-              end as period_start
+              end as period_start,
+              hh.timezone as tz
          from rhythms r, hh
         where r.household_id = $1 and r.deleted_at is null
      )
      select b.id, b.title, b.emoji, b.notes, b.person_id, b.satisfied_by, b.every::text as every,
             b.starts_on, b.auto_schedule, b.rrule, b.book_within::text as book_within, b.lead_time::text as lead_time,
             b.last_completed_at, b.next_due_at, b.is_active,
-            b.period_start,
+            b.period_start, b.tz,
             case when b.period_start is not null then (b.period_start + b.every)::date end as period_end,
             -- Where the period stops accepting bookings. book_within is null on every
             -- rhythm that predates it, and coalescing to every is what makes those
@@ -284,6 +293,7 @@ export async function listRhythms(householdId: string): Promise<RhythmWithPeriod
     bookedAt: r.booked_at ? r.booked_at.toISOString() : null,
     bookedAllDay: r.booked_at ? (r.booked_all_day ?? false) : null,
     hasSeries: r.has_series ?? false,
+    suggestedOn: suggestedOn(r.rrule, dateText(r.starts_on), dateText(r.period_start), dateText(r.window_end), r.tz),
   }))
 }
 
@@ -336,6 +346,25 @@ async function anchorInstant(householdId: string, startsOn: string, rrule: strin
   // the master landed on the Wednesday — contradicting the day the chips had just been
   // used to choose. Advance to the first slot the rule actually allows.
   return (firstSlotOnOrAfter(anchor, rrule, rows[0].tz) ?? anchor).toISOString()
+}
+
+// The first slot a rhythm's rule allows inside [periodStart, windowEnd), as a
+// household-local date. Walked from the same DTSTART anchorInstant derives, so the
+// suggestion and a generated series agree. Null when there is no rule or nothing lands.
+function suggestedOn(
+  rrule: string | null, startsOn: string | null, periodStart: string | null, windowEnd: string | null, tz: string,
+): string | null {
+  if (!rrule || !startsOn || !periodStart || !windowEnd) return null
+  const zone = tz || 'UTC'
+  const local = (date: string, hour: number) => DateTime.fromISO(date, { zone }).set({ hour }).toJSDate()
+  try {
+    const anchor = local(startsOn, AUTO_SCHEDULE_HOUR)
+    const dtstart = firstSlotOnOrAfter(anchor, rrule, zone) ?? anchor
+    const slot = slotsBetween(rrule, dtstart, zone, local(periodStart, 0), local(windowEnd, 0))[0]
+    return slot ? localDayKey(slot, zone) : null
+  } catch {
+    return null
+  }
 }
 
 // Validation lives here rather than in the route so the shape rules sit next to the
@@ -427,7 +456,9 @@ async function assertUsableLeadTime(leadTime: string): Promise<void> {
 const PERIODS_CHECKED = 12
 
 /**
- * Refuse an auto-schedule rule that leaves a period with nothing in it.
+ * Refuse a rule that leaves a period — or, when the rhythm has one, its booking window —
+ * with nothing in it. Applies to an auto-schedule series and to a hand-booked rhythm's
+ * which-day hint alike.
  *
  * `starts_on` does double duty, and the two jobs quietly disagree. It anchors the period
  * grid — boundaries are `starts_on + n × every` — and it is also where the generated
@@ -455,7 +486,8 @@ async function assertRuleFillsEveryPeriod(
   householdId: string,
   startsOn: string,
   every: string,
-  rrule: string
+  rrule: string,
+  bookWithin: string | null = null
 ): Promise<void> {
   // The true boundaries, from Postgres, for the same reason the list query computes them
   // there: interval addition tiles real calendar periods and is anchored rather than
@@ -463,16 +495,18 @@ async function assertRuleFillsEveryPeriod(
   // the queries it is protecting. Their local instants come back too — a boundary is a
   // date, and which side of it an evening booking falls on is a household-timezone
   // question, exactly as it is in listAttention.
-  const { rows } = await query<{ boundary: string; at: Date; tz: string }>(
+  const { rows } = await query<{ boundary: string; at: Date; window_at: Date; tz: string }>(
     `select (g.starts_on + (n * g.every))::date as boundary,
             ((g.starts_on + (n * g.every))::date::timestamp at time zone h.timezone) as at,
+            (((g.starts_on + (n * g.every))::date + coalesce($5::interval, g.every))::date::timestamp
+               at time zone h.timezone) as window_at,
             h.timezone as tz
        from (select $2::date as starts_on, $3::interval as every) g,
             households h,
             generate_series(0, $4::int) n
       where h.id = $1
       order by n`,
-    [householdId, startsOn, every, PERIODS_CHECKED]
+    [householdId, startsOn, every, PERIODS_CHECKED, bookWithin]
   )
   if (rows.length < 2) return
   const tz = rows[0].tz || 'UTC'
@@ -485,9 +519,10 @@ async function assertRuleFillsEveryPeriod(
 
   for (let i = 0; i < rows.length - 1; i++) {
     const from = rows[i].at
-    const to = rows[i + 1].at
+    const to = bookWithin ? rows[i].window_at : rows[i + 1].at
     if (slots.some((d) => d >= from && d < to)) continue
     const empty = dateText(rows[i].boundary)
+    const span = bookWithin ? 'the booking window of the period' : 'the period'
     // Naming the fix matters as much as refusing: "the third Saturday of the month" is a
     // perfectly reasonable thing to want, and a bare "invalid" would read as the product
     // not supporting it. Anchoring on the 1st makes the periods calendar months, and each
@@ -496,7 +531,7 @@ async function assertRuleFillsEveryPeriod(
       ? ' Start the first period on the first of the month and each period will hold exactly one.'
       : ' Move the first period so that each one contains a single occurrence of the rule.'
     throw new InvalidReferenceError(
-      `that repeat rule skips whole periods — nothing it generates falls in the period beginning ${empty}, ` +
+      `that repeat rule skips whole periods — nothing it generates falls in ${span} beginning ${empty}, ` +
       `so that period could never be booked and would keep asking forever.${hint}`
     )
   }
@@ -657,11 +692,11 @@ export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Pr
     throw new InvalidReferenceError('rrule must not end on its own (no COUNT or UNTIL) — a rhythm repeats for as long as it is active, and you stop it by pausing or retiring it')
   }
   // Last, because it walks the rule: everything above has already established that this
-  // one parses, is open-ended, and belongs to a scheduling rhythm with a real anchor.
-  // Only when a series will actually be generated — a rhythm booked by hand has no rule
-  // to disagree with its grid, and its anchor is nobody's business but the person's.
-  if (autoSchedule && rrule) {
-    await assertRuleFillsEveryPeriod(householdId, startsOn, every, rrule)
+  // one parses, is open-ended, and belongs to a scheduling rhythm with a real anchor. On a
+  // hand-booked rhythm the rule is only a which-day hint, but a hint that can never land in
+  // a window is as useless as a series that skips a period, so it faces the same test.
+  if (rrule) {
+    await assertRuleFillsEveryPeriod(householdId, startsOn, every, rrule, bookWithin)
   }
 
   const { rows } = await query<Row>(
@@ -945,6 +980,8 @@ export type AttentionItem =
       /** Where this period stops accepting bookings; equals `periodEnd` without a window. */
       windowEnd: string
       hasSeries: boolean
+      /** See RhythmWithPeriod.suggestedOn. */
+      suggestedOn: string | null
     }
 
 // The one question every surface asks: what needs attention in this window? Today passes
@@ -1001,6 +1038,7 @@ export async function listAttention(householdId: string, horizon: string): Promi
     period_end: string
     window_end: string
     has_series: boolean
+    tz: string
   }>(
     `with hh as (select timezone from households where id = $1),
           periods as (
@@ -1008,7 +1046,8 @@ export async function listAttention(householdId: string, horizon: string): Promi
               -- Tiled to the LATER of the horizon and the household's own now: a client may
               -- ask the server to look further forward, never further back, or the Today
               -- card and the register could disagree about which period a rhythm is in.
-              ${askingPeriodStart('greatest($2::timestamp, (now() at time zone hh.timezone))::date')} as period_start
+              ${askingPeriodStart('greatest($2::timestamp, (now() at time zone hh.timezone))::date')} as period_start,
+              hh.timezone as tz
          from rhythms r, hh
         where r.household_id = $1
           and r.deleted_at is null and r.is_active
@@ -1017,7 +1056,7 @@ export async function listAttention(householdId: string, horizon: string): Promi
      select p.id, p.title, p.emoji, p.notes, p.person_id, p.satisfied_by, p.every::text as every,
             p.starts_on, p.auto_schedule, p.rrule, p.book_within::text as book_within, p.lead_time::text as lead_time,
             p.last_completed_at, p.next_due_at, p.is_active,
-            p.period_start, (p.period_start + p.every)::date as period_end,
+            p.period_start, p.tz, (p.period_start + p.every)::date as period_end,
             (p.period_start + coalesce(p.book_within, p.every))::date as window_end,
             exists (
               select 1 from events e
@@ -1089,6 +1128,7 @@ export async function listAttention(householdId: string, horizon: string): Promi
       periodEnd: dateText(r.period_end)!,
       windowEnd: dateText(r.window_end)!,
       hasSeries: r.has_series ?? false,
+      suggestedOn: suggestedOn(r.rrule, dateText(r.starts_on), dateText(r.period_start), dateText(r.window_end), r.tz),
     })
   }
 
@@ -1112,6 +1152,8 @@ export interface UpdateRhythmInput {
    * back to asking — visible, explicable, and undone by widening it again.
    */
   bookWithin?: unknown
+  /** A hand-booked scheduling rhythm's which-day hint; null clears it. Moves no boundary. */
+  rrule?: unknown
   isActive?: unknown
   /** completion shape only — see the note below on why the anchor rule splits by shape. */
   nextDueAt?: unknown
@@ -1119,7 +1161,8 @@ export interface UpdateRhythmInput {
 
 // Edit a rhythm. Deliberately covers only the fields that are safe to change in place:
 // title/emoji/notes/assignee, the cadence, the runway, active, and — for the completion
-// shape only — the due date. `satisfiedBy`, `startsOn`, `autoSchedule` and `rrule` are not
+// shape only — the due date — plus a hand-booked rhythm's which-day hint. `satisfiedBy`,
+// `startsOn`, `autoSchedule` and a self-booking rhythm's `rrule` are not
 // editable here: changing the shape or the period anchor of a live rhythm would silently
 // re-interpret its existing skips (keyed on period_start) and re-point its bookings at
 // periods that no longer exist. Retire it and make a new one instead.
@@ -1214,6 +1257,37 @@ export async function updateRhythm(
     await assertWindowFitsCadence(bookWithin, existing.every)
   }
 
+  const rrule = input.rrule === undefined
+    ? undefined
+    : (typeof input.rrule === 'string' && input.rrule.trim() ? input.rrule.trim() : null)
+  if (rrule !== undefined && rrule !== existing.rrule) {
+    if (existing.satisfiedBy !== 'scheduling') {
+      throw new InvalidReferenceError(
+        'only a scheduling rhythm can have a which-day rule; a completion rhythm has no periods to pick a day in'
+      )
+    }
+    if (existing.autoSchedule) {
+      throw new InvalidReferenceError(
+        'a rhythm that puts itself on the calendar keeps the rule its series was built from — retire it and make a new one to change the day'
+      )
+    }
+    if (rrule && !isValidRrule(rrule)) {
+      throw new InvalidReferenceError('rrule is not a recurrence rule this calendar can expand')
+    }
+    if (rrule && /(^|;)\s*(COUNT|UNTIL)=/i.test(rrule)) {
+      throw new InvalidReferenceError('rrule must not end on its own (no COUNT or UNTIL) — a rhythm repeats for as long as it is active')
+    }
+  }
+  // A hint is re-checked whenever it, or the window it has to land in, changes.
+  const hint = rrule !== undefined ? rrule : existing.rrule
+  if (existing.satisfiedBy === 'scheduling' && !existing.autoSchedule && hint && existing.startsOn
+      && (rrule !== undefined || bookWithin !== undefined)) {
+    await assertRuleFillsEveryPeriod(
+      householdId, existing.startsOn, existing.every, hint,
+      bookWithin !== undefined ? bookWithin : existing.bookWithin
+    )
+  }
+
   const { rows } = await query<Row>(
     `update rhythms set
        title      = coalesce($3, title),
@@ -1222,6 +1296,7 @@ export async function updateRhythm(
        person_id  = case when $8::boolean then $9::uuid else person_id end,
        every      = coalesce($10::interval, every),
        book_within = case when $14::boolean then $15::interval else book_within end,
+       rrule      = case when $16::boolean then $17 else rrule end,
        -- Re-clamped on every write against the cadence as it will be AFTER this update, so
        -- shortening a six-month rhythm to weekly cannot leave a runway that never closes.
        -- Split by shape for the reason the inserts are: scheduling keeps the whole cycle,
@@ -1255,6 +1330,8 @@ export async function updateRhythm(
       nextDueAt,
       bookWithin !== undefined,
       bookWithin ?? null,
+      rrule !== undefined,
+      rrule ?? null,
     ]
   )
   return rows[0] ? toRhythm(rows[0]) : null

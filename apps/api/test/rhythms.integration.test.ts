@@ -1972,3 +1972,83 @@ describe('the period a scheduling rhythm is asking about', () => {
     expect(row.currentPeriodStart).toBe(plus(today, 20))
   })
 })
+
+describe('a which-day hint on a rhythm booked by hand', () => {
+  const create = (body: Record<string, unknown>) =>
+    call('POST', '/api/rhythms', kevin, { satisfiedBy: 'scheduling', every: '1 month', autoSchedule: false, ...body })
+  const idOf = (res: RunResult): string => JSON.parse(res.body).rhythm.id
+  const rowOf = async (id: string) =>
+    JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms.find((r: { id: string }) => r.id === id)
+  const nthSaturday = (date: string, nth: number) => {
+    const first = new Date(`${date.slice(0, 7)}-01T00:00:00Z`)
+    const offset = (6 - first.getUTCDay() + 7) % 7
+    return new Date(first.getTime() + (offset + (nth - 1) * 7) * 86_400_000).toISOString().slice(0, 10)
+  }
+  const patchRule = (id: string, rrule: string | null) => call('PATCH', `/api/rhythms/${id}`, kevin, { rrule })
+
+  it('keeps the hint without booking anything, and suggests that day for the period', async () => {
+    const res = await create({ title: 'Family outing by hand', startsOn: '2026-01-01', rrule: 'FREQ=MONTHLY;BYDAY=3SA' })
+    expect(res.statusCode).toBe(201)
+    const id = idOf(res)
+    const row = await rowOf(id)
+    expect(row.rrule).toBe('FREQ=MONTHLY;BYDAY=3SA')
+    expect(row.autoSchedule).toBe(false)
+    expect(row.hasSeries).toBe(false)
+    expect(row.suggestedOn).toBe(nthSaturday(row.currentPeriodStart, 3))
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('suggests the hinted day on the attention item, and still counts a booking on another day', async () => {
+    const id = idOf(await create({
+      title: 'Date night on a Saturday', startsOn: '2026-01-01', bookWithin: '7 days', leadTime: '7 days',
+      rrule: 'FREQ=MONTHLY;BYDAY=1SA',
+    }))
+    const items = async () => JSON.parse((await call('GET', '/api/rhythms/attention?to=2027-03-03', kevin)).body).items
+    const item = (await items()).find((i: { rhythm: { id: string } }) => i.rhythm.id === id)
+    expect(item.suggestedOn).toBe('2027-03-06')
+    // A hint, not a rule: a Thursday inside the window settles the period all the same.
+    const booked = await call('POST', `/api/rhythms/${id}/schedule`, kevin, {
+      startsAt: '2027-03-04T23:00:00Z', periodStart: '2027-03-01',
+    })
+    expect(booked.statusCode).toBe(201)
+    expect((await items()).map((i: { rhythm: { id: string } }) => i.rhythm.id)).not.toContain(id)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('refuses a hint that would leave a period with no such day', async () => {
+    const res = await create({ title: 'Anchored mid-month', startsOn: '2026-09-19', rrule: 'FREQ=MONTHLY;BYDAY=3SA' })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).message).toMatch(/first of the month/i)
+  })
+
+  it('refuses a hint that can never land inside the booking window', async () => {
+    const res = await create({ title: 'Third Saturday, first week', startsOn: '2026-01-01', bookWithin: '7 days', rrule: 'FREQ=MONTHLY;BYDAY=3SA' })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('edits the hint in place, re-checked against the anchor and the window', async () => {
+    const id = idOf(await create({ title: 'Editable hint', startsOn: '2026-01-01', bookWithin: '14 days' }))
+    expect((await patchRule(id, 'FREQ=MONTHLY;BYDAY=1SA')).statusCode).toBe(200)
+    expect((await rowOf(id)).rrule).toBe('FREQ=MONTHLY;BYDAY=1SA')
+    expect((await patchRule(id, 'FREQ=MONTHLY;BYDAY=3SA')).statusCode).toBe(400)
+    expect((await patchRule(id, 'FREQ=MONTHLY;BYDAY=2SA')).statusCode).toBe(200)
+    // Narrowing the window under the hint is checked the same way.
+    expect((await call('PATCH', `/api/rhythms/${id}`, kevin, { bookWithin: '7 days' })).statusCode).toBe(400)
+    const cleared = await patchRule(id, null)
+    expect(cleared.statusCode).toBe(200)
+    expect(JSON.parse(cleared.body).rhythm.rrule).toBeNull()
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('refuses a hint on a completion rhythm, and a rule change on one that books itself', async () => {
+    const completion = await call('POST', '/api/rhythms', kevin, {
+      title: 'Filter', satisfiedBy: 'completion', every: '3 months', nextDueAt: '2027-01-01T09:00:00Z',
+    })
+    expect((await patchRule(idOf(completion), 'FREQ=MONTHLY;BYDAY=1SA')).statusCode).toBe(400)
+    const auto = await create({ title: 'Outing, auto', startsOn: '2026-09-01', autoSchedule: true, rrule: 'FREQ=MONTHLY;BYDAY=3SA' })
+    expect(auto.statusCode).toBe(201)
+    expect((await patchRule(idOf(auto), 'FREQ=MONTHLY;BYDAY=1SA')).statusCode).toBe(400)
+    await call('DELETE', `/api/rhythms/${idOf(completion)}`, kevin)
+    await call('DELETE', `/api/rhythms/${idOf(auto)}`, kevin)
+  })
+})
