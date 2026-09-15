@@ -2051,4 +2051,24 @@ describe('a which-day hint on a rhythm booked by hand', () => {
     await call('DELETE', `/api/rhythms/${idOf(completion)}`, kevin)
     await call('DELETE', `/api/rhythms/${idOf(auto)}`, kevin)
   })
+
+  it('never suggests a day that has already gone by this period', async () => {
+    const today: string = await withClient(async (c) =>
+      (await c.query(`select (now() at time zone 'America/Chicago')::date::text as d`)).rows[0].d)
+    const plus = (date: string, n: number) =>
+      new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
+    // A week that began three days ago. A daily hint's first slot is behind us, so today is the day.
+    const daily = idOf(await create({ title: 'Daily hint', every: '7 days', startsOn: plus(today, -3), rrule: 'FREQ=DAILY' }))
+    expect((await rowOf(daily)).suggestedOn).toBe(today)
+    // A weekly hint whose only day this week was two days ago suggests nothing rather than a day gone by.
+    const code = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'][new Date(`${plus(today, -2)}T00:00:00Z`).getUTCDay()]
+    const weekly = idOf(await create({
+      title: 'Gone by', every: '7 days', startsOn: plus(today, -3), rrule: `FREQ=WEEKLY;BYDAY=${code}`,
+    }))
+    expect((await rowOf(weekly)).suggestedOn).toBeNull()
+    const items = JSON.parse((await call('GET', `/api/rhythms/attention?to=${today}`, kevin)).body).items
+    expect(items.find((i: { rhythm: { id: string } }) => i.rhythm.id === weekly)?.suggestedOn).toBeNull()
+    await call('DELETE', `/api/rhythms/${daily}`, kevin)
+    await call('DELETE', `/api/rhythms/${weekly}`, kevin)
+  })
 })

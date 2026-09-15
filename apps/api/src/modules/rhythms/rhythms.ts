@@ -348,9 +348,10 @@ async function anchorInstant(householdId: string, startsOn: string, rrule: strin
   return (firstSlotOnOrAfter(anchor, rrule, rows[0].tz) ?? anchor).toISOString()
 }
 
-// The first slot a rhythm's rule allows inside [periodStart, windowEnd), as a
-// household-local date. Walked from the same DTSTART anchorInstant derives, so the
-// suggestion and a generated series agree. Null when there is no rule or nothing lands.
+// The first slot a rhythm's rule allows inside [periodStart, windowEnd) that is not already
+// behind the household's today, as a household-local date. Walked from the same DTSTART
+// anchorInstant derives, so the suggestion and a generated series agree. Null when there is
+// no rule or nothing is left to land on — a day gone by would book an event in the past.
 function suggestedOn(
   rrule: string | null, startsOn: string | null, periodStart: string | null, windowEnd: string | null, tz: string,
 ): string | null {
@@ -358,9 +359,11 @@ function suggestedOn(
   const zone = tz || 'UTC'
   const local = (date: string, hour: number) => DateTime.fromISO(date, { zone }).set({ hour }).toJSDate()
   try {
+    const today = DateTime.now().setZone(zone).toISODate()
+    const from = today && today > periodStart ? today : periodStart
     const anchor = local(startsOn, AUTO_SCHEDULE_HOUR)
     const dtstart = firstSlotOnOrAfter(anchor, rrule, zone) ?? anchor
-    const slot = slotsBetween(rrule, dtstart, zone, local(periodStart, 0), local(windowEnd, 0))[0]
+    const slot = slotsBetween(rrule, dtstart, zone, local(from, 0), local(windowEnd, 0))[0]
     return slot ? localDayKey(slot, zone) : null
   } catch {
     return null
@@ -1077,12 +1080,11 @@ export async function listAttention(householdId: string, horizon: string): Promi
       -- for the remaining three weeks of the month is precisely the nagging that trains
       -- someone to stop reading this list.
       --
-      -- It changes nothing for a rhythm without a window, which is all of them before this
-      -- column: the window ends where the period does, and the horizon is always inside
-      -- the period it was tiled from, so the bound is true by construction. What is missed
-      -- is still visible — the register reads listRhythms, not this, and reports the period
-      -- unsatisfied and late for as long as it stays that way. This list is for what can be
-      -- acted on now; that one is for what is true.
+      -- It changes nothing for a rhythm without a window: the window ends where the period
+      -- does, and the horizon is always inside the period it was tiled from. With a window,
+      -- askingPeriodStart has already moved on to the next period once this one closed, and
+      -- the register (listRhythms) reads the same fragment — a missed window is dropped from
+      -- both rather than reported late.
       where (p.period_start + coalesce(p.book_within, p.every))::date - p.lead_time <= $2::date
         and $2::date < (p.period_start + coalesce(p.book_within, p.every))::date
         and not exists (
