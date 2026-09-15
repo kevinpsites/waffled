@@ -360,7 +360,8 @@ export async function scheduleEvent(tenant: Tenant): Promise<string> {
   const tz = rows[0]?.timezone || 'UTC'
   const event = await createEvent(tenant, {
     title: '🏡 Family Night',
-    startsAt: `${date}T${config.time}:00`,
+    // A real instant, as in createOccurrenceEvent; expansion keeps the wall-clock time in tz.
+    startsAt: zonedToUtc(`${date}T${config.time}:00`, tz),
     timezone: tz,
     // Omit calendarId → auto-route to the household owner's ★ default calendar, so a
     // recurring family event lands on Google when connected and stays Waffled-local

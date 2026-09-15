@@ -56,6 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Weekly Planning's Horizon scan on iPhone draws the Calendar tab's month view.** Event chips,
   countdowns and "+N more" match the calendar, and a change to that view shows up here too.
+- **Family Night's weekly calendar event starts at the time you set.** Putting Family Night on
+  the calendar in Settings made the weekly event hours off from your household's time. A series
+  made before this fix keeps the old time until you take it off the calendar and put it back.
 - **Family night's Add to calendar lets you check the event first.** In Weekly Planning it opens
   a short form with the title, time and length before the event is made, and the event now lands
   at your household's local time rather than hours off.
