@@ -35,6 +35,9 @@ const MIN_UNITS = new Set(['min', 'mins', 'minute', 'minutes'])
 // guard below already covers the sync path — this is the belt-and-suspenders for
 // a locally-cancelled-but-not-deleted row.
 const SKIP_STATUSES = `('cancelled')`
+// Events Waffled writes itself from the meal plan (the meal and its thaw reminder) are
+// reminders, not activities, so they are never goal-suggestion candidates.
+const WAFFLED_REMINDER_ORIGINS = `('meal_plan','meal_prep')`
 
 interface RecapRow {
   event_id: string
@@ -350,7 +353,7 @@ export async function suggestionQueue(householdId: string): Promise<Suggestion[]
         and e.deleted_at is null
         and e.goal_id is null
         and e.rrule is null
-        and (e.origin is null or e.origin <> 'meal_plan')
+        and (e.origin is null or e.origin not in ${WAFFLED_REMINDER_ORIGINS})
         and (e.status is null or e.status not in ${SKIP_STATUSES})
         and e.starts_at between now() - interval '7 days' and now() + interval '14 days'
         and not exists (select 1 from event_suggestion_dismissals d where d.event_id = e.id)
@@ -369,7 +372,7 @@ export async function suggestionQueue(householdId: string): Promise<Suggestion[]
        from event_occurrences o
        join events m on m.id = o.event_id and m.deleted_at is null and m.rrule is not null
             and m.goal_id is null
-            and (m.origin is null or m.origin <> 'meal_plan')
+            and (m.origin is null or m.origin not in ${WAFFLED_REMINDER_ORIGINS})
             and (m.status is null or m.status not in ${SKIP_STATUSES})
       where o.household_id = $1
         and o.deleted_at is null

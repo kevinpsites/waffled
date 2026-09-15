@@ -461,6 +461,17 @@ describe('calendar → goal suggestions (Phase B)', () => {
     const eventId = await untaggedEvent('Library trip', [kevinId, kellyId])
     expect((await suggestions()).find((s) => s.eventId === eventId)).toBeFalsy()
   })
+
+  it("never suggests Waffled's own meal reminders (a thaw reminder is not an activity)", async () => {
+    const goalId = await makeGoal({ title: 'Cook 30 dinners', category: 'family' })
+    const plain = await untaggedEvent('Cooking class dinner', [kevinId])
+    const thaw = await untaggedEvent('🧊 Thaw for Dinner · Cooking chicken', [kevinId], 23)
+    await withClient((cl) => cl.query(`update events set origin = 'meal_prep' where id = $1`, [thaw]))
+
+    const items = await suggestions()
+    expect(items.find((s) => s.eventId === plain)?.goalId).toBe(goalId)
+    expect(items.find((s) => s.eventId === thaw)).toBeFalsy()
+  })
 })
 
 describe('calendar → goal recap (recurring)', () => {
