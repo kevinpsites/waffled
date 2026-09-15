@@ -31,7 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Set a goal's target for just this week.** In Weekly Planning's Goals step, a running count
   or total goal takes a target for the week you're planning — 10 hours this week toward 750 for
   the year — with what's been logged that week beside it. The goal's card on the Goals page
-  and Today shows it all week ("This week: 3 of 10 hours"), the recap lists it, and next week's
+  and Today shows it all week ("This week: 3 of 10 hours"), the goal's own page lists it with the
+  weeks planned after it, the recap lists it, and next week's
   recap reads it back: "7 of 10 hours", met or short.
 - **Act on a parked note from Weekly Planning's recap.** A note still on the board can become
   a task or a calendar event right there, in the usual editors with the note's words filled
@@ -43,9 +44,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Add to the grocery list from Weekly Planning's Meals step.** Type an item under the
   grocery line and it goes straight onto the list, without leaving the session; tap the "to buy"
   count to open the week's list and tick things off.
-- **Mark tasks done in Weekly Planning's Tasks step.** A task whose day has come has a
-  **✓ Done** button (on a repeating chore it checks off today); one that needs a parent's OK says
-  it's waiting for one. Tasks that need
+- **Mark tasks done in Weekly Planning's Tasks step.** A one-off task whose day has come has a
+  **✓ Done** button; one that needs a parent's OK says it's waiting for one. Repeating chores are
+  still done day by day on the Tasks board. Tasks that need
   a photo are still finished from the Tasks board.
 - **Rhythms due this week show up in Weekly Planning.** The Tasks step lists every rhythm
   that needs attention in the week you're planning, not just the late ones, with **✓ Done**
@@ -53,6 +54,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Weekly Planning's Loose ends no longer lists months of missed repeating chores.** A
+  repeating chore counts only the days it was missed in the past week; a one-off still counts
+  however late it is.
 - **Weekly Planning stays readable in dark mode.** **＋ Add an event** on the Calendar step and a
   chosen tag chip when parking a note no longer put white text on a near-white button.
 - **Weekly Planning's recap says times the way people do.** Family night and the

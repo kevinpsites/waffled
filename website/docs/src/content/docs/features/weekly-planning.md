@@ -69,7 +69,8 @@ Meals needs Meals, and Tasks needs Chores. You can also switch any step off your
 **1 · Loose ends** — *"Anything still open from last week?"* Two groups, worked through one
 card at a time or all at once with **See all**:
 
-- **Not done** — what's already in the app and still open: overdue chores, items left
+- **Not done** — what's already in the app and still open: overdue chores (a one-off however
+  late, a repeating chore only for the days it was missed in the past week), items left
   unchecked on your lists, and rhythms past due. Each card says where it came from (Chore,
   List, Rhythm) and who already has it, so one with no name on it reads as up for grabs.
   Goals aren't asked about here — a habit that's behind for the week is still in progress,
@@ -147,8 +148,8 @@ open the week's list in aisle order and tick things off, or put them back.
 an **Up for grabs** strip across the top. Tap a face or drag a card to hand a chore over, or
 leave it up for grabs. Tap a task's name — or the day beside it — to open the chore editor and
 fix the title, the stars or the day. Each column shows what that person already carries. A
-task whose day has come has **✓ Done** — anyone can press it, as on the Tasks board, and on a
-repeating chore it checks off today — and one
+one-off task whose day has come has **✓ Done** — anyone can press it, as on the Tasks board; a
+repeating chore is done day by day on the board — and one
 that needs a parent's OK says it's waiting for one. A task that needs a photo is finished from
 the Tasks board, where the camera is. With [Rhythms](/features/rhythms/) on, **Rhythms this
 week** lists every rhythm due in the week you're planning, late or not; the ones you do
