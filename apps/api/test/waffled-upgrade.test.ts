@@ -92,6 +92,20 @@ describe('waffled upgrade safety', () => {
     expect(result).toContain('forward-only')
   })
 
+  // A pin that isn't a plain version can't be compared, and the caller re-pins to whatever
+  // it was handed — so the operator has to hear that the direction went unchecked.
+  it('says when a pin gives it nothing to compare against', () => {
+    const result = runShell(`
+      set +e
+      check_upgrade_target 0.14.0 latest 2>&1
+      check_upgrade_target 0.14.0 "" 2>&1
+    `)
+
+    expect(result.match(/can't tell whether 0\.14\.0 moves forward/g)).toHaveLength(2)
+    expect(result).toContain('WAFFLED_VERSION is latest')
+    expect(result).toContain('WAFFLED_VERSION is unset')
+  })
+
   describe('moving the checkout to the release tag', () => {
     // Stubs `git -C "$ROOT" …`; each scenario sets the repository shape through env vars.
     const gitStub = `

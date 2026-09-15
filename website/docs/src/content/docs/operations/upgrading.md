@@ -63,6 +63,9 @@ To move to a **particular** release rather than the newest one, name it:
 Upgrade only ever moves **forward** — naming a release older than your current
 `WAFFLED_VERSION` is refused, because migrations are forward-only and an older image would
 meet a newer schema. Going back is a [rollback](#rolling-back), restored backup and all.
+(If your `.env` pin isn't a plain version — unset, `latest`, or a tag of your own — there's
+nothing to compare against, so upgrade says it can't check the direction and leaves that
+call to you.)
 
 If you have independently created and verified a rollback point, you can explicitly bypass
 the automatic snapshot with `./waffled upgrade --skip-backup`. This is intentionally opt-in:
