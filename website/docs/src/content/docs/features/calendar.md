@@ -22,7 +22,8 @@ gated off**.
   across the web week view's all-day strip; a trip that runs into the next week continues as a
   bar on that row. On iPhone and iPad it also
   shows on each day of the week cards, day view, agenda and Today, and only fades as past once its
-  last day is over; on web, picking any of its days lists it in the month's day panel. On web,
+  last day is over; on web it shows in Day view and Agenda on each of its days, and picking any of
+  its days lists it in the month's day panel. On web,
   iPhone and iPad the event editor's **When** card holds **All day**, **Starts** and **Ends**: a
   last day for an all-day event, or an end date and time for a timed one. Tap a date or time to
   pick it from a calendar or a list of times.
