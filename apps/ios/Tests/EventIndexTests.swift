@@ -79,3 +79,53 @@ private func event(_ id: String, _ raw: String?, allDay: Bool = false,
         #expect(SyncManager.visibleEvents(all, me: nil).isEmpty)
     }
 }
+
+private func span(_ id: String, _ start: String, _ end: String?, allDay: Bool = true) -> SyncedEvent {
+    SyncedEvent(id: id, title: id, startsAtRaw: start, startsAt: EventTime.parse(start), allDay: allDay,
+                personId: nil, colorHex: nil, emoji: nil, endsAt: EventTime.parse(end))
+}
+
+// Multi-day all-day events (a synced Google trip) cover every day they span. Google's all-day
+// end is EXCLUSIVE — a 7/27 → 8/3 row is the 27th through the 2nd — and the server stores it
+// as local midnight in UTC, the same shape as the start.
+@Suite struct AgendaSpanTests {
+    private let trip = span("trip", "2026-07-27 06:00:00+00", "2026-08-03 06:00:00+00")
+
+    @Test func anAllDayTripCoversEveryDayUpToItsExclusiveEnd() {
+        #expect(Agenda.dayKeys(trip, denver) == [
+            "2026-07-27", "2026-07-28", "2026-07-29", "2026-07-30", "2026-07-31", "2026-08-01", "2026-08-02",
+        ])
+        let byDay = Agenda.byDay([trip], denver)
+        #expect(byDay.count == 7)
+        #expect(byDay["2026-07-30"]?.map(\.id) == ["trip"])
+        #expect(byDay["2026-08-03"] == nil)
+    }
+
+    @Test func aOneDayAllDayEventAndAnOpenEndedOneStayOnTheirDay() {
+        #expect(Agenda.dayKeys(span("one", "2026-07-11 06:00:00+00", "2026-07-12 06:00:00+00"), denver) == ["2026-07-11"])
+        #expect(Agenda.dayKeys(span("bare", "2026-06-16", nil), denver) == ["2026-06-16"])
+    }
+
+    @Test func aTimedEventStaysOnItsStartDayEvenPastMidnight() {
+        let late = span("late", "2026-07-11T02:00:00Z", "2026-07-11T16:00:00Z", allDay: false)
+        #expect(Agenda.dayKeys(late, denver) == ["2026-07-10"])
+    }
+
+    @Test func aTripIsNotPastUntilItsLastDayIsBehindToday() {
+        let midTrip = EventTime.parse("2026-08-02T18:00:00Z")!
+        let dayAfter = EventTime.parse("2026-08-03T18:00:00Z")!
+        #expect(!Agenda.isPast(trip, denver, now: midTrip))
+        #expect(Agenda.isPast(trip, denver, now: dayAfter))
+    }
+
+    @Test func forDayFindsATripOnAMiddleDay() {
+        #expect(Agenda.forDay([trip], day: "2026-07-30", tz: denver).map(\.id) == ["trip"])
+        #expect(Agenda.covers(trip, day: "2026-08-02", tz: denver))
+        #expect(!Agenda.covers(trip, day: "2026-08-03", tz: denver))
+    }
+
+    @Test func aCorruptFarFutureEndIsCapped() {
+        let runaway = span("runaway", "2026-01-01 07:00:00+00", "2031-01-01 07:00:00+00")
+        #expect(Agenda.dayKeys(runaway, denver).count == Agenda.maxSpanDays)
+    }
+}

@@ -34,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Multi-day all-day events show on every day they cover (iPhone and iPad).** A trip synced
+  from Google as a several-day all-day event appeared only on its first day; it now fills each
+  day of the month grid, week cards, day view and agenda, shows on Today and a person's day while
+  it's on, and only fades as past once its last day is over.
 - **A habit's Log sheet says when today is already submitted.** On iPhone and iPad a habit
   with no one to pick (a family habit) never showed that today was done, and a sheet opened from
   an older list could still offer "Mark done for today" after someone had logged it — the tap
