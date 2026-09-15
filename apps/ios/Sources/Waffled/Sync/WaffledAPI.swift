@@ -3218,6 +3218,17 @@ struct WaffledAPI: Sendable {
             let target: Double?
             let progress: Double
         }
+        /// The target Weekly Planning set for the week under way, or else the next one planned.
+        /// A defaulted `var` so an older response decodes and the memberwise init stays usable.
+        var weekPlan: WeekTarget? = nil
+        struct WeekTarget: Decodable, Hashable, Sendable {
+            let weekStart: String
+            let target: Double
+            /// What was logged inside that week.
+            let done: Double
+            /// The week has started; before that the label names the week instead.
+            let current: Bool
+        }
     }
 
     /// A goal's full detail read: the goal fields plus its milestone ladder, recent

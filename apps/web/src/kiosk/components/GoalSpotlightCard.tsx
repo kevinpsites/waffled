@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { useGoals, useGoalLists, useHousehold, usePersons, goalDisplayProgress, goalDisplayTarget, goalFraction, fmtGoalNum, type Goal, type GoalList, type GoalListMember } from '../../lib/api'
+import { useGoals, useGoalLists, useHousehold, usePersons, goalDisplayProgress, goalDisplayTarget, goalFraction, goalWeekTargetLabel, fmtGoalNum, type Goal, type GoalList, type GoalListMember } from '../../lib/api'
 
 // Today card: a chosen goal's progress — the web counterpart of the iOS Today goal card.
 // A modal picker (grouped by goal list, like iOS) chooses My spotlight, Family spotlight,
@@ -120,6 +120,7 @@ export function GoalSpotlightCard() {
             <div style={{ height: '100%', borderRadius: 99, background: 'var(--primary)', width: `${(goalFraction(g) * 100).toFixed(0)}%` }} />
           </div>
           <div className="tiny" style={{ color: 'var(--ink-2)', fontWeight: 650, marginTop: 9 }}>{goalMeta(g)}</div>
+          {goalWeekTargetLabel(g) && <div className="tiny goal-week">{goalWeekTargetLabel(g)}</div>}
         </button>
       ) : (
         <button type="button" onClick={() => navigate('/goals')} className="tiny muted" style={{ border: 0, background: 'none', padding: 0, cursor: 'pointer', fontWeight: 600, textAlign: 'left' }}>

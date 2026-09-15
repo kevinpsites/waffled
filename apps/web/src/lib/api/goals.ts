@@ -62,6 +62,18 @@ export interface Goal {
   streakDays: number
   loggedTodayBy: string[]
   participants: GoalParticipant[]
+  // The target Weekly Planning set for the week under way, or else the next one planned.
+  // Optional so a server predating it still reads.
+  weekPlan?: GoalWeekTarget | null
+}
+
+export interface GoalWeekTarget {
+  weekStart: string
+  target: number
+  // Summed from what was logged inside that week.
+  done: number
+  // The week has started; before that the label names the week instead of a count.
+  current: boolean
 }
 
 // ── Display helpers (shared by the goals list, goal detail, and the Today card) ──
@@ -89,6 +101,17 @@ export function goalFraction(g: Goal): number {
   const p = goalDisplayProgress(g)
   return t != null && t > 0 ? Math.min(p / t, 1) : 0
 }
+// "This week: 3 of 10 hours", or before that week starts, "Week of Sep 21: 10 hours". Shared by
+// the goals list, the hero cards and the Today card.
+export function goalWeekTargetLabel(g: Goal): string | null {
+  const t = g.weekPlan
+  if (!t) return null
+  const unit = g.unit ? ` ${g.unit}` : ''
+  if (t.current) return `This week: ${fmtGoalNum(t.done)} of ${fmtGoalNum(t.target)}${unit}`
+  const day = new Date(`${t.weekStart}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return `Week of ${day}: ${fmtGoalNum(t.target)}${unit}`
+}
+
 // The one place goal amounts get formatted for display: at most 2 decimals, trailing
 // zeros dropped, with thousands grouping (2.5833… → "2.58", 1.5 → "1.5", 6.16667 →
 // "6.17", 1000 → "1,000"). Amounts are stored exact — an hours+minutes log is 1h5m =

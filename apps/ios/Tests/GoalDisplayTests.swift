@@ -22,10 +22,12 @@ private func goal(
     streakDays: Int = 0,
     targetBasis: String? = nil,
     people: Int = 0,
-    loggedTodayBy: [String]? = nil
+    loggedTodayBy: [String]? = nil,
+    unit: String? = nil,
+    weekTarget: WaffledAPI.Goal.WeekTarget? = nil
 ) -> WaffledAPI.Goal {
     WaffledAPI.Goal(id: "g", goalListId: nil, title: "G", emoji: nil, category: nil,
-                    goalType: goalType, unit: nil, habitPeriod: habitPeriod,
+                    goalType: goalType, unit: unit, habitPeriod: habitPeriod,
                     habitTargetPerPeriod: habitTargetPerPeriod, trackingMode: "shared_total",
                     participantMode: nil, targetBasis: targetBasis, deadline: nil, isFeatured: false,
                     isSpotlight: nil, target: target, totalProgress: totalProgress,
@@ -36,10 +38,27 @@ private func goal(
                     participants: (0..<people).map {
                         .init(personId: "p\($0)", name: "P\($0)", colorHex: nil,
                               avatarEmoji: nil, target: target, progress: 0)
-                    })
+                    },
+                    weekPlan: weekTarget)
 }
 
 @Suite struct GoalDisplayTests {
+
+    // MARK: a week's target, set in Weekly Planning
+
+    @Test func aTargetForThisWeekReadsAgainstWhatIsLogged() {
+        let g = goal(unit: "hours", weekTarget: .init(weekStart: "2026-09-13", target: 10, done: 3.5, current: true))
+        #expect(GoalDisplay.weekTargetLabel(g) == "This week: 3.5 of 10 hours")
+    }
+
+    @Test func aTargetForAWeekAheadNamesThatWeek() {
+        let g = goal(unit: "hours", weekTarget: .init(weekStart: "2026-09-21", target: 10, done: 0, current: false))
+        #expect(GoalDisplay.weekTargetLabel(g) == "Week of Sep 21: 10 hours")
+    }
+
+    @Test func aGoalWithoutAWeekTargetHasNoLabel() {
+        #expect(GoalDisplay.weekTargetLabel(goal()) == nil)
+    }
 
     // MARK: habit — the reported bug
 

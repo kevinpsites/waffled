@@ -400,6 +400,9 @@ struct GoalsView: View {
                         .minimumScaleFactor(0.7)
                     Text("Everyone contributes to one pool\(g.deadline.map { " · by \(fmtDeadline($0))" } ?? "")")
                         .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.85)).lineLimit(2)
+                    if let week = GoalDisplay.weekTargetLabel(g) {
+                        Text(week).font(.system(size: 13, weight: .bold)).foregroundStyle(.white.opacity(0.92)).lineLimit(1)
+                    }
                 }
             }
             if !g.participants.isEmpty {
@@ -430,6 +433,9 @@ struct GoalsView: View {
                         .minimumScaleFactor(0.7)
                     Text(g.target.map { "\(goalFmt($0)) \(g.unit ?? "")".trimmingCharacters(in: .whitespaces) + " each" } ?? "Everyone tracks their own")
                         .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+                    if let week = GoalDisplay.weekTargetLabel(g) {
+                        Text(week).font(.system(size: 13, weight: .bold)).foregroundStyle(.white.opacity(0.92)).lineLimit(1)
+                    }
                 }
             }
             HStack {
@@ -518,6 +524,9 @@ struct GoalsView: View {
                             }
                         }
                         Text(goalDescriptor(g)).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
+                        if let week = GoalDisplay.weekTargetLabel(g) {
+                            Text(week).font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2).lineLimit(1)
+                        }
                     }
                     Spacer(minLength: 6)
                     HStack(alignment: .firstTextBaseline, spacing: 1) {
