@@ -642,10 +642,8 @@ body {
   min-width: 140px;
 }
 
-/* The event editor's When card (EventWhenField): All day, Starts and Ends in one box, dates and
-   times as pills that open their picker under the row — the iPhone editor's layout. */
-.ew { margin-bottom: 12px; padding: 12px 14px; background: var(--card); border: 1px solid var(--hair);
-  border-radius: var(--r-md); }
+/* The event editor's When card (EventWhenField): All day, Starts and Ends in one `.field` box,
+   dates and times as pills that open their picker under the row — the iPhone editor's layout. */
 .ew-allday { display: flex; align-items: center; justify-content: space-between; width: 100%;
   border: 0; border-bottom: 1px solid var(--hair); background: none; padding: 0 0 12px; margin-bottom: 12px;
   font: inherit; font-size: 15px; font-weight: 650; color: var(--ink); cursor: pointer; }

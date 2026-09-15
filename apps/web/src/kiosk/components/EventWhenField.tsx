@@ -74,7 +74,7 @@ export function EventWhenField({ value, onChange }: { value: WhenValue; onChange
   }
 
   return (
-    <div className="ew">
+    <div className="field ew">
       <button
         type="button"
         role="switch"
