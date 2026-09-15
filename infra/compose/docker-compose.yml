@@ -71,6 +71,8 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run ./waffled up to generate POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # Per-lock wait before migrate retries (ms, or e.g. 30s). Empty → 10s default.
+      MIGRATE_LOCK_TIMEOUT: ${MIGRATE_LOCK_TIMEOUT:-}
     command: ["node", "dist/migrate.js"]
     restart: "no"
 

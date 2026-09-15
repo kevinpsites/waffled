@@ -123,7 +123,7 @@ enum DemoHooks {
     /// Initial iPad kiosk page (rail selection): today | calendar | tasks | goals |
     /// family | meals | lists | photos | settings. No effect on iPhone.
     static var kioskPage: String? { AppConfig.env("WAFFLED_KIOSK_PAGE") }
-    /// Initial iPad calendar mode for verification: month | week | day.
+    /// Initial calendar mode for verification, on iPad and iPhone: month | week | day.
     static var kioskCalMode: String? { AppConfig.env("WAFFLED_CAL_MODE") }
     static var kioskOpenEvent: Bool { AppConfig.env("WAFFLED_KIOSK_OPEN_EVENT") == "1" }
     static var cookPlate: String? { AppConfig.env("WAFFLED_COOK_PLATE") }

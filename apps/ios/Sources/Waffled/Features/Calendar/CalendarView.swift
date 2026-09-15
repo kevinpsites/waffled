@@ -1,14 +1,22 @@
 import SwiftUI
 
-/// Calendar tab — an upcoming-agenda list grouped by day, read live from the local mirror.
+/// Calendar tab on iPhone: Month is home, a tapped day pushes Day, and the header's view menu
+/// (or a pinch) switches between Month, Week, Day and Agenda — Agenda carries the AI capture
+/// bar. Screens live in `PhoneCalendarViews.swift`; see docs/product/ios-calendar-redesign.md.
 struct CalendarView: View {
+    typealias CalMode = PhoneCalendar.Mode
+
     @Environment(SyncManager.self) private var sync
     /// A reminder tap routes here with the event id to open (see AppRoot).
     var openEventId: Binding<String?> = .constant(nil)
     @State private var editing: EventEditTarget?
     @State private var detailEvent: SyncedEvent?
     /// Remembered across tab switches + launches, so your preferred view sticks.
-    @AppStorage("waffled.calendarMode") private var mode: CalMode = .agenda
+    @AppStorage("waffled.calendarMode") private var storedMode: CalMode = .month
+    /// The screen under a pushed Day: Month, Week or Agenda.
+    @State private var root: CalMode = .month
+    @State private var showsDay = false
+    @State private var restoredMode = false
     @State private var filterPerson: String?       // nil = Everyone
     @State private var monthAnchor = Date()         // the month the grid shows
     @State private var selectedDay = Agenda.todayKey(TimeZone.current)
@@ -16,19 +24,6 @@ struct CalendarView: View {
     @State private var dictateOnOpen = false
     @State private var countdowns = CountdownsModel()
     @State private var editingCountdown: WaffledAPI.Countdown?
-
-    /// No People mode here on purpose — it's iPad-only: a phone splits into columns too narrow to
-    /// read, and the person filter below covers "just show me one person's day".
-    enum CalMode: String, CaseIterable { case agenda, month, day
-        var label: String { rawValue.capitalized }
-        var icon: String {
-            switch self {
-            case .agenda: return "list.bullet"
-            case .month: return "calendar"
-            case .day: return "calendar.day.timeline.left"
-            }
-        }
-    }
 
     enum EventEditTarget: Identifiable {
         case new(Date)
@@ -44,9 +39,14 @@ struct CalendarView: View {
     private var tz: TimeZone { sync.householdTz }
     /// The household's first day of the week. Sunday until the setting reaches this device.
     private var firstDay: HouseholdWeekStart { sync.householdWeekStart ?? .sunday }
+    private var mode: CalMode { showsDay ? .day : root }
     private var filtered: [SyncedEvent] {
         guard let p = filterPerson else { return sync.events }
         return sync.events.filter { $0.personId == p || $0.participantIds.contains(p) }
+    }
+    /// Day → events for the grids. Unfiltered reuses the index `SyncManager` keeps.
+    private var dayIndex: [String: [SyncedEvent]] {
+        filterPerson == nil ? sync.eventsByDay : Agenda.byDay(filtered, tz)
     }
     private var groups: [(day: String, items: [SyncedEvent])] {
         Agenda.upcoming(filtered, from: Agenda.todayKey(tz), tz: tz)
@@ -60,28 +60,14 @@ struct CalendarView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header.padding(.horizontal, 18).padding(.top, 8).padding(.bottom, 10)
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: mode == .agenda ? 18 : 14) {
-                        switch mode {
-                        case .agenda: agendaContent
-                        case .month:  monthContent
-                        case .day:    dayContent
-                        }
-                    }
-                    .padding(.horizontal, 18).padding(.bottom, WF.tabBarClearance)
-                }
-                .task(id: "\(mode.rawValue)-\(selectedDay)") {
-                    guard mode == .day else { return }
-                    try? await Task.sleep(for: .milliseconds(60))
-                    withAnimation { proxy.scrollTo(dayScrollHour(), anchor: .top) }
-                }
-                .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded(handleCalendarSwipe))
-            }
+        NavigationStack {
+            rootScreen
+                .background(WF.canvas)
+                .toolbar(.hidden, for: .navigationBar)
+                // Read by the pushed Day's system back button ("‹ September").
+                .navigationTitle(monthName(selectedDay))
+                .navigationDestination(isPresented: $showsDay) { dayScreen }
         }
-        .background(WF.canvas)
         .sheet(item: $editing) { target in
             switch target {
             case let .new(date): EventEditSheet(event: nil, initialDate: date)
@@ -99,8 +85,16 @@ struct CalendarView: View {
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
         }
+        .task { restoreMode() }
         .task { openReminderEvent(openEventId.wrappedValue) }
         .task { await countdowns.load() }
+        // The root, not `mode`: a Day tapped open from Month is a drill-in, and remembering it
+        // would reopen the tab on today's Day (the tab rebuilds this view, resetting the day).
+        .onChange(of: root) { _, m in storedMode = m }
+        .onChange(of: showsDay) { _, pushed in
+            // Back from a Day you paged through lands on that day's month.
+            if !pushed, let d = dayKeyToDate(selectedDay) { monthAnchor = d }
+        }
         .onChange(of: openEventId.wrappedValue) { _, id in openReminderEvent(id) }
         .onChange(of: sync.events) { _, _ in
             if openEventId.wrappedValue != nil { openReminderEvent(openEventId.wrappedValue) }
@@ -113,45 +107,164 @@ struct CalendarView: View {
         openEventId.wrappedValue = nil
     }
 
-    // MARK: header (month title + view toggle + add)
+    // MARK: navigation
 
-    private var header: some View {
-        HStack(spacing: 12) {
-            switch mode {
-            case .agenda:
-                Text(monthTitle(Date(), year: false)).font(WF.serif(30)).foregroundStyle(WF.ink)
-            case .month:
-                Button { stepMonth(-1) } label: { chevron("chevron.left") }
-                Text(monthTitle(monthAnchor, year: true)).font(WF.serif(24)).foregroundStyle(WF.ink).lineLimit(1)
-                Button { stepMonth(1) } label: { chevron("chevron.right") }
-            case .day:
-                Button { stepDay(-1) } label: { chevron("chevron.left") }
-                Text(dayTitle(selectedDay)).font(WF.serif(22)).foregroundStyle(WF.ink).lineLimit(1)
-                Button { stepDay(1) } label: { chevron("chevron.right") }
-            }
-            Spacer()
-            Menu {
-                ForEach(CalMode.allCases, id: \.self) { m in
-                    Button { withAnimation { mode = m } } label: { Label(m.label, systemImage: m.icon) }
-                }
-            } label: {
-                Image(systemName: mode.icon)
-                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink2)
-                    .frame(width: 38, height: 38).background(WF.card).clipShape(Circle())
-                    .overlay(Circle().strokeBorder(WF.hair, lineWidth: 1))
-            }
-            Button { editing = .new(mode == .agenda ? Date() : (dayKeyToDate(selectedDay) ?? Date())) } label: {
-                Image(systemName: "plus").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
-                    .frame(width: 38, height: 38).background(WF.primary).clipShape(Circle())
-            }
-            .buttonStyle(.plain)
+    private func restoreMode() {
+        guard !restoredMode else { return }
+        restoredMode = true
+        let start = CalMode.restored(stored: storedMode,
+                                     override: DemoHooks.kioskCalMode.flatMap(CalMode.init(rawValue:)))
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) { show(start) }
+    }
+
+    /// Month pages by `monthAnchor`, Week by `selectedDay`; switching between them carries the
+    /// position across so you land on the same stretch of time.
+    private func show(_ target: CalMode) {
+        if target == .day {
+            showsDay = true
+            return
+        }
+        if target == .month, root != .month, let d = dayKeyToDate(selectedDay) {
+            monthAnchor = d
+        }
+        if target == .week, root == .month, !showsDay {
+            selectedDay = PhoneCalendar.focusDay(selected: selectedDay, inMonthOf: monthAnchor,
+                                                 today: Agenda.todayKey(tz), tz: tz)
+        }
+        root = target
+        showsDay = false
+    }
+
+    // MARK: screens
+
+    @ViewBuilder private var rootScreen: some View {
+        switch root {
+        case .week: weekScreen
+        case .agenda: agendaScreen
+        case .month, .day: monthScreen
         }
     }
 
-    private func chevron(_ s: String) -> some View {
-        Image(systemName: s).font(.system(size: 13, weight: .heavy)).foregroundStyle(WF.ink2)
-            .frame(width: 30, height: 30).background(WF.card).clipShape(Circle())
-            .overlay(Circle().strokeBorder(WF.hair, lineWidth: 1))
+    private var monthScreen: some View {
+        VStack(spacing: 0) {
+            header {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(DateFmt.string(monthAnchor, "MMMM", tz)).font(WF.serif(25)).foregroundStyle(WF.ink)
+                    Text(DateFmt.string(monthAnchor, "yyyy", tz)).font(WF.serif(25, .regular)).foregroundStyle(WF.ink3)
+                }
+                .lineLimit(1)
+            }
+            PhoneMonthGrid(rows: PhoneCalendar.monthRows(monthAnchor, tz: tz, firstDay: firstDay),
+                           firstDay: firstDay, tz: tz, byDay: dayIndex, countdownsByDay: countdowns.byDate,
+                           todayKey: Agenda.todayKey(tz), selectedDay: selectedDay,
+                           onPick: { key in selectedDay = key; show(.day) })
+                .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { value in
+                    if let step = HorizontalSwipe.step(value) { stepMonth(step) }
+                })
+        }
+        .padding(.bottom, WF.fixedBarClearance)
+        .calendarPinchZoom { show(mode.zoomed(in: $0)) }
+    }
+
+    private var weekScreen: some View {
+        let days = PhoneCalendar.weekDays(containing: selectedDay, tz: tz, firstDay: firstDay)
+        return VStack(spacing: 0) {
+            header {
+                Text(PhoneCalendar.weekTitle(days, tz: tz)).font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(WF.ink).lineLimit(1)
+            }
+            PhoneWeekRail(days: days, tz: tz, firstDay: firstDay, byDay: dayIndex, countdownsByDay: countdowns.byDate,
+                          todayKey: Agenda.todayKey(tz), selectedDay: $selectedDay,
+                          onEditEvent: { editing = .edit($0) },
+                          onTapCountdown: openCountdown)
+        }
+        .padding(.bottom, WF.fixedBarClearance)
+        .calendarPinchZoom { show(mode.zoomed(in: $0)) }
+    }
+
+    private var dayScreen: some View {
+        PhoneDayTimeline(day: selectedDay, tz: tz, events: dayIndex[selectedDay] ?? [],
+                         countdowns: countdowns.byDate[selectedDay] ?? [],
+                         isToday: selectedDay == Agenda.todayKey(tz),
+                         onTapEvent: { detailEvent = $0 },
+                         onTapCountdown: openCountdown,
+                         onAddAt: { editing = .new($0) },
+                         onSwipeDay: stepDay)
+            .padding(.bottom, WF.fixedBarClearance)
+            .background(WF.canvas)
+            .calendarPinchZoom { show(mode.zoomed(in: $0)) }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    optionsMenu
+                    addButton
+                }
+            }
+    }
+
+    private var agendaScreen: some View {
+        VStack(spacing: 0) {
+            header { Text(monthTitle(Date(), year: false)).font(WF.serif(30)).foregroundStyle(WF.ink) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) { agendaContent }
+                    .padding(.horizontal, 18).padding(.bottom, WF.tabBarClearance)
+            }
+        }
+    }
+
+    // MARK: header (title + view/filter menu + add)
+
+    private func header<Title: View>(@ViewBuilder _ title: () -> Title) -> some View {
+        HStack(spacing: 8) {
+            title()
+            Spacer(minLength: 8)
+            optionsMenu
+            addButton
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 52)
+    }
+
+    /// The view switcher: its icon names the current view, and the menu also holds the
+    /// per-person filter, marked by a dot while one is on.
+    private var optionsMenu: some View {
+        Menu {
+            Picker("View", selection: Binding(get: { mode }, set: { m in withAnimation { show(m) } })) {
+                ForEach(CalMode.allCases, id: \.self) { m in Label(m.label, systemImage: m.icon).tag(m) }
+            }
+            .pickerStyle(.inline)
+            Picker("Show", selection: $filterPerson.animation()) {
+                Label("Everyone", systemImage: "person.2").tag(String?.none)
+                ForEach(sync.members) { m in Text(m.name).tag(Optional(m.id)) }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            Image(systemName: mode.icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(WF.ink2)
+                .frame(width: 32, height: 32)
+                .background(WF.card, in: Circle())
+                .overlay(Circle().strokeBorder(WF.hair, lineWidth: 1))
+                .overlay(alignment: .topTrailing) {
+                    if filterPerson != nil {
+                        Circle().fill(WF.primary).frame(width: 9, height: 9)
+                            .overlay(Circle().strokeBorder(WF.canvas, lineWidth: 1.5))
+                    }
+                }
+        }
+        .accessibilityLabel("\(mode.label) view")
+        .accessibilityValue(filterPerson == nil ? "Everyone" : "Filtered to one person")
+    }
+
+    private var addButton: some View {
+        Button { editing = .new(mode == .agenda ? Date() : (dayKeyToDate(selectedDay) ?? Date())) } label: {
+            Image(systemName: "plus").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 34, height: 34).background(WF.primary, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("New event")
     }
 
     // MARK: agenda
@@ -217,82 +330,6 @@ struct CalendarView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: month grid
-
-    @ViewBuilder private var monthContent: some View {
-        let cells = monthCells(monthAnchor)
-        VStack(spacing: 8) {
-            HStack(spacing: 0) {
-                // Rotated to the household's first day. Indexed by offset, not by the
-                // label: "T" and "S" each appear twice, so `id: \.self` would collide.
-                ForEach(Array(Cal.rotated(["S", "M", "T", "W", "T", "F", "S"], from: firstDay).enumerated()), id: \.offset) { _, d in
-                    Text(d).font(.system(size: 11, weight: .heavy)).foregroundStyle(WF.ink3)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 4) {
-                ForEach(cells, id: \.key) { cell in monthCell(cell) }
-            }
-        }
-        .padding(12)
-        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
-
-        dayHeading(selectedDay).padding(.top, 6)
-        let dayItems = Agenda.forDay(filtered, day: selectedDay, tz: tz)
-        let dayCountdowns = countdownsForDay(selectedDay)
-        if dayItems.isEmpty && dayCountdowns.isEmpty {
-            Button { editing = .new(dayKeyToDate(selectedDay) ?? Date()) } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "plus").font(.system(size: 12, weight: .heavy))
-                    Text("Add an event").font(.system(size: 14, weight: .semibold))
-                }
-                .foregroundStyle(WF.ink3).padding(.vertical, 10)
-            }
-            .buttonStyle(.plain)
-        } else {
-            VStack(spacing: 8) {
-                ForEach(dayItems) { ev in EventCard(event: ev, tz: tz) { detailEvent = ev } }
-                ForEach(dayCountdowns) { c in CountdownCard(countdown: c, sleeps: countdowns.sleeps) { openCountdown(c) } }
-            }
-        }
-    }
-
-    private func monthCell(_ cell: MonthCell) -> some View {
-        let isSelected = cell.key == selectedDay
-        let isToday = cell.key == Agenda.todayKey(tz)
-        // The whole cell is the day-select Button, so a countdown is only a badge here.
-        return Button { withAnimation { selectedDay = cell.key } } label: {
-            VStack(spacing: 3) {
-                Text("\(cell.day)")
-                    .font(.system(size: 14, weight: isToday ? .heavy : .semibold))
-                    .foregroundStyle(cell.inMonth ? (isToday ? WF.primary : WF.ink) : WF.ink3.opacity(0.5))
-                if let cds = countdowns.byDate[cell.key], let first = cds.first {
-                    HStack(spacing: 2) {
-                        Text(first.emoji ?? "⏳").font(.system(size: 8))
-                        Text(CountdownFormat.short(first.daysLeft)).font(.system(size: 8, weight: .heavy)).foregroundStyle(WF.warn)
-                        if cds.count > 1 { Text("+\(cds.count - 1)").font(.system(size: 8, weight: .bold)).foregroundStyle(WF.ink3) }
-                    }
-                    .padding(.horizontal, 3).padding(.vertical, 1)
-                    .background(WF.warnT).clipShape(Capsule())
-                } else {
-                    HStack(spacing: 2) {
-                        ForEach(Array(dotColors(cell.key).prefix(3).enumerated()), id: \.offset) { _, hex in
-                            Circle().fill(Color(hexString: hex) ?? WF.ink3).frame(width: 5, height: 5)
-                        }
-                    }
-                    .frame(height: 5)
-                }
-            }
-            .frame(maxWidth: .infinity).frame(height: 44)
-            .background(isSelected ? WF.primary.opacity(0.12) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(isSelected ? WF.primary : Color.clear, lineWidth: 1.5))
-        }
-        .buttonStyle(.plain)
-    }
-
     /// A countdown row: standalone → inline editor; event-source (`id` == event id) → that
     /// event's detail; birthday → no-op.
     private func openCountdown(_ c: WaffledAPI.Countdown) {
@@ -307,145 +344,10 @@ struct CalendarView: View {
         countdowns.byDate[day] ?? []
     }
 
-    /// Distinct event colors for the month dots — a whole-family event contributes the family
-    /// colour, so a day everyone is on shows one dot, not three.
-    private func dotColors(_ key: String) -> [String] {
-        var seen = Set<String>(); var colors: [String] = []
-        let palette = sync.eventPalette
-        for e in filtered where Agenda.dayKey(e, tz) == key {
-            let hex = palette.hex(for: e) ?? "#A6A29B"
-            if seen.insert(hex).inserted { colors.append(hex) }
-        }
-        return colors
-    }
-
-    // MARK: day grid
-
-    private static let hourHeight: CGFloat = 52
-
-    @ViewBuilder private var dayContent: some View {
-        let all = Agenda.forDay(filtered, day: selectedDay, tz: tz)
-        let allDay = all.filter { $0.allDay }
-        let timed = all.filter { !$0.allDay && $0.startsAt != nil }
-        let dayCountdowns = countdownsForDay(selectedDay)
-
-        if !allDay.isEmpty || !dayCountdowns.isEmpty {
-            VStack(spacing: 6) {
-                ForEach(allDay) { ev in EventCard(event: ev, tz: tz) { detailEvent = ev } }
-                ForEach(dayCountdowns) { c in CountdownCard(countdown: c, sleeps: countdowns.sleeps) { openCountdown(c) } }
-            }
-        }
-        ZStack(alignment: .topLeading) {
-            VStack(spacing: 0) {
-                ForEach(0..<24, id: \.self) { h in
-                    Button { editing = .new(dateAt(hour: h)) } label: {
-                        HStack(alignment: .top, spacing: 8) {
-                            Text(hourLabel(h)).font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(WF.ink3).frame(width: 48, alignment: .trailing)
-                            Rectangle().fill(WF.hair).frame(height: 1)
-                            Spacer(minLength: 0)
-                        }
-                        .frame(height: Self.hourHeight, alignment: .top)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .id(h)
-                }
-            }
-            ForEach(timed) { ev in dayBlock(ev) }
-            if selectedDay == Agenda.todayKey(tz) { nowLine }
-        }
-        .padding(.top, 2)
-    }
-
-    /// Live red current-time indicator, repositioned every minute. Only on today.
-    private var nowLine: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { ctx in
-            let comps = hourMinute(ctx.date)
-            let y = (CGFloat(comps.h) + CGFloat(comps.m) / 60) * Self.hourHeight
-            ZStack(alignment: .leading) {
-                Rectangle().fill(Self.nowRed).frame(height: 2).padding(.leading, 56)
-                Circle().fill(Self.nowRed).frame(width: 8, height: 8).offset(x: 52)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .offset(y: y - 1)
-            .allowsHitTesting(false)
-        }
-    }
-
-    private static let nowRed = Color(red: 0.89, green: 0.22, blue: 0.20)
-
-    @ViewBuilder private func dayBlock(_ ev: SyncedEvent) -> some View {
-        if let start = ev.startsAt {
-            let comps = hourMinute(start)
-            let y = (CGFloat(comps.h) + CGFloat(comps.m) / 60) * Self.hourHeight
-            let durMin = ev.endsAt.map { max(30, $0.timeIntervalSince(start) / 60) } ?? 60
-            let height = max(30, CGFloat(durMin) / 60 * Self.hourHeight - 4)
-            // A chip *with a background*, so the household's event style applies; the leading
-            // rule stays the raw colour, matching the web's `border-left`.
-            let paint = sync.eventPalette.chip(for: ev)
-            Button { detailEvent = ev } label: {
-                HStack(spacing: 7) {
-                    RoundedRectangle(cornerRadius: 99).fill(paint.color).frame(width: 3)
-                    VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 3) {
-                            RhythmEventMark(event: ev, size: 11)
-                            Text(ev.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(paint.foreground).lineLimit(1)
-                        }
-                        if height > 40 {
-                            Text(EventTime.timeLabel(start, tz)).font(.system(size: 10.5, weight: .medium))
-                                .foregroundStyle(paint.foreground.opacity(0.75))
-                        }
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 8).padding(.vertical, 5)
-                .frame(maxWidth: .infinity, alignment: .leading).frame(height: height, alignment: .top)
-                .background(paint.background)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .padding(.leading, 60).padding(.trailing, 2)
-            .offset(y: y)
-        }
-    }
-
-    private func hourLabel(_ h: Int) -> String {
-        let hr = h % 12 == 0 ? 12 : h % 12
-        return "\(hr) \(h < 12 ? "AM" : "PM")"
-    }
-    private func hourMinute(_ date: Date) -> (h: Int, m: Int) {
-        let cal = Cal.gregorian(tz)
-        let c = cal.dateComponents([.hour, .minute], from: date)
-        return (c.hour ?? 0, c.minute ?? 0)
-    }
-    private func dateAt(hour: Int) -> Date {
-        let cal = Cal.gregorian(tz)
-        let base = dayKeyToDate(selectedDay) ?? Date()
-        return cal.date(bySettingHour: hour, minute: 0, second: 0, of: base) ?? base
-    }
-    /// Hour to scroll the day grid to: one before the first event, else 7 AM.
-    private func dayScrollHour() -> Int {
-        let starts = Agenda.forDay(filtered, day: selectedDay, tz: tz)
-            .filter { !$0.allDay }.compactMap(\.startsAt)
-        if let first = starts.min() { return max(0, hourMinute(first).h - 1) }
-        return 7
-    }
-    private func stepDay(_ n: Int) {
-        let cal = Cal.gregorian(tz)
-        if let d = dayKeyToDate(selectedDay), let nd = cal.date(byAdding: .day, value: n, to: d) {
-            withAnimation { selectedDay = EventTime.dayKey(nd, tz) }
-        }
-    }
-    private func dayTitle(_ key: String) -> String {
-        guard let d = dayKeyToDate(key) else { return key }
-        return DateFmt.string(d, "EEE · MMM d", tz)
-    }
-
     // MARK: helpers
 
-    private func monthTitle(_ date: Date, year: Bool) -> String {
-        return DateFmt.string(date, year ? "MMMM yyyy" : "MMMM", tz)
+    private func stepDay(_ n: Int) {
+        withAnimation { selectedDay = PhoneCalendar.shift(selectedDay, byDays: n, tz: tz) }
     }
 
     private func stepMonth(_ n: Int) {
@@ -453,34 +355,16 @@ struct CalendarView: View {
         if let d = cal.date(byAdding: .month, value: n, to: monthAnchor) { withAnimation { monthAnchor = d } }
     }
 
-    /// Horizontal flick → step month (month view) or day (day view). Ignored in agenda mode.
-    private func handleCalendarSwipe(_ value: DragGesture.Value) {
-        guard let dir = HorizontalSwipe.step(value) else { return }
-        switch mode {
-        case .month: stepMonth(dir)
-        case .day:   stepDay(dir)
-        case .agenda: break
-        }
+    private func monthTitle(_ date: Date, year: Bool) -> String {
+        DateFmt.string(date, year ? "MMMM yyyy" : "MMMM", tz)
+    }
+
+    private func monthName(_ key: String) -> String {
+        dayKeyToDate(key).map { DateFmt.string($0, "MMMM", tz) } ?? "Calendar"
     }
 
     private func dayKeyToDate(_ key: String) -> Date? {
-        return DateFmt.date(key, "yyyy-MM-dd", tz)
-    }
-
-    struct MonthCell { let key: String; let day: Int; let inMonth: Bool }
-
-    /// 42 day-cells (6 weeks) covering `anchor`'s month, led by the household's own first day.
-    private func monthCells(_ anchor: Date) -> [MonthCell] {
-        let cal = Cal.gregorian(tz)
-        let comps = cal.dateComponents([.year, .month], from: anchor)
-        guard let first = cal.date(from: comps) else { return [] }
-        let anchorMonth = cal.component(.month, from: first)
-        let start = Cal.weekStart(first, tz, firstDay)
-        return (0..<42).compactMap { i in
-            guard let d = cal.date(byAdding: .day, value: i, to: start) else { return nil }
-            return MonthCell(key: EventTime.dayKey(d, tz), day: cal.component(.day, from: d),
-                             inMonth: cal.component(.month, from: d) == anchorMonth)
-        }
+        DateFmt.date(key, "yyyy-MM-dd", tz)
     }
 
     @ViewBuilder private func dayHeading(_ key: String) -> some View {

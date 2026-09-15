@@ -6,7 +6,6 @@ import SwiftUI
 /// (the goal's own start) scopes only the "% of days" denominator.
 struct YearGridView: View {
     let ctx: GoalDataContext
-    var headerRight: AnyView?
 
     private static let cell: CGFloat = 13
     private static let gap: CGFloat = 3.5
@@ -43,14 +42,10 @@ struct YearGridView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("The whole year").font(WF.serif(17, .semibold)).foregroundStyle(WF.ink)
-                    Text("\(activeDaysInViewCount) active days · every square is a day")
-                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
-                }
-                Spacer()
-                headerRight
+            VStack(alignment: .leading, spacing: 2) {
+                Text("The whole year").font(WF.serif(17, .semibold)).foregroundStyle(WF.ink)
+                Text("\(activeDaysInViewCount) active days · every square is a day")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
             }
 
             // Cells before the goal's own start date are drawn as nothing (by
@@ -64,20 +59,25 @@ struct YearGridView: View {
                 .onAppear { proxy.scrollTo("grid", anchor: .trailing) }
             }
 
-            HStack(spacing: 20) {
-                statColumn("🔥 \(ctx.stats.currentStreak)", "current streak", WF.primary)
-                statColumn("\(ctx.stats.longestStreak)", "longest streak", WF.ink)
-                statColumn("\(activeDaysInViewCount)", "active days", WF.ink)
-                statColumn("\(pct)%", "of days", WF.ink)
-                Spacer()
+            // One row when the four stats fit, otherwise two by two — labels never wrap.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 20) { stats; Spacer(minLength: 0) }
+                LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)], alignment: .leading, spacing: 12) { stats }
             }
         }
     }
 
+    @ViewBuilder private var stats: some View {
+        statColumn("🔥 \(ctx.stats.currentStreak)", "current streak", WF.primary)
+        statColumn("\(ctx.stats.longestStreak)", "longest streak", WF.ink)
+        statColumn("\(activeDaysInViewCount)", "active days", WF.ink)
+        statColumn("\(pct)%", "of days", WF.ink)
+    }
+
     private func statColumn(_ value: String, _ label: String, _ color: Color) -> some View {
-        VStack(spacing: 4) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(value).font(WF.serif(20, .semibold)).foregroundStyle(color)
-            Text(label).font(.system(size: 11, weight: .heavy)).foregroundStyle(WF.ink3)
+            Text(label).font(.system(size: 11, weight: .heavy)).foregroundStyle(WF.ink3).fixedSize()
         }
     }
 

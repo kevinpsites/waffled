@@ -8,7 +8,10 @@ enum HorizontalSwipe {
     /// back (swipe **right** = previous), or `nil` when the flick is too small or too
     /// vertical to count (so it doesn't fight a vertical ScrollView).
     static func step(_ value: DragGesture.Value) -> Int? {
-        let dx = value.translation.width, dy = value.translation.height
+        step(dx: value.translation.width, dy: value.translation.height)
+    }
+
+    static func step(dx: CGFloat, dy: CGFloat) -> Int? {
         guard abs(dx) > 50, abs(dx) > abs(dy) * 1.5 else { return nil }
         return dx < 0 ? 1 : -1
     }
