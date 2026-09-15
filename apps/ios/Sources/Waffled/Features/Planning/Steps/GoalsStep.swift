@@ -135,12 +135,18 @@ struct GoalsStepView: View {
             VStack(alignment: .leading, spacing: 12) {
                 header(g)
 
-                VStack(spacing: 8) {
+                VStack(spacing: 10) {
                     ForEach(g.goals) { item in
-                        goalOption(item, group: g, frozen: frozen)
-                        if item.weekTargetable {
-                            PlanningWeekTargetRow(item: item, frozen: frozen) { setTarget(item.id, $0) }
+                        // The target row shares the goal's frame, so it can't read as the next goal's.
+                        VStack(spacing: 0) {
+                            goalOption(item, group: g, frozen: frozen)
+                            if item.weekTargetable {
+                                Rectangle().fill(WF.hair).frame(height: 1).padding(.horizontal, 10)
+                                PlanningWeekTargetRow(item: item, frozen: frozen) { setTarget(item.id, $0) }
+                            }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .planningOptionChrome(selected: g.focusGoalId == item.goal.id)
                     }
                     nothingOption(g, frozen: frozen)
                 }
@@ -276,7 +282,7 @@ struct GoalsStepView: View {
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .planningOptionChrome(selected: checked)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(frozen)
@@ -345,23 +351,28 @@ private struct PlanningWeekTargetRow: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
-            Text("This week")
-                .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("This week’s target")
+                    .font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2)
+                Text(PlanningGoalsText.weekLine(item))
+                    .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(WF.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
             TextField("—", text: $text)
+                .font(.system(size: 16, weight: .semibold))
                 .keyboardType(.decimalPad)
                 .focused($focused)
                 .multilineTextAlignment(.center)
-                .frame(width: 64)
+                .padding(.horizontal, 10).padding(.vertical, 9)
+                .frame(width: 88)
                 .wfField()
                 .disabled(frozen)
                 .accessibilityLabel("This week’s target for \(item.goal.title)")
-            Text(PlanningGoalsText.weekLine(item))
-                .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink2)
-                .lineLimit(1)
-            Spacer(minLength: 0)
         }
-        .padding(.leading, 36)
+        // Lined up under the goal's title: the option's 10pt inset, 26pt emoji and 10pt gap.
+        .padding(.leading, 46).padding(.trailing, 10).padding(.vertical, 10)
         .onAppear { text = PlanningGoalsText.targetText(item.weekTarget) }
         .onChange(of: item.weekTarget) { _, new in text = PlanningGoalsText.targetText(new) }
         // Saved when the box is left; a decimal pad has no return key.
