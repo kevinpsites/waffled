@@ -162,7 +162,7 @@ Thanks for using Waffled — we'd love your feedback!
 
 | Field | Value | Notes |
 |-------|-------|-------|
-| **Support URL** *(required)* | `https://waffled.app/support` | Must resolve. If no support page yet, point at `https://waffled.app` or a docs page. |
+| **Support URL** *(required)* | `https://waffled.app/support` | Must resolve — **it 404s today**. Publish the page, or point the field at `https://waffled.app` or a docs page. |
 | **Marketing URL** *(optional)* | `https://waffled.app` | |
 | **Privacy Policy URL** *(required)* | `https://waffled.app/privacy` | Required before you can submit for review. Must be a live page. |
 
@@ -186,10 +186,16 @@ Thanks for using Waffled — we'd love your feedback!
 
 These can't be text-pasted — they're uploads/answers in App Store Connect:
 
-- [ ] **Screenshots** — at minimum 6.7" iPhone; add 12.9"/13" iPad since we support iPad.
+- [x] **Screenshots** — upload-ready sets are committed under `screenshots/iphone/` and
+      `screenshots/ipad/`; re-shoot when the UI moves on (the iPhone calendar changed in 0.15.1).
 - [ ] **App Privacy** questionnaire (Data collection) — declare what Waffled collects
       (self-hosted → likely "Data Not Collected" for the hosted app, but confirm).
 - [ ] **Age rating** questionnaire.
-- [ ] **Privacy Policy URL** live and reachable.
-- [ ] **Select a build** for the 1.0 version (this also fixes the blank app-level icon).
+- [x] **Privacy Policy URL** live and reachable — `https://waffled.app/privacy` answers 200
+      (shipped in 0.14.2, alongside `/terms`).
+- [ ] **Support URL** — `https://waffled.app/support` currently **404s**, and Apple requires a
+      Support URL that resolves. Publish the page or point the field at `https://waffled.app`
+      or a docs page before submitting.
+- [ ] **Select a build** — the current version is 0.15.1 (`MARKETING_VERSION` in
+      `apps/ios/project.yml`); selecting the build also fixes the blank app-level icon.
 ```
