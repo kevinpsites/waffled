@@ -618,8 +618,8 @@ describe('composite persons foreign keys — the Down migration reverses cleanly
     // Sanity: the "before" state really is the single-column one.
     expect(before.some((d) => d.includes('FOREIGN KEY (household_id, person_id)'))).toBe(false)
 
-    // Just THIS migration (count = pending ones to apply), never to the newest file: the
-    // down step below rolls back one, and it must be this one after later migrations land.
+    // Apply THIS migration only (count is "how many pending to run"), so `down count: 1`
+    // reverses it rather than whichever migration happens to be newest.
     await runMigrations(url, MIGRATIONS_DIR, 1)
     const after = await constraintSnapshot(client)
     expect(after).not.toEqual(before)

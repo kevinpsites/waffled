@@ -52,11 +52,28 @@ function stem(w: string): string {
   return w
 }
 
+// The matcher's word filter. The ignore picker uses it too, so it can only offer words the
+// matcher can actually match on.
+function isMeaningfulWord(raw: string): boolean {
+  return raw.length >= 3 && !/^\d+$/.test(raw) && !STOPWORDS.has(raw)
+}
+
 function tokenize(text: string): Set<string> {
   const out = new Set<string>()
   for (const raw of text.toLowerCase().split(/[^a-z0-9]+/)) {
-    if (raw.length < 3 || /^\d+$/.test(raw) || STOPWORDS.has(raw)) continue
+    if (!isMeaningfulWord(raw)) continue
     out.add(stem(raw))
+  }
+  return out
+}
+
+// The words a person can pick to ignore for a goal: tokenize's words, kept readable
+// (unstemmed) and in title order. Matching still compares stems.
+export function ignoreWordsOf(title: string): string[] {
+  const out: string[] = []
+  for (const raw of title.toLowerCase().split(/[^a-z0-9]+/)) {
+    if (!isMeaningfulWord(raw) || out.includes(raw)) continue
+    out.push(raw)
   }
   return out
 }

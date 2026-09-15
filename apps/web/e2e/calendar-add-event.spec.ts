@@ -39,7 +39,8 @@ const permissionRow = Object.fromEntries(capabilities.map((c) => [c, false]))
 const today = new Date()
 const day = new Date(Date.UTC(today.getFullYear(), today.getMonth(), 15, 15, 0, 0))
 const dayEnd = new Date(Date.UTC(today.getFullYear(), today.getMonth(), 15, 16, 0, 0))
-const dayKey = `${day.getUTCFullYear()}-${String(day.getUTCMonth() + 1).padStart(2, '0')}-15`
+// How the editor's Start date pill reads it: "Sep 15, 2026".
+const dayLabel = day.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
 
 const dentist = {
   id: 'ev-1', title: 'Dentist', description: null, location: null,
@@ -96,8 +97,8 @@ test('the month view can add an event on a day that already has one', async ({ p
   await signIn(page)
   await page.goto('/calendar')
 
-  // Select the 15th — the day carrying the mocked event — by its day number. A click on the
-  // middle of the cell can land on the event chip, which opens the event instead.
+  // Select the 15th — the day carrying the mocked event. Click its day number: the middle of a
+  // cell can be one of its event chips, which opens that event instead.
   await page.locator(`.cal-cell`, { hasText: 'Dentist' }).locator('.dn').click()
 
   const panel = page.locator('.cal-day-panel')
@@ -119,5 +120,5 @@ test('the month view can add an event on a day that already has one', async ({ p
   await add.click()
   const card = page.locator('.modal-card')
   await expect(card).toBeVisible()
-  await expect(card.locator(`input[type="date"]`).first()).toHaveValue(dayKey)
+  await expect(card.getByRole('button', { name: 'Start date' })).toHaveText(dayLabel)
 })

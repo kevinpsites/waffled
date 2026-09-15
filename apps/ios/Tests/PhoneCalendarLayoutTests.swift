@@ -337,3 +337,91 @@ private func timed(_ id: String, _ start: String, minutes: Double? = 60) -> Sync
         #expect(placed.map(\.event.id) == ["early", "late"])
     }
 }
+
+// Multi-day all-day events draw as one bar across a month row (like Google's month view)
+// instead of a separate chip in every day they cover.
+private func trip(_ id: String, _ first: String, throughExclusive end: String) -> SyncedEvent {
+    SyncedEvent(id: id, title: id, startsAtRaw: nil, startsAt: day(first), allDay: true,
+                personId: nil, colorHex: nil, emoji: nil, endsAt: day(end))
+}
+
+@Suite struct PhoneMonthSpanTests {
+    private let week = ["2026-09-13", "2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18", "2026-09-19"]
+
+    @Test func aTripDrawsOneBarAcrossItsDaysAndLeavesTheirChips() {
+        let t = trip("hamptons", "2026-09-15", throughExclusive: "2026-09-18")
+        let dinner = timed("dinner", "2026-09-16 18:00")
+        let spans = PhoneCalendar.weekSpans(week, byDay: Agenda.byDay([t, dinner], ny), tz: ny, maxLanes: 3)
+        #expect(spans.bars.map(\.event.id) == ["hamptons"])
+        #expect(spans.bars.first?.startCol == 2)
+        #expect(spans.bars.first?.endCol == 4)
+        #expect(spans.bars.first?.lane == 0)
+        #expect(spans.lanes == 1)
+        #expect(spans.chipsByDay["2026-09-16"]?.map(\.id) == ["dinner"])
+        #expect(spans.chipsByDay["2026-09-15"]?.isEmpty ?? true)
+    }
+
+    @Test func aTripCrossingTheRowEdgeIsCutThereAndSaysSo() {
+        let t = trip("camping", "2026-09-18", throughExclusive: "2026-09-23")
+        let bar = PhoneCalendar.weekSpans(week, byDay: Agenda.byDay([t], ny), tz: ny, maxLanes: 3).bars.first
+        #expect(bar?.startCol == 5)
+        #expect(bar?.endCol == 6)
+        #expect(bar?.continuesBefore == false)
+        #expect(bar?.continuesAfter == true)
+    }
+
+    @Test func overlappingTripsTakeSeparateLanesAndLaterOnesReuseAFreeLane() {
+        let a = trip("a", "2026-09-14", throughExclusive: "2026-09-17")
+        let b = trip("b", "2026-09-15", throughExclusive: "2026-09-19")
+        let c = trip("c", "2026-09-17", throughExclusive: "2026-09-20")
+        let spans = PhoneCalendar.weekSpans(week, byDay: Agenda.byDay([a, b, c], ny), tz: ny, maxLanes: 3)
+        let lanes = Dictionary(uniqueKeysWithValues: spans.bars.map { ($0.event.id, $0.lane) })
+        #expect(lanes == ["a": 0, "b": 1, "c": 0])
+        #expect(spans.lanes == 2)
+    }
+
+    @Test func oneDayEventsStayChips() {
+        let birthday = trip("birthday", "2026-09-16", throughExclusive: "2026-09-17")
+        let spans = PhoneCalendar.weekSpans(week, byDay: Agenda.byDay([birthday], ny), tz: ny, maxLanes: 3)
+        #expect(spans.bars.isEmpty)
+        #expect(spans.lanes == 0)
+        #expect(spans.chipsByDay["2026-09-16"]?.map(\.id) == ["birthday"])
+    }
+
+    @Test func tripsPastTheLaneCapFallBackToChips() {
+        let a = trip("a", "2026-09-14", throughExclusive: "2026-09-17")
+        let b = trip("b", "2026-09-15", throughExclusive: "2026-09-17")
+        let spans = PhoneCalendar.weekSpans(week, byDay: Agenda.byDay([a, b], ny), tz: ny, maxLanes: 1)
+        #expect(spans.bars.map(\.event.id) == ["a"])
+        #expect(spans.chipsByDay["2026-09-15"]?.map(\.id) == ["b"])
+    }
+
+    @Test func aDayCellLeavesRoomForTheRowsBarLanes() {
+        let c = PhoneCalendar.cellChips(eventCount: 3, countdownCount: 0, rowHeight: 200, reservedSlots: 2)
+        #expect(c.shown == 2)
+        #expect(c.more == 1)
+    }
+}
+
+// Bars over a month row: phone cells touch, iPad cells have a gap. A bar covers its columns and
+// the gaps between them, inset from both ends.
+@Suite struct MonthSpanGeometryTests {
+    @Test func aPhoneBarCoversItsColumnsInsetFromBothEnds() {
+        let g = PhoneCalendar.spanBarX(startCol: 2, endCol: 4, rowWidth: 350, spacing: 0, inset: 2)
+        #expect(g.x == 102)
+        #expect(g.width == 146)
+    }
+
+    @Test func anIPadBarAlsoCoversTheGapsBetweenItsCells() {
+        let g = PhoneCalendar.spanBarX(startCol: 1, endCol: 3, rowWidth: 736, spacing: 6, inset: 2)
+        #expect(g.x == 108)
+        #expect(g.width == 308)
+    }
+
+    @Test func aCellWithBarsShowsFewerChipsAndCountsTheRest() {
+        #expect(PhoneCalendar.cappedChips(eventCount: 5, cap: 3, reserved: 0) == .init(shown: 3, more: 2))
+        #expect(PhoneCalendar.cappedChips(eventCount: 5, cap: 3, reserved: 2) == .init(shown: 1, more: 4))
+        #expect(PhoneCalendar.cappedChips(eventCount: 1, cap: 3, reserved: 2) == .init(shown: 1, more: 0))
+        #expect(PhoneCalendar.cappedChips(eventCount: 2, cap: 3, reserved: 3) == .init(shown: 0, more: 2))
+    }
+}

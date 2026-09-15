@@ -606,6 +606,8 @@ struct GoalLogSheet: View {
     /// Tier-0 Apple Health read-&-suggest, as a one-tap pre-fill. nil = nothing to suggest.
     @State private var healthSuggestion: (metric: HealthKitBridge.Metric, value: Double)?
     @State private var noteSuggestions: [String] = []
+    /// Today's loggers as of opening the sheet (habits only); nil until it loads.
+    @State private var freshLoggedTodayBy: [String]?
 
     private static let hourUnits: Set<String> = ["hour", "hours", "hr", "hrs"]
     private static let activityChips = ["Bike ride", "Park", "Sports", "Outside play", "Reading", "Art"]
@@ -647,10 +649,11 @@ struct GoalLogSheet: View {
     /// Everyone picked has already ticked this habit off today and the entry is dated today, so
     /// the server would drop it. Blocks TODAY only — backdating a missed day stays open.
     private var blockedToday: Bool {
-        GoalDisplay.doneToday(goal, who: who) && Cal.current.isDateInToday(loggedOn)
+        GoalDisplay.doneToday(goal, who: GoalDisplay.logWho(goal, picked: who), loggedTodayBy: freshLoggedTodayBy)
+            && Cal.current.isDateInToday(loggedOn)
     }
     private var confirmLabel: String {
-        if isHabit { return blockedToday ? "Done for today ✓" : "Mark done for today" }
+        if isHabit { return GoalDisplay.habitConfirmLabel(doneToday: blockedToday) }
         return isTime ? "Log \(durationLabel)" : "Log \(goalFmt(logAmount))\(unitSuffix)"
     }
     private var chips: [GoalLogChips.Chip] { GoalLogChips.chips(isHours: isHours, unit: goal.unit) }
@@ -749,6 +752,8 @@ struct GoalLogSheet: View {
             }
             .background(WF.canvas)
             .task { if isChecklist { await loadSteps() } else { await loadHealthSuggestion() } }
+            // Its own task: the Health read above can sit on a permission prompt.
+            .task { if isHabit, let d = try? await api.goalDetail(id: goal.id) { freshLoggedTodayBy = d.loggedTodayBy } }
             .task(id: focusPerson) { await loadNoteSuggestions() }
             .navigationTitle(isChecklist ? "Checklist" : "Log progress")
             .navigationBarTitleDisplayMode(.inline)
@@ -779,7 +784,7 @@ struct GoalLogSheet: View {
                     Image(systemName: "checkmark.circle.fill").font(.system(size: 22))
                         .foregroundStyle(blockedToday ? WF.success : WF.primary)
                     Text(blockedToday
-                         ? "Already marked done today — pick another day to catch one up."
+                         ? "Already submitted for today — pick another day to catch one up."
                          : "One tap logs today’s completion — keep the streak going.")
                         .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
                     Spacer(minLength: 0)
@@ -2730,9 +2735,7 @@ struct GoalDetailView: View {
     /// Everyone has ticked it off today, so the button says so. Still opens, deliberately:
     /// the sheet backdates a MISSED day.
     private var habitDoneToday: Bool {
-        let ids = participants.map(\.personId)
-        guard !ids.isEmpty else { return false }
-        return GoalDisplay.doneToday(displayed, who: Set(ids))
+        GoalDisplay.doneToday(displayed, who: GoalDisplay.logWho(displayed, picked: Set(participants.map(\.personId))))
     }
 
     private var logActionButton: some View {

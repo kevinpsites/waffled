@@ -91,6 +91,20 @@ final class ReviewEventsModel {
         } catch { self.error = true }
     }
 
+    /// Stop suggesting events containing any picked word for this suggestion's goal, then
+    /// reload the queue: every other event carrying the word drops out too.
+    func ignore(_ s: WaffledAPI.GoalSuggestionItem, words: [String]) async {
+        guard Self.canIgnore(picked: words), !busy.contains(s.id) else { return }
+        busy.insert(s.id); defer { busy.remove(s.id) }
+        do {
+            try await api.ignoreSuggestionWords(goalId: s.goalId, words: words)
+            let fresh = try await api.goalSuggestions()
+            withAnimation { suggestions = fresh }
+        } catch { self.error = true }
+    }
+
+    nonisolated static func canIgnore(picked: [String]) -> Bool { !picked.isEmpty }
+
     var isBusy: (String) -> Bool { { self.busy.contains($0) } }
 }
 
@@ -99,6 +113,7 @@ struct ReviewEventsView: View {
     @Binding var path: [HubRoute]
     @State private var model = ReviewEventsModel()
     @State private var editingPeople: WaffledAPI.GoalRecapItem?
+    @State private var ignoring: WaffledAPI.GoalSuggestionItem?
 
     // ISO8601DateFormatter is expensive to allocate per call; hoist both parse configs.
     private static let isoFracDF: ISO8601DateFormatter = {
@@ -138,6 +153,11 @@ struct ReviewEventsView: View {
             ReviewPeopleSheet(item: it, members: sync.members,
                               selected: model.draft(for: it).people) { picked in
                 model.setPeople(it, picked)
+            }
+        }
+        .sheet(item: $ignoring) { s in
+            IgnoreWordsSheet(suggestion: s) { words in
+                Task { await model.ignore(s, words: words) }
             }
         }
     }
@@ -235,10 +255,19 @@ struct ReviewEventsView: View {
                 Spacer(minLength: 0)
             }
             HStack(spacing: 10) {
-                Button { Task { await model.dismiss(s, sync) } } label: {
-                    Text("Dismiss").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink2)
-                        .frame(maxWidth: .infinity).padding(.vertical, 11)
-                        .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
+                Menu {
+                    Button("Dismiss this one") { Task { await model.dismiss(s, sync) } }
+                    if !s.ignoreWords.isEmpty {
+                        Button("Ignore events like this…") { ignoring = s }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Text("Dismiss").font(.system(size: 14, weight: .bold))
+                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold))
+                    }
+                    .foregroundStyle(WF.ink2)
+                    .frame(maxWidth: .infinity).padding(.vertical, 11)
+                    .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
                 }
                 .buttonStyle(.plain).disabled(busy)
                 Button { Task { await model.link(s, sync) } } label: {
@@ -434,6 +463,52 @@ private struct ReviewPeopleSheet: View {
                     }.fontWeight(.semibold).disabled(picked.isEmpty)
                 }
             }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
+/// "Ignore events like this…": pick words from the event's title; any future event containing
+/// one is never suggested for this goal again. Removing a word lives in the web Settings.
+private struct IgnoreWordsSheet: View {
+    let suggestion: WaffledAPI.GoalSuggestionItem
+    let onIgnore: ([String]) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var picked: [String] = []
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Stop suggesting events with these words for \(suggestion.goalTitle):")
+                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink2)
+                    .fixedSize(horizontal: false, vertical: true)
+                ChipFlow(spacing: 8, lineSpacing: 8) {
+                    ForEach(suggestion.ignoreWords, id: \.self) { word in
+                        let on = picked.contains(word)
+                        Button {
+                            if let i = picked.firstIndex(of: word) { picked.remove(at: i) } else { picked.append(word) }
+                        } label: {
+                            Text(word).font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(on ? WF.ink : WF.ink2)
+                                .padding(.horizontal, 12).padding(.vertical, 7)
+                                .wfChip(selected: on)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(on ? .isSelected : [])
+                    }
+                }
+                Spacer(minLength: 0)
+                WaffledPrimaryCTA(label: "Ignore for this goal", tint: WF.primary,
+                                  isDisabled: !ReviewEventsModel.canIgnore(picked: picked)) {
+                    onIgnore(picked)
+                    dismiss()
+                }
+            }
+            .padding(20)
+            .background(WF.canvas)
+            .navigationTitle("Ignore events like this")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
         .presentationDetents([.medium])
     }

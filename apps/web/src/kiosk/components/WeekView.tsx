@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { usePersons, type AgendaEvent, type Countdown } from '../../lib/api'
 import { evVars, useEventColor } from '../../lib/event-color'
-import { DOW, ymd, addDays, localDate, fmtHour, fmtTime, minutesOfDay, durationMin, eventPeople, packLanes } from './cal-utils'
+import { DOW, ymd, addDays, fmtHour, fmtTime, minutesOfDay, durationMin, eventPeople, packLanes } from './cal-utils'
 import { CountdownChip } from './CountdownChip'
 import { RhythmMark } from './RhythmMark'
+import { eventsByDay, weekSpans } from './month-spans'
 
 const DAY_START = 0 // midnight — top of the grid (full day so early events are reachable)
 const DAY_END = 23 // 11 PM — bottom
@@ -60,11 +61,10 @@ export function WeekView({
     })
   }, [events, selected])
 
-  const byDay = useMemo(() => {
-    const map: Record<string, AgendaEvent[]> = {}
-    for (const e of visible) (map[localDate(e.startsAt, tz)] ??= []).push(e)
-    return map
-  }, [visible, tz])
+  // A multi-day all-day event is filed under every day it covers; timed events stay on their start.
+  const byDay = useMemo(() => eventsByDay(visible, tz), [visible, tz])
+  // The all-day strip grows with the week's trips, so no lane cap.
+  const spans = useMemo(() => weekSpans(days.map(ymd), byDay, tz, Infinity), [days, byDay, tz])
 
   function toggle(id: string) {
     setSelected((s) => {
@@ -125,13 +125,33 @@ export function WeekView({
         </div>
 
         <div className="wk-allday">
-          <div className="wk-rail-lbl">ALL-DAY</div>
-          {days.map((d) => {
+          {/* Bars are placed on the strip's grid before the cells, so the last cell stays
+              :last-child; everything is placed explicitly so the bars don't push cells down. */}
+          {spans.bars.map((b) => (
+            <div
+              key={b.event.id}
+              className={`wk-allday-ev ev-tint wk-span ${b.continuesBefore ? 'cont-before' : ''} ${b.continuesAfter ? 'cont-after' : ''}`}
+              style={{
+                ...evVars(colorOf(b.event)),
+                '--span-col': b.startCol + 2,
+                '--span-len': b.endCol - b.startCol + 1,
+                '--lane': b.lane,
+              } as CSSProperties}
+              title={b.event.title}
+              onClick={() => onOpenEvent(b.event)}
+            >
+              <RhythmMark event={b.event} />
+              {b.event.title}
+            </div>
+          ))}
+          <div className="wk-rail-lbl" style={{ gridRow: 1, gridColumn: 1 }}>ALL-DAY</div>
+          {days.map((d, i) => {
             const key = ymd(d)
-            const allday = (byDay[key] ?? []).filter((e) => e.allDay)
+            const allday = (spans.chipsByDay[key] ?? []).filter((e) => e.allDay)
             const dayCountdowns = countdownsByDate?.[key] ?? []
             return (
-              <div key={key} className="wk-allday-cell">
+              <div key={key} className="wk-allday-cell" style={{ gridRow: 1, gridColumn: i + 2 }}>
+                {spans.lanes > 0 && <div className="wk-span-gap" style={{ '--lanes': spans.lanes } as CSSProperties} />}
                 {allday.map((e) => {
                   const color = colorOf(e)
                   return (

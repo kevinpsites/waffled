@@ -217,6 +217,32 @@ private func goal(
         #expect(!GoalDisplay.doneToday(count, who: ["p0"]))
     }
 
+    @Test func aHabitWithNoParticipantsLogsForTheFamilyAndIsBlockedOnceItHas() {
+        // No participants means the Log sheet picks nobody and the server writes a family row,
+        // so "who" is the family sentinel — without it the sheet never said "already submitted".
+        let g = goal(goalType: "habit", habitTargetPerPeriod: 5, people: 0, loggedTodayBy: ["__family__"])
+        #expect(GoalDisplay.logWho(g, picked: []) == ["__family__"])
+        #expect(GoalDisplay.doneToday(g, who: GoalDisplay.logWho(g, picked: [])))
+    }
+
+    @Test func aGoalWithParticipantsKeepsTheLoggerPicksIncludingNone() {
+        let g = goal(goalType: "habit", habitTargetPerPeriod: 5, people: 2, loggedTodayBy: ["p0"])
+        #expect(GoalDisplay.logWho(g, picked: []).isEmpty)
+        #expect(GoalDisplay.logWho(g, picked: ["p1"]) == ["p1"])
+    }
+
+    @Test func aFreshLoggedTodayOverridesTheListTheSheetWasOpenedWith() {
+        // The sheet is handed a goal from a list loaded earlier; today's log may be newer.
+        let stale = goal(goalType: "habit", habitTargetPerPeriod: 5, people: 1, loggedTodayBy: [])
+        #expect(!GoalDisplay.doneToday(stale, who: ["p0"]))
+        #expect(GoalDisplay.doneToday(stale, who: ["p0"], loggedTodayBy: ["p0"]))
+    }
+
+    @Test func theHabitConfirmSaysAlreadySubmittedOnceDoneToday() {
+        #expect(GoalDisplay.habitConfirmLabel(doneToday: true) == "Already submitted today ✓")
+        #expect(GoalDisplay.habitConfirmLabel(doneToday: false) == "Mark done for today")
+    }
+
     @Test func anOlderResponseWithoutLoggedTodayByBlocksNothing() {
         // Missing the field must not gate the button shut — the server still dedupes.
         let g = goal(goalType: "habit", habitTargetPerPeriod: 5, loggedTodayBy: nil)

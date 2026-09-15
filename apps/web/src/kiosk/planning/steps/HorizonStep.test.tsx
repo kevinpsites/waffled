@@ -290,12 +290,13 @@ describe('Weekly planning · step 3 · Horizon scan', () => {
     // Prefilled to the day whose ＋ was tapped, and it already asks everything an event
     // needs — a second event form in this step is the drift the reuse rule exists to
     // prevent.
-    expect(within(modal).getByLabelText('Date')).toHaveValue('2026-09-19')
-    expect(within(modal).getByLabelText('Duration')).toBeInTheDocument()
+    expect(within(modal).getByRole('button', { name: 'Start date' })).toHaveTextContent('Sep 19, 2026')
+    expect(within(modal).getByRole('button', { name: 'End time' })).toBeInTheDocument()
     expect(within(modal).getByText('Repeats')).toBeInTheDocument()
 
     fireEvent.change(within(modal).getByLabelText('Title'), { target: { value: 'Scout campout' } })
-    fireEvent.change(within(modal).getByLabelText('Time'), { target: { value: '09:00' } })
+    fireEvent.click(within(modal).getByRole('button', { name: 'Start time' }))
+    fireEvent.click(within(modal).getByRole('option', { name: '9:00 AM' }))
     fireEvent.click(within(modal).getByRole('button', { name: /add event/i }))
 
     await waitFor(() => expect(eventPosts.length).toBe(1))

@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router'
 import mod, { weekRangeLabel, weekSummary } from './CalendarStep'
 import type { PlanningStep } from '../../../lib/api'
 import type { StepBodyProps } from '../registry'
+import { dayLabel } from '../../components/event-when'
 
 // Step 2 · Calendar. `weekStart` is pinned to a fixed Sunday rather than derived from today,
 // because the whole risk in this step is date handling: `new Date('2026-09-06')` is UTC midnight
@@ -211,8 +212,8 @@ describe('Weekly planning · step 2 · Calendar', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /add an event on wednesday, sep 9/i }))
     const modal = await eventModal()
-    expect(within(modal).getByLabelText('Date')).toHaveValue('2026-09-09')
-    expect(within(modal).getByLabelText('Duration')).toBeInTheDocument()
+    expect(within(modal).getByRole('button', { name: 'Start date' })).toHaveTextContent('Sep 9, 2026')
+    expect(within(modal).getByRole('button', { name: 'End time' })).toBeInTheDocument()
     expect(within(modal).getByText('Repeats')).toBeInTheDocument()
     expect(within(modal).getByLabelText('Location (optional)')).toBeInTheDocument()
   })
@@ -224,8 +225,10 @@ describe('Weekly planning · step 2 · Calendar', () => {
     const { setDecisionData, refresh } = renderStep()
 
     const modal = await compose('wednesday, sep 9', 'Soccer practice')
-    fireEvent.change(within(modal).getByLabelText('Time'), { target: { value: '08:30' } })
-    fireEvent.change(within(modal).getByLabelText('Duration'), { target: { value: '120' } })
+    fireEvent.click(within(modal).getByRole('button', { name: 'Start time' }))
+    fireEvent.click(within(modal).getByRole('option', { name: '8:30 AM' }))
+    fireEvent.click(within(modal).getByRole('button', { name: 'End time' }))
+    fireEvent.click(within(modal).getByRole('option', { name: '10:30 AM' }))
     fireEvent.click(await within(modal).findByRole('button', { name: /Nora/ }))
     fireEvent.click(within(modal).getByRole('button', { name: /add event/i }))
 
@@ -259,12 +262,14 @@ describe('Weekly planning · step 2 · Calendar', () => {
     renderStep()
 
     const modal = await compose('friday, sep 11', 'Grandma visits')
-    fireEvent.click(within(modal).getByLabelText('All day'))
+    fireEvent.click(within(modal).getByRole('switch', { name: 'All day' }))
     fireEvent.click(within(modal).getByRole('button', { name: /add event/i }))
 
     await waitFor(() => expect(posts.length).toBe(1))
-    expect(posts[0]).toMatchObject({ title: 'Grandma visits', allDay: true, endsAt: null })
+    expect(posts[0]).toMatchObject({ title: 'Grandma visits', allDay: true })
     expect(posts[0].startsAt).toBe(at('2026-09-11', '12:00'))
+    // A one-day event's end is exclusive: midday the day after, like the iPhone editor writes.
+    expect(posts[0].endsAt).toBe(at('2026-09-12', '12:00'))
   })
 
   it('opens the modal from the header too, on a day inside the week being planned', async () => {
@@ -273,8 +278,9 @@ describe('Weekly planning · step 2 · Calendar', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /add an event$/i }))
     const modal = await eventModal()
-    const chosen = (within(modal).getByLabelText('Date') as HTMLInputElement).value
-    expect(chosen >= '2026-09-06' && chosen <= '2026-09-12').toBe(true)
+    const chosen = within(modal).getByRole('button', { name: 'Start date' }).textContent
+    const week = ['06', '07', '08', '09', '10', '11', '12'].map((d) => dayLabel(`2026-09-${d}`))
+    expect(week).toContain(chosen)
   })
 
   it('keeps a busy day to one screen: four events, then “+N more”, which opens that day', async () => {

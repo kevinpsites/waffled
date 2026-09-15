@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router'
 import mod, { pairingSentence } from './ConnectionStep'
 import type { PlanningStep } from '../../../lib/api'
 import type { StepBodyProps } from '../registry'
+import { dayLabel } from '../../components/event-when'
 
 // Step 5 · Connection. Three ways the step could look right and be wrong:
 //  1. THE ROWS ARE A PROMPT, NOT THE LIST — the server ranks every pair, the step draws three,
@@ -242,8 +243,8 @@ describe('Weekly planning · step 5 · Connection', () => {
     fireEvent.click(within(kk).getByRole('button', { name: /Tue after 8:30 PM/ }))
 
     const modal = await eventModal()
-    expect(within(modal).getByLabelText('Date')).toHaveValue('2026-09-08')
-    expect(within(modal).getByLabelText('Time')).toHaveValue('20:30')
+    expect(within(modal).getByRole('button', { name: 'Start date' })).toHaveTextContent('Sep 8, 2026')
+    expect(within(modal).getByRole('button', { name: 'Start time' })).toHaveTextContent('8:30 PM')
     await nameItAndSave(modal, 'Date night')
 
     await waitFor(() => expect(posts).toHaveLength(1))
@@ -337,8 +338,8 @@ describe('Weekly planning · step 5 · Connection', () => {
     const kk = await row('p1-p2')
     fireEvent.click(within(kk).getByRole('button', { name: /Sat · free all day/ }))
     const modal = await eventModal()
-    expect(within(modal).getByLabelText('Date')).toHaveValue('2026-09-12')
-    expect(within(modal).getByLabelText('Time')).toHaveValue('17:00')
+    expect(within(modal).getByRole('button', { name: 'Start date' })).toHaveTextContent('Sep 12, 2026')
+    expect(within(modal).getByRole('button', { name: 'Start time' })).toHaveTextContent('5:00 PM')
   })
 
   it('offers another time for a pairing whose suggested gaps do not suit', async () => {
@@ -347,7 +348,7 @@ describe('Weekly planning · step 5 · Connection', () => {
     const kk = await row('p1-p2')
     fireEvent.click(within(kk).getByRole('button', { name: /Another time.*Kevin and Kelly/i }))
     const modal = await eventModal()
-    expect(within(modal).getByLabelText('Date')).toHaveValue(WEEK_START)
+    expect(within(modal).getByRole('button', { name: 'Start date' })).toHaveTextContent(dayLabel(WEEK_START))
   })
 
   it('makes a pairing of any two people — or three — and offers THEIR gaps', async () => {

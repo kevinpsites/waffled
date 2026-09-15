@@ -75,6 +75,14 @@
 .wk-allday-cell:last-child { border-right: 0; }
 .wk-allday-ev { font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 7px; max-width: 100%;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+/* Multi-day bars (month-spans.ts) laid over the strip's cells, which reserve their lanes with
+   .wk-span-gap. A lane is a 21px chip plus the cell's 4px gap; the top is the cell's padding. */
+.wk-span { grid-row: 1; grid-column: var(--span-col) / span var(--span-len); align-self: start; z-index: 1;
+  box-sizing: border-box; height: 21px; line-height: 15px; max-width: none;
+  margin: calc(5px + var(--lane) * 25px) 5px 0; }
+.wk-span.cont-before { margin-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.wk-span.cont-after { margin-right: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.wk-span-gap { flex: none; height: calc(var(--lanes) * 25px - 4px); }
 
 /* padding-top keeps the first hour label (positioned at top:-8px) from being
    clipped by the scroll container's top edge. */
@@ -173,7 +181,7 @@
 .ag-group-h .wf-serif { font-size: 21px; font-weight: 600; }
 .ag-group-h .muted { font-size: 14px; font-weight: 600; }
 .ag-add { width: 100%; margin-bottom: 18px; }
-.ag-group-add { margin-left: auto; align-self: center; width: 26px; height: 26px; border-radius: 999px;
+.ag-group-add { margin-left: auto; align-self: center; width: 26px; height: 26px; border-radius: 999px; padding: 0;
   flex: none; border: 1px solid var(--hair); background: var(--card); color: var(--ink-3);
   font-size: 16px; line-height: 1; cursor: pointer; display: grid; place-items: center;
   transition: opacity .12s, background .12s, color .12s; }
@@ -186,6 +194,7 @@
 .ag-group .ag-group-add { opacity: 0; }
 .ag-group:hover .ag-group-add { opacity: 1; }
 .ag-group-add:hover { background: var(--primary); color: var(--on-accent); border-color: var(--primary); }
+.ag-group-add svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; }
 .ag-row { display: flex; align-items: center; gap: 14px; background: var(--card); border-radius: var(--r-md);
   box-shadow: var(--sh-1); padding: 14px 16px; margin-bottom: 8px; cursor: pointer; }
 .ag-row:hover { box-shadow: var(--sh-2); }
@@ -219,6 +228,8 @@
 .ag-mini-dots { position: absolute; bottom: 5px; display: flex; gap: 2px; }
 .ag-mini-dot { width: 4px; height: 4px; border-radius: 999px; }
 .ag-mini-cell.today .ag-mini-dot { background: var(--on-accent) !important; }
+.ag-mini-cell.selected { box-shadow: inset 0 0 0 2px var(--primary); }
+.ag-mini-cell.selected:not(.today) .ag-mini-n { color: var(--primary); font-weight: 800; }
 
 /* AI cards — heads-up (agenda) + per-event insight (detail). Driven by the
    household's AI provider with a deterministic server fallback. */

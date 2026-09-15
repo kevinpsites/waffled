@@ -117,10 +117,22 @@ enum GoalDisplay {
     /// nothing. `who` holds the ids the sheet has selected, including the `__family__`
     /// sentinel a no-person (shared) log uses. Nobody picked, a non-habit, or a response
     /// too old to carry `loggedTodayBy` all gate nothing — the server still dedupes.
-    static func doneToday(_ g: GoalDisplayable, who: Set<String>) -> Bool {
-        guard g.goalType == "habit", !who.isEmpty, let logged = g.loggedTodayBy else { return false }
+    /// `loggedTodayBy` overrides the goal's own list — the Log sheet refetches it on open, since
+    /// the goal it was handed may predate today's log.
+    static func doneToday(_ g: GoalDisplayable, who: Set<String>, loggedTodayBy: [String]? = nil) -> Bool {
+        guard g.goalType == "habit", !who.isEmpty, let logged = loggedTodayBy ?? g.loggedTodayBy else { return false }
         let done = Set(logged)
         return who.allSatisfy { done.contains($0) }
+    }
+
+    /// Who a log is credited to, in `loggedTodayBy` terms. A goal with no participants never has
+    /// anyone picked, and the server writes that as a family row.
+    static func logWho(_ g: GoalDisplayable, picked: Set<String>) -> Set<String> {
+        g.participantCount == 0 && picked.isEmpty ? ["__family__"] : picked
+    }
+
+    static func habitConfirmLabel(doneToday: Bool) -> String {
+        doneToday ? "Already submitted today ✓" : "Mark done for today"
     }
 
     /// The ring caption under the progress number: "of 5 this week" for a habit, "of 5

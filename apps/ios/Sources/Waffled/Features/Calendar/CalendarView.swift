@@ -40,16 +40,12 @@ struct CalendarView: View {
     /// The household's first day of the week. Sunday until the setting reaches this device.
     private var firstDay: HouseholdWeekStart { sync.householdWeekStart ?? .sunday }
     private var mode: CalMode { showsDay ? .day : root }
-    private var filtered: [SyncedEvent] {
-        guard let p = filterPerson else { return sync.events }
-        return sync.events.filter { $0.personId == p || $0.participantIds.contains(p) }
-    }
-    /// Day → events for the grids. Unfiltered reuses the index `SyncManager` keeps.
+    /// Day → events for the grids: the index `SyncManager` keeps, narrowed by the person filter.
     private var dayIndex: [String: [SyncedEvent]] {
-        filterPerson == nil ? sync.eventsByDay : Agenda.byDay(filtered, tz)
+        Agenda.filtered(byDay: sync.eventsByDay, person: filterPerson)
     }
     private var groups: [(day: String, items: [SyncedEvent])] {
-        Agenda.upcoming(filtered, from: Agenda.todayKey(tz), tz: tz)
+        Agenda.upcoming(byDay: dayIndex, from: Agenda.todayKey(tz))
     }
     /// Agenda day keys = event days ∪ countdown days (today forward), so a countdown-only day shows.
     private var agendaDays: [String] {
@@ -544,6 +540,11 @@ struct EventEditSheet: View {
     @State private var start: Date
     @State private var durationMin: Int
     @State private var allDay: Bool
+    /// The last day an all-day event covers (inclusive); saved as the exclusive end.
+    @State private var lastDay: Date
+    enum WhenField { case startDate, startTime, endDate, endTime }
+    /// The date or time pill whose picker is open inside the When card.
+    @State private var openWhen: WhenField?
     @State private var isCountdown: Bool
     /// Ordered so the first one picked is the "owner" (drives the calendar list).
     @State private var participants: [String]
@@ -590,7 +591,6 @@ struct EventEditSheet: View {
     @FocusState private var titleFocused: Bool
 
     private static let iso = ISO8601DateFormatter()
-    private static let durations = [15, 30, 45, 60, 90, 120, 180, 240]
 
     /// `prefillTitle` / `prefillStart` exist for surfaces that already KNOW what the event is.
     /// `prefillStart` is a full `Date`, not an hour: the gap is an instant the server computed in
@@ -613,14 +613,16 @@ struct EventEditSheet: View {
             ?? prefillStart
             ?? (cal.date(bySettingHour: 17, minute: 0, second: 0, of: initialDate) ?? initialDate)
         let mins: Int = {
-            guard let s = event?.startsAt, let e = event?.endsAt else { return 60 }
-            return max(15, Int(e.timeIntervalSince(s) / 60))
+            guard event?.allDay != true, let s = event?.startsAt, let e = event?.endsAt else { return 60 }
+            return EventEnd.minutes(from: s, to: e)
         }()
         _title = State(initialValue: event?.title ?? prefillTitle ?? "")
         _day = State(initialValue: startDate)
         _start = State(initialValue: startDate)
         _durationMin = State(initialValue: mins)
         _allDay = State(initialValue: event?.allDay ?? false)
+        _lastDay = State(initialValue: EventEnd.allDayLastDay(
+            start: startDate, end: event?.allDay == true ? event?.endsAt : nil, cal: cal))
         _isCountdown = State(initialValue: event?.isCountdown ?? false)
         let eventParticipants = event.map {
             !$0.participantIds.isEmpty ? $0.participantIds : ($0.personId.map { [$0] } ?? [])
@@ -634,6 +636,15 @@ struct EventEditSheet: View {
     }
 
     private var editing: Bool { event != nil }
+    private var timedEnd: Date { resolvedStart.addingTimeInterval(Double(durationMin) * 60) }
+    private var endDayBinding: Binding<Date> {
+        Binding(get: { timedEnd },
+                set: { durationMin = EventEnd.minutes(from: resolvedStart, to: combine($0, timedEnd)) })
+    }
+    private var endTimeBinding: Binding<Date> {
+        Binding(get: { timedEnd },
+                set: { durationMin = EventEnd.minutes(from: resolvedStart, to: combine(timedEnd, $0)) })
+    }
     private var canSave: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty
         && (!wasRecurring || originalSeriesFields != nil)
@@ -673,39 +684,7 @@ struct EventEditSheet: View {
                             .padding(.horizontal, 13).padding(.vertical, 11).innerField()
                     }
 
-                    group("Date") {
-                        DatePicker("", selection: $day, displayedComponents: .date)
-                            .labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
-                    }
-
-                    if !allDay {
-                        HStack(spacing: 14) {
-                            group("Time") {
-                                DatePicker("", selection: $start, displayedComponents: .hourAndMinute)
-                                    .labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            group("Duration") {
-                                Menu {
-                                    ForEach(durationOptions, id: \.self) { m in
-                                        Button(durationLabel(m)) { durationMin = m }
-                                    }
-                                } label: {
-                                    HStack {
-                                        Text(durationLabel(durationMin)).font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink)
-                                        Spacer()
-                                        Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
-                                    }
-                                    .padding(.horizontal, 13).padding(.vertical, 11).innerField()
-                                }
-                            }
-                        }
-                    }
-
-                    Toggle(isOn: $allDay.animation()) {
-                        Text("All day").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
-                    }
-                    .tint(FamilyColor.person3.solid)
-                    .padding(14).cardBox()
+                    whenCard
 
                     Toggle(isOn: $isCountdown) {
                         VStack(alignment: .leading, spacing: 2) {
@@ -788,6 +767,18 @@ struct EventEditSheet: View {
             }
             .onChange(of: participants) { _, _ in recomputeDefaultCalendar(); clearOrphanGoal(); scheduleSuggest() }
             .onChange(of: title) { _, _ in scheduleSuggest() }
+            .onChange(of: allDay) { _, _ in openWhen = nil }
+            // An all-day end can't be picked before its start (timed ends floor in `EventEnd.minutes`).
+            .onChange(of: lastDay) { _, picked in
+                let floor = Cal.current.startOfDay(for: day)
+                if picked < floor { lastDay = floor }
+            }
+            // Moving the start day carries an all-day span with it.
+            .onChange(of: day) { old, new in
+                let cal = Cal.current
+                let span = cal.dateComponents([.day], from: cal.startOfDay(for: old), to: cal.startOfDay(for: lastDay)).day ?? 0
+                lastDay = cal.date(byAdding: .day, value: max(0, span), to: cal.startOfDay(for: new)) ?? new
+            }
             .confirmationDialog(
                 scopePrompt == .delete ? "Delete repeating event" : "Save repeating event",
                 isPresented: Binding(get: { scopePrompt != nil }, set: { if !$0 { scopePrompt = nil } }),
@@ -1110,15 +1101,6 @@ struct EventEditSheet: View {
         calendarId = (ownerCals.first { $0.isWriteTarget } ?? ownerCals.first)?.id
     }
 
-    private var durationOptions: [Int] {
-        Self.durations.contains(durationMin) ? Self.durations : (Self.durations + [durationMin]).sorted()
-    }
-    private func durationLabel(_ m: Int) -> String {
-        if m < 60 { return "\(m) min" }
-        let h = Double(m) / 60
-        return h == h.rounded() ? "\(Int(h)) hr" : String(format: "%.1f hr", h)
-    }
-
     // MARK: repeats picker
 
     private static let freqOptions: [RepeatFreq] = [.none, .daily, .weekdays, .weekly, .monthly, .custom]
@@ -1313,7 +1295,9 @@ struct EventEditSheet: View {
     private func buildDraft() -> Draft {
         let startDate = resolvedStart
         let startISO = Self.iso.string(from: startDate)
-        let endISO = allDay ? nil : Self.iso.string(from: startDate.addingTimeInterval(Double(durationMin) * 60))
+        let endISO = allDay
+            ? Self.iso.string(from: EventEnd.allDayExclusiveEnd(lastDay: lastDay, cal: Cal.current))
+            : Self.iso.string(from: startDate.addingTimeInterval(Double(durationMin) * 60))
         let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedLoc = location.trimmingCharacters(in: .whitespaces)
         let base = Recurrence.buildRrule(repeatState, start: startDate)
@@ -1466,10 +1450,71 @@ struct EventEditSheet: View {
     }
 
     private func combine(_ dayDate: Date, _ time: Date) -> Date {
-        let cal = Cal.current
-        let d = cal.dateComponents([.year, .month, .day], from: dayDate)
-        let t = cal.dateComponents([.hour, .minute], from: time)
-        return cal.date(from: DateComponents(year: d.year, month: d.month, day: d.day, hour: t.hour, minute: t.minute)) ?? dayDate
+        EventEnd.combine(day: dayDate, time: time, cal: Cal.current)
+    }
+
+    /// All day, Starts and Ends in one card. Dates and times are pills that open their picker
+    /// under the row, like Calendar's editor (labels: `EventEnd.dayLabel`).
+    private var whenCard: some View {
+        let tz = Cal.current.timeZone
+        return VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: $allDay.animation()) {
+                Text("All day").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+            }
+            .tint(FamilyColor.person3.solid)
+            Rectangle().fill(WF.hair).frame(height: 1)
+            whenRow("Starts") {
+                whenPill(.startDate, "Start date", EventEnd.dayLabel(day, tz: tz))
+                if !allDay { whenPill(.startTime, "Start time", EventEnd.timeLabel(start, tz: tz)) }
+            }
+            openPicker(among: [.startDate, .startTime])
+            whenRow("Ends") {
+                whenPill(.endDate, "End date", EventEnd.dayLabel(allDay ? lastDay : timedEnd, tz: tz))
+                if !allDay { whenPill(.endTime, "End time", EventEnd.timeLabel(timedEnd, tz: tz)) }
+            }
+            openPicker(among: [.endDate, .endTime])
+        }
+        .padding(14).cardBox()
+    }
+
+    private func whenRow<V: View>(_ label: String, @ViewBuilder _ pills: () -> V) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink2)
+            HStack(spacing: 8) { pills() }
+        }
+    }
+
+    private func whenPill(_ field: WhenField, _ name: String, _ text: String) -> some View {
+        let open = openWhen == field
+        return Button { withAnimation(.snappy) { openWhen = open ? nil : field } } label: {
+            Text(text).font(.system(size: 15, weight: .semibold)).monospacedDigit()
+                .foregroundStyle(open ? WF.primary : WF.ink)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .wfChip(selected: open)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(name).accessibilityValue(text)
+    }
+
+    @ViewBuilder private func openPicker(among fields: [WhenField]) -> some View {
+        if let field = openWhen, fields.contains(field) {
+            Group {
+                switch field {
+                case .startDate:
+                    DatePicker("Start date", selection: $day, displayedComponents: .date).datePickerStyle(.graphical)
+                case .startTime:
+                    DatePicker("Start time", selection: $start, displayedComponents: .hourAndMinute).datePickerStyle(.wheel)
+                case .endDate:
+                    DatePicker("End date", selection: allDay ? $lastDay : endDayBinding, displayedComponents: .date)
+                        .datePickerStyle(.graphical)
+                case .endTime:
+                    DatePicker("End time", selection: endTimeBinding, displayedComponents: .hourAndMinute).datePickerStyle(.wheel)
+                }
+            }
+            .labelsHidden().tint(WF.primary)
+            .frame(maxWidth: .infinity)
+            .transition(.opacity)
+        }
     }
 
     private func group<V: View>(_ label: String, @ViewBuilder _ content: () -> V) -> some View {
