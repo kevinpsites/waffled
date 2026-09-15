@@ -322,7 +322,10 @@ describe('recap · review follow-ups', () => {
     fireEvent.click(within(row).getByRole('button', { name: 'Make an event' }))
     const modal = (await screen.findByText('New event')).closest('.modal-card') as HTMLElement
     const today = localToday()
-    expect((within(modal).getByLabelText('Date') as HTMLInputElement).value).toBe(WEEK_START > today ? WEEK_START : today)
+    const day = WEEK_START > today ? WEEK_START : today
+    // The editor's When card names the day on its Start date pill: "Sep 15, 2026".
+    const label = new Date(`${day}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    expect(within(modal).getByRole('button', { name: 'Start date' })).toHaveTextContent(label)
   })
 
   it('says so when a note could not be settled after its task was saved', async () => {
