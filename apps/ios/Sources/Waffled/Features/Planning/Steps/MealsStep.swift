@@ -270,14 +270,21 @@ struct MealsStepView: View {
                     .buttonStyle(.plain)
                     .accessibilityHint("Opens this week’s grocery list")
 
-                    HStack(spacing: 8) {
+                    HStack(spacing: 10) {
                         TextField("Add to groceries…", text: $groceryDraft)
+                            .font(.system(size: 16, weight: .semibold))
                             .submitLabel(.done)
                             .onSubmit(addGrocery)
+                            .padding(.horizontal, 14).padding(.vertical, 12)
                             .wfField()
-                        Button("Add item", action: addGrocery)
-                            .font(.system(size: 13, weight: .bold))
-                            .disabled(frozen || groceryDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                        let canAdd = !frozen && !groceryDraft.trimmingCharacters(in: .whitespaces).isEmpty
+                        Button(action: addGrocery) {
+                            Text("Add").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                                .padding(.horizontal, 18).padding(.vertical, 12)
+                                .background(canAdd ? WF.primary : WF.primary.opacity(0.4))
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain).disabled(!canAdd)
                     }
 
                     // The shopper pill is only here because the trip is REAL — a one-off
