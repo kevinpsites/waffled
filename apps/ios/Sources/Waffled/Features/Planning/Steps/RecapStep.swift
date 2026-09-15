@@ -239,50 +239,51 @@ struct RecapStepView: View {
                     }
 
                     ForEach(open) { note in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(note.note)
-                                .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink)
-                                .fixedSize(horizontal: false, vertical: true)
-                            if let detail = note.detail, !detail.isEmpty {
-                                Text(detail)
-                                    .font(.system(size: 12)).foregroundStyle(WF.ink3)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            HStack(spacing: 12) {
-                                if sync.module(.chores) {
-                                    Button("Make a task") { model.makeTask(from: note) }
-                                        .font(.system(size: 12.5, weight: .bold))
-                                        .foregroundStyle(WF.primary)
-                                        .buttonStyle(.plain)
-                                        .disabled(props.busy || model.working != nil)
+                        let disabled = props.busy || model.working != nil
+                        // One sub-card per note: what it says on top, the two ways to act on it
+                        // below, and the quiet answers (keep, drop) behind the ⋯ menu.
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(alignment: .top, spacing: 8) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(note.note)
+                                        .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    if let detail = note.detail, !detail.isEmpty {
+                                        Text(detail)
+                                            .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
                                 }
-                                Button("Make an event") { model.makeEvent(from: note) }
-                                    .font(.system(size: 12.5, weight: .bold))
-                                    .foregroundStyle(WF.primary)
-                                    .buttonStyle(.plain)
-                                    .disabled(props.busy || model.working != nil)
-                                Spacer(minLength: 0)
-                            }
-                            HStack(spacing: 8) {
-                                Button("Keep it parked") { model.keepParked(note.id) }
-                                    .font(.system(size: 12.5, weight: .bold))
-                                    .foregroundStyle(WF.ink2)
-                                    .buttonStyle(.plain)
-                                    .disabled(props.busy || model.working != nil)
-                                Button("Drop it") {
-                                    Task { await model.drop(note.id, sessionId: props.sessionId) }
-                                }
-                                .font(.system(size: 12.5, weight: .bold))
-                                .foregroundStyle(WF.danger)
-                                .buttonStyle(.plain)
-                                .disabled(props.busy || model.working != nil)
+                                Spacer(minLength: 4)
                                 if model.working == note.id {
                                     ProgressView().controlSize(.small).tint(WF.ink3)
                                 }
+                                Menu {
+                                    Button("Keep it parked") { model.keepParked(note.id) }
+                                    Button("Drop it", role: .destructive) {
+                                        Task { await model.drop(note.id, sessionId: props.sessionId) }
+                                    }
+                                } label: {
+                                    Image(systemName: "ellipsis")
+                                        .font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink3)
+                                        .frame(width: 30, height: 30)
+                                        .contentShape(Rectangle())
+                                }
+                                .disabled(disabled)
+                                .accessibilityLabel("Keep or drop this note")
+                            }
+                            HStack(spacing: 8) {
+                                if sync.module(.chores) {
+                                    WaffledPillButton(label: "Make a task", disabled: disabled) { model.makeTask(from: note) }
+                                }
+                                WaffledPillButton(label: "Make an event", disabled: disabled) { model.makeEvent(from: note) }
                                 Spacer(minLength: 0)
                             }
                         }
+                        .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(WF.panel)
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     }
 
                     if let more = model.view?.lastCallMore, more > 0 {
