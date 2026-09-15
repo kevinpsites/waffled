@@ -373,9 +373,7 @@ struct PersonView: View {
 
     private var personEvents: [SyncedEvent] {
         let today = Agenda.todayKey(sync.householdTz)
-        return sync.events
-            .filter { ($0.personId == personId || $0.participantIds.contains(personId)) && Agenda.covers($0, day: today, tz: sync.householdTz) }
-            .sorted(by: Agenda.before)
+        return (sync.eventsByDay[today] ?? []).filter { Agenda.involves($0, person: personId) }
     }
 
     @ViewBuilder private var daySection: some View {

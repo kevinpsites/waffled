@@ -281,13 +281,18 @@ enum Agenda {
         return grouped.mapValues { $0.sorted(by: before) }
     }
 
+    /// The person's own event, or one they're joined to.
+    static func involves(_ e: SyncedEvent, person: String) -> Bool {
+        e.personId == person || e.participantIds.contains(person)
+    }
+
     /// The day index narrowed to one person's own and joined events; days left empty are dropped.
     /// nil is the index unchanged.
     static func filtered(byDay: [String: [SyncedEvent]], person: String?) -> [String: [SyncedEvent]] {
         guard let person else { return byDay }
         var out: [String: [SyncedEvent]] = [:]
         for (day, items) in byDay {
-            let kept = items.filter { $0.personId == person || $0.participantIds.contains(person) }
+            let kept = items.filter { involves($0, person: person) }
             if !kept.isEmpty { out[day] = kept }
         }
         return out
