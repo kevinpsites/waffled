@@ -451,7 +451,7 @@ struct RhythmEditorSheet: View {
 
     private var anchorNote: some View {
         LockNote(form.shape == .scheduling
-                 ? "Periods are anchored to \(RhythmFormat.shortDate(RhythmFormat.ymd(form.startDate()))),\(RhythmFormat.cadenceLabel(form.every)). Moving the anchor would re-interpret the periods you’ve already skipped or booked, so it can’t change here — retire this one and make a new one instead."
+                 ? "Periods are anchored to \(RhythmFormat.shortDate(RhythmFormat.ymd(form.startDate()))), \(RhythmFormat.cadenceLabel(form.every)). Moving the anchor would re-interpret the periods you’ve already skipped or booked, so it can’t change here — retire this one and make a new one instead."
                  : "The clock isn’t set by hand — marking it done restarts it from when you actually did it. Moving the anchor would mean a different rhythm, so retire this one and make a new one instead.")
     }
 
