@@ -173,7 +173,7 @@
 .ag-group-h .wf-serif { font-size: 21px; font-weight: 600; }
 .ag-group-h .muted { font-size: 14px; font-weight: 600; }
 .ag-add { width: 100%; margin-bottom: 18px; }
-.ag-group-add { margin-left: auto; align-self: center; width: 26px; height: 26px; border-radius: 999px;
+.ag-group-add { margin-left: auto; align-self: center; width: 26px; height: 26px; border-radius: 999px; padding: 0;
   flex: none; border: 1px solid var(--hair); background: var(--card); color: var(--ink-3);
   font-size: 16px; line-height: 1; cursor: pointer; display: grid; place-items: center;
   transition: opacity .12s, background .12s, color .12s; }
