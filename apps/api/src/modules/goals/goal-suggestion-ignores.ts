@@ -39,16 +39,16 @@ export function usableIgnoreWords(words: unknown): string[] {
   return out
 }
 
+// One statement, so a picked set of words is saved whole or not at all.
 export async function addIgnores(householdId: string, goalId: string, words: string[], personId: string | null): Promise<void> {
-  for (const word of words) {
-    const token = tokensOf(word)[0]
-    if (!token) continue
-    await query(
-      `insert into goal_suggestion_ignores (household_id, goal_id, word, token, created_by)
-       values ($1,$2,$3,$4,$5) on conflict (goal_id, token) do nothing`,
-      [householdId, goalId, word, token, personId]
-    )
-  }
+  const rows = words.map((word) => ({ word, token: tokensOf(word)[0] })).filter((r) => r.token)
+  if (rows.length === 0) return
+  await query(
+    `insert into goal_suggestion_ignores (household_id, goal_id, word, token, created_by)
+     select $1, $2, w.word, w.token, $5 from unnest($3::text[], $4::text[]) as w(word, token)
+     on conflict (goal_id, token) do nothing`,
+    [householdId, goalId, rows.map((r) => r.word), rows.map((r) => r.token), personId]
+  )
 }
 
 export interface IgnoreGroup {
