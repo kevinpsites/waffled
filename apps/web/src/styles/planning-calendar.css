@@ -21,7 +21,7 @@
 
 /* A dark pill, not the coral primary: the step's affirmative lives in the shell's footer, and
    two coral buttons would compete. */
-.wpc-new { flex: none; background: var(--ink); color: var(--on-accent); padding: 11px 20px; font-size: 14px; }
+.wpc-new { flex: none; background: var(--ink); color: var(--on-inverse); padding: 11px 20px; font-size: 14px; }
 .wpc-new:disabled { opacity: 0.4; cursor: default; }
 
 /* ── The week ───────────────────────────────────────────────────────────────── */
