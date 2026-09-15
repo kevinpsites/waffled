@@ -156,6 +156,26 @@ const SELECT = `
 // quarterly rhythm two months from its runway is handled. The client can't work that out
 // on its own either: stepping true calendar months from an interval like '3 mons' is the
 // arithmetic this query already does.
+// The period a scheduling rhythm is asking about as of the SQL date `today`: the earliest
+// one whose booking window has not closed. Without a window that is the period containing
+// today; with one, the next period the day after the window closes. Before the anchor it is
+// the first period. Boundaries come FROM THE ANCHOR (starts_on + n × every), never stepped,
+// or Jan 31 → Feb 28 → Mar 28. Shared by listRhythms and listAttention so the register and
+// the Today card cannot name different periods. Expects the rhythm aliased `r`.
+function askingPeriodStart(today: string): string {
+  return `case when r.book_within is null then
+            coalesce(
+              (select max((r.starts_on + (n * r.every))::date)
+                 from generate_series(0, greatest(0, (${today} - r.starts_on))) n
+                where (r.starts_on + (n * r.every))::date <= ${today}),
+              r.starts_on)
+          else
+            (select min((r.starts_on + (n * r.every))::date)
+               from generate_series(0, greatest(0, (${today} - r.starts_on)) + 1) n
+              where ((r.starts_on + (n * r.every))::date + r.book_within)::date > ${today})
+          end`
+}
+
 export async function listRhythms(householdId: string): Promise<RhythmWithPeriod[]> {
   const { rows } = await query<Row & {
     period_start: string | null
@@ -170,23 +190,9 @@ export async function listRhythms(householdId: string): Promise<RhythmWithPeriod
           base as (
        select r.*,
               case when r.satisfied_by = 'scheduling' then
-                -- Tiled up to the household's OWN today. Against a bare now() the grid
-                -- rolls over at UTC midnight, so a household in Los Angeles watched its
-                -- period advance at 5pm — while the evening it was still meant to be
-                -- booking in was, locally, not over.
-                -- Each boundary is computed FROM THE ANCHOR (starts_on + n × every),
-                -- not by stepping from the previous one. generate_series with an interval
-                -- step feeds each result into the next addition, so a single short month
-                -- poisons the rest: Jan 31 → Feb 28 → Mar *28* → Apr 28, and a rhythm
-                -- anchored on a month end silently becomes a 28th-of-the-month rhythm
-                -- forever. From the anchor it is Jan 31 → Feb 28 → Mar 31 → Apr 30, which
-                -- is what "monthly from the 31st" means to whoever set it.
-                --
-                -- n is bounded by the elapsed DAYS, which is safe because a cadence is
-                -- refused below one day — so the series is never longer than the old one.
-                (select max((r.starts_on + (n * r.every))::date)
-                   from generate_series(0, greatest(0, ((now() at time zone hh.timezone)::date - r.starts_on))) n
-                  where (r.starts_on + (n * r.every)) <= (now() at time zone hh.timezone))
+                -- Tiled to the household's OWN today: against a bare now() the grid rolls
+                -- over at UTC midnight, mid-evening for a household west of UTC.
+                ${askingPeriodStart('(now() at time zone hh.timezone)::date')}
               end as period_start
          from rhythms r, hh
         where r.household_id = $1 and r.deleted_at is null
@@ -1008,30 +1014,14 @@ export async function listAttention(householdId: string, horizon: string): Promi
     `with hh as (select timezone from households where id = $1),
           periods as (
        select r.*,
-              -- The period covering the window: the latest boundary at or before its end.
-              -- Interval addition tiles TRUE calendar periods, so '3 months' steps by real
-              -- months. Doing it by epoch division would treat a month as 30 days and drift
-              -- a little further every quarter.
-              --
-              -- Tiled to the LATER of the horizon and the household's own now. The horizon
-              -- has to stay authoritative for looking ahead — that is what makes a weekly
-              -- planner window mean anything — but on its own it let a client's clock name
-              -- a current period the household is already past, so the Today card and the
-              -- register (which tiles to household-now) could disagree about which period
-              -- a rhythm is in. The server owns the period; a client may only ask it to
-              -- look further forward, never further back.
-              -- Anchored, not cumulative — see the note in listRhythms.
-              (select max((r.starts_on + (n * r.every))::date)
-                 from generate_series(0, greatest(0,
-                        (greatest($2::timestamp, (now() at time zone hh.timezone))::date - r.starts_on))) n
-                where (r.starts_on + (n * r.every))
-                        <= greatest($2::timestamp, (now() at time zone hh.timezone))
-              ) as period_start
+              -- Tiled to the LATER of the horizon and the household's own now: a client may
+              -- ask the server to look further forward, never further back, or the Today
+              -- card and the register could disagree about which period a rhythm is in.
+              ${askingPeriodStart('greatest($2::timestamp, (now() at time zone hh.timezone))::date')} as period_start
          from rhythms r, hh
         where r.household_id = $1
           and r.deleted_at is null and r.is_active
           and r.satisfied_by = 'scheduling'
-          and r.starts_on <= $2::date
      )
      select p.id, p.title, p.emoji, p.notes, p.person_id, p.satisfied_by, p.every::text as every,
             p.starts_on, p.auto_schedule, p.rrule, p.book_within::text as book_within, p.lead_time::text as lead_time,

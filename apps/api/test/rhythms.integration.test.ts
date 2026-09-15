@@ -1920,3 +1920,41 @@ describe('a booking window narrower than the period', () => {
     expect(res.statusCode).toBe(400)
   })
 })
+
+describe('the period a scheduling rhythm is asking about', () => {
+  // The register tiles to the household's real today, so these anchor relative to it.
+  const householdToday = (): Promise<string> =>
+    withClient(async (c) => (await c.query(`select (now() at time zone 'America/Chicago')::date::text as d`)).rows[0].d)
+  const plus = (date: string, n: number) =>
+    new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
+
+  async function listed(body: Record<string, unknown>) {
+    const res = await call('POST', '/api/rhythms', kevin, { satisfiedBy: 'scheduling', ...body })
+    expect(res.statusCode).toBe(201)
+    const id = JSON.parse(res.body).rhythm.id
+    const list = await call('GET', '/api/rhythms', kevin)
+    const row = JSON.parse(list.body).rhythms.find((r: { id: string }) => r.id === id)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+    return row
+  }
+
+  it('moves on to the next period the day after its booking window closes', async () => {
+    const today = await householdToday()
+    const row = await listed({ title: 'Closed window', every: '14 days', startsOn: plus(today, -10), bookWithin: '3 days' })
+    expect(row.currentPeriodStart).toBe(plus(today, 4))
+    expect(row.currentWindowEnd).toBe(plus(today, 7))
+    expect(row.currentPeriodEnd).toBe(plus(today, 18))
+  })
+
+  it('stays on the period containing today while its window is still open', async () => {
+    const today = await householdToday()
+    const row = await listed({ title: 'Open window', every: '14 days', startsOn: plus(today, -1), bookWithin: '3 days' })
+    expect(row.currentPeriodStart).toBe(plus(today, -1))
+  })
+
+  it('reports the first period of a rhythm whose anchor is still ahead', async () => {
+    const today = await householdToday()
+    const row = await listed({ title: 'Not started', every: '1 month', startsOn: plus(today, 20) })
+    expect(row.currentPeriodStart).toBe(plus(today, 20))
+  })
+})
