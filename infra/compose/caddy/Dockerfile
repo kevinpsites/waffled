@@ -11,3 +11,7 @@ RUN npm run build
 
 FROM caddy:2
 COPY --from=web /app/dist /srv
+# Ship the config too, so the image serves Waffled on its own. Compose still mounts this
+# same file over it (identical content) until every supported install runs an image that
+# carries it; the repo copy stays canonical — the native Mac bundle copies it verbatim.
+COPY infra/compose/caddy/Caddyfile /etc/caddy/Caddyfile

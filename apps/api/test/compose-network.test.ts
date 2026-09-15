@@ -28,6 +28,15 @@ describe('Compose network defaults', () => {
     expect(caddyfile).toContain('reverse_proxy powersync:8080')
   })
 
+  // The image has to serve Waffled without the host file: a caddy image whose
+  // /etc/caddy/Caddyfile is Caddy's own default answers with a welcome page, and
+  // /healthz 404s. The repo copy stays canonical (the native Mac bundle copies it
+  // verbatim) — the image COPYs it in.
+  it('bakes the Waffled Caddyfile into the caddy image', async () => {
+    const dockerfile = await readFile(resolve(root, 'infra/compose/caddy/Dockerfile'), 'utf8')
+    expect(dockerfile).toMatch(/^COPY\s+infra\/compose\/caddy\/Caddyfile\s+\/etc\/caddy\/Caddyfile$/m)
+  })
+
   // The api DERIVES the sync URL from x-forwarded-proto/-host, and oidc.ts builds
   // redirect URLs from the same pair — so what a caller may put in them matters.
   // caddy:2 already overwrites both for untrusted clients, but the Dockerfile tracks
