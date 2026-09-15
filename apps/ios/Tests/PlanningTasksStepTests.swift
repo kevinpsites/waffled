@@ -501,6 +501,22 @@ private func model(_ feed: TasksBoardFeed) -> PlanningTasksModel {
         #expect(instance.rewardAmount == 0)
     }
 
+    @Test func aOneOffCardHandsTheEditorItsOpenDaySoSavingFindsIt() throws {
+        let board = try decodedBoard()
+        let library = try #require(board.people[2].chores.first?.asChoreInstance(owner: nil))
+        #expect(library.id == "i-library")
+        #expect(ChoreEditSheet.instanceId(editing: library) == "i-library")
+    }
+
+    @Test func aCardWithNoOpenDayEditsTheChoreItselfWithNoInstance() throws {
+        let board = try decodedBoard()
+        let trash = try #require(board.people[1].chores.first?.asChoreInstance(owner: "p-wally"))
+        let sitter = try #require(board.unassigned.first?.asChoreInstance(owner: nil))
+        // A repeating card is the whole chore; the API 409s on a chore id sent as an instance.
+        #expect(ChoreEditSheet.instanceId(editing: trash) == nil)
+        #expect(ChoreEditSheet.instanceId(editing: sitter) == nil)
+    }
+
     @Test func aFractionalRewardSurvivesTheBridgeAsAWholeNumber() throws {
         let sitter = try #require(try decodedBoard().unassigned.first)
         let instance = try #require(sitter.asChoreInstance(owner: nil))

@@ -410,8 +410,9 @@ extension WaffledAPI.PlanningTasksChore {
     /// and the approval/photo flags are carried because the editor reads a missing flag as false.
     func asChoreInstance(owner: String?) -> WaffledAPI.ChoreInstanceDTO? {
         var fields: [String: JSONValue] = [
-            // No instance is involved — a card is a DEFINITION — so the id is the chore's own.
-            "id": .string(id),
+            // A card is a DEFINITION, so a repeating chore passes its own id and the editor
+            // saves the whole chore. A one-off passes its open day, which a date change moves.
+            "id": .string(rrule == nil ? (pendingInstanceIds.first ?? id) : id),
             "choreId": .string(id),
             "choreTitle": .string(title),
             "status": .string("pending"),
