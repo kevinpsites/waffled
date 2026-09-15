@@ -58,6 +58,18 @@ const planningView = {
   steps,
 }
 
+// What a finished session reads back: GET /api/weekly-planning/recap.
+const recapView = {
+  weekStart: '2026-09-06',
+  savedAt: '2026-09-06T17:40:00.000Z',
+  days: [{ date: '2026-09-06', meal: null, cook: null, events: [], more: 0 }],
+  groups: [],
+  lastCall: [],
+  lastCallMore: 0,
+  leftAlone: [{ key: 'none:goals', label: 'Goals', detail: 'Nothing changed this week', badge: 'none', stepKey: 'goals' }],
+  counts: { decisions: 1, deferred: 1, parked: 0 },
+}
+
 const empty = {
   balances: [], chores: [], countdowns: [], currencies: [], entries: [], events: [],
   goals: [], groups: [], instances: [], items: [], lists: [], meals: [], members: [],
@@ -78,6 +90,7 @@ async function mockApi(page: Page, view: unknown = planningView) {
     else if (path === '/api/updates') body = { enabled: false, updateAvailable: false }
     else if (path === '/api/calendar/status') body = { connected: false, configured: false }
     else if (path === '/api/weekly-planning') body = view
+    else if (path === '/api/weekly-planning/recap') body = recapView
     else if (path === '/api/powersync/token') {
       await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'disabled' }) })
       return
@@ -202,7 +215,9 @@ test('a finished session reads back as a record', async ({ page }) => {
   await signIn(page)
   await page.goto('/planning')
   await expect(page.getByText('The week is decided')).toBeVisible()
-  await expect(page.getByText('Skipped — a real answer')).toBeVisible()
+  // The read-back replaces the step-by-step list, and names what was left alone itself.
+  await expect(page.getByText('Left alone on purpose')).toBeVisible()
+  await expect(page.getByText('Skipped — a real answer')).toHaveCount(0)
   await expect(page.getByRole('button', { name: /Reopen the session/ })).toBeVisible()
   await page.screenshot({ path: 'test-results/weekly-planning-record.png' })
 })

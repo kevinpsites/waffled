@@ -96,8 +96,9 @@ test('the month view can add an event on a day that already has one', async ({ p
   await signIn(page)
   await page.goto('/calendar')
 
-  // Select the 15th — the day carrying the mocked event.
-  await page.locator(`.cal-cell`, { hasText: 'Dentist' }).click()
+  // Select the 15th — the day carrying the mocked event — by its day number. A click on the
+  // middle of the cell can land on the event chip, which opens the event instead.
+  await page.locator(`.cal-cell`, { hasText: 'Dentist' }).locator('.dn').click()
 
   const panel = page.locator('.cal-day-panel')
   await expect(panel.getByText('Dentist')).toBeVisible()
