@@ -138,9 +138,10 @@ every completion rather than over the returned page.
   emptiness is refused: a rule firing more than once a period over-books but always settles
   it, and a household writing one by hand may well mean it.
 
-**Phase 6 — asking ahead, and which day. Planned 2026-09-15, not yet built.** Found by
-walking three household cases through the model. One PR, one commit per step, each step
-test-first. Verified against the demo stack on `:8081`.
+**Phase 6 — asking ahead, and which day. Built 2026-09-15 on API, web, iPhone and iPad.**
+Found by walking three household cases through the model; one PR, one commit per step, each
+step test-first. The case walk and decisions below are kept as the record of why; the floors
+case is still parked.
 
 | Case | Today |
 |---|---|
