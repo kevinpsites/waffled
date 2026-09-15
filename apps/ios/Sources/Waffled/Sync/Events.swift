@@ -157,15 +157,17 @@ enum EventTime {
         DateFmt.string(date, "h:mm a", tz)
     }
 
-    // Ordered most-specific-first; each carries its own offset so the parsed Date
-    // is absolute. POSIX locale so patterns are stable regardless of device locale.
+    // Each carries its own offset so the parsed Date is absolute. POSIX locale so patterns are
+    // stable regardless of device locale. Postgres text first: server-replicated rows are nearly
+    // every event, and the 'T' patterns can never match them, so trying those first only wastes
+    // two failed parses per timestamp.
     private static let formatters: [DateFormatter] = {
         let patterns = [
-            "yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX",  // 2026-06-16T17:49:00.000Z / +00:00
-            "yyyy-MM-dd'T'HH:mm:ssXXXXX",      // 2026-06-16T17:49:00Z / +00:00
             "yyyy-MM-dd HH:mm:ss.SSSSSSX",     // postgres micros: 2026-06-16 17:49:00.123456+00
             "yyyy-MM-dd HH:mm:ss.SSSX",        // 2026-06-16 17:49:00.123+00
             "yyyy-MM-dd HH:mm:ssX",            // 2026-06-16 17:49:00+00
+            "yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX",  // 2026-06-16T17:49:00.000Z / +00:00
+            "yyyy-MM-dd'T'HH:mm:ssXXXXX",      // 2026-06-16T17:49:00Z / +00:00
             "yyyy-MM-dd'T'HH:mm:ss",           // naive (assume UTC)
         ]
         return patterns.map { p in
@@ -265,6 +267,18 @@ enum Agenda {
             for key in dayKeys(e, tz) { grouped[key, default: []].append(e) }
         }
         return grouped.mapValues { $0.sorted(by: before) }
+    }
+
+    /// The day index narrowed to one person's own and joined events; days left empty are dropped.
+    /// nil is the index unchanged.
+    static func filtered(byDay: [String: [SyncedEvent]], person: String?) -> [String: [SyncedEvent]] {
+        guard let person else { return byDay }
+        var out: [String: [SyncedEvent]] = [:]
+        for (day, items) in byDay {
+            let kept = items.filter { $0.personId == person || $0.participantIds.contains(person) }
+            if !kept.isEmpty { out[day] = kept }
+        }
+        return out
     }
 
     /// `upcoming` over a prebuilt `byDay` index: days ≥ `from` ascending, items in the

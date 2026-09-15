@@ -1162,6 +1162,9 @@ final class SyncManager {
                     }
                 )
                 for try await rows in stream {
+                    // The watch re-emits on any write to its tables, usually with identical rows;
+                    // assigning anyway rebuilds the day index and redraws every calendar view.
+                    guard rows != self.allEvents else { continue }
                     self.allEvents = rows
                     self.eventCount = rows.count
                 }

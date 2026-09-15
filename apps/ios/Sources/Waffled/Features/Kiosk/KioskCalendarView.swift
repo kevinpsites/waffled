@@ -32,13 +32,7 @@ struct KioskCalendarView: View {
     /// With no filter chip this is the index verbatim (no copy, no scan); with one
     /// it's a single pass — either way no per-cell re-scan of the full event list.
     private var filteredByDay: [String: [SyncedEvent]] {
-        guard let p = filterPerson else { return sync.eventsByDay }
-        var out: [String: [SyncedEvent]] = [:]
-        for (day, items) in sync.eventsByDay {
-            let kept = items.filter { $0.personId == p || $0.participantIds.contains(p) }
-            if !kept.isEmpty { out[day] = kept }
-        }
-        return out
+        Agenda.filtered(byDay: sync.eventsByDay, person: filterPerson)
     }
     private var selectedItems: [SyncedEvent] { filteredByDay[selectedDay] ?? [] }
 

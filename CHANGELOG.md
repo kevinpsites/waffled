@@ -38,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The iPhone and iPad calendar redraws less.** Every background sync pass rebuilt the
+  calendar's day index and redrew the tab even when no event had changed, and filtering to one
+  person re-sorted every event on each redraw. Unchanged syncs are now skipped and the person
+  filter narrows the index that's already built, which should make opening and scrolling the
+  calendar smoother.
 - **Multi-day all-day events show on every day they cover (iPhone and iPad).** A trip synced
   from Google as a several-day all-day event appeared only on its first day; it now fills each
   day of the month grid, week cards, day view and agenda, shows on Today and a person's day while

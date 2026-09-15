@@ -40,16 +40,12 @@ struct CalendarView: View {
     /// The household's first day of the week. Sunday until the setting reaches this device.
     private var firstDay: HouseholdWeekStart { sync.householdWeekStart ?? .sunday }
     private var mode: CalMode { showsDay ? .day : root }
-    private var filtered: [SyncedEvent] {
-        guard let p = filterPerson else { return sync.events }
-        return sync.events.filter { $0.personId == p || $0.participantIds.contains(p) }
-    }
-    /// Day → events for the grids. Unfiltered reuses the index `SyncManager` keeps.
+    /// Day → events for the grids: the index `SyncManager` keeps, narrowed by the person filter.
     private var dayIndex: [String: [SyncedEvent]] {
-        filterPerson == nil ? sync.eventsByDay : Agenda.byDay(filtered, tz)
+        Agenda.filtered(byDay: sync.eventsByDay, person: filterPerson)
     }
     private var groups: [(day: String, items: [SyncedEvent])] {
-        Agenda.upcoming(filtered, from: Agenda.todayKey(tz), tz: tz)
+        Agenda.upcoming(byDay: dayIndex, from: Agenda.todayKey(tz))
     }
     /// Agenda day keys = event days ∪ countdown days (today forward), so a countdown-only day shows.
     private var agendaDays: [String] {

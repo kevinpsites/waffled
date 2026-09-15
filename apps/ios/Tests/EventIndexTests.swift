@@ -129,3 +129,28 @@ private func span(_ id: String, _ start: String, _ end: String?, allDay: Bool = 
         #expect(Agenda.dayKeys(runaway, denver).count == Agenda.maxSpanDays)
     }
 }
+
+// The calendar's person filter narrows the prebuilt day index instead of re-bucketing every
+// event per render (phone and iPad share it).
+@Suite struct AgendaFilteredByDayTests {
+    private func owned(_ id: String, _ raw: String, person: String?, participants: [String] = []) -> SyncedEvent {
+        SyncedEvent(id: id, title: id, startsAtRaw: raw, startsAt: EventTime.parse(raw), allDay: false,
+                    personId: person, colorHex: nil, emoji: nil, participantIds: participants)
+    }
+
+    @Test func keepsTheirOwnAndJoinedEventsAndDropsEmptiedDays() {
+        let byDay = Agenda.byDay([
+            owned("mine", "2026-06-16T15:00:00Z", person: "p1"),
+            owned("joined", "2026-06-16T18:00:00Z", person: "p2", participants: ["p1"]),
+            owned("theirs", "2026-06-17T18:00:00Z", person: "p2"),
+        ], denver)
+        let filtered = Agenda.filtered(byDay: byDay, person: "p1")
+        #expect(filtered["2026-06-16"]?.map(\.id) == ["mine", "joined"])
+        #expect(filtered["2026-06-17"] == nil)
+    }
+
+    @Test func noPersonIsTheIndexUnchanged() {
+        let byDay = Agenda.byDay([owned("a", "2026-06-16T15:00:00Z", person: "p1")], denver)
+        #expect(Agenda.filtered(byDay: byDay, person: nil) == byDay)
+    }
+}
