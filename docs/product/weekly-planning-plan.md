@@ -13,7 +13,7 @@ v1 lobby/join-code are all **deliberately gone**. Only two things are lifted fro
 ## The architectural point
 
 **Nine of the ten steps are a read over modules that already exist.** Loose ends are overdue
-`chore_instances`, unchecked `list_items`, rhythms past due and short habit goals; the
+`chore_instances`, unchecked `list_items` and rhythms past due (goals are step 6's alone); the
 calendar step is the real `events`; family night is the existing `familyNight` config and its
 rotation; connection is a query over `event_participants`; goals set the existing
 `is_featured` flag; meals is the existing plan; tasks is the existing chore assignment. The
@@ -120,12 +120,12 @@ port properly rather than transliterating:**
   `data.routes` on step 1's OWN row, so a destination step cannot read it from `step.data`
   — the shell passes it down. The web does not surface these at all; iOS is ahead, kept
   because it is the same fix the parked-note handoff was, and owed back to web.
-- **No month-chip squash fix on Horizon**, because an iOS month cell draws dots rather than
-  chips: there is nothing to compress, and tapping a day *is* "+N more".
+- **No month-chip squash fix on Horizon**: it draws the Calendar tab's `PhoneMonthGrid`, whose
+  cells already fit their chips to the row and say "+N more".
 
-**Known debt from the port:** `CalendarView`'s `monthCells`/`monthCell` are `private`, so
-the planning month grid is a documented copy of that 42-cell grid. Two copies will drift;
-extracting one shared grid is the fix.
+**Month grid:** the Horizon scan draws the Calendar tab's own `PhoneMonthGrid`
+(`Features/Calendar/PhoneCalendarViews.swift`), so a change to the iPhone month view reaches
+the step too. Web's Horizon reuses `MonthView` the same way.
 
 **Known debt found beside it (pre-existing, not the port's):** iOS's `RecipePickerSheet` —
 the Meals tab's own night picker, and the planner's manual pick — supplies no `onPickMeal`,
@@ -332,7 +332,7 @@ already-featured goal — a flag found lying around, not an answer, so only `set
 step still `pending` is unreached rather than "left alone on purpose", so only `skipped` and the
 deliberate non-answers are outcomes.
 
-### The finished week is read back, and the tick-list is the second reading
+### The finished week is read back
 
 The saved record started as ten green ticks against ten step names. That says the session
 finished and nothing whatever about the week it decided — reported as "the web recap page
@@ -363,8 +363,11 @@ Two things had to be decided to close it:
   each screen passes down, which would be a second opinion about something the week
   already knows and could drift between clients.
 
-The per-step list stays, underneath, because it is the only place that records which steps
-were skipped **on purpose** — an outcome, not a gap.
+The per-step list used to stay underneath as the record of steps skipped **on purpose**. It
+was dropped from the record on both clients: the read-back's *Left alone on purpose* card
+already names every skipped step, so the list only repeated it. It still renders when there
+is no read-back to show (the recap step turned off), since then it is the only record left.
+**Plan another week** now leads the screen, under the title.
 
 ### A row has to say where it came from and who has it
 
@@ -514,6 +517,13 @@ which is precisely the recap's last call; giving it to all ten steps would put t
 unanswered note on every screen), and anything past six on one step (a nudge, not an
 inbox). It is **not** scoped to the session either: surviving the session that wrote it is
 what parking is FOR.
+
+**Parking is also the shell's, on every step but two.** The footer's **📌 Park a note**
+(`ParkNoteComposer` / `PlanningParkNoteSheet`) posts to the same park route with the
+session id, offering the same forward-only tags as Horizon's bar — runnable steps after the
+current one, minus `looseEnds` and `recap` — so a tag always names a step still ahead
+tonight. It is hidden on `looseEnds` and `horizon`, which draw their own bar; a second one
+there would be two inputs for one table.
 
 ### Family night grew two columns, and one of them is subtler than it looks
 

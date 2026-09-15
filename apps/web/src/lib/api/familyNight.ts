@@ -61,6 +61,9 @@ export interface OccurrenceInput {
   /** The server creates a one-off event for `date` and links it in the same call. Ignored
    *  when `eventId` is also sent, and a no-op when the week is already linked. */
   createEvent?: boolean
+  /** With `createEvent`: what was confirmed before adding it. Each field left out falls back to
+   *  the theme and the household's time; with no length the event has no end. */
+  event?: { title?: string; time?: string; durationMin?: number }
   /** PRESENCE IS THE MESSAGE — the server writes only the keys it was sent, so passing
    *  `personId: null` alongside a detail would un-assign whoever had the part. */
   assignments?: { partId: string; personId?: string | null; detail?: string | null }[]

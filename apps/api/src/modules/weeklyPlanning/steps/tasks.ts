@@ -8,6 +8,9 @@
 // SERVER-OWNED: a column is what someone is carrying, not a log of this sitting.
 import { query } from '../../../platform/db'
 import { householdTz, todayDate } from '../../chores/chores.service'
+import { moduleEnabled } from '../../../platform/modules'
+import { listAttention, type AttentionItem } from '../../rhythms/rhythms'
+import { daysBetween, lateBy } from './looseEnds'
 import type { QueryResultRow } from 'pg'
 
 export type Cadence = 'daily' | 'weekly' | 'once'
@@ -70,6 +73,9 @@ export interface TasksBoardChore {
   // EVERY such day comes back, and for an OWNED chore too — that is what makes handing
   // one out reversible.
   pendingInstanceIds: string[]
+  // A one-off's open day, due yet or not: what Done completes. Null on a repeating chore, or
+  // when the chore needs a photo, which only the camera flow can finish.
+  completableInstanceId: string | null
 }
 
 export interface TasksBoardPerson {
@@ -84,6 +90,19 @@ export interface TasksBoardPerson {
   chores: TasksBoardChore[]
 }
 
+// A rhythm needing attention in the planned week, late or not. Loose ends only asks about
+// what is already late, so without this an on-time weekly rhythm appeared nowhere.
+export interface TasksBoardRhythm {
+  id: string
+  title: string
+  emoji: string | null
+  personId: string | null
+  detail: string
+  overdue: boolean
+  // Only the "I do it" shape completes from here; a booking rhythm is settled by an event.
+  canComplete: boolean
+}
+
 export interface TasksBoard {
   weekStart: string
   // The day a task ADDED during this session should land on. Server-owned for the same
@@ -92,6 +111,8 @@ export interface TasksBoard {
   newTaskDay: string
   people: TasksBoardPerson[]
   unassigned: TasksBoardChore[]
+  // Empty while the rhythms module is off.
+  rhythms: TasksBoardRhythm[]
 }
 
 interface ChoreRowForBoard extends QueryResultRow {
@@ -134,9 +155,13 @@ async function choreRows(householdId: string): Promise<ChoreRowForBoard[]> {
 // Every materialized instance still open, per chore — ALL the days a hand-out has to fix,
 // and taking it back has to fix again. Not filtered by person_id, because a move is
 // reversible. Only 'pending' rows: a day somebody completed keeps its owner.
-async function pendingInstanceIds(householdId: string): Promise<Map<string, string[]>> {
-  const { rows } = await query<{ chore_id: string; ids: string[] }>(
-    `select ci.chore_id, array_agg(ci.id order by ci.due_on) as ids
+interface PendingDays { ids: string[]; due: string[] }
+const NO_PENDING: PendingDays = { ids: [], due: [] }
+
+async function pendingInstanceIds(householdId: string): Promise<Map<string, PendingDays>> {
+  const { rows } = await query<{ chore_id: string; ids: string[]; due: string[] }>(
+    `select ci.chore_id, array_agg(ci.id order by ci.due_on) as ids,
+            array_agg(ci.due_on::text order by ci.due_on) as due
        from chore_instances ci
        join chores c on c.id = ci.chore_id and c.deleted_at is null
       where ci.household_id = $1
@@ -148,14 +173,20 @@ async function pendingInstanceIds(householdId: string): Promise<Map<string, stri
       group by ci.chore_id`,
     [householdId]
   )
-  return new Map(rows.map((r) => [r.chore_id, r.ids]))
+  return new Map(rows.map((r) => [r.chore_id, { ids: r.ids, due: r.due }]))
+}
+
+// Done is "this is already done" for a one-off, even one due later in the week or beyond. A
+// repeating chore is done day by day on the Tasks board, so the planning card offers no Done for it.
+function completableDay(rrule: string | null, pending: PendingDays): string | null {
+  return rrule ? null : (pending.ids[0] ?? null)
 }
 
 function present(
   r: ChoreRowForBoard,
   days: string[],
   carriedOver: boolean,
-  pendingInstanceIds: string[]
+  pending: PendingDays
 ): TasksBoardChore {
   return {
     id: r.id,
@@ -171,7 +202,8 @@ function present(
     rewardCurrency: r.reward_currency,
     requiresApproval: r.requires_approval,
     requiresPhoto: r.requires_photo,
-    pendingInstanceIds,
+    pendingInstanceIds: pending.ids,
+    completableInstanceId: r.requires_photo ? null : completableDay(r.rrule, pending),
   }
 }
 
@@ -197,12 +229,28 @@ function placeInWeek(
   return null
 }
 
+function rhythmRows(items: AttentionItem[], today: string, tz: string): TasksBoardRhythm[] {
+  const weekday = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' })
+  const localDay = new Intl.DateTimeFormat('en-CA', { timeZone: tz })
+  return items.map((item) => {
+    const r = item.rhythm
+    const base = { id: r.id, title: r.title, emoji: r.emoji, personId: r.personId }
+    if (item.kind === 'due') {
+      const at = new Date(item.dueAt)
+      const detail = item.overdue ? lateBy(daysBetween(localDay.format(at), today)) : `Due ${weekday.format(at)}`
+      return { ...base, detail, overdue: item.overdue, canComplete: true }
+    }
+    return { ...base, detail: 'Not booked yet', overdue: false, canComplete: false }
+  })
+}
+
 export async function getTasksBoard(householdId: string, weekStart: string): Promise<TasksBoard> {
   const dates = weekDates(weekStart)
   // The household's own today, taken from the chores module rather than computed here: a
   // chore day rolls at household-local midnight, not UTC's.
-  const today = todayDate(await householdTz(householdId))
-  const [{ rows: personRows }, chores, pending] = await Promise.all([
+  const tz = await householdTz(householdId)
+  const today = todayDate(tz)
+  const [{ rows: personRows }, chores, pending, { rows: settingsRows }] = await Promise.all([
     query<QueryResultRow>(
       `select p.id, p.name, p.avatar_emoji, p.color_hex, p.member_type, p.is_admin
          from persons p
@@ -212,7 +260,11 @@ export async function getTasksBoard(householdId: string, weekStart: string): Pro
     ),
     choreRows(householdId),
     pendingInstanceIds(householdId),
+    query<{ settings: unknown }>(`select settings from households where id = $1`, [householdId]),
   ])
+  const rhythms = moduleEnabled(settingsRows[0]?.settings ?? null, 'rhythms')
+    ? rhythmRows(await listAttention(householdId, dates[6]), today, tz)
+    : []
 
   const byPerson = new Map<string, TasksBoardChore[]>()
   const recurring = new Map<string, number>()
@@ -225,13 +277,13 @@ export async function getTasksBoard(householdId: string, weekStart: string): Pro
       // The strip is everything nobody has taken — deliberately NOT week-scoped. Up for
       // grabs is up for grabs until someone takes it.
       const place = placeInWeek(r, dates, today) ?? { days: [], carriedOver: false }
-      unassigned.push(present(r, place.days, place.carriedOver, pending.get(r.id) ?? []))
+      unassigned.push(present(r, place.days, place.carriedOver, pending.get(r.id) ?? NO_PENDING))
       continue
     }
     const place = placeInWeek(r, dates, today)
     if (!place) continue
     const list = byPerson.get(r.person_id) ?? []
-    list.push(present(r, place.days, place.carriedOver, pending.get(r.id) ?? []))
+    list.push(present(r, place.days, place.carriedOver, pending.get(r.id) ?? NO_PENDING))
     byPerson.set(r.person_id, list)
   }
 
@@ -250,5 +302,5 @@ export async function getTasksBoard(householdId: string, weekStart: string): Pro
 
   const newTaskDay = today >= dates[0] && today <= dates[6] ? today : dates[0]
 
-  return { weekStart, newTaskDay, people, unassigned }
+  return { weekStart, newTaskDay, people, unassigned, rhythms }
 }

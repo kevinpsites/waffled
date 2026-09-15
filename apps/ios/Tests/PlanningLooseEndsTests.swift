@@ -45,7 +45,7 @@ private let noteId = "22222222-2222-4222-8222-222222222222"
           "routes":[
             {"kind":"chore","id":"\(choreId)","title":"Take the bins out","source":"notDone","to":"tasks"}
           ],
-          "sources":["chores","lists","rhythms","goals"]
+          "sources":["chores","lists","rhythms"]
         }
         """
         let view = try WaffledAPI.decoder.decode(
@@ -54,7 +54,7 @@ private let noteId = "22222222-2222-4222-8222-222222222222"
         #expect(view.weekStart == "2026-09-06")
         #expect(view.counts.notDone == 1)
         #expect(view.counts.parked == 1)
-        #expect(view.sources == ["chores", "lists", "rhythms", "goals"])
+        #expect(view.sources == ["chores", "lists", "rhythms"])
         #expect(view.notDone.first?.key == "chore:\(choreId)")
         #expect(view.notDone.first?.detail == "3 days late")
         #expect(view.notDone.first?.actions == ["done"])
@@ -84,7 +84,7 @@ private let noteId = "22222222-2222-4222-8222-222222222222"
 
     @Test func decodesAnItemWithNoEmojiOrDetailKeys() throws {
         let json = """
-        {"key":"goal:\(choreId)","kind":"goal","id":"\(choreId)","title":"Run three times","actions":[]}
+        {"key":"rhythm:\(choreId)","kind":"rhythm","id":"\(choreId)","title":"Water the plants","actions":[]}
         """
         let item = try WaffledAPI.decoder.decode(WaffledAPI.LooseEnd.self, from: Data(json.utf8))
 
@@ -178,6 +178,14 @@ private let noteId = "22222222-2222-4222-8222-222222222222"
         #expect(built.quiet.first?.label == "Drop it")
     }
 
+    /// Goals are the Goals step's: Not done says it reads chores, lists and rhythms, and no more.
+    @Test func notDoneNamesNoGoals() {
+        #expect(LooseEndGroup.notDone.note.contains("overdue chores, unchecked items on your lists, rhythms past due."))
+        #expect(!LooseEndGroup.notDone.note.localizedCaseInsensitiveContains("goal"))
+        #expect(!LooseEndGroup.notDone.note.localizedCaseInsensitiveContains("habit"))
+        #expect(LooseEndCopy.kindLabel("chore") == "Chore")
+    }
+
     @Test func anItemWithNoActionsStillRoutes() {
         let built = LooseEndChoice.build(
             item: item(kind: "chore", actions: []), group: .notDone, destinations: notDoneDests)
@@ -245,7 +253,8 @@ private func looseEndsView(
                 WaffledAPI.LooseEndDestination(to: "calendar", label: "Calendar", hint: "It needs an appointment slot", primary: nil),
             ],
             parked: [
-                WaffledAPI.LooseEndDestination(to: "tasks", label: "Make it a task", hint: "Someone owns it this week", primary: true)
+                WaffledAPI.LooseEndDestination(to: "tasks", label: "Make it a task", hint: "Someone owns it this week", primary: true),
+                WaffledAPI.LooseEndDestination(to: "meals", label: "Take it to Meals", hint: "It changes what we eat", primary: nil, stepTitle: "Meals"),
             ]),
         routes: routes,
         sources: ["chores", "lists"],
@@ -488,19 +497,78 @@ private func model(_ feed: LooseEndsFeed) -> PlanningLooseEndsModel {
         #expect(m.view == nil)
     }
 
-    /// The trail names the STEP with the notDone label: "Parked"'s labels are verbs.
+    /// A re-read after an answer must not reshuffle the deck or shrink the count: a habit
+    /// logged once can still be short and come straight back.
+    @Test func settlingKeepsTheCardAwayAndTheCountHonest() async {
+        let fish = looseEnd(key: "chore:c0", kind: "chore", id: "c0", title: "Feed the fish", actions: ["done"])
+        let feed = LooseEndsFeed(snapshot: looseEndsView(notDone: [fish, chore]))
+        let m = model(feed)
+        await m.load(weekStart: "2026-09-06", sessionId: session)
+        #expect(m.total(.notDone) == 2)
+
+        #expect(await m.settle(fish, action: "done", weekStart: "2026-09-06", sessionId: session))
+        #expect(m.open(.notDone).map(\.key) == [chore.key])
+        #expect(m.total(.notDone) == 2)
+        #expect(m.remaining(.notDone) == 1)
+    }
+
+    @Test func aReReadThatReordersTheSourcesKeepsTheDeckOrder() async {
+        let fish = looseEnd(key: "chore:c0", kind: "chore", id: "c0", title: "Feed the fish", actions: ["done"])
+        let milk = looseEnd(key: "list:l1", kind: "list", id: "l1", title: "Milk", actions: ["done"])
+        let feed = LooseEndsFeed(snapshot: looseEndsView(notDone: [fish, chore, milk]))
+        let m = model(feed)
+        await m.load(weekStart: "2026-09-06", sessionId: session)
+
+        feed.snapshot = looseEndsView(notDone: [milk, chore])
+        #expect(await m.settle(fish, action: "done", weekStart: "2026-09-06", sessionId: session))
+        #expect(m.open(.notDone).map(\.key) == [chore.key, milk.key])
+        #expect(m.total(.notDone) == 3)
+    }
+
+    /// Ruling a list out is not an answer: its cards leave the count, not just the deck.
+    @Test func rulingAListOutDropsItsCardsFromTheCount() async {
+        let milk = looseEnd(key: "list:l1", kind: "list", id: "l1", title: "Milk", actions: ["done"])
+        let feed = LooseEndsFeed(snapshot: looseEndsView(notDone: [chore, milk]))
+        let m = model(feed)
+        await m.load(weekStart: "2026-09-06", sessionId: session)
+        #expect(m.total(.notDone) == 2)
+
+        feed.snapshot = looseEndsView(notDone: [chore])
+        #expect(await m.ruleList("l1", relevant: false, weekStart: "2026-09-06", sessionId: session))
+        #expect(m.total(.notDone) == 1)
+    }
+
+    /// …while a card already answered this sitting still counts after the rule-out re-read.
+    @Test func rulingAListOutKeepsWhatWasAlreadyAnswered() async {
+        let fish = looseEnd(key: "chore:c0", kind: "chore", id: "c0", title: "Feed the fish", actions: ["done"])
+        let milk = looseEnd(key: "list:l1", kind: "list", id: "l1", title: "Milk", actions: ["done"])
+        let feed = LooseEndsFeed(snapshot: looseEndsView(notDone: [fish, chore, milk]))
+        let m = model(feed)
+        await m.load(weekStart: "2026-09-06", sessionId: session)
+
+        feed.snapshot = looseEndsView(notDone: [chore, milk])
+        #expect(await m.settle(fish, action: "done", weekStart: "2026-09-06", sessionId: session))
+        feed.snapshot = looseEndsView(notDone: [chore])
+        #expect(await m.ruleList("l1", relevant: false, weekStart: "2026-09-06", sessionId: session))
+        #expect(m.total(.notDone) == 2)
+        #expect(m.remaining(.notDone) == 1)
+    }
+
+    /// The trail names the STEP, never "Parked"'s verbs: the server's step title, then the notDone label.
     @Test func theTrailNamesTheStepNotTheVerb() async {
         let feed = LooseEndsFeed(snapshot: looseEndsView(notDone: [chore]))
         let m = model(feed)
         await m.load(weekStart: "2026-09-06", sessionId: session)
 
         #expect(m.stepName("tasks") == "Tasks")
+        // A step with no triage label of its own still reads by its title.
+        #expect(m.stepName("meals") == "Meals")
         // A route can outlive a module toggle, so an unknown destination falls back to its key.
-        #expect(m.stepName("meals") == "meals")
+        #expect(m.stepName("familyNight") == "familyNight")
     }
 
-    /// Only the last three, most recent first — and only the newest one is undoable.
-    @Test func theTrailKeepsTheLastThreeMostRecentFirst() async {
+    /// Everything sent, most recent first; each row undoes itself, and the view folds past three.
+    @Test func theTrailListsEverythingSentMostRecentFirst() async {
         let feed = LooseEndsFeed(snapshot: looseEndsView(notDone: []))
         let m = model(feed)
         let ids = ["a", "b", "c", "d"]
@@ -512,7 +580,7 @@ private func model(_ feed: LooseEndsFeed) -> PlanningLooseEndsModel {
 
         await m.load(weekStart: "2026-09-06", sessionId: session)
 
-        #expect(m.trail.map(\.title) == ["d", "c", "b"])
+        #expect(m.trail.map(\.title) == ["d", "c", "b", "a"])
     }
 }
 
@@ -528,7 +596,7 @@ private func model(_ feed: LooseEndsFeed) -> PlanningLooseEndsModel {
         let routes = [
             route(kind: "chore", id: "c1", title: "Bins", to: "calendar"),
             route(kind: "list", id: "l1", title: "Pack the tent", to: "calendar"),
-            route(kind: "goal", id: "g1", title: "Run a 5k", to: "goals"),
+            route(kind: "rhythm", id: "g1", title: "Book the dentist", to: "goals"),
         ]
 
         #expect(

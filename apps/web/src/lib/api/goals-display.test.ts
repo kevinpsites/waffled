@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { goalDisplayProgress, goalDisplayTarget, goalFraction, fmtGoalNum, type Goal } from './goals'
+import { goalDisplayProgress, goalDisplayTarget, goalFraction, goalWeekTargetLabel, fmtGoalNum, type Goal } from './goals'
 
 describe('fmtGoalNum', () => {
   it('rounds to at most 2 decimals, dropping trailing zeros', () => {
@@ -88,5 +88,22 @@ describe('goalDisplayTarget / goalDisplayProgress / goalFraction', () => {
     expect(goalDisplayProgress(g)).toBe(2) // period-done, not the lifetime 99
     expect(goalDisplayTarget(g)).toBe(5) // the cadence
     expect(goalFraction(g)).toBeCloseTo(0.4, 3)
+  })
+})
+
+describe('goalWeekTargetLabel', () => {
+  it('reads this week’s target against what is logged, in the goal’s unit', () => {
+    const g = goal({ unit: 'hours', weekPlan: { weekStart: '2026-09-13', target: 10, done: 3.5, current: true } })
+    expect(goalWeekTargetLabel(g)).toBe('This week: 3.5 of 10 hours')
+  })
+
+  it('names the week a target is set for before that week starts', () => {
+    const g = goal({ unit: 'hours', weekPlan: { weekStart: '2026-09-21', target: 10, done: 0, current: false } })
+    expect(goalWeekTargetLabel(g)).toBe('Week of Sep 21: 10 hours')
+  })
+
+  it('says nothing for a goal without one', () => {
+    expect(goalWeekTargetLabel(goal({}))).toBeNull()
+    expect(goalWeekTargetLabel(goal({ weekPlan: null }))).toBeNull()
   })
 })

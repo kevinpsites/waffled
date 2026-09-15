@@ -10,6 +10,13 @@ struct KioskRailHighlightTests {
     /// The out-of-the-box rail: Meals + Family pinned.
     private let defaultPins: [KioskNav] = [.meals, .family]
 
+    @Test func everyPageInMoreHasItsOwnIcon() {
+        for nav in KioskRail.choosable {
+            #expect(KioskMoreView.descriptor(nav).emoji != "•", "\(nav) has no More tile icon")
+            #expect(!KioskMoreView.descriptor(nav).subtitle.isEmpty, "\(nav) has no More tile subtitle")
+        }
+    }
+
     @Test func ownTileHighlightsForDirectSelection() {
         #expect(KioskRail.isHighlighted(.calendar, selection: .calendar, pinned: defaultPins))
         #expect(KioskRail.isHighlighted(.meals, selection: .meals, pinned: defaultPins))

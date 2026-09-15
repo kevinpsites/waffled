@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.15.1] - 2026-09-15
+
+### Added
+
 - **Set when an event ends, on web, iPhone and iPad.** The event editor's all-day toggle now
   comes with an **Ends** date, so a trip can span several days, and a timed event has an **Ends**
   date and time in place of the duration menu — including an end on a later day. Moving the start
@@ -43,6 +51,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   set **Start nudging me … days before it opens**. Once a window has passed, the rhythm moves
   on to the next one instead of reporting a week that's already gone, and a new monthly
   rhythm you book by hand starts on the 1st.
+- **Undo the one you meant in Loose ends.** Everything you've sent ahead to a later step is
+  listed newest first, each with its own **Undo**; past three, **Show all** opens the rest.
+- **Weekly Planning's saved week gets to the point.** **Plan another week** is at the top,
+  and the step-by-step list under the read-back is gone — the read-back already names
+  anything that was skipped.
+- **Loose ends leaves goals to the Goals step.** It no longer asks about weekly habits that are
+  behind; it reads overdue chores, unchecked list items and late rhythms.
+
+### Added
+
+- **Park a note from any Weekly Planning step.** The session footer has **📌 Park a note** (a
+  pin on iPhone): write the thought down, tag it for a step still ahead or leave it untagged for
+  the recap, and carry on with the step you're on.
+- **Set a goal's target for just this week.** In Weekly Planning's Goals step, a running count
+  or total goal takes a target for the week you're planning — 10 hours this week toward 750 for
+  the year — with what's been logged that week beside it. The goal's card on the Goals page
+  and Today shows it all week ("This week: 3 of 10 hours"), the goal's own page lists it with the
+  weeks planned after it, the recap lists it, and next week's
+  recap reads it back: "7 of 10 hours", met or short.
+- **Act on a parked note from Weekly Planning's recap.** A note still on the board can become
+  a task or a calendar event right there, in the usual editors with the note's words filled
+  in; the note is settled once it's saved, and stays put if you back out.
+- **Edit events from Weekly Planning's Calendar step.** Tap an event on the week to open it
+  in the usual event editor and change it, without leaving the session.
+- **Busy days open up in the Weekly Planning recap.** A day with more than four events
+  shows "+N more"; tap it to see the rest of that day in place.
+- **Add to the grocery list from Weekly Planning's Meals step.** Type an item under the
+  grocery line and it goes straight onto the list, without leaving the session; tap the "to buy"
+  count to open the week's list and tick things off.
+- **Mark tasks done in Weekly Planning's Tasks step.** A one-off task has a **✓ Done**
+  button, even one due later in the week; one that needs a parent's OK says it's waiting for one. Repeating chores are
+  still done day by day on the Tasks board. Tasks that need
+  a photo are still finished from the Tasks board.
+- **Rhythms due this week show up in Weekly Planning.** The Tasks step lists every rhythm
+  that needs attention in the week you're planning, not just the late ones, with **✓ Done**
+  for the ones you do yourself.
+
+### Fixed
+
+- **Weekly Planning's Horizon scan on iPhone draws the Calendar tab's month view.** Event chips,
+  countdowns and "+N more" match the calendar, and a change to that view shows up here too.
+- **Weekly Planning shows events as the calendar's chips.** On iPhone and iPad the Calendar step's
+  events wrap as chips instead of full-width rows, and Family night's "Link an event" list groups
+  the week's events by day with their time and colour, on the web too.
+- **A parked note in Weekly Planning's Loose ends can go to any later step.** Its buttons name
+  the step — Tasks, Calendar, Family night, Connection, Goals, Meals or Kids — beside Talk about
+  it now and Drop it, and the sent list names that step too.
+- **Weekly Planning's week arrows no longer jump back to this week's session.** On iPhone and
+  iPad, tapping › could land you on the current week's step when a background refresh answered
+  late; a week that won't load now says so and stays where you were.
+- **Weekly Planning has its own tile in the iPad's More menu.** It showed a bare dot instead
+  of an icon and a line saying what it is.
+- **Family Night's weekly calendar event starts at the time you set.** Putting Family Night on
+  the calendar in Settings made the weekly event hours off from your household's time. A series
+  made before this fix keeps the old time until you take it off the calendar and put it back.
+- **Family night's Add to calendar lets you check the event first.** In Weekly Planning it opens
+  a short form with the title, time and length before the event is made, and the event now lands
+  at your household's local time rather than hours off.
+- **Editing a task from Weekly Planning on iPhone saves again.** The Tasks step's editor
+  failed with "Couldn't save this task"; it now saves the task itself, and a one-off's new date
+  moves its open day.
+- **Weekly Planning's Loose ends no longer lists months of missed repeating chores.** A
+  repeating chore counts only the days it was missed in the past week; a one-off still counts
+  however late it is.
+- **Weekly Planning stays readable in dark mode.** **＋ Add an event** on the Calendar step and a
+  chosen tag chip when parking a note no longer put white text on a near-white button.
+- **Weekly Planning's recap says times the way people do.** Family night and the
+  shopping trip read "Thursday 6:30 PM", not "Thursday 18:30".
+- **Weekly Planning's grocery count is what's left to buy.** The Meals step and the recap
+  counted ticked items too; they now say "12 to buy · 3 done".
+- **Making a pairing in Weekly Planning's Connection step now looks like it worked.** Once
+  the event is saved the pairing bar closes and a line says what was added ("Added to the
+  calendar — Kevin and Lottie"), instead of sitting there with the same people still picked.
+- **Weekly Planning's Loose ends keeps its place.** Marking a card done no longer
+  reshuffles the deck or resets the count, and a card you've answered doesn't come back
+  to the top.
+- **Purple, blue, green, red and pink events are easier to read.** Solid event chips on
+  those colors now use white text instead of black, on the calendar, Today and the
+  Weekly Planning recap. Gold and teal keep black, where white would wash out.
 - **A new iPhone calendar: Month, Week and Day.** Month now fills the screen, with week
   numbers down the side and each day's event titles (a countdown shows as a small pill).
   Tapping a day opens a full Day timeline you can swipe back from, and Week is a row of day
@@ -2959,7 +3046,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.15.1...HEAD
+[0.15.1]: https://github.com/kevinpsites/waffled/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/kevinpsites/waffled/compare/v0.14.3...v0.15.0
 [0.14.3]: https://github.com/kevinpsites/waffled/compare/v0.14.2...v0.14.3
 [0.14.2]: https://github.com/kevinpsites/waffled/compare/v0.14.1...v0.14.2

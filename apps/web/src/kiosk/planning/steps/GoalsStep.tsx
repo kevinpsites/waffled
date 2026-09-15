@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { AvatarStack } from '../../components/Avatar'
 import {
   planningGoalsApi,
@@ -112,6 +112,48 @@ function GoalOption({ goal, checked, disabled, onPick }: {
   )
 }
 
+// This week's slice of a goal, beside its option rather than inside it: the option is a button.
+function WeekTarget({ goal, disabled, onSave }: {
+  goal: PlanningGoalGoal
+  disabled: boolean
+  /** Resolves false when the write didn't take, so the box can show the saved target again. */
+  onSave: (target: number | null) => Promise<boolean>
+}) {
+  const saved = goal.weekTarget != null ? String(goal.weekTarget) : ''
+  const [draft, setDraft] = useState(saved)
+  useEffect(() => { setDraft(saved) }, [saved])
+  const commit = () => {
+    const next = draft.trim() === '' ? null : Number(draft)
+    if (next !== null && !(Number.isFinite(next) && next > 0)) { setDraft(saved); return }
+    if (next === (goal.weekTarget ?? null)) return
+    void onSave(next).then((ok) => { if (!ok) setDraft(saved) })
+  }
+  const done = goal.weekDone ?? 0
+  const words = (bits: (string | null)[]) => bits.filter(Boolean).join(' ')
+  const line = goal.weekTarget != null
+    ? words([fmtGoalNum(done), 'of', fmtGoalNum(goal.weekTarget), goal.unit ?? null, 'this week'])
+    : done > 0 ? words([fmtGoalNum(done), goal.unit ?? null, 'so far this week']) : 'No target for this week'
+  return (
+    <label className="field wpg-week">
+      <span>This week</span>
+      <input
+        type="number"
+        inputMode="decimal"
+        min="0"
+        step="any"
+        placeholder="—"
+        aria-label={`This week’s target for ${goal.title}`}
+        value={draft}
+        disabled={disabled}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+      />
+      <span className="wpg-week-s">{line}</span>
+    </label>
+  )
+}
+
 function Body({ sessionId, setDecisionData, refresh, busy }: StepBodyProps) {
   const { person } = useHousehold()
   const canManageGoals = can(person, 'goal.manage')
@@ -123,6 +165,7 @@ function Body({ sessionId, setDecisionData, refresh, busy }: StepBodyProps) {
   // Holding the LIST ID, not the group object, keeps this right across a refetch that
   // replaces every group.
   const [newForId, setNewForId] = useState<string | null>(null)
+  const [targetError, setTargetError] = useState<string | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -149,6 +192,22 @@ function Body({ sessionId, setDecisionData, refresh, busy }: StepBodyProps) {
     [groups, tabId]
   )
   const settledCount = groups.filter((g) => g.settled).length
+
+  // A week's target is its own write: it leaves the group's focus alone.
+  async function setTarget(goalId: string, target: number | null): Promise<boolean> {
+    if (busy || saving) return false
+    setSaving(goalId)
+    setTargetError(null)
+    try {
+      setView(await planningGoalsApi.setWeekTarget(sessionId, goalId, target))
+      return true
+    } catch {
+      setTargetError('That didn’t take — try again.')
+      return false
+    } finally {
+      setSaving(null)
+    }
+  }
 
   async function pick(listId: string, goalId: string | null) {
     if (busy || saving) return
@@ -245,15 +304,20 @@ function Body({ sessionId, setDecisionData, refresh, busy }: StepBodyProps) {
             <AvatarStack members={active.members} max={4} />
           </div>
 
+          {targetError && <p className="wp-pne-err" role="alert">{targetError}</p>}
           <div className="wpg-opts" role="radiogroup" aria-label={`${active.name}’s focus this week`}>
             {active.goals.map((g) => (
-              <GoalOption
-                key={g.id}
-                goal={g}
-                checked={active.focusGoalId === g.id}
-                disabled={frozen}
-                onPick={() => pick(active.listId, g.id)}
-              />
+              <Fragment key={g.id}>
+                <GoalOption
+                  goal={g}
+                  checked={active.focusGoalId === g.id}
+                  disabled={frozen}
+                  onPick={() => pick(active.listId, g.id)}
+                />
+                {g.weekTargetable && (
+                  <WeekTarget goal={g} disabled={frozen} onSave={(t) => setTarget(g.id, t)} />
+                )}
+              </Fragment>
             ))}
             {/* Not a "clear" button — an option, so choosing it is as much of an answer
                 as choosing a goal, and the tab gets its ★ either way. */}

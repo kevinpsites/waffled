@@ -52,7 +52,7 @@ interface LooseEnd {
   actions: string[]
   owner?: { id: string; name: string; colorHex: string | null; avatarEmoji: string | null } | null
 }
-interface Destination { to: string; label: string; hint: string; primary?: boolean }
+interface Destination { to: string; label: string; hint: string; primary?: boolean; stepTitle?: string }
 interface Route { kind: string; id: string; title: string; source: string; to: string }
 interface LooseEndsPayload {
   weekStart: string
@@ -150,13 +150,20 @@ describe('loose ends · the module gate', () => {
 
 // ── Destinations ──────────────────────────────────────────────────────────────
 describe('loose ends · where a card can send things', () => {
-  it('offers the four triage destinations for "not done" and the two verbs for "parked"', async () => {
+  it('offers the four triage destinations for "not done", and every step still ahead for "parked"', async () => {
     const p = await read()
     expect(p.destinations.notDone.map((d) => d.to)).toEqual(['tasks', 'calendar', 'kids', 'goals'])
     expect(p.destinations.notDone[0]).toMatchObject({ to: 'tasks', label: 'Tasks', primary: true })
     expect(p.destinations.notDone[0].hint).toMatch(/owner and a day/i)
-    expect(p.destinations.parked.map((d) => d.to)).toEqual(['tasks', 'calendar'])
-    expect(p.destinations.parked[0]).toMatchObject({ to: 'tasks', label: 'Make it a task', primary: true })
+    // A note can go to any step still ahead that reads notes, not only the two with a verb.
+    const parked = p.destinations.parked.map((d) => d.to)
+    expect(parked.slice(0, 2)).toEqual(['tasks', 'calendar'])
+    expect(parked).toEqual(expect.arrayContaining(['connection', 'kids']))
+    for (const never of ['looseEnds', 'horizon', 'recap']) expect(parked).not.toContain(never)
+    // A button reads as the step it sends to, nothing more: "Tasks", not "Make it a task".
+    expect(p.destinations.parked[0]).toMatchObject({ to: 'tasks', label: 'Tasks', primary: true })
+    expect(p.destinations.parked.map((d) => d.label)).toEqual(p.destinations.parked.map((d) => d.stepTitle))
+    expect(p.destinations.parked.find((d) => d.to === 'kids')).toMatchObject({ label: 'Kids', stepTitle: 'Kids' })
   })
 
   it('drops a destination whose step this household is not running', async () => {
@@ -165,7 +172,8 @@ describe('loose ends · where a card can send things', () => {
     // `tasks` requires chores, so routing there would send things into a step the session
     // skips.
     expect(p.destinations.notDone.map((d) => d.to)).not.toContain('tasks')
-    expect(p.destinations.parked.map((d) => d.to)).toEqual(['calendar'])
+    expect(p.destinations.parked.map((d) => d.to)).not.toContain('tasks')
+    expect(p.destinations.parked.map((d) => d.to)).toContain('calendar')
     expect(p.sources).not.toContain('chores')
 
     await call('PUT', '/api/weekly-planning/config', kevin, { steps: { kids: false } })
@@ -174,7 +182,7 @@ describe('loose ends · where a card can send things', () => {
 
     await call('PUT', '/api/weekly-planning/config', kevin, { steps: { kids: true } })
     await setModules({ chores: true })
-    expect((await read()).sources).toEqual(['chores', 'lists', 'rhythms', 'goals'])
+    expect((await read()).sources).toEqual(['chores', 'lists', 'rhythms'])
   })
 })
 
@@ -205,6 +213,28 @@ describe('loose ends · overdue chores', () => {
     expect(item!.title).toBe('Take the bins out')
     expect(item!.detail).toMatch(/late|overdue|days/i)
     expect(item!.actions).toEqual(['done'])
+  })
+
+  // A repeating chore missed for months is not a pile of loose ends: only its last week of misses
+  // is asked about. A one-off stays asked about however late it is.
+  it('asks about a repeating chore’s misses from the last week only, and a one-off however late', async () => {
+    const today = (await query(`select (now() at time zone timezone)::date::text as t from households where id = $1`, [householdId])).rows[0].t as string
+    const { rows: daily } = await query(
+      `insert into chores (household_id, title, person_id, rrule, is_active) values ($1,'Brush teeth',$2,'FREQ=DAILY',true) returning id`,
+      [householdId, ownerId]
+    )
+    const miss = async (daysAgo: number) => (await query(
+      `insert into chore_instances (household_id, chore_id, person_id, due_on, status) values ($1,$2,$3,$4::date,'pending') returning id`,
+      [householdId, daily[0].id, ownerId, addDays(today, -daysAgo)]
+    )).rows[0].id as string
+    const recent = await miss(3)
+    const old = await miss(20)
+
+    const ids = (await read()).notDone.map((i) => i.id)
+    expect(ids).toContain(recent)
+    expect(ids).not.toContain(old)
+    expect(ids).toContain(overdueId)
+    await query(`update chores set deleted_at = now() where id = $1`, [daily[0].id])
   })
 
   it('does NOT surface an instance still to come, or one already answered', async () => {
@@ -477,8 +507,8 @@ describe('loose ends · which lists count', () => {
 })
 
 // A household gets to say which of its lists this step is even about — only lists,
-// because an overdue chore and a late rhythm are late BY DEFINITION and a habit is short
-// or it isn't, while an unchecked row on "Someday" is the list working as intended.
+// because an overdue chore and a late rhythm are late BY DEFINITION, while an unchecked row
+// on "Someday" is the list working as intended.
 //
 // OPT-OUT, not opt-in: absent means relevant, so a household that never opens the setting
 // sees what it saw before.
@@ -559,14 +589,14 @@ describe('loose ends · which lists the household wants asked about', () => {
     expect(c.lists[keptId]).toBe(false)
   })
 
-  // The cleared state says "we checked chores, lists, rhythms and goals". With every list
-  // ruled out that is not true.
+  // The cleared state says "we checked chores, lists and rhythms". With every list ruled out
+  // that is not true.
   it('stops claiming it checked the lists once there are none left to check', async () => {
     expect((await read()).sources).toContain('lists')
     await setAll(false)
     const view = await read()
     expect(view.sources).not.toContain('lists')
-    expect(view.sources).toEqual(['chores', 'rhythms', 'goals'])
+    expect(view.sources).toEqual(['chores', 'rhythms'])
   })
 
   // The STEP gets them on its own read: a step that had to fetch the config as well would
@@ -613,15 +643,13 @@ describe('loose ends · which lists the household wants asked about', () => {
 // WHO EACH THING ALREADY BELONGS TO. Routing something to Tasks when it already has an
 // owner is a different decision from routing something nobody has picked up.
 //
-// Resolved from ONE person map in `getLooseEnds` rather than joined per source: two of
-// the four sources come back through another module's reader and own no SQL to join, and
-// one payload with two mechanisms for the same field is how they drift.
+// Resolved from ONE person map in `getLooseEnds` rather than joined per source: rhythms come
+// back through another module's reader and own no SQL to join, and one payload with two
+// mechanisms for the same field is how they drift.
 describe('loose ends · who each thing already belongs to', () => {
   let ownedInstance = ''
   let unownedInstance = ''
   let ownedRhythm = ''
-  let soloGoal = ''
-  let familyGoal = ''
   let elaineId = ''
 
   // Its own fixtures throughout. The other suites in this file RESOLVE what they create,
@@ -658,24 +686,6 @@ describe('loose ends · who each thing already belongs to', () => {
       [householdId, elaineId]
     )
     ownedRhythm = r[0].id
-
-    const habit = async (title: string, basis: string, people: string[]) => {
-      const { rows: g } = await query(
-        `insert into goals (household_id, title, goal_type, tracking_mode, habit_period,
-                            habit_target_per_period, target_basis, is_active)
-         values ($1,$2,'habit','each_tracks','week',3,$3,true) returning id`,
-        [householdId, title, basis]
-      )
-      for (const pid of people) {
-        await query(
-          `insert into goal_participants (household_id, goal_id, person_id) values ($1,$2,$3)`,
-          [householdId, g[0].id, pid]
-        )
-      }
-      return g[0].id as string
-    }
-    soloGoal = await habit('Elaine runs', 'per_person', [elaineId])
-    familyGoal = await habit('Everybody walks', 'family', [elaineId, ownerId])
   })
 
   it('names the person an overdue chore is assigned to', async () => {
@@ -694,14 +704,6 @@ describe('loose ends · who each thing already belongs to', () => {
     const item = (await read()).notDone.find((x) => x.id === ownedRhythm)
     expect(item).toBeTruthy()
     expect(item!.owner?.name).toBe('Elaine')
-  })
-
-  // A habit with exactly one participant is that person's. A FAMILY habit belongs to
-  // everybody, and inventing an owner would be worse than an empty slot.
-  it('names the one person a habit goal is for, and nobody for the family’s', async () => {
-    const view = await read()
-    expect(view.notDone.find((x) => x.id === soloGoal)?.owner?.name).toBe('Elaine')
-    expect(view.notDone.find((x) => x.id === familyGoal)?.owner ?? null).toBeNull()
   })
 
   it('leaves an unassigned chore ownerless rather than guessing', async () => {
@@ -800,8 +802,10 @@ describe('loose ends · rhythms past due', () => {
   })
 })
 
-// ── "Not done" · goals ────────────────────────────────────────────────────────
-describe('loose ends · habit goals short for the week', () => {
+// ── Goals are not a loose end ─────────────────────────────────────────────────
+// The Goals step owns goals. A weekly habit that is behind is a goal still in progress, not
+// something left undone, so step 1 neither asks about it nor settles it.
+describe('loose ends · goals are the Goals step’s, not a loose end', () => {
   let goalId: string
 
   beforeAll(async () => {
@@ -813,42 +817,21 @@ describe('loose ends · habit goals short for the week', () => {
     goalId = rows[0].id
   })
 
-  it('surfaces a weekly habit that is short of its target, and says by how much', async () => {
-    const item = (await read()).notDone.find((i) => i.id === goalId)
-    expect(item).toBeTruthy()
-    expect(item!.kind).toBe('goal')
-    expect(item!.detail).toMatch(/0 of 3/)
-    expect(item!.actions).toEqual(['done'])
-  })
-
-  it('resolving "it’s done already" logs one against the goal, and the shortfall shrinks', async () => {
-    expect((await resolve({ kind: 'goal', id: goalId, action: 'done' })).statusCode).toBe(200)
-    const { rows } = await query(`select count(*)::int as n from goal_logs where goal_id = $1 and deleted_at is null`, [goalId])
-    expect(rows[0].n).toBe(1)
-    expect((await read()).notDone.find((i) => i.id === goalId)!.detail).toMatch(/1 of 3/)
-  })
-
-  it('stops asking once the target is met, and ignores a habit on another period', async () => {
-    await query(`update goals set habit_target_per_period = 1 where id = $1`, [goalId])
-    expect((await read()).notDone.map((i) => i.id)).not.toContain(goalId)
-
-    const { rows } = await query(
-      `insert into goals (household_id, title, goal_type, tracking_mode, habit_period, habit_target_per_period, is_active)
-       values ($1,'Floss daily','habit','shared_total','day',1,true) returning id`,
-      [householdId]
-    )
-    expect((await read()).notDone.map((i) => i.id)).not.toContain(rows[0].id)
-    await query(`update goals set is_active = false where id = $1`, [rows[0].id])
-  })
-
-  it('contributes nothing when the goals module is off', async () => {
-    await query(`update goals set habit_target_per_period = 5 where id = $1`, [goalId])
-    expect((await read()).notDone.map((i) => i.id)).toContain(goalId)
-    await setModules({ goals: false })
-    expect((await read()).notDone.map((i) => i.id)).not.toContain(goalId)
-    expect((await resolve({ kind: 'goal', id: goalId, action: 'done' })).statusCode).toBe(403)
-    await setModules({ goals: true })
+  afterAll(async () => {
     await query(`update goals set is_active = false where household_id = $1`, [householdId])
+  })
+
+  it('asks nothing about a weekly habit that is behind, and does not claim to have checked goals', async () => {
+    const view = await read()
+    expect(view.notDone.map((i) => i.id)).not.toContain(goalId)
+    expect(view.notDone.map((i) => i.kind)).not.toContain('goal')
+    expect(view.sources).not.toContain('goals')
+  })
+
+  it('refuses to settle a goal from here, and logs nothing against it', async () => {
+    expect((await resolve({ kind: 'goal', id: goalId, action: 'done' })).statusCode).toBe(400)
+    const { rows } = await query(`select count(*)::int as n from goal_logs where goal_id = $1`, [goalId])
+    expect(rows[0].n).toBe(0)
   })
 })
 
@@ -904,6 +887,14 @@ describe('loose ends · parked items', () => {
     await route({ sessionId, kind: 'parked', id: parkedId, to: null })
     const { rows: after } = await query(`select step_key from planning_parked_items where id = $1`, [parkedId])
     expect(after[0].step_key).toBe(null)
+  })
+
+  it('routes a note to a step with no verb of its own, such as Kids', async () => {
+    const res = await route({ sessionId, kind: 'parked', id: parkedId, title: 'Ask about the school trip', source: 'parked', to: 'kids' })
+    expect(res.statusCode).toBe(200)
+    const { rows } = await query(`select step_key from planning_parked_items where id = $1`, [parkedId])
+    expect(rows[0].step_key).toBe('kids')
+    await route({ sessionId, kind: 'parked', id: parkedId, to: null })
   })
 
   it('survives its session being discarded — the session goes, what it produced stays', async () => {
@@ -1010,7 +1001,7 @@ describe('loose ends · the resolve contract', () => {
   })
 
   it('404s on an id that is not this household’s', async () => {
-    for (const kind of ['chore', 'list', 'rhythm', 'goal', 'parked']) {
+    for (const kind of ['chore', 'list', 'rhythm', 'parked']) {
       const res = await resolve({ kind, id: '11111111-1111-1111-1111-111111111111', action: 'done' })
       expect(res.statusCode, kind).toBe(404)
     }

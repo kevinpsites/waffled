@@ -69,7 +69,7 @@ const VIEW = {
     ],
   },
   routes: [] as { kind: string; id: string; title: string; source: string; to: string }[],
-  sources: ['chores', 'lists', 'rhythms', 'goals'],
+  sources: ['chores', 'lists', 'rhythms'],
   lists: [
     { id: 'l1', name: 'Around the house', emoji: '🏠', relevant: true },
     { id: 'l2', name: 'Someday', emoji: '💭', relevant: true },
@@ -80,7 +80,8 @@ const calls: { url: string; method: string; body: Record<string, unknown> | null
 
 // A stateful double: a double that replayed the same view couldn't tell a route from a
 // no-op.
-function mockApi(initial: Record<string, unknown> = VIEW, opts: { capabilities?: string[] } = {}) {
+// `keep`: ids the module still reports after a resolve — a habit logged once can still be short.
+function mockApi(initial: Record<string, unknown> = VIEW, opts: { capabilities?: string[]; keep?: string[] } = {}) {
   calls.length = 0
   const state = JSON.parse(JSON.stringify(initial)) as typeof VIEW & {
     lists?: { id: string; name: string; emoji: string | null; relevant: boolean }[]
@@ -117,7 +118,7 @@ function mockApi(initial: Record<string, unknown> = VIEW, opts: { capabilities?:
       return { ok: true, json: async () => ({ routes: JSON.parse(JSON.stringify(state.routes)) }) }
     }
     if (method === 'POST' && u.endsWith('/loose-ends/resolve')) {
-      const drop = (list: typeof state.notDone) => list.filter((i) => i.id !== body.id)
+      const drop = (list: typeof state.notDone) => list.filter((i) => i.id !== body.id || (opts.keep ?? []).includes(body.id))
       state.notDone = drop(state.notDone)
       state.parked = drop(state.parked)
       state.counts = { notDone: state.notDone.length, parked: state.parked.length }
@@ -200,6 +201,19 @@ describe('loose ends · routing, which is the step', () => {
     expect(await screen.findByText('Return the library books')).toBeInTheDocument()
   })
 
+  it('names the step a note went to, even one with no triage label of its own', async () => {
+    mockApi({
+      ...VIEW,
+      destinations: {
+        ...VIEW.destinations,
+        parked: [...VIEW.destinations.parked, { to: 'meals', label: 'Take it to Meals', hint: 'It changes what we eat', stepTitle: 'Meals' }],
+      },
+      routes: [{ kind: 'parked', id: 'p1', title: 'Ask about the school trip', source: 'parked', to: 'meals' }],
+    })
+    renderStep()
+    expect(await screen.findByText(/→ Meals/)).toBeInTheDocument()
+  })
+
   it('counts down the deck and leaves a trail with an undo', async () => {
     mockApi()
     renderStep()
@@ -212,10 +226,34 @@ describe('loose ends · routing, which is the step', () => {
     expect(screen.getByText(/→ Tasks/)).toBeInTheDocument()
     expect(screen.getByTestId('wp-le-trail-h')).toHaveTextContent(/come up at that step/i)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Undo sending Take the bins out' }))
     await waitFor(() => expect(routeCalls()).toHaveLength(2))
     expect(routeCalls()[1].body).toMatchObject({ kind: 'chore', id: 'c1', to: null })
     await waitFor(() => expect(screen.getByText('1 of 2')).toBeInTheDocument())
+  })
+
+  it('gives each sent item its own undo, so an older one comes back without the newest', async () => {
+    mockApi()
+    renderStep()
+    fireEvent.click(await screen.findByRole('button', { name: /Tasks/ }))
+    await screen.findByText('Return the library books')
+    fireEvent.click(screen.getByRole('button', { name: /Calendar/ }))
+    await waitFor(() => expect(routeCalls()).toHaveLength(2))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo sending Take the bins out' }))
+    await waitFor(() => expect(routeCalls()).toHaveLength(3))
+    expect(routeCalls()[2].body).toMatchObject({ kind: 'chore', id: 'c1', to: null })
+    expect(await screen.findByRole('button', { name: 'Undo sending Return the library books' })).toBeInTheDocument()
+  })
+
+  it('lists everything sent, collapsing past three behind “Show all”', async () => {
+    const routes = ['a', 'b', 'c', 'd'].map((id) => ({ kind: 'chore', id, title: `Thing ${id}`, source: 'notDone', to: 'tasks' }))
+    mockApi({ ...VIEW, routes })
+    renderStep()
+    expect(await screen.findByRole('button', { name: 'Undo sending Thing d' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Undo sending Thing a' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show all 4' }))
+    expect(screen.getByRole('button', { name: 'Undo sending Thing a' })).toBeInTheDocument()
   })
 
   it('seeds what was already routed from the step’s own persisted data', async () => {
@@ -239,6 +277,41 @@ describe('loose ends · routing, which is the step', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Tasks/ }))
     expect(await screen.findByText(/not running in this household/i)).toBeInTheDocument()
     expect(screen.getByText('Take the bins out')).toBeInTheDocument()
+  })
+})
+
+describe('loose ends · goals are the Goals step’s', () => {
+  it('says Not done reads chores, lists and rhythms, and names no goals', async () => {
+    mockApi()
+    renderStep()
+    const note = await screen.findByText(/^Computed from your modules/)
+    expect(note.textContent).toMatch(/overdue chores, unchecked items on your lists, rhythms past due\./)
+    expect(note.textContent).not.toMatch(/goal|habit/i)
+  })
+})
+
+describe('loose ends · the deck holds its order', () => {
+  it('an answered card stays answered, and the counter doesn’t start over', async () => {
+    const fish = end({ key: 'chore:c0', id: 'c0', title: 'Feed the fish', detail: '1 day late' })
+    mockApi({ ...VIEW, notDone: [fish, ...VIEW.notDone], counts: { notDone: 3, parked: 1 } }, { keep: ['c0'] })
+    renderStep()
+    expect(await screen.findByText('1 of 3')).toBeInTheDocument()
+    expect(screen.getByText('Feed the fish')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /It's done already/ }))
+    await waitFor(() => expect(resolveCalls()).toHaveLength(1))
+    expect(await screen.findByText('Take the bins out')).toBeInTheDocument()
+    expect(screen.getByText('2 of 3')).toBeInTheDocument()
+    expect(screen.queryByText('Feed the fish')).not.toBeInTheDocument()
+  })
+
+  it('a card done mid-deck leaves the rest where they were', async () => {
+    mockApi()
+    renderStep()
+    expect(await screen.findByText('1 of 2')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /It's done already/ }))
+    expect(await screen.findByText('Return the library books')).toBeInTheDocument()
+    expect(screen.getByText('2 of 2')).toBeInTheDocument()
   })
 })
 
@@ -413,7 +486,7 @@ describe('loose ends · the cleared state', () => {
     mockApi({ ...VIEW, notDone: [], counts: { notDone: 0, parked: 1 } })
     renderStep()
     expect(await screen.findByText("Nothing's left undone")).toBeInTheDocument()
-    expect(screen.getByText(/we checked your chores, lists, rhythms, goals/i)).toBeInTheDocument()
+    expect(screen.getByText(/we checked your chores, lists, rhythms\./i)).toBeInTheDocument()
     expect(screen.getByText(/1 parked note is still waiting/i)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Go to Parked' }))
@@ -476,6 +549,32 @@ describe('loose ends · which lists it asks about', () => {
     fireEvent.click(screen.getByLabelText('Ask about Someday in the weekly planning session'))
     await waitFor(() => expect(calls.filter((c) => c.method === 'GET' && c.url.includes('/loose-ends')).length)
       .toBeGreaterThan(1))
+  })
+
+  it('ruling a list out drops its cards from the count, not just from the deck', async () => {
+    mockApi()
+    // The server stops reporting the ruled-out list's cards once the config write lands.
+    const answer = globalThis.fetch as unknown as (u: string, i?: RequestInit) => Promise<{ json: () => Promise<Record<string, unknown>> }>
+    let ruled = false
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET'
+      const res = await answer(url, init)
+      if (method === 'PUT' && String(url).includes('/weekly-planning/config')) ruled = true
+      if (ruled && method === 'GET' && String(url).includes('/loose-ends')) {
+        const v = (await res.json()) as { notDone: { kind: string }[]; parked: unknown[]; counts: unknown }
+        v.notDone = v.notDone.filter((i) => i.kind !== 'list')
+        v.counts = { notDone: v.notDone.length, parked: v.parked.length }
+        return { ok: true, json: async () => v }
+      }
+      return res
+    }) as unknown as typeof fetch
+    renderStep()
+    expect(await screen.findByText('1 of 2')).toBeInTheDocument()
+
+    await openChooser()
+    fireEvent.click(screen.getByLabelText('Ask about Around the house in the weekly planning session'))
+
+    expect(await screen.findByText('1 of 1')).toBeInTheDocument()
   })
 
   it('names each list the way the list itself is named', async () => {

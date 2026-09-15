@@ -351,6 +351,23 @@ const LOGGED_TODAY_SUBQUERY = `coalesce((
 const STEP_TOTAL_SUBQUERY = `(select count(*) from goal_steps gs where gs.goal_id = g.id and gs.deleted_at is null)`
 const STEP_DONE_SUBQUERY = `(select count(*) from goal_steps gs where gs.goal_id = g.id and gs.deleted_at is null and gs.done_at is not null)`
 
+// The target Weekly Planning set for the week under way, or else the next one planned; a week
+// that is already over is history. `done` is what was logged inside that week.
+const WEEK_TARGET_SUBQUERY = `(
+  select json_build_object(
+           'weekStart', t.week_start::text,
+           'target', t.target::float,
+           'done', coalesce((select sum(gl.amount)::float from goal_logs gl
+                              where gl.goal_id = t.goal_id and gl.deleted_at is null and gl.counts_total
+                                and (gl.logged_at at time zone h.timezone)::date between t.week_start and t.week_start + 6), 0),
+           'current', t.week_start <= (now() at time zone h.timezone)::date)
+    from planning_goal_week_targets t, households h
+   where h.id = g.household_id and t.goal_id = g.id and t.household_id = g.household_id
+     and t.week_start + 6 >= (now() at time zone h.timezone)::date
+   order by t.week_start
+   limit 1
+)`
+
 interface GoalRow extends QueryResultRow {
   id: string
   goal_list_id: string | null
@@ -383,6 +400,8 @@ interface GoalRow extends QueryResultRow {
   logged_today_by: string[]
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   participants: any[]
+  // Only the list read selects it.
+  week_target?: { weekStart: string; target: number; done: number; current: boolean } | null
 }
 
 function mapGoal(g: GoalRow) {
@@ -417,6 +436,7 @@ function mapGoal(g: GoalRow) {
     stepDone: Number(g.step_done),
     loggedTodayBy: g.logged_today_by ?? [],
     participants: g.participants,
+    weekPlan: g.week_target ?? null,
   }
 }
 
@@ -480,7 +500,8 @@ export async function listGoals(householdId: string, listId?: string | null) {
             ${STEP_TOTAL_SUBQUERY} as step_total,
             ${STEP_DONE_SUBQUERY} as step_done,
             ${LOGGED_TODAY_SUBQUERY} as logged_today_by,
-            ${PARTICIPANTS_SUBQUERY} as participants
+            ${PARTICIPANTS_SUBQUERY} as participants,
+            ${WEEK_TARGET_SUBQUERY} as week_target
        from goals g
       where g.household_id = $1 and g.deleted_at is null and g.is_active
         and ($2::uuid is null or g.goal_list_id = $2)
@@ -739,7 +760,26 @@ export async function goalDetail(householdId: string, id: string) {
     ).rows[0].sum
   )
 
-  return { ...base, milestones, steps, recent, thisWeek, streakDays }
+  // The weeks Weekly Planning set a target for, from the one under way onward, each against what
+  // was logged inside it.
+  const weekPlans = (
+    await query<{ weekStart: string; target: number; done: number; current: boolean }>(
+      `select t.week_start::text as "weekStart", t.target::float as target,
+              coalesce((select sum(gl.amount)::float from goal_logs gl
+                         where gl.goal_id = t.goal_id and gl.deleted_at is null and gl.counts_total
+                           and (gl.logged_at at time zone h.timezone)::date between t.week_start and t.week_start + 6), 0) as done,
+              t.week_start <= (now() at time zone h.timezone)::date as current
+         from planning_goal_week_targets t
+         join households h on h.id = t.household_id
+        where t.goal_id = $1 and t.household_id = $2
+          and t.week_start + 6 >= (now() at time zone h.timezone)::date
+        order by t.week_start
+        limit 8`,
+      [id, householdId]
+    )
+  ).rows
+
+  return { ...base, milestones, steps, recent, thisWeek, streakDays, weekPlans }
 }
 
 export interface GoalActivityDay {

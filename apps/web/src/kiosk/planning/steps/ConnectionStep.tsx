@@ -222,10 +222,18 @@ function Body({ step, sessionId, weekStart, setDecisionData, refresh, busy }: St
     setDecisionData({ added, alreadyCounted: Object.keys(links).length, links })
   }, [board, added, links, setDecisionData])
 
+  // Bumped on every save, so the pairing bar remounts empty; its picks are its own state and
+  // only Cancel cleared them, so a made pairing looked like nothing had happened.
+  const [madeGen, setMadeGen] = useState(0)
+  const [made, setMade] = useState<string | null>(null)
   const byId = useMemo(() => new Map(persons.map((p) => [p.id, p])), [persons])
 
   function onSaved() {
     setAdded((n) => n + 1)
+    setMadeGen((g) => g + 1)
+    const names = (compose?.participantIds ?? []).map((id) => byId.get(id)?.name).filter((n): n is string => !!n)
+    const who = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]
+    setMade(who ? `Added to the calendar — ${who}` : 'Added to the calendar')
     // Read BEFORE the re-read, so the difference afterwards names the event just created.
     const key = compose ? compose.participantIds.join('-') : null
     const row = key ? board?.pairings.find((p) => p.personIds.join('-') === key) : undefined
@@ -340,7 +348,15 @@ function Body({ step, sessionId, weekStart, setDecisionData, refresh, busy }: St
         )
       })}
 
-      <MakePairing weekStart={weekStart} persons={persons} busy={busy} onCompose={setCompose} />
+      {made && <p className="wpn-made" role="status">{made}</p>}
+      <MakePairing
+        key={madeGen}
+        weekStart={weekStart}
+        persons={persons}
+        busy={busy}
+        onCompose={(c) => { setMade(null); setCompose(c) }}
+        onOpen={() => setMade(null)}
+      />
 
       <p className="wpn-note">
         The rows above are just the pairings the app can see — they aren’t the list.{' '}
@@ -374,11 +390,13 @@ function MakePairing({
   persons,
   busy,
   onCompose,
+  onOpen,
 }: {
   weekStart: string
   persons: Person[]
   busy: boolean
   onCompose: (c: Compose) => void
+  onOpen: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [picked, setPicked] = useState<Set<string>>(() => new Set())
@@ -403,7 +421,7 @@ function MakePairing({
 
   if (!open) {
     return (
-      <button type="button" className="wpn-make-open" disabled={busy} onClick={() => setOpen(true)}>
+      <button type="button" className="wpn-make-open" disabled={busy} onClick={() => { onOpen(); setOpen(true) }}>
         <span className="wpn-make-lead">
           <span aria-hidden>＋</span> Make a pairing — any two people, any time
         </span>

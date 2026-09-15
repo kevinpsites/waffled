@@ -75,9 +75,10 @@ enum PlanningMealsText {
         return "\(added) items added · staples skipped"
     }
 
+    /// What is left to buy, not the list's length: ticked items are already in the cart.
     static func groceryPill(_ g: WaffledAPI.PlanningMealsGroceries) -> String {
-        var s = "\(g.items) items · aisle order"
-        if g.checked > 0 { s += " · \(g.checked) ticked" }
+        var s = "\(g.items - g.checked) to buy · aisle order"
+        if g.checked > 0 { s += " · \(g.checked) done" }
         return s
     }
 
@@ -208,6 +209,9 @@ final class PlanningMealsModel {
     /// COPIES it, which keeps next week's "BBQ Sunday" from rewriting the one already out.
     typealias PlanPlate = (_ date: String, _ mealId: String) async throws -> Void
     typealias ClearSlot = (_ date: String) async throws -> Void
+    typealias AddGrocery = (_ name: String) async throws -> Void
+    typealias FetchGroceries = (_ weekStart: String) async throws -> [WaffledAPI.ListItemDTO]
+    typealias CheckGrocery = (_ id: String, _ checked: Bool) async throws -> Void
 
     private(set) var view: WaffledAPI.PlanningMealsView?
     private(set) var loaded = false
@@ -224,6 +228,9 @@ final class PlanningMealsModel {
     private(set) var autoMarks: [String] = []
     private(set) var kept: [String] = []
     private(set) var groceryAdded: Int?
+    /// The planned week's grocery list, read when its sheet opens.
+    private(set) var groceries: [WaffledAPI.ListItemDTO]?
+    private(set) var groceryError: String?
 
     /// Lives in the model, not a view's `@State` — see `PlanningMealsStore` for why.
     private(set) var plannerOpen = false
@@ -238,6 +245,9 @@ final class PlanningMealsModel {
     private let planSlot: PlanSlot
     private let planPlate: PlanPlate
     private let clearSlot: ClearSlot
+    private let addGroceryFn: AddGrocery
+    private let fetchGroceriesFn: FetchGroceries
+    private let checkGroceryFn: CheckGrocery
 
     init(
         fetchView: @escaping FetchView = { weekStart, choreId in
@@ -264,6 +274,15 @@ final class PlanningMealsModel {
         },
         clearSlot: @escaping ClearSlot = { date in
             try await WaffledAPI().clearMeal(date: date, mealType: PlanningMealsModel.mealType)
+        },
+        addGrocery: @escaping AddGrocery = { name in
+            _ = try await WaffledAPI().addGroceryItem(name: name)
+        },
+        fetchGroceries: @escaping FetchGroceries = { weekStart in
+            try await WaffledAPI().groceryBoard(weekStart: weekStart).items
+        },
+        checkGrocery: @escaping CheckGrocery = { id, checked in
+            try await WaffledAPI().patchListItem(id: id, checked: checked)
         }
     ) {
         self.fetchView = fetchView
@@ -273,6 +292,9 @@ final class PlanningMealsModel {
         self.planSlot = planSlot
         self.planPlate = planPlate
         self.clearSlot = clearSlot
+        self.addGroceryFn = addGrocery
+        self.fetchGroceriesFn = fetchGroceries
+        self.checkGroceryFn = checkGrocery
     }
 
     /// `nonisolated` so the pure narrowing in `PlanningMealsPlan` (and its tests) can spell
@@ -324,6 +346,70 @@ final class PlanningMealsModel {
 
     func reread(weekStart: String) async {
         if let fresh = try? await fetchView(weekStart, choreHint) { apply(fresh) }
+    }
+
+    /// Adds to the running grocery list (the grocery board's own route), then re-reads so the
+    /// line counts it. Returns whether it landed, so the field clears only then.
+    @discardableResult
+    func addGrocery(_ name: String, weekStart: String) async -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !busy else { return false }
+        errorMessage = nil
+        do {
+            try await addGroceryFn(trimmed)
+            await reread(weekStart: weekStart)
+            return true
+        } catch {
+            errorMessage = "Couldn’t add that to the grocery list — try again."
+            return false
+        }
+    }
+
+    // MARK: The week's grocery list
+
+    /// The board's aisle walking order (`share-list.ts` AISLE_ORDER on web).
+    private static let aisles = ["Produce", "Dairy & Chilled", "Meat & Seafood", "Pantry", "Bakery", "Frozen", "Other"]
+
+    private static func byAisle(_ items: [WaffledAPI.ListItemDTO]) -> [WaffledAPI.ListItemDTO] {
+        let rank = { (i: WaffledAPI.ListItemDTO) in aisles.firstIndex(of: i.aisle ?? "") ?? aisles.count }
+        return items.enumerated()
+            .sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
+            .map(\.element)
+    }
+
+    var groceriesToBuy: [WaffledAPI.ListItemDTO] { Self.byAisle((groceries ?? []).filter { !$0.checked }) }
+    var groceriesInCart: [WaffledAPI.ListItemDTO] { Self.byAisle((groceries ?? []).filter(\.checked)) }
+
+    func loadGroceries(weekStart: String) async {
+        groceryError = nil
+        do {
+            groceries = try await fetchGroceriesFn(weekStart)
+        } catch {
+            groceryError = "Couldn’t read the grocery list — try again."
+        }
+    }
+
+    /// Flips the row at once and puts it back if the write doesn't land. A tick changes what is
+    /// left to buy, so the grocery line's count re-reads.
+    @discardableResult
+    func setGroceryChecked(_ item: WaffledAPI.ListItemDTO, weekStart: String) async -> Bool {
+        let checked = !item.checked
+        flipGrocery(item.id, to: checked)
+        groceryError = nil
+        do {
+            try await checkGroceryFn(item.id, checked)
+            await reread(weekStart: weekStart)
+            return true
+        } catch {
+            flipGrocery(item.id, to: item.checked)
+            groceryError = "\(item.name) didn’t change — try again."
+            return false
+        }
+    }
+
+    private func flipGrocery(_ id: String, to checked: Bool) {
+        guard let i = groceries?.firstIndex(where: { $0.id == id }) else { return }
+        groceries?[i].checked = checked
     }
 
     // MARK: The planner the footer opens

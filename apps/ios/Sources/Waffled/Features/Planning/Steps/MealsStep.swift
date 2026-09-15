@@ -14,6 +14,8 @@ struct MealsStepView: View {
 
     @State private var editing: String?
     @State private var shopping = false
+    @State private var groceryList = false
+    @State private var groceryDraft = ""
 
     /// The library the planner's manual-pick sheet browses, loaded only when it opens.
     @State private var plannerRecipes = RecipesModel()
@@ -91,6 +93,9 @@ struct MealsStepView: View {
                 onClear: {
                     write { await model.clearNight(weekStart: props.weekStart, date: target.date) }
                 })
+        }
+        .sheet(isPresented: $groceryList) {
+            MealsStepGroceryListSheet(model: model, weekStart: props.weekStart)
         }
         .sheet(isPresented: $shopping) {
             MealsStepShopperSheet(
@@ -239,6 +244,11 @@ struct MealsStepView: View {
     // MARK: - Groceries
 
     /// ONE LINE, not a panel: the board already builds itself from this plan.
+    private func addGrocery() {
+        let name = groceryDraft
+        Task { if await model.addGrocery(name, weekStart: props.weekStart) { groceryDraft = "" } }
+    }
+
     @ViewBuilder private var groceryLine: some View {
         if let groceries = model.view?.groceries {
             WaffledCard(padding: 13) {
@@ -254,7 +264,28 @@ struct MealsStepView: View {
                         }
                         Spacer(minLength: 6)
                     }
-                    Pill(text: PlanningMealsText.groceryPill(groceries))
+                    Button { groceryList = true } label: {
+                        Pill(text: PlanningMealsText.groceryPill(groceries))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens this week’s grocery list")
+
+                    HStack(spacing: 10) {
+                        TextField("Add to groceries…", text: $groceryDraft)
+                            .font(.system(size: 16, weight: .semibold))
+                            .submitLabel(.done)
+                            .onSubmit(addGrocery)
+                            .padding(.horizontal, 14).padding(.vertical, 12)
+                            .wfField()
+                        let canAdd = !frozen && !groceryDraft.trimmingCharacters(in: .whitespaces).isEmpty
+                        Button(action: addGrocery) {
+                            Text("Add").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                                .padding(.horizontal, 18).padding(.vertical, 12)
+                                .background(canAdd ? WF.primary : WF.primary.opacity(0.4))
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain).disabled(!canAdd)
+                    }
 
                     // The shopper pill is only here because the trip is REAL — a one-off
                     // chore on the Tasks board. With chores off the control GOES AWAY.

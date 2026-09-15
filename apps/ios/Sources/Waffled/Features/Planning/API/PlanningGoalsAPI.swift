@@ -19,15 +19,23 @@ extension WaffledAPI {
     struct PlanningGoalGoal: Decodable, Identifiable, Sendable {
         let goal: Goal
         let pace: PlanningGoalPace?
+        /// A target for the planned week ("10 of the 750 hours"). Only a running count or total
+        /// takes one; `weekDone` is what was logged that week. Absent from an older server.
+        let weekTargetable: Bool
+        let weekTarget: Double?
+        let weekDone: Double
 
         var id: String { goal.id }
 
-        private enum CodingKeys: String, CodingKey { case pace }
+        private enum CodingKeys: String, CodingKey { case pace, weekTargetable, weekTarget, weekDone }
 
         init(from decoder: Decoder) throws {
             goal = try Goal(from: decoder)
             let c = try decoder.container(keyedBy: CodingKeys.self)
             pace = try c.decodeIfPresent(PlanningGoalPace.self, forKey: .pace)
+            weekTargetable = try c.decodeIfPresent(Bool.self, forKey: .weekTargetable) ?? false
+            weekTarget = try c.decodeIfPresent(Double.self, forKey: .weekTarget)
+            weekDone = try c.decodeIfPresent(Double.self, forKey: .weekDone) ?? 0
         }
     }
 
@@ -84,6 +92,21 @@ extension WaffledAPI {
         ]
         return try await sendReturning(
             "PUT", "/api/weekly-planning/goals/focus", body: body, as: PlanningGoalsView.self)
+    }
+
+    /// One goal's target for the session's week; `target` nil clears it.
+    func planningGoalsSetWeekTarget(
+        sessionId: String,
+        goalId: String,
+        target: Double?
+    ) async throws -> PlanningGoalsView {
+        let body: [String: JSONValue] = [
+            "sessionId": .string(sessionId),
+            "goalId": .string(goalId),
+            "target": target.map(JSONValue.double) ?? .null,
+        ]
+        return try await sendReturning(
+            "PUT", "/api/weekly-planning/goals/week-target", body: body, as: PlanningGoalsView.self)
     }
 }
 

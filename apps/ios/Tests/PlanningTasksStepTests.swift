@@ -40,7 +40,7 @@ private let boardJSON = Data("""
           "days": [], "dueOn": "2026-09-02", "dueTime": null,
           "carriedOver": true, "rewardAmount": 0, "rewardCurrency": null,
           "requiresApproval": false, "requiresPhoto": false,
-          "pendingInstanceIds": ["i-library"] }
+          "pendingInstanceIds": ["i-library"], "completableInstanceId": "i-library" }
       ] }
   ],
   "unassigned": [
@@ -50,6 +50,12 @@ private let boardJSON = Data("""
       "carriedOver": false, "rewardAmount": 1.5, "rewardCurrency": null,
       "requiresApproval": false, "requiresPhoto": false,
       "pendingInstanceIds": [] }
+  ],
+  "rhythms": [
+    { "id": "r-plants", "title": "Water the plants", "emoji": "🪴", "personId": "p-wally",
+      "detail": "Due Wed", "overdue": false, "canComplete": true },
+    { "id": "r-dentist", "title": "Book the dentist", "emoji": null, "personId": null,
+      "detail": "Not booked yet", "overdue": false, "canComplete": false }
   ]
 }
 """.utf8)
@@ -88,6 +94,10 @@ private final class TasksBoardFeed {
     var fetchCount = 0
     var handOuts: [(choreId: String, personId: String?)] = []
     var saves: [(choreId: String?, body: [String: JSONValue])] = []
+    var completed: [String] = []
+    var settledRhythms: [String] = []
+    var settleSessions: [String] = []
+    var completeFails = false
 
     init(_ board: WaffledAPI.PlanningTasksBoard) { self.board = board }
 }
@@ -107,6 +117,14 @@ private func model(_ feed: TasksBoardFeed) -> PlanningTasksModel {
         saveChore: { choreId, body in
             feed.saves.append((choreId, body))
             if feed.saveFails { throw PlanningTasksFailure.rejected }
+        },
+        complete: { instanceId in
+            if feed.completeFails { throw PlanningTasksFailure.rejected }
+            feed.completed.append(instanceId)
+        },
+        settleRhythm: { id, sessionId in
+            feed.settledRhythms.append(id)
+            feed.settleSessions.append(sessionId)
         })
 }
 
@@ -114,6 +132,95 @@ private func model(_ feed: TasksBoardFeed) -> PlanningTasksModel {
 
 @MainActor
 @Suite struct PlanningTasksStepTests {
+
+    @Test func theWeeksRhythmsDecodeWithWhetherDoneApplies() throws {
+        let board = try decodedBoard()
+        #expect(board.rhythms.map(\.title) == ["Water the plants", "Book the dentist"])
+        #expect(board.rhythms[0].canComplete)
+        #expect(!board.rhythms[1].canComplete)
+    }
+
+    @Test func aBoardFromBeforeRhythmsStillDecodes() throws {
+        let bare = try WaffledAPI.decoder.decode(
+            WaffledAPI.PlanningTasksBoard.self,
+            from: Data(#"{"weekStart":"2026-09-06","newTaskDay":"2026-09-06","people":[],"unassigned":[]}"#.utf8))
+        #expect(bare.rhythms.isEmpty)
+    }
+
+    @Test func settlingARhythmGoesThroughResolveAndRereads() async throws {
+        let feed = TasksBoardFeed(try decodedBoard())
+        let model = model(feed)
+        await model.load(weekStart: "2026-09-06")
+        let reads = feed.fetchCount
+        let plants = try #require(model.board?.rhythms.first)
+
+        #expect(await model.settleRhythm(plants, sessionId: "s-1", weekStart: "2026-09-06"))
+        #expect(feed.settledRhythms == ["r-plants"])
+        #expect(feed.settleSessions == ["s-1"])
+        #expect(feed.fetchCount == reads + 1)
+    }
+
+    @Test func aBookingRhythmIsNotSettledFromHere() async throws {
+        let feed = TasksBoardFeed(try decodedBoard())
+        let model = model(feed)
+        await model.load(weekStart: "2026-09-06")
+        let dentist = try #require(model.board?.rhythms.last)
+
+        #expect(await model.settleRhythm(dentist, sessionId: "s-1", weekStart: "2026-09-06") == false)
+        #expect(feed.settledRhythms.isEmpty)
+    }
+
+    @Test func markingDoneCompletesTheOpenDayAndRereads() async throws {
+        let feed = TasksBoardFeed(try decodedBoard())
+        let model = model(feed)
+        await model.load(weekStart: "2026-09-06")
+        let library = try #require(model.board?.people.first { $0.id == "p-lottie" }?.chores.first)
+        #expect(library.completableInstanceId == "i-library")
+        let reads = feed.fetchCount
+
+        #expect(await model.markDone(library, weekStart: "2026-09-06"))
+        #expect(feed.completed == ["i-library"])
+        #expect(feed.fetchCount == reads + 1)
+        #expect(model.notice == nil)
+    }
+
+    @Test func anApprovalTaskSaysItIsWaitingForAParent() async throws {
+        let feed = TasksBoardFeed(try decodedBoard())
+        let model = model(feed)
+        await model.load(weekStart: "2026-09-06")
+        let approval = try chore("""
+        { "id": "c-room", "title": "Tidy the room", "emoji": null, "rrule": null, "cadence": "once",
+          "days": [], "dueOn": null, "dueTime": null, "carriedOver": false, "rewardAmount": 0,
+          "rewardCurrency": null, "requiresApproval": true, "requiresPhoto": false,
+          "pendingInstanceIds": ["i-room"], "completableInstanceId": "i-room" }
+        """)
+
+        #expect(await model.markDone(approval, weekStart: "2026-09-06"))
+        #expect(model.notice?.contains("waiting for a parent") == true)
+    }
+
+    @Test func nothingDueYetWritesNothing() async throws {
+        let feed = TasksBoardFeed(try decodedBoard())
+        let model = model(feed)
+        await model.load(weekStart: "2026-09-06")
+        let trash = try #require(model.board?.people.first { $0.id == "p-wally" }?.chores.first)
+        #expect(trash.completableInstanceId == nil)
+
+        #expect(await model.markDone(trash, weekStart: "2026-09-06") == false)
+        #expect(feed.completed.isEmpty)
+    }
+
+    @Test func aFailedCompleteSaysSoAndKeepsTheBoard() async throws {
+        let feed = TasksBoardFeed(try decodedBoard())
+        let model = model(feed)
+        await model.load(weekStart: "2026-09-06")
+        let library = try #require(model.board?.people.first { $0.id == "p-lottie" }?.chores.first)
+        feed.completeFails = true
+
+        #expect(await model.markDone(library, weekStart: "2026-09-06") == false)
+        #expect(model.errorMessage != nil)
+        #expect(model.board != nil)
+    }
 
     // ── The two-write hand-out ──────────────────────────────────────────────────
 
@@ -392,6 +499,22 @@ private func model(_ feed: TasksBoardFeed) -> PlanningTasksModel {
         #expect(instance.dueOn == "2026-09-02")
         #expect(instance.rrule == nil)
         #expect(instance.rewardAmount == 0)
+    }
+
+    @Test func aOneOffCardHandsTheEditorItsOpenDaySoSavingFindsIt() throws {
+        let board = try decodedBoard()
+        let library = try #require(board.people[2].chores.first?.asChoreInstance(owner: nil))
+        #expect(library.id == "i-library")
+        #expect(ChoreEditSheet.instanceId(editing: library) == "i-library")
+    }
+
+    @Test func aCardWithNoOpenDayEditsTheChoreItselfWithNoInstance() throws {
+        let board = try decodedBoard()
+        let trash = try #require(board.people[1].chores.first?.asChoreInstance(owner: "p-wally"))
+        let sitter = try #require(board.unassigned.first?.asChoreInstance(owner: nil))
+        // A repeating card is the whole chore; the API 409s on a chore id sent as an instance.
+        #expect(ChoreEditSheet.instanceId(editing: trash) == nil)
+        #expect(ChoreEditSheet.instanceId(editing: sitter) == nil)
     }
 
     @Test func aFractionalRewardSurvivesTheBridgeAsAWholeNumber() throws {

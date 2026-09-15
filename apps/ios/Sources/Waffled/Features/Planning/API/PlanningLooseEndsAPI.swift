@@ -60,6 +60,8 @@ extension WaffledAPI {
         /// OPTIONAL, and absent on every destination but one — the server omits the key
         /// entirely rather than sending `false`, so this must not be a plain `Bool`.
         let primary: Bool?
+        /// The step's title ("Meals"), for naming where something was sent.
+        var stepTitle: String? = nil
     }
 
     struct LooseEndRoute: Decodable, Sendable, Equatable {

@@ -63,9 +63,18 @@ struct ConnectionStepView: View {
                     ForEach(model.rows) { row in
                         rowCard(row)
                     }
+                    if let note = model.madeNote {
+                        Text(note)
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(WF.panel)
+                            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                    }
                     PlanningMakePairing(
                         model: model, weekStart: props.weekStart, members: sync.members,
                         busy: props.busy, onCompose: { openComposer($0) })
+                        .id(model.madeGeneration)
                     Text(ConnectionCopy.note)
                         .font(.system(size: 12)).foregroundStyle(WF.ink3)
                         .fixedSize(horizontal: false, vertical: true)
@@ -222,6 +231,7 @@ struct ConnectionStepView: View {
     }
 
     private func openComposer(_ next: PlanningConnectionCompose) {
+        model.clearMadeNote()
         composeParticipants = next.participantIds
         compose = next
     }
@@ -240,10 +250,11 @@ struct ConnectionStepView: View {
     private func onSaved() {
         // No "did they save?" flag, unlike step 2: this step lends the banner no verb.
         let participants = composeParticipants
+        let names = participants.compactMap { id in sync.members.first { $0.id == id }?.name }
         Task {
             await model.settleAfterSave(
                 weekStart: props.weekStart, sessionId: props.sessionId,
-                participantIds: participants)
+                participantIds: participants, names: names)
         }
         props.refresh()
     }
@@ -301,7 +312,7 @@ private struct PlanningMakePairing: View {
 
     private var collapsed: some View {
         Button {
-            open = true
+            model.clearMadeNote(); open = true
         } label: {
             HStack(spacing: 10) {
                 Text("＋ Make a pairing — any two people, any time")

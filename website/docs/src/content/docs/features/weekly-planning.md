@@ -43,6 +43,10 @@ Inside the session, every step looks the same:
 - **Skip this step** on the left of the footer, and the step's answer on the right —
   **All handled**, **Looks right**, **Accept**, **Handed out** — with the next step's name
   beside it
+- **📌 Park a note** in the footer (a pin on iPhone), so a thought that comes up mid-step
+  gets written down without leaving it. Tag it for a step still ahead and that step opens with
+  it; with no tag it waits in the Recap and at next week's Loose ends. Loose ends and Horizon
+  scan have their own bar, so the footer leaves it out there.
 
 Skipping is a real answer. The record shows which steps you skipped on purpose.
 
@@ -65,16 +69,19 @@ Meals needs Meals, and Tasks needs Chores. You can also switch any step off your
 **1 · Loose ends** — *"Anything still open from last week?"* Two groups, worked through one
 card at a time or all at once with **See all**:
 
-- **Not done** — what's already in the app and still open: overdue chores, items left
-  unchecked on your lists, rhythms past due, and habit goals that are short for the week.
-  Each card says where it came from (Chore, List, Rhythm, Goal) and who already has it, so
-  one with no name on it reads as up for grabs.
+- **Not done** — what's already in the app and still open: overdue chores (a one-off however
+  late, a repeating chore only for the days it was missed in the past week), items left
+  unchecked on your lists, and rhythms past due. Each card says where it came from (Chore,
+  List, Rhythm) and who already has it, so one with no name on it reads as up for grabs.
+  Goals aren't asked about here — a habit that's behind for the week is still in progress,
+  and the **Goals** step is where the session looks at them.
 - **Parked** — notes somebody wrote down during the week that don't live anywhere else yet.
   You can park a new one from here too.
 
 Each card gets sent on to the step that will deal with it — **Tasks**, **Calendar**, **Kids**
-or **Goals** for something not done; **Make it a task** or **Put it on the calendar** for a
-parked note. Sending something on writes nothing yet; it only decides where it comes up later
+or **Goals** for something not done. A parked note can go to any later step the household
+runs — **Tasks**, **Calendar**, **Family night**, **Connection**, **Goals**, **Meals** or
+**Kids** — where it waits in that step's "sent here" box. Sending something on writes nothing yet; it only decides where it comes up later
 in the session, and **Undo** takes it back. Marking something done already, or dropping a
 parked note, are the answers that act straight away.
 
@@ -86,7 +93,8 @@ about, because it rebuilds itself from the meal plan.
 
 **2 · Calendar** — *"Here's your week. Anything missing?"* The real week, seven days. Tap a
 day to add what's missing: a line, a time, and who it's for. It's an ordinary
-[calendar](/features/calendar/) event.
+[calendar](/features/calendar/) event. Tap an event that's already there to open it in the same
+editor and change it.
 
 **3 · Horizon scan** — *"Anything further out you should see now?"* The month view, so you
 see what's coming before it arrives. **＋** on a day adds a real event. The bar underneath
@@ -101,21 +109,29 @@ this session**, where **Edit** changes the wording, the tag, or both.
 [Family Night](/features/family-night/): who the rotation suggests for each part. Tap a face to
 pin a part for this week only, write what each part actually is ("charades, kids vs parents"),
 and set an optional theme. You can get *this* week's gathering onto the calendar — as a new
-event, or by pointing at something already on the week — or call the week off. Calling it off
+event, or by pointing at something already on the week (listed by day, each with its time
+and colour, as on the calendar) — or call the week off. **Add to
+calendar** opens a short form first, with the title (your theme, if you gave one), the time and
+how long it runs, so you can check them before the event is made. Calling it off
 leaves the standing weekly event alone.
 
 **5 · Connection** — *"Who gets time with whom?"* Pairings the app can see from who's on
 which events. Time you're already spending together counts: **Link a time** lists every event
 on the week with both of you on it, whoever else is there, and lets you say that one *is* your
 time. Nobody's event is edited. **Make a pairing** takes any two people and any time, and
-offers the gaps your week actually left; what it makes is an ordinary calendar event.
+offers the gaps your week actually left; what it makes is an ordinary calendar event. Once it's
+saved the bar closes and a line says what was added, so the next pairing starts from nobody.
 
 **6 · Goals** — *"What's each group's focus this week?"* A tab per goal group — the family's
 list, one per person, a private one. Pick the goal that group's week is about and it's
 featured, so it turns up on Today and the Goals page. Picking nothing is a real answer, and a
 goal you pinned yourself is never un-pinned. **＋ New goal for this week** opens the goal
 editor over the session; the new goal comes back as that group's suggestion. Adding a goal to
-a group that isn't just yours needs permission to manage goals.
+a group that isn't just yours needs permission to manage goals. A goal that counts up to a
+number — hours, pages, runs — can also take a target for **this week**, a slice of the bigger
+one ("10 hours this week toward 750"). What's been logged that week shows beside it; the goal's card
+on the Goals page and Today shows it all week ("This week: 3 of 10 hours"), this session's recap
+lists it, and next week's recap reads it back. Habits already have a target per period, so they don't get one.
 
 ### Run the household
 
@@ -128,12 +144,20 @@ already decided, and only writes the nights you approve. Afterwards **Undo the t
 however many) takes back exactly what it wrote; a night changed by hand since is left alone,
 and the step says so. It uses the AI provider you set up — bring your own model or key. With
 Chores on, **Who's shopping?** turns the grocery trip into a real chore with a person and a
-day.
+day. Remembered something else you need? Type it into **Add to groceries** under the grocery
+line and it goes straight onto the list; the count beside it is what's still to buy — tap it to
+open the week's list in aisle order and tick things off, or put them back.
 
 **8 · Tasks** — *"Who's doing what?"* A column per person, with everything nobody has taken in
 an **Up for grabs** strip across the top. Tap a face or drag a card to hand a chore over, or
 leave it up for grabs. Tap a task's name — or the day beside it — to open the chore editor and
-fix the title, the stars or the day. Each column shows what that person already carries.
+fix the title, the stars or the day. Each column shows what that person already carries. A
+one-off task has **✓ Done**, even one due later, since it can be done early — anyone can press it, as on the Tasks board; a
+repeating chore is done day by day on the board — and one
+that needs a parent's OK says it's waiting for one. A task that needs a photo is finished from
+the Tasks board, where the camera is. With [Rhythms](/features/rhythms/) on, **Rhythms this
+week** lists every rhythm due in the week you're planning, late or not; the ones you do
+yourself have **✓ Done**, and the ones settled by booking say they aren't booked yet.
 
 **9 · Kids** — *"What's your week about?"* The step the children can read. A card per child
 with their week and their stars, and two questions: **one thing to focus on** (a goal they're
@@ -144,10 +168,12 @@ one thing**.
 
 ### Close
 
-**10 · Recap** — *"Here's the week you just decided."* The week read back: what the session
-changed, grouped by where each decision lives (Calendar, Meals, Chores, Goals, Family Night,
-Kids); **Still on the board** — a last call on notes nobody picked up, with how long they've
-waited; and **Left alone on purpose**. **Save the week** finishes the session.
+**10 · Recap** — *"Here's the week you just decided."* The week read back: the seven days
+with their dinners and events (a busy day shows **+N more** — tap it to see the rest), what
+the session changed, grouped by where each decision lives (Calendar, Meals, Chores, Goals — including any target
+set for the week — Family Night, Kids); **Still on the board** — a last call on notes nobody picked up, with how long they've
+waited, where each can be kept parked, dropped, or turned into a task or an event (the note is
+settled once that's saved); and **Left alone on purpose**. **Save the week** finishes the session.
 
 ### Notes you parked for a step
 
@@ -160,13 +186,13 @@ parked.
 
 ## The saved week
 
-A finished session opens as **The week is decided**: each day with its dinner and events, what
-changed grouped by module, the notes nobody tagged, and what was left alone on purpose. Under
-that is the step-by-step list, which is where skipped steps are recorded. On the web, a line
-for a calendar, meals, tasks or goals decision opens that page.
+A finished session opens as **The week is decided**, with **Plan another week** right under
+the title. Below that is the week itself: each day with its dinner and events, what changed
+grouped by module, the notes nobody tagged, and what was left alone on purpose, skipped steps
+included. On the web, a line for a calendar, meals, tasks or goals decision opens that page.
 
-**Reopen the session** takes you back in to change something. The week arrows let you plan
-another week, and **Start this week over** is here too.
+**Reopen the session** takes you back in to change something, and **Start this week over** is
+here too.
 
 ## Where it works
 

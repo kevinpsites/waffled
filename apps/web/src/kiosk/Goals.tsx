@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { Icon } from './icons'
 import { LogModal } from './components/LogModal'
 import { ListModal } from './components/ListModal'
-import { api, useGoalLists, useGoals, useHousehold, can, goalDisplayProgress as dispProgress, goalDisplayTarget as dispTarget, fmtGoalNum, type Goal, type GoalList, type GoalParticipant } from '../lib/api'
+import { api, useGoalLists, useGoals, useHousehold, can, goalDisplayProgress as dispProgress, goalDisplayTarget as dispTarget, goalWeekTargetLabel, fmtGoalNum, type Goal, type GoalList, type GoalParticipant } from '../lib/api'
 import { parseGoalDate } from '../lib/goalStats'
 import { CATEGORIES } from './categories'
 import '../styles/goals.css'
@@ -106,6 +106,7 @@ function SharedHero({ goal, onLog, onOpen }: { goal: Goal; onLog: (g: Goal) => v
           <span className="cat-pill hero-pill">🌟 Spotlight · shared total</span>
           <div className="wf-serif hero-title">{goal.title}</div>
           <div className="hero-sub">Everyone contributes to one pool{goal.deadline ? ` · by ${fmtDeadline(goal.deadline)}` : ''}</div>
+          {goalWeekTargetLabel(goal) && <div className="hero-week">{goalWeekTargetLabel(goal)}</div>}
           {goal.participants.length > 0 && (
             <div className="hero-contribs">
               {goal.participants.map((p) => (
@@ -150,6 +151,7 @@ function EachHero({ goal, onOpen }: { goal: Goal; onOpen: () => void }) {
           <span className="cat-pill hero-pill">🌟 Spotlight · each tracks their own</span>
           <div className="wf-serif hero-title">{goal.title}</div>
           <div className="hero-sub">{sub}</div>
+          {goalWeekTargetLabel(goal) && <div className="hero-week">{goalWeekTargetLabel(goal)}</div>}
         </div>
         <div className="ch-side hero-each-side">
           <div className="hero-together-l">TOGETHER</div>
@@ -191,6 +193,7 @@ function MoreGoalCard({ goal, onClick, onPin, canPin }: { goal: Goal; onClick: (
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="gc-t">{goal.title}</div>
           <div className="tiny muted goal-desc">{descriptor(goal)}</div>
+          {goalWeekTargetLabel(goal) && <div className="tiny goal-week">{goalWeekTargetLabel(goal)}</div>}
         </div>
         <div className="goal-num">
           <span className="num">{fmtNum(dispProgress(goal))}</span>
@@ -216,6 +219,7 @@ function PinnedCard({ goal, onClick, onPin, canPin }: { goal: Goal; onClick: () 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="gc-t">{goal.title} <span className="feat-tag">📌 Pinned</span></div>
           <div className="tiny muted goal-desc">{descriptor(goal)}</div>
+          {goalWeekTargetLabel(goal) && <div className="tiny goal-week">{goalWeekTargetLabel(goal)}</div>}
         </div>
         <div className="goal-num">
           <span className="num">{fmtNum(dispProgress(goal))}</span>

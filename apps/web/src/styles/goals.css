@@ -1243,3 +1243,8 @@ button.goal-listhead-link:hover {
   .recap-act { order: 4; width: auto; flex-direction: row; align-items: center; gap: 10px; margin-left: auto; }
   .recap-didnt { padding: 6px 4px; }
 }
+
+/* A week's target from Weekly Planning, under a goal's own line. */
+.goal-week { margin-top: 3px; font-weight: 700; color: var(--ink-2); }
+.hero-week { margin-top: 6px; font-size: 13px; font-weight: 700; color: rgba(255, 255, 255, 0.92); }
+.detail-week-next { margin-top: 4px; font-size: 12.5px; font-weight: 700; color: rgba(255, 255, 255, 0.88); }

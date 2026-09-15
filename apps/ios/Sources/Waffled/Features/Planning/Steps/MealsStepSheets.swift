@@ -301,3 +301,74 @@ struct MealsStepShopperSheet: View {
         return String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
     }
 }
+
+/// The planned week's grocery list, opened from the count on the grocery line: tick an item off
+/// or put it back. Editing, aisles and staples stay on the Meals screen's board.
+struct MealsStepGroceryListSheet: View {
+    let model: PlanningMealsModel
+    let weekStart: String
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    if let message = model.groceryError {
+                        Text(message)
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.danger)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if model.groceries == nil, model.groceryError == nil {
+                        WaffledLoading()
+                    } else if model.groceriesToBuy.isEmpty, model.groceriesInCart.isEmpty {
+                        Text("Nothing on this week’s list yet.")
+                            .font(.system(size: 13)).foregroundStyle(WF.ink3)
+                    } else {
+                        WaffledFieldCard(title: "To buy · \(model.groceriesToBuy.count)") {
+                            ForEach(model.groceriesToBuy) { row($0) }
+                        }
+                        if !model.groceriesInCart.isEmpty {
+                            WaffledFieldCard(title: "In the cart · \(model.groceriesInCart.count)") {
+                                ForEach(model.groceriesInCart) { row($0) }
+                            }
+                        }
+                    }
+                }
+                .padding(16)
+            }
+            .background(WF.canvas)
+            .navigationTitle("This week’s groceries")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+        .task { await model.loadGroceries(weekStart: weekStart) }
+    }
+
+    private func row(_ item: WaffledAPI.ListItemDTO) -> some View {
+        Button {
+            Task { await model.setGroceryChecked(item, weekStart: weekStart) }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: item.checked ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 19))
+                    .foregroundStyle(item.checked ? WF.success : WF.ink3)
+                Text(item.name)
+                    .font(.system(size: 14.5, weight: .medium))
+                    .foregroundStyle(item.checked ? WF.ink3 : WF.ink)
+                    .strikethrough(item.checked)
+                Spacer(minLength: 6)
+                if let quantity = item.quantity {
+                    Text(quantity)
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
+                }
+            }
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(item.checked ? "Put \(item.name) back" : "Check off \(item.name)")
+    }
+}

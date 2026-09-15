@@ -159,14 +159,51 @@ private func model(_ feed: FamilyNightBoardFeed) -> PlanningFamilyNightModel {
         #expect(body["eventId"] == JSONValue.null)
     }
 
-    @Test func addToCalendarAsksTheSERVERToMakeTheEvent() {
-        let body = PlanningFamilyNightBody.addEvent(date: "2026-09-09")
+    @Test func addToCalendarAsksTheSERVERToMakeTheEventWithTheConfirmedDetails() {
+        let body = PlanningFamilyNightBody.addEvent(
+            date: "2026-09-09", title: "🌮 Taco night", time: "18:30", durationMin: 90)
         // Not create-then-adopt: a client-made event may have no server id yet.
-        assertKeys(body, ["date", "createEvent"], "the add-to-calendar body")
+        assertKeys(body, ["date", "createEvent", "event"], "the add-to-calendar body")
         #expect(body["createEvent"] == JSONValue.bool(true))
         #expect(body["eventId"] == nil)
+        #expect(body["event"] == JSONValue.object([
+            "title": .string("🌮 Taco night"), "time": .string("18:30"), "durationMin": .int(90),
+        ]))
     }
 
+    @Test func theEventTitleStopsAtWhatTheServerTakes() {
+        #expect(PlanningFamilyNightBody.limitEventTitle(String(repeating: "a", count: 250)).count == 200)
+        #expect(PlanningFamilyNightBody.limitEventTitle("🏡 Taco night") == "🏡 Taco night")
+    }
+
+    @Test func theEventSheetOpensOnTheThemeOrFamilyNight() {
+        #expect(PlanningFamilyNightBody.defaultEventTitle(theme: "Board games") == "🏡 Board games")
+        #expect(PlanningFamilyNightBody.defaultEventTitle(theme: "  ") == "🏡 Family Night")
+        #expect(PlanningFamilyNightBody.defaultEventTitle(theme: nil) == "🏡 Family Night")
+    }
+
+
+    @Test func theLinkPickerGroupsTheWeeksEventsByDayInTimeOrder() throws {
+        let json = Data("""
+        {"events":[
+          {"id":"e2","title":"Movie night","startsAt":"2026-09-11T01:00:00Z","allDay":false,"origin":"manual","personId":"p1","personColor":"#E0548B","personEmoji":"🦄"},
+          {"id":"e1","title":"Swim","startsAt":"2026-09-10T15:00:00Z","allDay":false,"origin":null},
+          {"id":"e3","title":"Soccer","startsAt":"2026-09-10T22:30:00Z","allDay":false,"origin":null}
+        ]}
+        """.utf8)
+        struct Resp: Decodable { let events: [WaffledAPI.PlanningWeekEvent] }
+        let events = try WaffledAPI.decoder.decode(Resp.self, from: json).events
+        let tz = TimeZone(identifier: "America/Chicago")!
+
+        let days = PlanningFamilyNightFormat.weekEventDays(events, weekStart: "2026-09-06", tz: tz)
+
+        // 8 PM on the 10th in Chicago is the 11th in UTC; it belongs to the evening it happens in.
+        #expect(days.map(\.day.key) == ["2026-09-10"])
+        #expect(days.first?.events.map(\.title) == ["Swim", "Soccer", "Movie night"])
+        // Carried into the calendar's own event, so the chip paints in the owner's colour.
+        #expect(days.first?.events.last?.colorHex == "#E0548B")
+        #expect(days.first?.events.last?.emoji == "🦄")
+    }
 
     @Test func decodesTheBoardVerbatimOffTheWire() throws {
         let board = try decodedBoard()

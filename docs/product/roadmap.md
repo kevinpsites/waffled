@@ -327,8 +327,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   survives underneath as the record of what was skipped on purpose — and **which of your
   lists step 1 asks about is now a household choice**, made IN the step by whoever is
   running the session (an opt-out map where absent means relevant, so a long-lived
-  "someday" list stops coming up every session while overdue chores, late rhythms and
-  short habits still always count). It is gated by a new `planning.manage` capability that
+  "someday" list stops coming up every session while overdue chores and late rhythms
+  still always count; goals are the Goals step's, not step 1's). It is gated by a new `planning.manage` capability that
   every adult holds by default rather than by admin — running a session is not an admin
   act — with the same switches still in Settings → Modules → Weekly Planning. Design:
   `Weekly Planning v4` canvas; plan: `docs/product/weekly-planning-plan.md`.

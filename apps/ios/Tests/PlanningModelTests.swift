@@ -81,6 +81,12 @@ private final class PlanningFeed {
 
     var fetchFails = false
     var decideFails = false
+    /// When set, each week reads back its own session, as the server does.
+    var sessionsByWeek: [String: WaffledAPI.PlanningSession]?
+    /// Holds the next read of the DEFAULT week open until `held` is resumed.
+    var holdDefaultFetch = false
+    var held: CheckedContinuation<Void, Never>?
+    var parkFails = false
 
     var fetchCount = 0
     var fetchedWeeks: [String?] = []
@@ -90,6 +96,7 @@ private final class PlanningFeed {
     var completes: [String] = []
     var discards: [String] = []
     var resolves: [(kind: String, id: String, action: String, sessionId: String?)] = []
+    var parks: [(note: String, stepKey: String?, sessionId: String?)] = []
     var configSaves: [(dayOfWeek: Int?, time: String?, showOnToday: Bool?, steps: [String: Bool]?, lists: [String: Bool]?)] = []
     var listCandidates: [WaffledAPI.PlanningListCandidate] = [
         .init(id: "l1", name: "Repairs", emoji: "🔧", relevant: true),
@@ -107,6 +114,18 @@ private final class PlanningFeed {
             defaultWeekStart: defaultWeekStart,
             minWeekStart: minWeekStart,
             session: currentSession,
+            steps: steps)
+    }
+
+    func snapshot(for week: String?) -> WaffledAPI.WeeklyPlanningView {
+        guard let sessionsByWeek else { return snapshot }
+        let start = week ?? defaultWeekStart
+        return WaffledAPI.WeeklyPlanningView(
+            config: config,
+            weekStart: start,
+            defaultWeekStart: defaultWeekStart,
+            minWeekStart: minWeekStart,
+            session: sessionsByWeek[start],
             steps: steps)
     }
 
@@ -128,7 +147,11 @@ private func makeModel(_ feed: PlanningFeed, defaults: UserDefaults) -> Planning
             feed.fetchCount += 1
             feed.fetchedWeeks.append(week)
             if feed.fetchFails { throw PlanningCallFailure.rejected }
-            return feed.snapshot
+            if feed.holdDefaultFetch, week == nil {
+                feed.holdDefaultFetch = false
+                await withCheckedContinuation { feed.held = $0 }
+            }
+            return feed.snapshot(for: week)
         },
         fetchConfig: {
             WaffledAPI.WeeklyPlanningConfigView(
@@ -176,6 +199,10 @@ private func makeModel(_ feed: PlanningFeed, defaults: UserDefaults) -> Planning
         },
         resolveLooseEnd: { kind, id, action, sessionId in
             feed.resolves.append((kind, id, action, sessionId))
+        },
+        parkNote: { note, stepKey, sessionId in
+            if feed.parkFails { throw PlanningCallFailure.rejected }
+            feed.parks.append((note, stepKey, sessionId))
         },
         defaults: defaults)
 }
@@ -546,6 +573,38 @@ private func scratchDefaults() -> UserDefaults {
         #expect(try #require(feed.fetchedWeeks.last) == "2026-09-13")
     }
 
+    @Test func aRefreshOfThisWeekLandingLateCannotPullTheStepperBack() async throws {
+        let feed = PlanningFeed(session: session())
+        feed.sessionsByWeek = ["2026-09-06": session()]
+        let model = makeModel(feed, defaults: scratchDefaults())
+        await model.load()
+        #expect(model.session != nil)
+
+        // A sync refresh starts reading this week, and › is tapped before it answers.
+        feed.holdDefaultFetch = true
+        let refresh = Task { await model.load() }
+        while feed.held == nil { await Task.yield() }
+        await model.goNextWeek()
+        feed.held?.resume()
+        await refresh.value
+
+        #expect(model.view?.weekStart == "2026-09-13")
+        #expect(model.session == nil)
+    }
+
+    @Test func aWeekThatWontLoadSaysSoAndKeepsTheStepperOnTheWeekShown() async {
+        let feed = PlanningFeed(session: session())
+        let model = makeModel(feed, defaults: scratchDefaults())
+        await model.load()
+
+        feed.fetchFails = true
+        await model.goNextWeek()
+
+        #expect(model.errorMessage != nil)
+        #expect(model.requestedWeek == nil)
+        #expect(model.view?.weekStart == "2026-09-06")
+    }
+
     @Test func steppingBackToTheDefaultWeekStopsPinningAWeek() async throws {
         let feed = PlanningFeed(session: session())
         let model = makeModel(feed, defaults: scratchDefaults())
@@ -593,6 +652,70 @@ private func scratchDefaults() -> UserDefaults {
         #expect(resolve.id == "note-1")
         #expect(resolve.action == "done")
         #expect(resolve.sessionId == "session-1")
+    }
+
+    // MARK: the park bar on every step
+
+    private func parkSteps() -> [WaffledAPI.PlanningStep] {
+        [
+            step("looseEnds", number: 1, act: "Intake"),
+            step("calendar", number: 2),
+            step("horizon", number: 3, title: "Horizon scan"),
+            step("familyNight", number: 4, requiresModule: "familyNight", available: false),
+            step("tasks", number: 5, title: "Tasks"),
+            step("recap", number: 6, act: "Close"),
+        ]
+    }
+
+    @Test func theParkBarOffersOnlyTheStepsStillAheadThatCanRaiseIt() async {
+        let feed = PlanningFeed(session: session(currentStep: "calendar"))
+        feed.steps = parkSteps()
+        let model = makeModel(feed, defaults: scratchDefaults())
+        await model.load()
+
+        #expect(model.showsParkBar)
+        #expect(model.parkTags.map(\.stepKey) == ["horizon", "tasks"])
+        #expect(model.parkTags.map(\.label) == ["Horizon scan", "Tasks"])
+    }
+
+    @Test func theParkBarIsLeftToTheStepsThatHaveTheirOwn() async {
+        for key in ["looseEnds", "horizon"] {
+            let feed = PlanningFeed(session: session(currentStep: key))
+            feed.steps = parkSteps()
+            let model = makeModel(feed, defaults: scratchDefaults())
+            await model.load()
+            #expect(!model.showsParkBar, "\(key) has its own bar")
+        }
+    }
+
+    @Test func parkingANoteSendsItsTagAndThisSessionThenRefreshes() async throws {
+        let feed = PlanningFeed(session: session(currentStep: "calendar"))
+        feed.steps = parkSteps()
+        let model = makeModel(feed, defaults: scratchDefaults())
+        await model.load()
+        let fetched = feed.fetchCount
+
+        let ok = await model.parkNote("pack for camping", stepKey: "horizon")
+
+        #expect(ok)
+        let park = try #require(feed.parks.first)
+        #expect(park.note == "pack for camping")
+        #expect(park.stepKey == "horizon")
+        #expect(park.sessionId == "session-1")
+        #expect(feed.fetchCount == fetched + 1)
+    }
+
+    @Test func aRefusedParkSaysSoAndKeepsTheComposerOpen() async {
+        let feed = PlanningFeed(session: session(currentStep: "calendar"))
+        feed.steps = parkSteps()
+        feed.parkFails = true
+        let model = makeModel(feed, defaults: scratchDefaults())
+        await model.load()
+
+        let ok = await model.parkNote("pack for camping", stepKey: nil)
+
+        #expect(!ok)
+        #expect(model.parkError != nil)
     }
 
     // MARK: config

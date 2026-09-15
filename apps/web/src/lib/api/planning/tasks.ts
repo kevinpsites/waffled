@@ -31,6 +31,9 @@ export interface PlanningTasksChore {
   // only reaches days from today forward, so `handOut` moves all of these too, in BOTH
   // directions — see `pendingInstanceIds` in apps/api/.../weeklyPlanning/steps/tasks.ts.
   pendingInstanceIds: string[]
+  // A one-off's open day, due yet or not: what Done completes. Null on a repeating chore or one
+  // that needs a photo. Optional so an older server's board still reads.
+  completableInstanceId?: string | null
 }
 
 export interface PlanningTasksPerson {
@@ -45,6 +48,18 @@ export interface PlanningTasksPerson {
   chores: PlanningTasksChore[]
 }
 
+// A rhythm needing attention in the planned week, late or not. `detail` is the server's
+// sentence ("Due Wed", "3 days late", "Not booked yet"); only the "I do it" shape completes here.
+export interface PlanningTasksRhythm {
+  id: string
+  title: string
+  emoji: string | null
+  personId: string | null
+  detail: string
+  overdue: boolean
+  canComplete: boolean
+}
+
 export interface PlanningTasksBoard {
   weekStart: string
   // Server-owned, so adding a task on a Wednesday while planning next week can't quietly
@@ -52,6 +67,8 @@ export interface PlanningTasksBoard {
   newTaskDay: string
   people: PlanningTasksPerson[]
   unassigned: PlanningTasksChore[]
+  // Empty while the rhythms module is off; absent from an older server.
+  rhythms?: PlanningTasksRhythm[]
 }
 
 export const planningTasksApi = {

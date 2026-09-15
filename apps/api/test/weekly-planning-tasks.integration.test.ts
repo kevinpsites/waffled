@@ -40,9 +40,10 @@ function call(method: string, path: string, token?: string, body?: unknown) {
 const kevin = mint('dev|kevin')
 const json = (r: { body: string }) => JSON.parse(r.body)
 
-interface BoardChore { id: string; title: string; cadence: string; days: string[]; dueOn: string | null; carriedOver: boolean; pendingInstanceIds: string[]; requiresApproval: boolean; requiresPhoto: boolean }
+interface BoardChore { id: string; title: string; cadence: string; days: string[]; dueOn: string | null; carriedOver: boolean; pendingInstanceIds: string[]; requiresApproval: boolean; requiresPhoto: boolean; completableInstanceId: string | null }
 interface BoardPerson { id: string; name: string; recurringChores: number; chores: BoardChore[] }
-interface Board { weekStart: string; newTaskDay: string; people: BoardPerson[]; unassigned: BoardChore[] }
+interface BoardRhythm { id: string; title: string; detail: string; overdue: boolean; canComplete: boolean }
+interface Board { weekStart: string; newTaskDay: string; people: BoardPerson[]; unassigned: BoardChore[]; rhythms: BoardRhythm[] }
 const board = async () => json(await call('GET', '/api/weekly-planning/tasks', kevin)) as Board
 const strip = (b: { unassigned: BoardChore[] }) => b.unassigned.map((c) => c.title)
 const who = (b: { people: BoardPerson[] }, name: string) => b.people.find((p) => p.name === name)!
@@ -364,6 +365,85 @@ describe('planning · tasks · a brand-new task is not carried over', () => {
   it('and one nobody has taken says the same in the strip', async () => {
     await call('POST', '/api/chores', kevin, { title: 'Ring the plumber', personId: null, rrule: null })
     expect((await board()).unassigned.find((c) => c.title === 'Ring the plumber')!.carriedOver).toBe(false)
+  })
+})
+
+// Done is "this is already done" for a one-off, even one due later: it can be done early. A
+// repeating chore is done day by day on the Tasks board, and a photo chore needs the camera, so
+// neither is offered.
+describe('planning · tasks · marking a task done', () => {
+  it('offers the open day that has come, and completing it takes the offer away', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Post the forms', personId: wallyId, rrule: null })
+    const find = async () => who(await board(), 'Wally').chores.find((c) => c.title === 'Post the forms')
+
+    const before = (await find())!
+    expect(before.completableInstanceId).toBe(before.pendingInstanceIds[0])
+
+    const done = await call('POST', `/api/chore-instances/${before.completableInstanceId}/complete`, kevin, {})
+    expect(done.statusCode).toBeLessThan(300)
+    expect((await find())?.completableInstanceId ?? null).toBeNull()
+  })
+
+  it('offers nothing on a repeating chore, even with today and an old backlog open', async () => {
+    const created = await call('POST', '/api/chores', kevin, { title: 'Brush teeth', personId: wallyId, rrule: 'FREQ=DAILY' })
+    const choreId = json(created).chore.id
+    await call('GET', '/api/chore-instances/today', kevin)
+    const { query } = await import('../src/platform/db')
+    await query(
+      `insert into chore_instances (household_id, chore_id, person_id, due_on, status)
+       select $1, $2, $3, (now() at time zone 'America/Chicago')::date - n, 'pending' from generate_series(20, 22) n`,
+      [householdId, choreId, wallyId]
+    )
+    const card = who(await board(), 'Wally').chores.find((c) => c.title === 'Brush teeth')!
+    expect(card.pendingInstanceIds.length).toBeGreaterThan(0)
+    expect(card.completableInstanceId).toBeNull()
+  })
+
+  it('offers Done on a one-off whose day is still ahead, since it can be done early', async () => {
+    const created = await call('POST', '/api/chores', kevin, { title: 'Pack for the trip', personId: null, rrule: null })
+    const d = new Date(`${(await board()).weekStart}T00:00:00Z`)
+    d.setUTCDate(d.getUTCDate() + 13)
+    const later = d.toISOString().slice(0, 10)
+    expect((await call('PATCH', `/api/chores/${json(created).chore.id}`, kevin, { dueOn: later })).statusCode).toBe(200)
+
+    const card = (await board()).unassigned.find((c) => c.title === 'Pack for the trip')!
+    expect(card.pendingInstanceIds).toHaveLength(1)
+    expect(card.completableInstanceId).toBe(card.pendingInstanceIds[0])
+  })
+
+  it('offers nothing on a photo chore, which has to be finished with the camera', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Clean the bike', personId: wallyId, rrule: null, requiresPhoto: true })
+    const card = who(await board(), 'Wally').chores.find((c) => c.title === 'Clean the bike')!
+    expect(card.requiresPhoto).toBe(true)
+    expect(card.completableInstanceId).toBeNull()
+  })
+})
+
+// A rhythm due in the planned week belongs on the Tasks step even when it isn't late yet;
+// Loose ends only asks about what is already late.
+describe('planning · tasks · rhythms due this week', () => {
+  const setModules = (mods: Record<string, boolean>) => call('PATCH', '/api/household/modules', kevin, mods)
+
+  it('lists a rhythm due in the planned week that is not late, with Done', async () => {
+    await setModules({ rhythms: true })
+    const due = new Date(`${(await board()).weekStart}T15:00:00Z`)
+    due.setUTCDate(due.getUTCDate() + 3)
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Water the plants', satisfiedBy: 'completion', every: '7 days', nextDueAt: due.toISOString(),
+    })
+    expect(made.statusCode).toBe(201)
+
+    const row = (await board()).rhythms.find((r) => r.title === 'Water the plants')!
+    expect(row).toBeTruthy()
+    expect(row.overdue).toBe(false)
+    expect(row.canComplete).toBe(true)
+    expect(row.detail).toMatch(/^Due (Sun|Mon|Tue|Wed|Thu|Fri|Sat)$/)
+    await setModules({ rhythms: false })
+  })
+
+  it('sends no rhythms while the module is off', async () => {
+    await setModules({ rhythms: false })
+    expect((await board()).rhythms).toEqual([])
   })
 })
 

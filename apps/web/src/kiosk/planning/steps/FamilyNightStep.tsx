@@ -1,11 +1,15 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { avTint } from '../../components/Avatar'
-import { addDays, ymd } from '../../components/cal-utils'
+import { DOW_FULL, MONTHS_SHORT, addDays, localDate, ymd } from '../../components/cal-utils'
+import { useEventColor } from '../../../lib/event-color'
+import { PlanningEventChip } from '../PlanningEventChip'
 import type { PlanningStepModule, StepBodyProps } from '../registry'
 import {
   planningFamilyNightApi,
   planningFamilyNightDecision,
   useEventsRange,
+  useHousehold,
+  type AgendaEvent,
   weekdayName,
   type PlanningFamilyNightBoard,
   type PlanningFamilyNightPart,
@@ -247,36 +251,51 @@ function EventPicker({ weekStart, disabled, onPick }: {
   disabled: boolean
   onPick: (eventId: string) => void
 }) {
+  const { household } = useHousehold()
+  const tz = household?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  const colorOf = useEventColor()
   // The last day of the week the SERVER handed us — never a week computed here.
   const { events } = useEventsRange(weekStart, ymd(addDays(new Date(`${weekStart}T00:00:00`), 6)))
   // A meal-plan mirror is not family night; offering one puts a dinner where an evening goes.
   const linkable = events.filter((e) => e.origin !== 'meal_plan' && e.origin !== 'meal_prep')
 
+  // Under the household-local day each happens in, all-day first then by time, as the Calendar step.
+  const byDay: Record<string, AgendaEvent[]> = {}
+  for (const e of linkable) (byDay[localDate(e.startsAt, tz)] ??= []).push(e)
+  const days = Object.keys(byDay).sort()
+  for (const k of days) {
+    byDay[k].sort((a, b) =>
+      a.allDay === b.allDay ? new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime() : a.allDay ? -1 : 1
+    )
+  }
+  const dayLabel = (key: string) => {
+    const d = new Date(`${key}T00:00:00`)
+    return `${DOW_FULL[d.getDay()]} · ${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`
+  }
+
   return (
-    <ul className="wpfn-cal-list" aria-label="Events on this week">
-      {linkable.length === 0 && <li className="wpfn-cal-empty">Nothing on the week to point at yet.</li>}
-      {linkable.map((e) => (
-        <li key={e.id}>
-          <button
-            type="button"
-            className="wpfn-cal-pick"
-            disabled={disabled}
-            onClick={() => onPick(e.id)}
-          >
-            {e.title}
-          </button>
-        </li>
+    <div className="wpfn-cal-list" aria-label="Events on this week">
+      {linkable.length === 0 && <div className="wpfn-cal-empty">Nothing on the week to point at yet.</div>}
+      {days.map((key) => (
+        <div key={key} className="wpfn-cal-day">
+          <div className="wpfn-cal-dow">{dayLabel(key)}</div>
+          <div className="wpfn-cal-chips">
+            {byDay[key].map((e) => (
+              <PlanningEventChip key={e.id} e={e} color={colorOf(e)} label={`Link ${e.title}`} disabled={disabled} onClick={() => onPick(e.id)} />
+            ))}
+          </div>
+        </div>
       ))}
-    </ul>
+    </div>
   )
 }
 
 /**
  * This week's gathering on the calendar. TWO things live here: `onCalendar` is the STANDING
  * recurring series, set once in Settings, while `eventId` is the event THIS gathering points
- * at — the one a session can decide. "Add to calendar" is one server call that creates and
- * links atomically, because the web writes events LOCALLY first and a client id would not
- * exist server-side yet.
+ * at — the one a session can decide. "Add to calendar" confirms the details in a small form,
+ * then makes ONE server call that creates and links atomically, because the web writes events
+ * LOCALLY first and a client id would not exist server-side yet.
  */
 function CalendarLine({ board, p, disabled }: {
   board: PlanningFamilyNightBoard
@@ -284,6 +303,7 @@ function CalendarLine({ board, p, disabled }: {
   disabled: boolean
 }) {
   const [picking, setPicking] = useState(false)
+  const [adding, setAdding] = useState(false)
 
   if (board.eventId) {
     return (
@@ -321,7 +341,7 @@ function CalendarLine({ board, p, disabled }: {
             type="button"
             className="btn btn-ghost wpfn-cal-act"
             disabled={disabled}
-            onClick={() => { setPicking(false); void write(p, (date) => planningFamilyNightApi.addEvent(date)) }}
+            onClick={() => { setPicking(false); setAdding(true) }}
           >
             Add to calendar
           </button>
@@ -343,6 +363,68 @@ function CalendarLine({ board, p, disabled }: {
             onPick={(eventId) => { setPicking(false); void write(p, (date) => planningFamilyNightApi.linkEvent(date, eventId)) }}
           />
         )}
+
+        {adding && (
+          <AddEventModal
+            board={board}
+            onClose={() => setAdding(false)}
+            onAdd={(event) => { setAdding(false); void write(p, (date) => planningFamilyNightApi.addEvent(date, event)) }}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+const EVENT_DURATIONS = [30, 60, 90, 120, 180]
+const durationLabel = (m: number) => (m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} hr ${m % 60} min` : `${m / 60} hr`)
+
+// Confirms what the week's event will say before the server makes it. The server still creates
+// and links it in one call; see planningFamilyNightApi.addEvent.
+function AddEventModal({ board, onClose, onAdd }: {
+  board: PlanningFamilyNightBoard
+  onClose: () => void
+  onAdd: (event: { title: string; time: string; durationMin: number }) => void
+}) {
+  const [title, setTitle] = useState(board.theme?.trim() ? `🏡 ${board.theme.trim()}` : '🏡 Family Night')
+  const [time, setTime] = useState(board.time)
+  const [durationMin, setDurationMin] = useState(60)
+  const ready = title.trim() !== '' && /^\d{2}:\d{2}$/.test(time)
+  const day = new Date(`${board.date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card wpfn-modal" role="dialog" aria-label="Add family night to the calendar" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="modal-close" onClick={onClose} aria-label="Close">×</button>
+        <div className="wpfn-modal-t wf-serif">Add family night to the calendar</div>
+        <div className="wpfn-modal-s">{day}</div>
+        <label className="field">
+          <span>Title</span>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} autoFocus />
+        </label>
+        <div className="wpfn-modal-row">
+          <label className="field">
+            <span>Time</span>
+            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>Duration</span>
+            <select value={durationMin} onChange={(e) => setDurationMin(Number(e.target.value))}>
+              {EVENT_DURATIONS.map((m) => <option key={m} value={m}>{durationLabel(m)}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="wpfn-modal-acts">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={!ready}
+            onClick={() => onAdd({ title: title.trim(), time, durationMin })}
+          >
+            Add to calendar
+          </button>
+        </div>
       </div>
     </div>
   )

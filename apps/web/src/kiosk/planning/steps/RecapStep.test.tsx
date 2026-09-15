@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import mod from './RecapStep'
-import type { PlanningStep } from '../../../lib/api'
+import { localToday, type PlanningStep } from '../../../lib/api'
 import type { StepBodyProps } from '../registry'
 
 // Step 10 · Recap. Almost everything on this screen is a claim ABOUT something else, so
@@ -91,6 +91,19 @@ function mockApi(view: unknown = VIEW) {
     calls.push({ url: u, method, body: init?.body ? JSON.parse(String(init.body)) : null })
     if (u.startsWith('/api/weekly-planning/recap')) return { ok: true, json: async () => view }
     if (u.startsWith('/api/weekly-planning/loose-ends/resolve')) return { ok: true, json: async () => ({ ok: true }) }
+    // The chore and event editors a note can open read these; empty answers, but SHAPED.
+    if (u.startsWith('/api/persons')) {
+      return { ok: true, json: async () => ({ persons: [{ id: 'p1', name: 'Kevin', memberType: 'adult', isAdmin: true, avatarEmoji: '🧔', colorHex: '#7A5AF8' }] }) }
+    }
+    if (u.startsWith('/api/currencies')) {
+      return { ok: true, json: async () => ({ currencies: [{ key: 'stars', label: 'Stars', symbol: '⭐', isDefault: true }] }) }
+    }
+    if (u.startsWith('/api/goals')) return { ok: true, json: async () => ({ goals: [] }) }
+    if (u.startsWith('/api/calendar/google/status')) return { ok: true, json: async () => ({ calendars: [] }) }
+    if (u.startsWith('/api/chores') && method === 'POST') return { ok: true, json: async () => ({ chore: { id: 'new-chore' } }) }
+    if (u.startsWith('/api/events') && method === 'POST') {
+      return { ok: true, json: async () => ({ event: { id: 'new-event', title: 'x', participants: [] } }) }
+    }
     return { ok: true, json: async () => ({}) }
   }) as unknown as typeof fetch
   return calls
@@ -138,6 +151,17 @@ describe('recap · the week, one last time', () => {
     const fri = await dayCell('2026-09-11')
     expect(within(fri).getByText('+2 more')).toBeTruthy()
     expect(within(fri).queryByText(/Thing 4/)).toBeNull()
+  })
+
+  it('opens a busy day in place', async () => {
+    const extra = [4, 5].map((n) => ({ id: `x${n}`, title: `Thing ${n}`, when: 'Friday 9:00 AM', personName: 'Kevin' }))
+    mockApi({ ...VIEW, days: VIEW.days.map((d, i) => (i === 5 ? { ...d, hidden: extra } : d)) })
+    renderStep()
+    const fri = await dayCell('2026-09-11')
+    fireEvent.click(within(fri).getByRole('button', { name: '+2 more' }))
+    expect(within(fri).getByText('Thing 4')).toBeTruthy()
+    expect(within(fri).getByText('Thing 5')).toBeTruthy()
+    expect(within(fri).queryByText('+2 more')).toBeNull()
   })
 })
 
@@ -212,6 +236,33 @@ describe('recap · the last call on what nobody tagged', () => {
     expect(post.body).toMatchObject({ kind: 'parked', id: 'n1', action: 'drop', sessionId: 's1' })
   })
 
+  it('turns a note into a task, and settles it only once the task was saved', async () => {
+    const calls = mockApi()
+    renderStep()
+    const row = await screen.findByTestId('wpr-parked-n1')
+    fireEvent.click(within(row).getByRole('button', { name: 'Make a task' }))
+    const modal = (await screen.findByText('New chore')).closest('.modal-card') as HTMLElement
+    fireEvent.click(within(modal).getByRole('button', { name: 'Add chore' }))
+
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url.startsWith('/api/chores'))).toBe(true))
+    expect(calls.find((c) => c.method === 'POST' && c.url.startsWith('/api/chores'))!.body).toMatchObject({ title: 'Look into summer camps' })
+    await waitFor(() => expect(screen.queryByTestId('wpr-parked-n1')).toBeNull())
+    expect(calls.find((c) => c.url.includes('loose-ends/resolve'))!.body).toMatchObject({ kind: 'parked', id: 'n1', action: 'done', sessionId: 's1' })
+  })
+
+  it('leaves a note on the board when its editor is closed without saving', async () => {
+    const calls = mockApi()
+    renderStep()
+    const row = await screen.findByTestId('wpr-parked-n2')
+    fireEvent.click(within(row).getByRole('button', { name: 'Make an event' }))
+    const modal = (await screen.findByText('New event')).closest('.modal-card') as HTMLElement
+    fireEvent.click(within(modal).getByRole('button', { name: /close/i }))
+
+    await waitFor(() => expect(screen.queryByText('New event')).toBeNull())
+    expect(screen.getByTestId('wpr-parked-n2')).toBeTruthy()
+    expect(calls.filter((c) => c.url.includes('loose-ends/resolve'))).toHaveLength(0)
+  })
+
   it('keeps a note parked without writing anything — it is still open next Sunday', async () => {
     const calls = mockApi()
     renderStep()
@@ -219,6 +270,23 @@ describe('recap · the last call on what nobody tagged', () => {
     fireEvent.click(within(row).getByText('Keep it parked'))
     await waitFor(() => expect(screen.queryByTestId('wpr-parked-n2')).toBeNull())
     expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0)
+  })
+})
+
+describe('recap · last week’s targets', () => {
+  it('reads each target back against what was logged that week', async () => {
+    mockApi({ ...VIEW, lastWeekTargets: [{ goalId: 'g-guitar', title: 'Practice guitar', emoji: '🎸', unit: 'hours', target: 10, done: 7 }] })
+    renderStep()
+    const card = await screen.findByTestId('wpr-targets')
+    expect(within(card).getByText(/Practice guitar/)).toBeTruthy()
+    expect(within(card).getByText('7 of 10 hours')).toBeTruthy()
+  })
+
+  it('draws no card when last week set no targets', async () => {
+    mockApi()
+    renderStep()
+    await screen.findByTestId('wpr-parked-n1')
+    expect(screen.queryByTestId('wpr-targets')).toBeNull()
   })
 })
 
@@ -243,5 +311,45 @@ describe('recap · a session that decided nothing', () => {
     expect(await screen.findByText(/Nothing was decided/i)).toBeTruthy()
     expect(screen.queryByTestId('wpr-group-calendar')).toBeNull()
     expect(screen.getAllByTestId(/^wpr-day-/)).toHaveLength(7)
+  })
+})
+
+describe('recap · review follow-ups', () => {
+  it('never puts an event made from a note on a day already past', async () => {
+    mockApi()
+    renderStep()
+    const row = await screen.findByTestId('wpr-parked-n2')
+    fireEvent.click(within(row).getByRole('button', { name: 'Make an event' }))
+    const modal = (await screen.findByText('New event')).closest('.modal-card') as HTMLElement
+    const today = localToday()
+    const day = WEEK_START > today ? WEEK_START : today
+    // The editor's When card names the day on its Start date pill: "Sep 15, 2026".
+    const label = new Date(`${day}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    expect(within(modal).getByRole('button', { name: 'Start date' })).toHaveTextContent(label)
+  })
+
+  it('says so when a note could not be settled after its task was saved', async () => {
+    mockApi()
+    const answer = globalThis.fetch as unknown as (u: string, i?: RequestInit) => Promise<unknown>
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) =>
+      String(url).includes('loose-ends/resolve')
+        ? { ok: false, status: 500, headers: new Headers(), json: async () => ({ error: 'Boom' }), text: async () => '' }
+        : answer(url, init)
+    ) as unknown as typeof fetch
+    renderStep()
+    const row = await screen.findByTestId('wpr-parked-n1')
+    fireEvent.click(within(row).getByRole('button', { name: 'Make a task' }))
+    const modal = (await screen.findByText('New chore')).closest('.modal-card') as HTMLElement
+    fireEvent.click(within(modal).getByRole('button', { name: 'Add chore' }))
+
+    expect(await screen.findByText('That didn’t take — the note is still on the board.')).toBeTruthy()
+    expect(screen.getByTestId('wpr-parked-n1')).toBeTruthy()
+  })
+
+  it('formats target amounts the way the rest of the app does', async () => {
+    mockApi({ ...VIEW, lastWeekTargets: [{ goalId: 'g-walk', title: 'Walk', emoji: null, unit: 'miles', target: 1000, done: 2.25 }] })
+    renderStep()
+    const card = await screen.findByTestId('wpr-targets')
+    expect(within(card).getByText('2.25 of 1,000 miles')).toBeTruthy()
   })
 })

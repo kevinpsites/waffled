@@ -400,6 +400,9 @@ struct GoalsView: View {
                         .minimumScaleFactor(0.7)
                     Text("Everyone contributes to one pool\(g.deadline.map { " · by \(fmtDeadline($0))" } ?? "")")
                         .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.85)).lineLimit(2)
+                    if let week = GoalDisplay.weekTargetLabel(g) {
+                        Text(week).font(.system(size: 13, weight: .bold)).foregroundStyle(.white.opacity(0.92)).lineLimit(1)
+                    }
                 }
             }
             if !g.participants.isEmpty {
@@ -430,6 +433,9 @@ struct GoalsView: View {
                         .minimumScaleFactor(0.7)
                     Text(g.target.map { "\(goalFmt($0)) \(g.unit ?? "")".trimmingCharacters(in: .whitespaces) + " each" } ?? "Everyone tracks their own")
                         .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+                    if let week = GoalDisplay.weekTargetLabel(g) {
+                        Text(week).font(.system(size: 13, weight: .bold)).foregroundStyle(.white.opacity(0.92)).lineLimit(1)
+                    }
                 }
             }
             HStack {
@@ -518,6 +524,9 @@ struct GoalsView: View {
                             }
                         }
                         Text(goalDescriptor(g)).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
+                        if let week = GoalDisplay.weekTargetLabel(g) {
+                            Text(week).font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2).lineLimit(1)
+                        }
                     }
                     Spacer(minLength: 6)
                     HStack(alignment: .firstTextBaseline, spacing: 1) {
@@ -2786,8 +2795,13 @@ struct GoalDetailView: View {
                 Spacer(minLength: 0)
                 HStack(spacing: 4) {
                     Text("THIS WEEK").font(.system(size: 9, weight: .heavy)).tracking(0.5).foregroundStyle(.white.opacity(0.8))
-                    Text("\(goalFmt(model.detail?.thisWeek ?? 0))\(unit.map { " \($0)" } ?? "")")
+                    Text(currentPlan.map { GoalDisplay.weekPlanAmount($0, unit: unit) }
+                         ?? "\(goalFmt(model.detail?.thisWeek ?? 0))\(unit.map { " \($0)" } ?? "")")
                         .font(.system(size: 12, weight: .heavy)).foregroundStyle(.white)
+                }
+                ForEach(laterPlans, id: \.weekStart) { t in
+                    Text(GoalDisplay.weekPlanLabel(t, unit: unit))
+                        .font(.system(size: 11, weight: .bold)).foregroundStyle(.white.opacity(0.88))
                 }
             }
         }
@@ -2796,6 +2810,9 @@ struct GoalDetailView: View {
         .background(Self.heroGreen)
         .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
     }
+
+    private var currentPlan: WaffledAPI.Goal.WeekTarget? { model.detail?.weekPlans?.first(where: \.current) }
+    private var laterPlans: [WaffledAPI.Goal.WeekTarget] { (model.detail?.weekPlans ?? []).filter { !$0.current } }
 
     private var heroSub: String {
         var parts: [String] = []

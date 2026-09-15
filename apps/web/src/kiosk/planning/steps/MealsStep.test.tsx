@@ -87,6 +87,11 @@ const calls: { url: string; method: string; body: Record<string, unknown> | null
 // those nulls dropped the row.
 const titleOnly = (id: string, title: string) => ({ id, title })
 
+const groceryRow = (id: string, name: string, checked: boolean) => ({
+  id, name, quantity: null, checked, checkedAt: null, aisle: 'Dairy & Chilled', source: 'manual',
+  sourceRecipeIds: [], weekStart: WEEK,
+})
+
 const PICKS: Record<string, string> = { [day(3)]: 'Chili', [day(5)]: 'Stir fry', [day(6)]: 'Soup' }
 
 function mockApi(opts: {
@@ -142,6 +147,16 @@ function mockApi(opts: {
     if (u.includes('/api/weekly-planning/meals/undo')) {
       view = baseView()
       return { ok: true, json: async () => ({ weekStart: WEEK, cleared: [day(3), day(5), day(6)], kept: [], view }) }
+    }
+    if (u.includes('/api/lists/grocery/board')) {
+      return {
+        ok: true,
+        json: async () => ({
+          list: { id: 'gl', name: 'Grocery', emoji: null, listType: 'grocery', isAutoBuilt: true, sortMode: 'aisle', itemCount: 2 },
+          weekStart: WEEK, meals: [], staples: [],
+          items: [groceryRow('i-1', 'Milk', false), groceryRow('i-2', 'Eggs', true)],
+        }),
+      }
     }
     if (u.includes('/api/weekly-planning/meals')) return { ok: true, json: async () => view }
     return { ok: true, json: async () => ({ ok: true }) }
@@ -231,8 +246,46 @@ describe('meals step · the week as it stands', () => {
     const line = document.querySelectorAll('.wpm-gro')
     expect(line).toHaveLength(1)
     expect(line[0].querySelector('.wpm-gro-s')!.textContent).toMatch(/planned so far.*staples skipped/)
-    expect(line[0].querySelector('.wpm-gro-pill')!.textContent).toContain('24 items')
+    // 24 on the list, 3 already ticked: the pill counts what is left to buy.
+    expect(line[0].querySelector('.wpm-gro-pill')!.textContent).toContain('21 to buy')
+    expect(line[0].querySelector('.wpm-gro-pill')!.textContent).toContain('3 done')
+    expect(line[0].querySelector('.wpm-gro-pill')!.textContent).not.toContain('24')
     expect(line[0].querySelector('.wpm-gro-pill')!.textContent).toContain('aisle order')
+  })
+
+  it('adds an item to the grocery list from the step, then re-reads the line', async () => {
+    mockApi()
+    draw()
+    await screen.findByText('Pasta bake')
+    const reads = sent('GET', '/api/weekly-planning/meals').length
+    fireEvent.change(screen.getByLabelText('Add to groceries'), { target: { value: '  Paper towels ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add item' }))
+    await waitFor(() => expect(sent('POST', '/api/lists/grocery/items')).toHaveLength(1))
+    expect(sent('POST', '/api/lists/grocery/items')[0].body).toEqual({ name: 'Paper towels' })
+    await waitFor(() => expect(sent('GET', '/api/weekly-planning/meals').length).toBeGreaterThan(reads))
+    expect((screen.getByLabelText('Add to groceries') as HTMLInputElement).value).toBe('')
+  })
+
+  it('opens the week’s grocery list from the count, and ticks an item off in place', async () => {
+    mockApi()
+    draw()
+    await screen.findByText('Pasta bake')
+    fireEvent.click(screen.getByRole('button', { name: /21 to buy/ }))
+    const list = await screen.findByRole('dialog', { name: 'This week’s groceries' })
+    expect(await within(list).findByText('Milk')).toBeInTheDocument()
+    expect(within(list).getByText('Eggs')).toBeInTheDocument()
+    expect(sent('GET', '/api/lists/grocery/board')[0].url).toContain(`weekStart=${WEEK}`)
+
+    const reads = sent('GET', '/api/weekly-planning/meals').length
+    fireEvent.click(within(list).getByRole('button', { name: 'Check off Milk' }))
+    await waitFor(() => expect(sent('PATCH', '/api/list-items/i-1')).toHaveLength(1))
+    expect(sent('PATCH', '/api/list-items/i-1')[0].body).toEqual({ checked: true })
+    expect(within(list).getByRole('button', { name: 'Put Milk back' })).toBeInTheDocument()
+    // The count on the step is what's left to buy, so it re-reads.
+    await waitFor(() => expect(sent('GET', '/api/weekly-planning/meals').length).toBeGreaterThan(reads))
+
+    fireEvent.click(within(list).getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('dialog', { name: 'This week’s groceries' })).toBeNull()
   })
 
   it('names who is cooking when the plan knows', async () => {
@@ -353,7 +406,7 @@ describe('meals step · who is shopping', () => {
     draw()
     await screen.findByText('Pasta bake')
     expect(document.querySelector('.wpm-shop')).toBeNull()
-    expect(document.querySelector('.wpm-gro-pill')!.textContent).toContain('24 items')
+    expect(document.querySelector('.wpm-gro-pill')!.textContent).toContain('21 to buy')
   })
 })
 
@@ -413,7 +466,7 @@ describe('meals step · plan the rest for me', () => {
     expect(screen.getByText('Pasta bake')).toBeTruthy()
     expect(screen.getByText('Leftovers')).toBeTruthy()
     await waitFor(() => expect(document.querySelector('.wpm-gro-s')!.textContent).toContain('7 items added'))
-    expect(document.querySelector('.wpm-gro-pill')!.textContent).toContain('31 items')
+    expect(document.querySelector('.wpm-gro-pill')!.textContent).toContain('28 to buy')
   })
 
   it('turns the same footer slot into "Undo the three"', async () => {

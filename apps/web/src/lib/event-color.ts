@@ -44,12 +44,11 @@ export function eventColor(
 
 /* ── chip painting ────────────────────────────────────────────────────────────
    Solid chips fill with the event's color, so the *foreground* can't be a fixed
-   white: white clears WCAG AA (4.5:1) on only one of the eight preset member
-   colors — gold sits at 2.2:1 and teal at 2.5:1, illegible on a kitchen wall.
-   Black or white always works, though: for any color, if white is short of AA
-   the fill is light enough that black clears it (the crossover is at luminance
-   ≈0.179, where both give 4.58:1). So each chip carries the winning ink for its
-   own fill, in both themes, and the stylesheet just consumes it.            */
+   white: gold and teal are too light for it. Each chip picks black or white by
+   APCA contrast on the fill it actually gets, in both themes. WCAG 2's ratio
+   narrowly chose black on purple and blue, which reads worse; APCA keeps black
+   only where white genuinely fails, and the winner is always at least Lc 54
+   (the black/white crossover), so the stylesheet just consumes it.            */
 
 /** Dark mode mixes the fill toward black; keep in step with styles/waffled.css. */
 export const SOLID_DARK_MIX = 0.82
@@ -89,9 +88,25 @@ export function solidChipBackground(color: string, theme: 'light' | 'dark'): str
   return toHex(rgb.map((c) => c * SOLID_DARK_MIX) as [number, number, number])
 }
 
-/** Black or white — whichever reads better on that fill. Always ≥4.58:1. */
+/** APCA lightness contrast (|Lc|, 0 to ~106) of text on a background, both #RRGGBB; 0 if malformed. */
+export function apcaContrast(text: string, background: string): number {
+  const t = parseHex(text)
+  const b = parseHex(background)
+  if (!t || !b) return 0
+  const y = (rgb: [number, number, number]) => {
+    const [r, g, bl] = rgb.map((c) => (c / 255) ** 2.4)
+    const v = 0.2126729 * r + 0.7151522 * g + 0.072175 * bl
+    return v > 0.022 ? v : v + (0.022 - v) ** 1.414
+  }
+  const yt = y(t)
+  const yb = y(b)
+  const sapc = yb > yt ? (yb ** 0.56 - yt ** 0.57) * 1.14 : (yb ** 0.65 - yt ** 0.62) * 1.14
+  return Math.abs(sapc) < 0.1 ? 0 : (Math.abs(sapc) - 0.027) * 100
+}
+
+/** Black or white — whichever reads better on that fill, by APCA. */
 function inkFor(background: string): string {
-  return contrastRatio(background, '#FFFFFF') >= contrastRatio(background, '#000000') ? '#FFFFFF' : '#000000'
+  return apcaContrast('#FFFFFF', background) >= apcaContrast('#000000', background) ? '#FFFFFF' : '#000000'
 }
 
 export function solidChipInk(color: string): { light: string; dark: string } {

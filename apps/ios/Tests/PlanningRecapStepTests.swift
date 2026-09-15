@@ -37,7 +37,13 @@ private let recapJSON = Data("""
         { "id": "ev-4", "title": "Date night", "when": "Friday 8:00 PM", "personId": "p-kevin",
           "personName": "Kevin", "personColor": "#EC6049", "participantIds": ["p-wally", "p-lottie"] }
       ],
-      "more": 2 },
+      "more": 2,
+      "hidden": [
+        { "id": "ev-5", "title": "Soccer", "when": "Friday 6:00 PM", "personId": "p-wally",
+          "personName": "Wally", "personColor": "#25A368", "participantIds": [] },
+        { "id": "ev-6", "title": "Book club", "when": "Friday 7:30 PM", "personId": null,
+          "personName": null, "personColor": null, "participantIds": [] }
+      ] },
     { "date": "2026-09-12", "meal": null, "cook": null, "events": [], "more": 0 }
   ],
   "groups": [
@@ -62,6 +68,10 @@ private let recapJSON = Data("""
       "badge": "none", "stepKey": "goals" },
     { "key": "parked:tasks", "label": "Kelly’s parents in October?", "detail": "Parked for Tasks",
       "badge": "parked", "stepKey": "tasks" }
+  ],
+  "lastWeekTargets": [
+    { "goalId": "g-guitar", "title": "Practice guitar", "emoji": "🎸", "unit": "hours",
+      "target": 10, "done": 7 }
   ],
   "counts": { "decisions": 7, "deferred": 3, "parked": 2 }
 }
@@ -96,6 +106,8 @@ private final class RecapFeed {
     }
     var fetchArgs: [Ask] = []
     var drops: [(id: String, sessionId: String)] = []
+    var settles: [(id: String, sessionId: String)] = []
+    var choreBodies: [[String: JSONValue]] = []
 
     init() throws {
         view = try decodedRecap()
@@ -114,6 +126,12 @@ private func model(_ feed: RecapFeed) -> PlanningRecapModel {
         dropNote: { id, sessionId in
             feed.drops.append((id, sessionId))
             if feed.dropFails { throw RecapFailure.rejected }
+        },
+        settleNote: { id, sessionId in
+            feed.settles.append((id, sessionId))
+        },
+        saveChore: { body in
+            feed.choreBodies.append(body)
         })
 }
 
@@ -156,6 +174,8 @@ private func model(_ feed: RecapFeed) -> PlanningRecapModel {
         let friday = try decodedRecap().days[5]
         #expect(friday.events.count == 4)
         #expect(friday.more == 2)
+        #expect(friday.hidden.map(\.title) == ["Soccer", "Book club"])
+        #expect(try decodedRecap().days[0].hidden.isEmpty)
     }
 
     @Test func aMissingParticipantIdsCostsATintAndNotTheSession() throws {
@@ -281,6 +301,8 @@ private func model(_ feed: RecapFeed) -> PlanningRecapModel {
         #expect(model.days[2].mealLine == "Sheet-pan chicken · Lottie")
         #expect(model.days[1].mealLine == "Crockpot chili")
         #expect(model.days[5].more == 2)
+        #expect(model.days[5].hidden.map(\.title) == ["Soccer", "Book club"])
+        #expect(model.days[5].hidden.first?.synced.personId == "p-wally")
     }
 
     @Test func handsTheColourResolverTheEventsOwnInputs() async throws {
@@ -374,6 +396,37 @@ private func model(_ feed: RecapFeed) -> PlanningRecapModel {
         #expect(model.working == nil)
     }
 
+    /// A note the family decided to act on becomes a real task, and is settled only once the
+    /// app's own editor has saved it.
+    @Test func aNoteMadeIntoATaskIsSettledOnlyOnceTheTaskSaved() async throws {
+        let feed = try RecapFeed()
+        let model = model(feed)
+        await model.load(sessionId: "s-1", weekStart: "2026-09-06")
+        let note = try #require(model.openLastCall.first)
+
+        model.makeTask(from: note)
+        #expect(await model.saveChoreFromNote(["title": .string(note.note)]) == nil)
+        await model.composerDismissed(sessionId: "s-1")
+
+        #expect(feed.choreBodies.count == 1)
+        #expect(feed.settles.map { $0.id } == [note.id])
+        #expect(feed.settles.map { $0.sessionId } == ["s-1"])
+        #expect(model.openLastCall.isEmpty)
+    }
+
+    @Test func aNoteWhoseEditorIsClosedWithoutSavingStaysOnTheBoard() async throws {
+        let feed = try RecapFeed()
+        let model = model(feed)
+        await model.load(sessionId: "s-1", weekStart: "2026-09-06")
+        let note = try #require(model.openLastCall.first)
+
+        model.makeEvent(from: note)
+        await model.composerDismissed(sessionId: "s-1")
+
+        #expect(feed.settles.isEmpty)
+        #expect(model.openLastCall.map { $0.id } == [note.id])
+    }
+
     @Test func nothingDecidedIsAStateAndNotAnEmptyScreen() async throws {
         let feed = try RecapFeed()
         feed.view = try WaffledAPI.decoder.decode(
@@ -433,5 +486,21 @@ private func model(_ feed: RecapFeed) -> PlanningRecapModel {
         let saved = model(feed)
         await saved.load(sessionId: "s1", weekStart: "2026-09-06")
         #expect(saved.saved)
+    }
+}
+
+// The targets last week's session set, read back against what was logged that week.
+@Suite struct PlanningRecapWeekTargetTests {
+
+    @Test func lastWeeksTargetsDecodeWithWhatWasLogged() throws {
+        let r = try decodedRecap()
+        #expect(r.lastWeekTargets.map(\.title) == ["Practice guitar"])
+        #expect(PlanningRecapText.targetLine(r.lastWeekTargets[0]) == "7 of 10 hours")
+    }
+
+    @Test func anOlderPayloadWithNoTargetsStillDecodes() throws {
+        let bare = try WaffledAPI.decoder.decode(
+            WaffledAPI.PlanningRecapView.self, from: Data(#"{"weekStart":"2026-09-06"}"#.utf8))
+        #expect(bare.lastWeekTargets.isEmpty)
     }
 }
