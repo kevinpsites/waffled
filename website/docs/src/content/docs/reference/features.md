@@ -120,6 +120,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Chores CRUD (assign person, stars/currency) | ✅ | ✅ | ✅ | ✅ Done |
 | Daily instances + complete → award | ✅ | ✅ | ✅ | ✅ Done |
 | Family-chores **rings** (Today) + Tasks board | ✅ | ✅ | ✅ | ✅ Done (iPad = wrapping Kanban) |
+| **One person's chores on the iPhone Today card** — defaults to the signed-in person, a title menu switches person or back to Family (remembered per device), tick to complete in place | ❌ N/A | ✅ | ❌ N/A | ✅ Done (iPhone only — the iPad display's card already lists everyone; photo-proof chores open the Tasks board) |
 | **Weekly/custom schedules** (specific weekdays) | ✅ | ✅ | ✅ | ✅ Done |
 | **One-off / carry-over task** (single day, stays until done) | ✅ | ✅ | ✅ | ✅ Done ("Just once" repeat + due date in create/edit; unfinished one-offs roll forward, **overdue · since …** badge; `rollover` toggle) |
 | Recurring chore **edit scope** (this / following / all) with immutable completed history | ✅ | ✅ | ✅ | ✅ Done (single-occurrence changes are pending-only; settled rows can anchor future changes) |

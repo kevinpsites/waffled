@@ -34,17 +34,20 @@ final class PersonOverviewModel {
 
     var choresDone: Int { chores.filter { $0.status == "done" }.count }
 
-    /// Optimistic complete/uncomplete from the day list.
-    func toggleChore(_ inst: WaffledAPI.ChoreInstanceDTO) async {
-        guard let idx = chores.firstIndex(where: { $0.id == inst.id }) else { return }
+    /// Optimistic complete/uncomplete from the day list. Returns whether the write landed,
+    /// so the caller only broadcasts a change that happened.
+    @discardableResult
+    func toggleChore(_ inst: WaffledAPI.ChoreInstanceDTO) async -> Bool {
+        guard let idx = chores.firstIndex(where: { $0.id == inst.id }) else { return false }
         let isComplete = inst.status == "done" || inst.status == "awaiting"
-        let next = isComplete ? "pending" : (inst.requiresApproval ? "awaiting" : "done")
-        withAnimation { chores[idx].status = next }
+        withAnimation { chores[idx].status = ChoresModel.toggledStatus(inst) }
         do {
             if isComplete { try await api.uncompleteChore(id: inst.id) } else { try await api.completeChore(id: inst.id) }
             await load()
+            return true
         } catch {
             if let i = chores.firstIndex(where: { $0.id == inst.id }) { withAnimation { chores[i].status = inst.status } }
+            return false
         }
     }
 }
@@ -421,28 +424,10 @@ struct PersonView: View {
     }
 
     private func choreRow(_ ch: WaffledAPI.ChoreInstanceDTO) -> some View {
-        let done = ch.status == "done"
-        let awaiting = ch.status == "awaiting"
-        return Button { Task { await model.toggleChore(ch) } } label: {
-            HStack(spacing: 12) {
-                Image(systemName: awaiting ? "hourglass.circle.fill" : (done ? "checkmark.circle.fill" : "circle"))
-                    .font(.system(size: 22))
-                    .foregroundStyle(done ? FamilyColor.person3.solid : (awaiting ? WF.gold : WF.ink3))
-                Text("\(ch.emoji.map { "\($0) " } ?? "")\(ch.choreTitle)")
-                    .font(.system(size: 15, weight: .semibold))
-                    .strikethrough(done, color: WF.ink3)
-                    .foregroundStyle(done ? WF.ink3 : WF.ink).lineLimit(1)
-                Spacer(minLength: 8)
-                if ch.rewardAmount > 0 {
-                    HStack(spacing: 2) {
-                        Text(sync.currencySymbol(ch.rewardCurrency)).font(.system(size: 11))
-                        Text("\(ch.rewardAmount)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
-                    }
-                }
-            }
-            .padding(.horizontal, 14).padding(.vertical, 11).contentShape(Rectangle())
+        ChoreCheckRow(chore: ch) {
+            if ChoresModel.needsPhotoToFinish(ch) { path.append(.chores) }
+            else { Task { if await model.toggleChore(ch) { sync.bumpChores() } } }
         }
-        .buttonStyle(.plain)
     }
 
     private var divider: some View { Rectangle().fill(WF.hair2).frame(height: 1).padding(.leading, 14) }
