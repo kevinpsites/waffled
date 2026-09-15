@@ -611,7 +611,7 @@ struct EventEditSheet: View {
             ?? (cal.date(bySettingHour: 17, minute: 0, second: 0, of: initialDate) ?? initialDate)
         let mins: Int = {
             guard event?.allDay != true, let s = event?.startsAt, let e = event?.endsAt else { return 60 }
-            return max(15, Int(e.timeIntervalSince(s) / 60))
+            return EventEnd.minutes(from: s, to: e)
         }()
         _title = State(initialValue: event?.title ?? prefillTitle ?? "")
         _day = State(initialValue: startDate)
