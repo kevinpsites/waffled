@@ -148,7 +148,7 @@ open the week's list in aisle order and tick things off, or put them back.
 an **Up for grabs** strip across the top. Tap a face or drag a card to hand a chore over, or
 leave it up for grabs. Tap a task's name — or the day beside it — to open the chore editor and
 fix the title, the stars or the day. Each column shows what that person already carries. A
-one-off task whose day has come has **✓ Done** — anyone can press it, as on the Tasks board; a
+one-off task has **✓ Done**, even one due later, since it can be done early — anyone can press it, as on the Tasks board; a
 repeating chore is done day by day on the board — and one
 that needs a parent's OK says it's waiting for one. A task that needs a photo is finished from
 the Tasks board, where the camera is. With [Rhythms](/features/rhythms/) on, **Rhythms this

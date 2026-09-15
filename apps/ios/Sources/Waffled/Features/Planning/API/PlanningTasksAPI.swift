@@ -35,8 +35,8 @@ extension WaffledAPI {
         /// /api/chores/:id` only cascades to instances from today forward, so the days behind
         /// us have to be moved by hand — see `handOut`. THIS IS THE EASY-TO-MISS HALF.
         let pendingInstanceIds: [String]
-        /// The earliest open day on or before today — what Done completes. Nil when nothing is
-        /// due yet or the chore needs a photo; the server decides, so no dates reach the device.
+        /// A one-off's open day, due yet or not — what Done completes. Nil on a repeating chore
+        /// or one that needs a photo; the server decides, so no dates reach the device.
         let completableInstanceId: String?
     }
 

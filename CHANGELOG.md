@@ -44,8 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Add to the grocery list from Weekly Planning's Meals step.** Type an item under the
   grocery line and it goes straight onto the list, without leaving the session; tap the "to buy"
   count to open the week's list and tick things off.
-- **Mark tasks done in Weekly Planning's Tasks step.** A one-off task whose day has come has a
-  **✓ Done** button; one that needs a parent's OK says it's waiting for one. Repeating chores are
+- **Mark tasks done in Weekly Planning's Tasks step.** A one-off task has a **✓ Done**
+  button, even one due later in the week; one that needs a parent's OK says it's waiting for one. Repeating chores are
   still done day by day on the Tasks board. Tasks that need
   a photo are still finished from the Tasks board.
 - **Rhythms due this week show up in Weekly Planning.** The Tasks step lists every rhythm

@@ -31,8 +31,8 @@ export interface PlanningTasksChore {
   // only reaches days from today forward, so `handOut` moves all of these too, in BOTH
   // directions — see `pendingInstanceIds` in apps/api/.../weeklyPlanning/steps/tasks.ts.
   pendingInstanceIds: string[]
-  // The earliest open day on or before today: what Done completes. Null when nothing is due
-  // yet or the chore needs a photo. Optional so an older server's board still reads.
+  // A one-off's open day, due yet or not: what Done completes. Null on a repeating chore or one
+  // that needs a photo. Optional so an older server's board still reads.
   completableInstanceId?: string | null
 }
 

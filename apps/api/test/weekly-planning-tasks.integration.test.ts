@@ -368,9 +368,9 @@ describe('planning · tasks · a brand-new task is not carried over', () => {
   })
 })
 
-// Done is "this is already done" for a one-off whose day has come. A repeating chore is done day
-// by day on the Tasks board, a day still ahead can't be done yet, and a photo chore needs the
-// camera, so none of those is offered.
+// Done is "this is already done" for a one-off, even one due later: it can be done early. A
+// repeating chore is done day by day on the Tasks board, and a photo chore needs the camera, so
+// neither is offered.
 describe('planning · tasks · marking a task done', () => {
   it('offers the open day that has come, and completing it takes the offer away', async () => {
     await call('POST', '/api/chores', kevin, { title: 'Post the forms', personId: wallyId, rrule: null })
@@ -399,7 +399,7 @@ describe('planning · tasks · marking a task done', () => {
     expect(card.completableInstanceId).toBeNull()
   })
 
-  it('offers nothing for a day still ahead', async () => {
+  it('offers Done on a one-off whose day is still ahead, since it can be done early', async () => {
     const created = await call('POST', '/api/chores', kevin, { title: 'Pack for the trip', personId: null, rrule: null })
     const d = new Date(`${(await board()).weekStart}T00:00:00Z`)
     d.setUTCDate(d.getUTCDate() + 13)
@@ -408,7 +408,7 @@ describe('planning · tasks · marking a task done', () => {
 
     const card = (await board()).unassigned.find((c) => c.title === 'Pack for the trip')!
     expect(card.pendingInstanceIds).toHaveLength(1)
-    expect(card.completableInstanceId).toBeNull()
+    expect(card.completableInstanceId).toBe(card.pendingInstanceIds[0])
   })
 
   it('offers nothing on a photo chore, which has to be finished with the camera', async () => {

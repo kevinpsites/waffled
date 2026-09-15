@@ -73,8 +73,8 @@ export interface TasksBoardChore {
   // EVERY such day comes back, and for an OWNED chore too — that is what makes handing
   // one out reversible.
   pendingInstanceIds: string[]
-  // The earliest open day on or before today: what Done completes. Null when nothing is due
-  // yet, or when the chore needs a photo, which only the camera flow can finish.
+  // A one-off's open day, due yet or not: what Done completes. Null on a repeating chore, or
+  // when the chore needs a photo, which only the camera flow can finish.
   completableInstanceId: string | null
 }
 
@@ -176,19 +176,17 @@ async function pendingInstanceIds(householdId: string): Promise<Map<string, Pend
   return new Map(rows.map((r) => [r.chore_id, { ids: r.ids, due: r.due }]))
 }
 
-// Done is "this is already done" for a one-off whose day has come. A repeating chore is done day
-// by day on the Tasks board, so the planning card offers no Done for it.
-function completableDay(rrule: string | null, pending: PendingDays, today: string): string | null {
-  if (rrule) return null
-  return pending.due[0] && pending.due[0] <= today ? pending.ids[0] : null
+// Done is "this is already done" for a one-off, even one due later in the week or beyond. A
+// repeating chore is done day by day on the Tasks board, so the planning card offers no Done for it.
+function completableDay(rrule: string | null, pending: PendingDays): string | null {
+  return rrule ? null : (pending.ids[0] ?? null)
 }
 
 function present(
   r: ChoreRowForBoard,
   days: string[],
   carriedOver: boolean,
-  pending: PendingDays,
-  today: string
+  pending: PendingDays
 ): TasksBoardChore {
   return {
     id: r.id,
@@ -205,7 +203,7 @@ function present(
     requiresApproval: r.requires_approval,
     requiresPhoto: r.requires_photo,
     pendingInstanceIds: pending.ids,
-    completableInstanceId: r.requires_photo ? null : completableDay(r.rrule, pending, today),
+    completableInstanceId: r.requires_photo ? null : completableDay(r.rrule, pending),
   }
 }
 
@@ -279,13 +277,13 @@ export async function getTasksBoard(householdId: string, weekStart: string): Pro
       // The strip is everything nobody has taken — deliberately NOT week-scoped. Up for
       // grabs is up for grabs until someone takes it.
       const place = placeInWeek(r, dates, today) ?? { days: [], carriedOver: false }
-      unassigned.push(present(r, place.days, place.carriedOver, pending.get(r.id) ?? NO_PENDING, today))
+      unassigned.push(present(r, place.days, place.carriedOver, pending.get(r.id) ?? NO_PENDING))
       continue
     }
     const place = placeInWeek(r, dates, today)
     if (!place) continue
     const list = byPerson.get(r.person_id) ?? []
-    list.push(present(r, place.days, place.carriedOver, pending.get(r.id) ?? NO_PENDING, today))
+    list.push(present(r, place.days, place.carriedOver, pending.get(r.id) ?? NO_PENDING))
     byPerson.set(r.person_id, list)
   }
 
