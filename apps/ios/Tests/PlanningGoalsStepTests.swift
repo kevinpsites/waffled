@@ -25,7 +25,8 @@ private enum GoalsFixture {
         stepDone: String = "null",
         stepTotal: String = "null",
         isFeatured: Bool = false,
-        pace: String = "null"
+        pace: String = "null",
+        week: String = ""
     ) -> String {
         """
         {"id":"\(id)","goalListId":"list-family","title":"\(title)","emoji":"📚",
@@ -37,7 +38,7 @@ private enum GoalsFixture {
          "stepTotal":\(stepTotal),"logMethod":"manual","hasRewards":false,
          "milestoneTotal":0,"milestoneReached":0,"streakDays":3,"autoFromCalendar":false,
          "healthMetric":null,"createdAt":"2026-01-01T00:00:00.000Z","participants":[],
-         "pace":\(pace)}
+         "pace":\(pace)\(week)}
         """
     }
 
@@ -60,7 +61,8 @@ private enum GoalsFixture {
                     isFeatured: true,
                     pace: "{\"text\":\"2 of 5 last week\",\"tone\":\"behind\"}")),
          \(goalJSON(id: "goal-walk", title: "Walk the loop", type: "count", total: 12,
-                    target: "20", pace: "{\"text\":\"3 days logged last week\",\"tone\":\"ok\"}"))
+                    target: "20", pace: "{\"text\":\"3 days logged last week\",\"tone\":\"ok\"}",
+                    week: ",\"weekTargetable\":true,\"weekTarget\":10,\"weekDone\":3"))
        ]},
       {"listId":"list-lottie","name":"Lottie","emoji":"🎀","colorHex":null,
        "isPrivate":false,"sortOrder":1,"isEveryone":false,"settled":true,
@@ -109,6 +111,7 @@ private final class GoalsFeed {
     var fetchCount = 0
     var writes: [(listId: String, goalId: String?)] = []
     var creates: [[String: JSONValue]] = []
+    var weekTargets: [(goalId: String, target: Double?)] = []
     var afterCreate: WaffledAPI.PlanningGoalsView?
 
     init(_ snapshot: WaffledAPI.PlanningGoalsView) { self.snapshot = snapshot }
@@ -131,6 +134,11 @@ private func model(_ feed: GoalsFeed) -> PlanningGoalsStepModel {
             feed.creates.append(body)
             if feed.createFails { throw GoalsStepFailure.rejected }
             if let after = feed.afterCreate { feed.snapshot = after }
+        },
+        setWeekTarget: { _, goalId, target in
+            feed.weekTargets.append((goalId, target))
+            if feed.writeFails { throw GoalsStepFailure.rejected }
+            return feed.snapshot
         })
 }
 
@@ -556,5 +564,61 @@ private func model(_ feed: GoalsFeed) -> PlanningGoalsStepModel {
         #expect(list.members[1].name == "Kelly Sites")
         #expect(list.members[0].avatarEmoji == "🧔")
         #expect(list.members[1].colorHex == "#8A5CF0")
+    }
+}
+
+// "750 hours this year, 10 of them this week": a target for the planned week.
+@MainActor
+@Suite struct PlanningGoalsWeekTargetTests {
+
+    private func goal(_ id: String) throws -> WaffledAPI.PlanningGoalGoal {
+        try #require(try GoalsFixture.decoded().groups.flatMap(\.goals).first { $0.id == id })
+    }
+
+    @Test func aCountGoalCarriesThisWeeksTargetAndWhatWasLogged() throws {
+        let walk = try goal("goal-walk")
+        #expect(walk.weekTargetable)
+        #expect(walk.weekTarget == 10)
+        #expect(walk.weekDone == 3)
+        #expect(PlanningGoalsText.weekLine(walk) == "3 of 10 this week")
+    }
+
+    @Test func aHabitIsNotOfferedOneAndAnOlderServerSendsNone() throws {
+        let read = try goal("goal-read")
+        #expect(!read.weekTargetable)
+        #expect(read.weekTarget == nil)
+        #expect(read.weekDone == 0)
+        #expect(PlanningGoalsText.weekLine(read) == "No target for this week")
+    }
+
+    @Test func theBoxReadsBlankAsClearAndRefusesJunk() {
+        #expect(PlanningGoalsText.parseTarget("12") == .set(12))
+        #expect(PlanningGoalsText.parseTarget(" 2.5 ") == .set(2.5))
+        #expect(PlanningGoalsText.parseTarget("") == .clear)
+        #expect(PlanningGoalsText.parseTarget("0") == .invalid)
+        #expect(PlanningGoalsText.parseTarget("ten") == .invalid)
+    }
+
+    @Test func settingATargetWritesItAndLeavesTheFocusAlone() async throws {
+        let feed = GoalsFeed(try GoalsFixture.decoded())
+        let model = model(feed)
+        await model.load(sessionId: "s-1")
+
+        await model.setWeekTarget(sessionId: "s-1", goalId: "goal-walk", target: 12)
+
+        #expect(feed.weekTargets.map { $0.goalId } == ["goal-walk"])
+        #expect(feed.weekTargets.map { $0.target } == [12])
+        #expect(feed.writes.isEmpty)
+    }
+
+    @Test func aClearedTargetIsSentAsNil() async throws {
+        let feed = GoalsFeed(try GoalsFixture.decoded())
+        let model = model(feed)
+        await model.load(sessionId: "s-1")
+
+        await model.setWeekTarget(sessionId: "s-1", goalId: "goal-walk", target: nil)
+
+        #expect(feed.weekTargets.count == 1)
+        #expect(feed.weekTargets.first?.target == nil)
     }
 }

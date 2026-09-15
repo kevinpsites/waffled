@@ -391,6 +391,26 @@ describe('Weekly planning · step 5 · Connection', () => {
     expect(await eventModal()).toBeInTheDocument()
   })
 
+  it('closes the pairing bar once a pairing is made, and says what was added', async () => {
+    const { posts } = mockApi()
+    renderStep()
+    fireEvent.click(await screen.findByRole('button', { name: /Make a pairing/i }))
+    const maker = screen.getByTestId('wpn-make')
+    fireEvent.click(within(maker).getByRole('button', { name: /Kevin/i }))
+    fireEvent.click(within(maker).getByRole('button', { name: /Lottie/i }))
+    fireEvent.click(await within(maker).findByRole('button', { name: /Fri after breakfast/ }))
+    await nameItAndSave(await eventModal(), 'Doughnuts before school')
+    await waitFor(() => expect(posts).toHaveLength(1))
+
+    await waitFor(() => expect(screen.queryByTestId('wpn-make')).not.toBeInTheDocument())
+    expect(await screen.findByText(/Added to the calendar — Kevin and Lottie/)).toBeInTheDocument()
+
+    // Opening it again starts from nobody, not from the last pairing.
+    fireEvent.click(screen.getByRole('button', { name: /Make a pairing/i }))
+    expect(within(screen.getByTestId('wpn-make')).getByRole('button', { name: /Kevin — add to the pairing/i })).toBeInTheDocument()
+    expect(screen.queryByText(/Added to the calendar/)).not.toBeInTheDocument()
+  })
+
   it('says plainly that the rows are not the list — without promising a count', async () => {
     mockApi()
     renderStep()

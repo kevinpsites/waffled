@@ -13,7 +13,6 @@ import { earliestWeekStart, isStepKey, resolveSteps, STEPS, getSessionById, getC
 import { completeInstance, ProofRequiredError } from '../../chores/chores.service'
 import { setItemChecked, softDeleteItem } from '../../lists/lists.service'
 import { listAttention, completeRhythm, skipPeriod } from '../../rhythms/rhythms'
-import { listGoals, logProgress } from '../../goals/goals.service'
 
 // ─── The shape the step reads ───────────────────────────────────────────────
 
@@ -27,7 +26,7 @@ export interface LooseEndOwner {
   avatarEmoji: string | null
 }
 
-export type LooseEndKind = 'chore' | 'list' | 'rhythm' | 'goal' | 'parked'
+export type LooseEndKind = 'chore' | 'list' | 'rhythm' | 'parked'
 export type LooseEndGroup = 'notDone' | 'parked'
 
 // The two answers that actually WRITE (routing goes to the session, not to a module).
@@ -61,6 +60,8 @@ export interface LooseEndDestination {
   label: string
   hint: string
   primary?: boolean
+  // The step's own title ("Meals"), for naming where something went once it is sent.
+  stepTitle?: string
 }
 
 // What step 1 routed, and where. Persisted on the session; the shape later steps read.
@@ -136,10 +137,10 @@ async function todayLocal(householdId: string): Promise<string> {
   return rows[0]?.today ?? new Date().toISOString().slice(0, 10)
 }
 
-const daysBetween = (fromIso: string, toIso: string) =>
+export const daysBetween = (fromIso: string, toIso: string) =>
   Math.round((Date.parse(`${toIso}T00:00:00Z`) - Date.parse(`${fromIso}T00:00:00Z`)) / 86_400_000)
 
-const lateBy = (n: number) => (n <= 0 ? 'Due today' : n === 1 ? '1 day late' : `${n} days late`)
+export const lateBy = (n: number) => (n <= 0 ? 'Due today' : n === 1 ? '1 day late' : `${n} days late`)
 
 function agoLabel(days: number): string {
   if (days <= 0) return 'today'
@@ -160,9 +161,16 @@ const DESTINATIONS: Record<LooseEndGroup, LooseEndDestination[]> = {
     { to: 'kids', label: 'Kids', hint: "It's really one of the kids'" },
     { to: 'goals', label: 'Goals', hint: 'It belongs to a goal' },
   ],
+  // Every later step that reads parked notes, Tasks and Calendar first, then session order.
+  // Labelled by the step's own title (see availableDestinations); hints match Horizon's tags.
   parked: [
-    { to: 'tasks', label: 'Make it a task', hint: 'Someone owns it this week', primary: true },
-    { to: 'calendar', label: 'Put it on the calendar', hint: 'A date to look, or a deadline' },
+    { to: 'tasks', label: 'Tasks', hint: 'Someone owns it this week', primary: true },
+    { to: 'calendar', label: 'Calendar', hint: 'A date to look, or a deadline' },
+    { to: 'familyNight', label: 'Family night', hint: 'It belongs to the gathering' },
+    { to: 'connection', label: 'Connection', hint: 'It’s time with someone' },
+    { to: 'goals', label: 'Goals', hint: 'Somebody’s working on it' },
+    { to: 'meals', label: 'Meals', hint: 'It changes what we eat' },
+    { to: 'kids', label: 'Kids', hint: 'It’s about one of the kids' },
   ],
 }
 
@@ -172,10 +180,11 @@ async function availableDestinations(
   householdId: string
 ): Promise<{ notDone: LooseEndDestination[]; parked: LooseEndDestination[] }> {
   const steps = await resolveSteps(householdId, null)
-  const live = new Set(steps.filter((s) => s.available).map((s) => s.key))
+  const live = new Map(steps.filter((s) => s.available).map((s) => [s.key, s.title]))
+  const titled = (d: LooseEndDestination): LooseEndDestination => ({ ...d, stepTitle: live.get(d.to) })
   return {
-    notDone: DESTINATIONS.notDone.filter((d) => live.has(d.to)),
-    parked: DESTINATIONS.parked.filter((d) => live.has(d.to)),
+    notDone: DESTINATIONS.notDone.filter((d) => live.has(d.to)).map(titled),
+    parked: DESTINATIONS.parked.filter((d) => live.has(d.to)).map((d) => ({ ...titled(d), label: live.get(d.to) ?? d.label })),
   }
 }
 
@@ -201,6 +210,9 @@ async function overdueChores(householdId: string, today: string): Promise<Source
         and ci.deleted_at is null
         and ci.status in ('pending','expired')
         and ci.due_on < $2::date
+        -- A repeating chore missed for months is not months of loose ends: only its last week of
+        -- misses is asked about. A one-off stays asked about however late it is.
+        and (c.rrule is null or ci.due_on >= $2::date - 7)
       order by ci.due_on
       limit ${PER_SOURCE_LIMIT}`,
     [householdId, today]
@@ -339,30 +351,6 @@ async function rhythmsPastDue(householdId: string, today: string): Promise<Sourc
     }
   }
   return out.slice(0, PER_SOURCE_LIMIT)
-}
-
-// `periodDone` is the goals module's read of the CURRENT period — a habit is this
-// period's count, never a lifetime.
-async function shortHabits(householdId: string): Promise<SourceEnd[]> {
-  const goals = await listGoals(householdId)
-  return goals
-    .filter((g) => g.goalType === 'habit' && g.habitPeriod === 'week')
-    .filter((g) => g.periodDone < Math.max(1, g.habitTargetPerPeriod ?? 1))
-    .slice(0, PER_SOURCE_LIMIT)
-    .map((g) => ({
-      key: `goal:${g.id}`,
-      kind: 'goal' as const,
-      id: g.id,
-      title: g.title,
-      emoji: g.emoji,
-      // ONE participant and a per-person basis ⇒ it is theirs. A family habit belongs to
-      // everybody.
-      ownerId: g.targetBasis !== 'family' && g.participants?.length === 1
-        ? (g.participants[0] as { personId: string }).personId
-        : null,
-      detail: `${g.periodDone} of ${Math.max(1, g.habitTargetPerPeriod ?? 1)} this week`,
-      actions: ['done'] as LooseEndAction[],
-    }))
 }
 
 // ─── "Parked" · the one group with a table ─────────────────────────────────
@@ -538,7 +526,7 @@ export type RouteResult =
   | { ok: true; routes: LooseEndRoute[] }
   | { ok: false; status: 400 | 404; error: string; message: string }
 
-const KINDS: LooseEndKind[] = ['chore', 'list', 'rhythm', 'goal', 'parked']
+const KINDS: LooseEndKind[] = ['chore', 'list', 'rhythm', 'parked']
 const GROUPS: LooseEndGroup[] = ['notDone', 'parked']
 
 // Route an item to the step that will handle it — or un-route it (`to: null`), which the
@@ -739,7 +727,6 @@ const SOURCE_LABELS: [ModuleKey, string][] = [
   ['chores', 'chores'],
   ['lists', 'lists'],
   ['rhythms', 'rhythms'],
-  ['goals', 'goals'],
 ]
 
 export async function getLooseEnds(householdId: string, weekStart: string, sessionId?: string | null): Promise<LooseEndsView> {
@@ -755,18 +742,17 @@ export async function getLooseEnds(householdId: string, weekStart: string, sessi
   // yet" (vacuous) from "ruled them all out" (the setting being used).
   const listCandidates = enabled(settings, 'lists') ? await planningListCandidates(householdId) : []
   const askableLists = listCandidates.filter((l) => l.relevant).map((l) => l.id)
-  const [chores, lists, rhythms, goals, parked, routes, people] = await Promise.all([
+  const [chores, lists, rhythms, parked, routes, people] = await Promise.all([
     enabled(settings, 'chores') ? overdueChores(householdId, today) : Promise.resolve([]),
     askableLists.length ? staleListItems(householdId, currentWeek, weekStart, askableLists) : Promise.resolve([]),
     enabled(settings, 'rhythms') ? rhythmsPastDue(householdId, today) : Promise.resolve([]),
-    enabled(settings, 'goals') ? shortHabits(householdId) : Promise.resolve([]),
     listParked(householdId),
     sessionId ? listRoutes(sessionId) : Promise.resolve([]),
     peopleById(householdId),
   ])
-  // Chores, lists, slow-burning maintenance, then habits: most-urgent to least, the order
-  // the deck walks.
-  const notDone = withOwners([...chores, ...lists, ...rhythms, ...goals], people)
+  // Chores, lists, then slow-burning maintenance: most-urgent to least, the order the deck
+  // walks. Goals are not here: the Goals step owns them.
+  const notDone = withOwners([...chores, ...lists, ...rhythms], people)
   return {
     weekStart,
     notDone,
@@ -774,7 +760,7 @@ export async function getLooseEnds(householdId: string, weekStart: string, sessi
     counts: { notDone: notDone.length, parked: parked.length },
     destinations,
     routes,
-    // "We checked chores, lists, rhythms and goals" has to be true: a household that
+    // "We checked chores, lists and rhythms" has to be true: a household that
     // ruled every list out was not asking about lists. Having NO custom lists is vacuous
     // rather than false, so it keeps the word.
     sources: SOURCE_LABELS
@@ -809,7 +795,6 @@ const OWNER: Record<LooseEndKind, ModuleKey | null> = {
   chore: 'chores',
   list: 'lists',
   rhythm: 'rhythms',
-  goal: 'goals',
   parked: null,
 }
 
@@ -822,7 +807,7 @@ const wrongAction = (kind: string, action: string): ResolveResult =>
 // write into the owner.
 export async function resolveLooseEnd(tenant: Tenant, input: ResolveInput): Promise<ResolveResult> {
   const kind = KINDS.find((k) => k === input.kind)
-  if (!kind) return bad('kind must be one of chore, list, rhythm, goal, parked')
+  if (!kind) return bad('kind must be one of chore, list, rhythm, parked')
   const action = ACTIONS.find((a) => a === input.action)
   if (!action) return bad('action must be one of done, drop')
   if (typeof input.id !== 'string' || !UUID_RE.test(input.id)) return bad('id must be a uuid')
@@ -861,8 +846,6 @@ export async function resolveLooseEnd(tenant: Tenant, input: ResolveInput): Prom
       return (await resolveListItem(tenant, id)) ?? (await retire())
     case 'rhythm':
       return (await resolveRhythm(tenant, id)) ?? (await retire())
-    case 'goal':
-      return (await resolveGoal(tenant, id)) ?? (await retire())
     case 'parked':
       return (await resolveParked(tenant, id, action)) ?? (await retire())
   }
@@ -914,18 +897,6 @@ async function resolveRhythm(tenant: Tenant, id: string): Promise<ResolveResult 
     return { ok: false, status: 400, error: 'nothing-to-settle', message: 'this rhythm has no open period to settle' }
   }
   await skipPeriod(tenant.householdId, id, item.periodStart, tenant.personId)
-  return null
-}
-
-async function resolveGoal(tenant: Tenant, id: string): Promise<ResolveResult | null> {
-  const { rows } = await query<{ id: string }>(
-    `select id from goals where household_id = $1 and id = $2 and deleted_at is null and is_active`,
-    [tenant.householdId, id]
-  )
-  if (!rows[0]) return missing()
-  // One, against the household — what a habit tick is worth anywhere else. `source` marks
-  // it as a planning catch-up.
-  await logProgress(tenant, id, 1, [null], null, { source: 'weekly_planning' })
   return null
 }
 

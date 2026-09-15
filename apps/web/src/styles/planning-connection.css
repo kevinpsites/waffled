@@ -189,3 +189,6 @@
   .wpn-slots { max-width: none; width: 100%; justify-content: flex-start; }
   .wpn-lab { width: 100%; }
 }
+
+/* Says what a just-made pairing added, since the bar that made it closes. */
+.wpn-made { margin: 0; font-size: 13px; font-weight: 650; color: var(--ink-2); background: var(--panel); border-radius: var(--r-md); padding: 8px 12px; }

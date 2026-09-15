@@ -81,8 +81,8 @@ export const planningFamilyNightApi = {
 
   // "Add this week to the calendar": ONE call that creates and links server-side. NOT
   // create-then-adopt, because the web writes events locally first and the id may not exist yet.
-  addEvent: (date: string) =>
-    alsoPlanning(familyNightApi.saveOccurrence({ date, createEvent: true })),
+  addEvent: (date: string, event: { title: string; time: string; durationMin: number }) =>
+    alsoPlanning(familyNightApi.saveOccurrence({ date, createEvent: true, event })),
 }
 
 // The crumb this step hands the session record: what it DECIDED, not a copy of the module.

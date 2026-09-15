@@ -124,19 +124,24 @@ struct CalendarStepView: View {
             .frame(width: 62, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 5) {
-                ForEach(shown) { event in
-                    chip(event)
-                }
-                if hidden > 0 {
-                    Button {
-                        withAnimation { _ = opened.insert(day.key) }
-                    } label: {
-                        Text("+\(hidden) more")
-                            .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
-                            .padding(.horizontal, 9).padding(.vertical, 4)
-                            .background(WF.panel).clipShape(Capsule())
+                // Chips wrap like the web's week rather than stacking full-width rows.
+                ChipFlow(spacing: 6, lineSpacing: 6) {
+                    ForEach(shown) { event in
+                        Button { openEditor(event) } label: { PlanningEventChip(event: event) }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Edit \(event.title)")
                     }
-                    .buttonStyle(.plain)
+                    if hidden > 0 {
+                        Button {
+                            withAnimation { _ = opened.insert(day.key) }
+                        } label: {
+                            Text("+\(hidden) more")
+                                .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
+                                .padding(.horizontal, 9).padding(.vertical, 4)
+                                .background(WF.panel).clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 if list.isEmpty {
                     Text("Nothing on the calendar")
@@ -163,41 +168,6 @@ struct CalendarStepView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         // An open day takes a tint so it reads as an opportunity, not as a hole.
         .background(list.isEmpty ? WF.panel.opacity(0.45) : Color.clear)
-    }
-
-    /// One event as the week draws it: a coloured time, the title, and the owner's bubble.
-    ///
-    /// Hand-rolled rather than `EventCard` — that is a full-width 48pt row with a shadow,
-    /// and seven of those stacked four deep is a different screen. The PAINT is not
-    /// hand-rolled: `eventPalette.chip(for:)` is the same fill/ink pair the month cells
-    /// use, so the household's solid-vs-tinted style falls out of it rather than being a
-    /// branch here.
-    private func chip(_ event: SyncedEvent) -> some View {
-        let paint = sync.eventPalette.chip(for: event)
-        return HStack(spacing: 6) {
-            Text(whenText(event))
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(paint.foreground.opacity(0.8))
-            Text(event.title)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(paint.foreground)
-                .lineLimit(1)
-            Spacer(minLength: 0)
-            if let emoji = event.emoji {
-                Avatar(colorHex: event.colorHex, emoji: emoji, size: 20)
-            }
-        }
-        .padding(.horizontal, 8).padding(.vertical, 5)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(paint.background)
-        .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
-    }
-
-    /// "1:00 PM" — or a real "All day" label rather than a whispered aside.
-    private func whenText(_ event: SyncedEvent) -> String {
-        if event.allDay { return "All day" }
-        guard let start = event.startsAt else { return "" }
-        return EventTime.timeLabel(start, tz)
     }
 
     // MARK: - What step 1 sent here
@@ -229,8 +199,8 @@ struct CalendarStepView: View {
     /// edit it. It fires after a successful write and before the dismiss, which is what
     /// makes "saved or cancelled?" answerable at all.
     private func eventSheet(_ c: PlanningCalendarComposer) -> EventEditSheet {
-        var sheet = EventEditSheet(event: nil, initialDate: c.day, prefillTitle: c.prefillTitle)
-        sheet.onSaved = { onSaved() }
+        var sheet = EventEditSheet(event: c.event, initialDate: c.day, prefillTitle: c.prefillTitle)
+        sheet.onSaved = { onSaved(c) }
         return sheet
     }
 
@@ -245,10 +215,17 @@ struct CalendarStepView: View {
             day: DateFmt.date(dayKey, "yyyy-MM-dd", tz) ?? Date(), prefillTitle: prefillTitle)
     }
 
+    /// Tapping an event opens the same sheet on that event.
+    private func openEditor(_ event: SyncedEvent) {
+        composerSaved = false
+        pending = PendingCalendarComposer(done: nil)
+        composer = PlanningCalendarComposer(day: event.startsAt ?? Date(), prefillTitle: nil, event: event)
+    }
+
     /// The sheet really wrote something.
-    private func onSaved() {
+    private func onSaved(_ c: PlanningCalendarComposer) {
         composerSaved = true
-        model.recordEventAdded()
+        if c.countsAsAdded { model.recordEventAdded() }
         // The shell's counter and its agenda sheet should agree with what just happened.
         props.refresh()
     }
@@ -264,11 +241,16 @@ struct CalendarStepView: View {
     }
 }
 
-/// What the shared event sheet is opening on.
-private struct PlanningCalendarComposer: Identifiable {
+/// What the shared event sheet is opening on: a day to add to, or an event to edit.
+/// Internal rather than private so the count rule is testable.
+struct PlanningCalendarComposer: Identifiable {
     let id = UUID().uuidString
     let day: Date
     let prefillTitle: String?
+    var event: SyncedEvent? = nil
+
+    /// The step's crumb counts additions; editing an event already on the week is not one.
+    var countsAsAdded: Bool { event == nil }
 }
 
 /// What must survive the sheet's item being cleared on dismissal.

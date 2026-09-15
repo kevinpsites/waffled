@@ -4,6 +4,7 @@
 // the decision, so a decision undone elsewhere changes the line instead of making the
 // record lie. Session-relative counts come from provenance (`created_at >= started_at`).
 // Full rationale: docs/product/weekly-planning-plan.md § "The recap stores nothing".
+import { clockLabel } from '../../../platform/clock'
 import { query } from '../../../platform/db'
 import { moduleEnabled, type ModuleKey } from '../../../platform/modules'
 import { visibleTo } from '../../events/events'
@@ -11,7 +12,7 @@ import type { Tenant } from '../../households/households'
 import { STEPS, resolveSteps, type Session } from '../weeklyPlanning'
 import { mealsStepView, addDays } from './meals'
 import { getTasksBoard } from './tasks'
-import { getGoalsStepView } from './goals'
+import { getGoalsStepView, weekTargetsReadBack, type WeekTargetReadBack } from './goals'
 import { getFamilyNightBoard } from './familyNight'
 import { listParked } from './looseEnds'
 
@@ -32,16 +33,20 @@ export interface RecapDay {
   cook: string | null
   // The inputs the CLIENT's own `eventColor` needs, so the week strip is tinted by the
   // same rule as the month view. The colour is deliberately not resolved here.
-  events: {
-    id: string
-    title: string
-    when: string
-    personId: string | null
-    personName: string | null
-    personColor: string | null
-    participantIds: string[]
-  }[]
+  events: RecapEvent[]
   more: number
+  // What the cap held back, so a busy day can open in place. `more` is its length.
+  hidden: RecapEvent[]
+}
+
+export interface RecapEvent {
+  id: string
+  title: string
+  when: string
+  personId: string | null
+  personName: string | null
+  personColor: string | null
+  participantIds: string[]
 }
 
 export interface RecapGroup {
@@ -78,6 +83,8 @@ export interface RecapView {
   lastCall: RecapLastCall[]
   lastCallMore: number
   leftAlone: RecapLeftAlone[]
+  // The targets last week's session set, against what was logged that week.
+  lastWeekTargets: WeekTargetReadBack[]
   // Derived on every read — never stored, never added up on the client, so the header
   // and the cards cannot disagree.
   counts: { decisions: number; deferred: number; parked: number }
@@ -89,6 +96,7 @@ const WD = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'S
 const weekdayOf = (iso: string) => WD[new Date(`${iso.slice(0, 10)}T00:00:00Z`).getUTCDay()]
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 const join = (bits: (string | null | undefined)[]) => bits.filter(Boolean).join(' · ')
+const amount = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 })
 
 function whenLabel(at: Date | string, allDay: boolean, tz: string): string {
   const d = new Date(at)
@@ -230,16 +238,17 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
   const steps = await resolveSteps(householdId, session?.id ?? null)
   const byKey = new Map(steps.map((s) => [s.key, s]))
 
-  const [week, tasks, goals, night, kids, parked, parkedTags] = await Promise.all([
+  const [week, tasks, goals, night, kids, parked, parkedTags, lastWeekTargets] = await Promise.all([
     // The seven columns come from the MEALS step's own read: the one place that already
     // buckets a household-local day and drops the mirrors. A second read would drift.
     mealsStepView(tenant, weekStart),
     on('chores') ? getTasksBoard(householdId, weekStart) : null,
-    on('goals') && session ? getGoalsStepView(tenant, session.id) : null,
+    on('goals') && session ? getGoalsStepView(tenant, session.id, session.weekStart) : null,
     on('familyNight') ? getFamilyNightBoard(householdId, weekStart) : null,
     session ? kidsReadBack(householdId, session.id) : Promise.resolve([]),
     listParked(householdId),
     parkedKeys(householdId),
+    on('goals') ? weekTargetsReadBack(tenant, weekStart) : Promise.resolve([]),
   ])
 
   const [addedEvents, plannedNights, rhythms] = since
@@ -251,11 +260,8 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
     : [[], [], []]
 
   const mealsOn = on('meals')
-  const days: RecapDay[] = week.nights.map((n) => ({
-    date: n.date,
-    meal: mealsOn ? (n.dinner?.title ?? null) : null,
-    cook: mealsOn ? (n.dinner?.cookName ?? null) : null,
-    events: n.events.slice(0, DAY_CAP).map((e) => ({
+  const days: RecapDay[] = week.nights.map((n) => {
+    const rows: RecapEvent[] = n.events.map((e) => ({
       id: e.id,
       title: e.title,
       when: whenLabel(e.startsAt, e.allDay, tz),
@@ -263,9 +269,16 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
       personName: e.personName,
       personColor: e.personColor,
       participantIds: e.participantIds,
-    })),
-    more: Math.max(0, n.events.length - DAY_CAP),
-  }))
+    }))
+    return {
+      date: n.date,
+      meal: mealsOn ? (n.dinner?.title ?? null) : null,
+      cook: mealsOn ? (n.dinner?.cookName ?? null) : null,
+      events: rows.slice(0, DAY_CAP),
+      more: Math.max(0, rows.length - DAY_CAP),
+      hidden: rows.slice(DAY_CAP),
+    }
+  })
 
   const groups: RecapGroup[] = []
   const leftAlone: RecapLeftAlone[] = []
@@ -288,14 +301,16 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
     const count = plannedNights.length + (trip ? 1 : 0)
     if (count) {
       const tripLine = trip
-        ? `${trip.personName ?? 'Nobody yet'} shops ${weekdayOf(trip.dueOn)}${trip.dueTime ? ` ${trip.dueTime}` : ''}`
+        ? `${trip.personName ?? 'Nobody yet'} shops ${weekdayOf(trip.dueOn)}${trip.dueTime ? ` ${clockLabel(trip.dueTime)}` : ''}`
         : null
       groups.push({
         key: 'meals',
         label: 'Meals + Lists',
         headline: join([
           `${planned} of 7 nights planned`,
-          week.groceries ? plural(week.groceries.items, 'grocery', 'groceries') : null,
+          week.groceries
+            ? `${plural(week.groceries.items - week.groceries.checked, 'grocery', 'groceries')} to buy`
+            : null,
         ]),
         detail: join([
           ...plannedNights.slice(0, DETAIL_CAP).map((n) => `${weekdayOf(n.date)} · ${n.title ?? 'planned'}`),
@@ -335,16 +350,23 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
     // showing an already-featured goal so nobody re-picks it — a flag, not a decision.
     const withFocus = goals.groups.filter((g) => g.settled && g.focusGoalId)
     const noFocus = goals.groups.filter((g) => g.settled && !g.focusGoalId)
-    if (withFocus.length) {
+    // A week's slice of a goal ("10 hours this week") is a decision too, with a focus or without.
+    const targeted = goals.groups.flatMap((g) => g.goals).filter((x) => x.weekTarget != null)
+    if (withFocus.length || targeted.length) {
       groups.push({
         key: 'goals',
         label: 'Goals',
-        headline: `${plural(withFocus.length, 'group')} ${withFocus.length === 1 ? 'has' : 'have'} a focus`,
-        detail: withFocus
+        headline: join([
+          withFocus.length ? `${plural(withFocus.length, 'group')} ${withFocus.length === 1 ? 'has' : 'have'} a focus` : null,
+          targeted.length ? `${plural(targeted.length, 'target')} for the week` : null,
+        ]),
+        detail: [
+          ...withFocus.map((g) => `${g.name} · ${g.goals.find((x) => x.id === g.focusGoalId)?.title ?? 'a goal'}`),
+          ...targeted.map((x) => `${x.title} · ${[amount(x.weekTarget ?? 0), x.unit].filter(Boolean).join(' ')} this week`),
+        ]
           .slice(0, DETAIL_CAP)
-          .map((g) => `${g.name} · ${g.goals.find((x) => x.id === g.focusGoalId)?.title ?? 'a goal'}`)
           .join(' · '),
-        count: withFocus.length,
+        count: withFocus.length + targeted.length,
         stepKey: 'goals',
       })
     }
@@ -385,7 +407,7 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
         groups.push({
           key: 'familyNight',
           label: 'Family Night',
-          headline: join([`${weekdayOf(night.date)} ${night.time}`, night.theme]),
+          headline: join([`${weekdayOf(night.date)} ${clockLabel(night.time)}`, night.theme]),
           detail: join([
             ...pinned.slice(0, DETAIL_CAP).map((p) => `${p.label} · ${p.personName}`),
             rotating ? `${plural(rotating, 'part')} left on rotation` : null,
@@ -466,6 +488,7 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
     lastCall,
     lastCallMore: Math.max(0, untagged.length - lastCall.length),
     leftAlone,
+    lastWeekTargets,
     counts: {
       decisions: groups.reduce((n, g) => n + g.count, 0),
       deferred: leftAlone.length,

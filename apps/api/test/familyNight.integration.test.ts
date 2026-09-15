@@ -165,6 +165,9 @@ describe('family night', () => {
     const ev = await call('GET', `/api/events/${eventId}`, kevin)
     expect(ev.statusCode).toBe(200)
     expect(JSON.parse(ev.body).event.rrule).toContain('FREQ=WEEKLY')
+    // At the family night time in the HOUSEHOLD's zone, not the database's.
+    const local = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    expect(local.format(new Date(JSON.parse(ev.body).event.startsAt))).toBe(config.time)
 
     expect((await call('DELETE', '/api/family-night/schedule', kevin)).statusCode).toBe(200)
     const after = JSON.parse((await call('GET', '/api/family-night/config', kevin)).body).config

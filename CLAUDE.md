@@ -79,8 +79,8 @@ feature that owns the concept (`Components.swift`, `FieldStyles.swift`, `apps/we
 - If nothing fits and the piece is generic, put it in the DESIGN SYSTEM, not in your feature —
   so the next feature finds it instead of writing a third one.
 - If you must copy, say so in the file header with the constraint that forced it, and open a
-  follow-up to extract. (`PlanningMonthGrid` is the worked example: copied because
-  `CalendarView`'s grid is private and that change wasn't allowed to touch the calendar.)
+  follow-up to extract. (Weekly Planning's Horizon scan copied the iPhone month grid until the
+  Calendar tab's grid became the shared `PhoneMonthGrid`; it now draws that one.)
 
 ## Git & pull requests (repo-wide)
 

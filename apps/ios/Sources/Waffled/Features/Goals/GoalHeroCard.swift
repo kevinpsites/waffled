@@ -109,6 +109,10 @@ struct GoalHeroCard: View {
                 VStack(alignment: .leading, spacing: kiosk ? 6 : 4) {
                     Text("\(g.emoji ?? "🎯") \(g.title)")
                         .font(WF.serif(kiosk ? 26 : 19)).foregroundStyle(.white).lineLimit(3).minimumScaleFactor(0.7)
+                    if let week = GoalDisplay.weekTargetLabel(g) {
+                        Text(week)
+                            .font(.system(size: kiosk ? 15 : 12.5, weight: .bold)).foregroundStyle(.white.opacity(0.92))
+                    }
                     if g.streakDays > 0 {
                         Text("🔥 \(g.streakDays)-day streak")
                             .font(.system(size: kiosk ? 15 : 12.5, weight: .bold)).foregroundStyle(.white.opacity(0.9))

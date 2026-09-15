@@ -24,6 +24,9 @@ export interface PlanningRecapDay {
   }[]
   /** Events the column is holding back, so a busy day says "+2 more" instead of growing. */
   more: number
+  /** The held-back events themselves, so "+2 more" can open the day in place. Optional:
+   *  an older server sends only the count, and the pill stays a label. */
+  hidden?: PlanningRecapDay['events']
 }
 
 export interface PlanningRecapGroup {
@@ -51,6 +54,16 @@ export interface PlanningRecapLeftAlone {
   stepKey: string | null
 }
 
+/** One of last week's targets, against what was logged that week. */
+export interface PlanningRecapWeekTarget {
+  goalId: string
+  title: string
+  emoji: string | null
+  unit: string | null
+  target: number
+  done: number
+}
+
 export interface PlanningRecapView {
   weekStart: string
   savedAt: string | null
@@ -59,6 +72,8 @@ export interface PlanningRecapView {
   lastCall: PlanningRecapLastCall[]
   lastCallMore: number
   leftAlone: PlanningRecapLeftAlone[]
+  /** The targets last week's session set. Absent from an older server. */
+  lastWeekTargets?: PlanningRecapWeekTarget[]
   counts: { decisions: number; deferred: number; parked: number }
 }
 

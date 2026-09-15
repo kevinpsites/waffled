@@ -485,10 +485,10 @@ select.cap-edit-sub { cursor: pointer; }
    (stamped from the household setting) so the solid↔tinted switch is pure CSS
    and the `--ev` mechanism above is untouched. Dark mode mixes toward black so
    solid chips keep depth against dark cards.
-   The text is NOT a fixed white — white clears WCAG AA on only one of the eight
-   member colors (gold manages 2.2:1). Each chip carries the ink that wins on its
-   own fill as `--ev-on` / `--ev-on-dark` (see lib/event-color.ts `evVars`); the
-   hardcoded fallbacks are the readable ink for the `--ink-3` fill above. */
+   The text is NOT a fixed white — gold and teal are too light for it. Each chip
+   carries the ink that wins on its own fill as `--ev-on` / `--ev-on-dark` (see
+   lib/event-color.ts `evVars` for the rule); the hardcoded fallbacks are the
+   readable ink for the `--ink-3` fill above. */
 :root[data-ev-style="solid"] .ev-tint {
   background: var(--ev, var(--ink-3));
   color: var(--ev-on, #000000);

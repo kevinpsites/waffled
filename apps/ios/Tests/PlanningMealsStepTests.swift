@@ -175,6 +175,12 @@ private final class MealsFeed {
     var shopperCalls: [(weekStart: String, dueOn: String?, personId: String?, dueTime: String?, choreId: String?)] = []
     var plannedSlots: [(date: String, recipeId: String?, title: String?)] = []
     var clearedSlots: [String] = []
+    var addedGroceries: [String] = []
+    var addGroceryFails = false
+    var groceryItems: [WaffledAPI.ListItemDTO] = []
+    var groceryWeeks: [String] = []
+    var checkedGroceries: [(id: String, checked: Bool)] = []
+    var checkGroceryFails = false
 
     init() throws {
         view = try WaffledAPI.decoder.decode(WaffledAPI.PlanningMealsView.self, from: weekJSON)
@@ -223,7 +229,27 @@ private func model(_ feed: MealsFeed) -> PlanningMealsModel {
         },
         clearSlot: { date in
             feed.clearedSlots.append(date)
+        },
+        addGrocery: { name in
+            if feed.addGroceryFails { throw MealsStepFailure.rejected }
+            feed.addedGroceries.append(name)
+        },
+        fetchGroceries: { weekStart in
+            feed.groceryWeeks.append(weekStart)
+            return feed.groceryItems
+        },
+        checkGrocery: { id, checked in
+            feed.checkedGroceries.append((id, checked))
+            if feed.checkGroceryFails { throw MealsStepFailure.rejected }
         })
+}
+
+private func groceryItems() throws -> [WaffledAPI.ListItemDTO] {
+    let json = """
+    [{"id":"i-2","name":"Eggs","quantity":null,"checked":true,"aisle":"Dairy & Chilled"},
+     {"id":"i-1","name":"Milk","quantity":"1 gal","checked":false,"aisle":"Dairy & Chilled"}]
+    """
+    return try WaffledAPI.decoder.decode([WaffledAPI.ListItemDTO].self, from: Data(json.utf8))
 }
 
 // MARK: - The three-way `cards`
@@ -490,6 +516,15 @@ private func model(_ feed: MealsFeed) -> PlanningMealsModel {
         #expect(PlanningMealsText.grocerySub(added: 5) == "5 items added · staples skipped")
     }
 
+    @Test func theGroceryPillCountsWhatIsLeftToBuy() throws {
+        let some = try WaffledAPI.decoder.decode(WaffledAPI.PlanningMealsGroceries.self,
+                                                 from: Data(#"{"items": 9, "checked": 2}"#.utf8))
+        #expect(PlanningMealsText.groceryPill(some) == "7 to buy · aisle order · 2 done")
+        let none = try WaffledAPI.decoder.decode(WaffledAPI.PlanningMealsGroceries.self,
+                                                 from: Data(#"{"items": 4, "checked": 0}"#.utf8))
+        #expect(PlanningMealsText.groceryPill(none) == "4 to buy · aisle order")
+    }
+
     @Test func anAllDayEventSaysSoAndAnUnreadableInstantSaysNothing() throws {
         let allDay = try WaffledAPI.decoder.decode(
             WaffledAPI.PlanningNightEvent.self,
@@ -536,6 +571,71 @@ private func model(_ feed: MealsFeed) -> PlanningMealsModel {
 
 @MainActor
 @Suite struct PlanningMealsModelTests {
+
+    @Test func addingAGroceryTrimsItAndRereadsTheLine() async throws {
+        let feed = try MealsFeed()
+        let model = model(feed)
+        await model.load(weekStart: "2026-09-06", seed: [])
+        let reads = feed.fetchCount
+
+        #expect(await model.addGrocery("  Paper towels ", weekStart: "2026-09-06"))
+        #expect(feed.addedGroceries == ["Paper towels"])
+        #expect(feed.fetchCount == reads + 1)
+    }
+
+    @Test func theGroceryListReadsThePlannedWeeksItems() async throws {
+        let feed = try MealsFeed()
+        feed.groceryItems = try groceryItems()
+        let model = model(feed)
+        await model.loadGroceries(weekStart: "2026-09-06")
+
+        #expect(feed.groceryWeeks == ["2026-09-06"])
+        #expect(model.groceriesToBuy.map(\.name) == ["Milk"])
+        #expect(model.groceriesInCart.map(\.name) == ["Eggs"])
+    }
+
+    @Test func tickingAGroceryOffMovesItToTheCartAndRereadsTheCount() async throws {
+        let feed = try MealsFeed()
+        feed.groceryItems = try groceryItems()
+        let model = model(feed)
+        await model.load(weekStart: "2026-09-06", seed: [])
+        await model.loadGroceries(weekStart: "2026-09-06")
+        let reads = feed.fetchCount
+
+        let milk = try #require(model.groceriesToBuy.first)
+        #expect(await model.setGroceryChecked(milk, weekStart: "2026-09-06"))
+        #expect(feed.checkedGroceries.map(\.id) == ["i-1"])
+        #expect(feed.checkedGroceries.map(\.checked) == [true])
+        #expect(model.groceriesToBuy.isEmpty)
+        #expect(Set(model.groceriesInCart.map(\.name)) == ["Eggs", "Milk"])
+        #expect(feed.fetchCount == reads + 1)
+    }
+
+    @Test func aTickThatDoesNotLandPutsTheItemBackAndSaysSo() async throws {
+        let feed = try MealsFeed()
+        feed.groceryItems = try groceryItems()
+        feed.checkGroceryFails = true
+        let model = model(feed)
+        await model.loadGroceries(weekStart: "2026-09-06")
+
+        let milk = try #require(model.groceriesToBuy.first)
+        #expect(await model.setGroceryChecked(milk, weekStart: "2026-09-06") == false)
+        #expect(model.groceriesToBuy.map(\.name) == ["Milk"])
+        #expect(model.groceryError != nil)
+    }
+
+    @Test func aBlankOrFailedGroceryAddReportsItDidNotLand() async throws {
+        let feed = try MealsFeed()
+        let model = model(feed)
+        await model.load(weekStart: "2026-09-06", seed: [])
+
+        #expect(await model.addGrocery("   ", weekStart: "2026-09-06") == false)
+        #expect(feed.addedGroceries.isEmpty)
+
+        feed.addGroceryFails = true
+        #expect(await model.addGrocery("Milk", weekStart: "2026-09-06") == false)
+        #expect(model.errorMessage != nil)
+    }
 
     @Test func failedReadKeepsTheWeekItAlreadyHadAndStillLoads() async throws {
         let feed = try MealsFeed()

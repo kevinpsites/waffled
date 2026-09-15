@@ -14,6 +14,7 @@ struct PlanningShellView: View {
 
     @State private var model = PlanningModel()
     @State private var sheet = false
+    @State private var parking = false
     @State private var confirmDiscard = false
     /// The verb the step on screen has lent the parked-note banner, paired with the step
     /// that lent it, so a verb whose owner is off screen is simply not READ. Do NOT swap
@@ -37,6 +38,13 @@ struct PlanningShellView: View {
             // once per appearance, so this screen would sit on launch-time data.
             .task(id: sync.refreshRev) { await model.load() }
             .sheet(isPresented: $sheet) { agendaSheet }
+            .sheet(isPresented: $parking, onDismiss: { model.clearParkError() }) {
+                PlanningParkNoteSheet(
+                    tags: model.parkTags,
+                    errorMessage: model.parkError,
+                    onPark: { note, stepKey in await model.parkNote(note, stepKey: stepKey) },
+                    onClose: { parking = false })
+            }
     }
 
     @ViewBuilder private var content: some View {
@@ -135,6 +143,7 @@ struct PlanningShellView: View {
                     Text(model.savedAtLabel.map { "\(model.weekLabel) · saved \($0)" } ?? model.weekLabel)
                         .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
+                planAnotherWeek
                 // The recap step's body already reads the week back, so the record renders
                 // that rather than a second summary — reached through the seam so a renamed
                 // step body can't leave this screen behind.
@@ -143,11 +152,10 @@ struct PlanningShellView: View {
                    let week = model.view?.weekStart {
                     planningStepBody(stepProps(recap, sessionId: sessionId, weekStart: week))
                         .id("record-recap")
-                }
-
-                // The tick-list is demoted, not deleted: it carries the one thing the
-                // recap can't — which steps were skipped on purpose.
-                VStack(alignment: .leading, spacing: 8) {
+                } else {
+                    // Only without a read-back: the recap's "left alone on purpose" otherwise
+                    // names every skipped step, and the list just repeated it.
+                    VStack(alignment: .leading, spacing: 8) {
                     SectionLabel(text: "What each step decided")
                     WaffledCard(padding: 4) {
                         VStack(spacing: 0) {
@@ -164,6 +172,7 @@ struct PlanningShellView: View {
                             }
                         }
                     }
+                    }
                 }
                 Button {
                     Task { await model.reopen() }
@@ -174,7 +183,6 @@ struct PlanningShellView: View {
                         .wfField()
                 }
                 .buttonStyle(.plain).disabled(model.busy || stepBusy)
-                planAnotherWeek
                 discardBlock
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -300,6 +308,16 @@ struct PlanningShellView: View {
                     .font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink3)
             }
             .buttonStyle(.plain).disabled(model.busy || stepBusy)
+
+            if model.showsParkBar {
+                Button { parking = true } label: {
+                    Image(systemName: "pin")
+                        .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink3)
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.plain).disabled(model.busy || stepBusy)
+                .accessibilityLabel("Park a note")
+            }
 
             if let step = model.current, let sessionId = model.session?.id, let week = model.view?.weekStart {
                 planningStepFooterExtra(stepProps(step, sessionId: sessionId, weekStart: week))

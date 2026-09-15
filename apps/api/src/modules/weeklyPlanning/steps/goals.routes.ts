@@ -2,7 +2,7 @@ import type createAPI from 'lambda-api'
 import type { Request, Response } from 'lambda-api'
 import { getSessionById } from '../weeklyPlanning'
 import { moduleRoutes, requireModule } from '../../../platform/route-guards'
-import { getGoalsStepView, setGroupFocus } from './goals'
+import { getGoalsStepView, setGroupFocus, setWeekTarget } from './goals'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -25,7 +25,7 @@ export function registerGoalsStepRoutes(api: Api): void {
     // alone, so without this a well-formed id from another household reaches their data.
     const asked = uuidOrNull(req.query?.sessionId)
     const session = asked ? await getSessionById(tenant.householdId, asked) : null
-    return getGoalsStepView(tenant, session ? asked : null)
+    return getGoalsStepView(tenant, session ? asked : null, session?.weekStart ?? null)
   }))
 
   // `goalId: null` is the real answer "nothing this week": it clears the list's focus and
@@ -43,6 +43,24 @@ export function registerGoalsStepRoutes(api: Api): void {
     const result = await setGroupFocus(tenant, sessionId, listId, goalId)
     // One 404 for every refusal: a private list must not be distinguishable from one that
     // doesn't exist.
+    if (!result.ok) return res.status(404).json({ error: 'NotFound', message: 'not found' })
+    return res.status(200).json(result.view)
+  }))
+
+  // One goal's target for the session's week. `target: null` clears it; anything else has to
+  // be a positive number.
+  api.put('/api/weekly-planning/goals/week-target', tenantRoute(async (tenant, req: Request, res: Response) => {
+    await requireModule(tenant, 'goals')
+    const body = (req.body ?? {}) as { sessionId?: unknown; goalId?: unknown; target?: unknown }
+    const sessionId = uuidOrNull(body.sessionId)
+    const goalId = uuidOrNull(body.goalId)
+    const target = body.target === null
+      ? null
+      : typeof body.target === 'number' && Number.isFinite(body.target) && body.target > 0 ? body.target : undefined
+    if (!sessionId || !goalId || target === undefined) {
+      return res.status(400).json({ error: 'BadRequest', message: 'sessionId, goalId and a positive target (or null) are required' })
+    }
+    const result = await setWeekTarget(tenant, sessionId, goalId, target)
     if (!result.ok) return res.status(404).json({ error: 'NotFound', message: 'not found' })
     return res.status(200).json(result.view)
   }))

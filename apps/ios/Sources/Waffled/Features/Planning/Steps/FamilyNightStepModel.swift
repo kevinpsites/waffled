@@ -16,6 +16,21 @@ import Observation
 /// the project's "keep date math out of the render path" rule. Formatters are `static
 /// let` likewise.
 enum PlanningFamilyNightFormat {
+    /// The week's linkable events under the day they happen in, household-local, all-day first
+    /// then by time. Days with nothing are left out.
+    static func weekEventDays(
+        _ events: [WaffledAPI.PlanningWeekEvent], weekStart: String, tz: TimeZone
+    ) -> [(day: PlanningWeekDay, events: [SyncedEvent])] {
+        let byDay = Dictionary(grouping: events.map(\.asSyncedEvent)) { Agenda.dayKey($0, tz) }
+        return PlanningWeekDays.days(weekStart: weekStart, todayKey: Agenda.todayKey(tz)).compactMap { day in
+            guard let list = byDay[day.key], !list.isEmpty else { return nil }
+            let ordered = list.sorted {
+                ($0.allDay ? 0 : 1, $0.startsAt ?? .distantPast) < ($1.allDay ? 0 : 1, $1.startsAt ?? .distantPast)
+            }
+            return (day, ordered)
+        }
+    }
+
 
     /// "2026-09-09" → "Wednesday, Sep 9". UTC + POSIX on the parse: the gathering's date
     /// is a calendar LABEL, and a device in a negative offset parsing it locally gets

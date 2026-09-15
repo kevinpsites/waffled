@@ -37,12 +37,20 @@ struct TasksStepView: View {
             if let message = model.errorMessage {
                 DismissibleErrorBanner(message: message) { model.errorMessage = nil }
             }
+            if let notice = model.notice {
+                Text(notice)
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            }
 
             if let board = model.board {
                 strip(board)
                 ForEach(board.people) { person in
                     personBlock(person, board: board)
                 }
+                if !board.rhythms.isEmpty { rhythmsBlock(board.rhythms) }
             } else if model.loaded {
                 WaffledEmptyState(
                     emoji: "🧹",
@@ -171,6 +179,36 @@ struct TasksStepView: View {
     // Buttons; a drag on the card would have to win the gesture from each of them. A grip
     // owns one small rectangle and takes nothing away from the taps beside it.
 
+    /// Rhythms needing attention in the planned week. Done only where the server says it applies.
+    private func rhythmsBlock(_ rhythms: [WaffledAPI.PlanningTasksRhythm]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel(text: "RHYTHMS THIS WEEK")
+            ForEach(rhythms) { rhythm in
+                HStack(spacing: 8) {
+                    Text("\(rhythm.emoji.map { "\($0) " } ?? "")\(rhythm.title)")
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
+                    Spacer(minLength: 6)
+                    chip(rhythm.detail, unset: false)
+                    if rhythm.canComplete {
+                        Button {
+                            Task {
+                                await model.settleRhythm(rhythm, sessionId: props.sessionId, weekStart: props.weekStart)
+                            }
+                        } label: {
+                            chip("✓ Done", unset: false)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(frozen)
+                        .accessibilityLabel("Mark \(rhythm.title) done")
+                    }
+                }
+                .padding(12)
+                .background(WF.card)
+                .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            }
+        }
+    }
+
     @ViewBuilder
     private func choreCard(_ chore: WaffledAPI.PlanningTasksChore, owner: String?,
                            board: WaffledAPI.PlanningTasksBoard) -> some View {
@@ -209,6 +247,17 @@ struct TasksStepView: View {
                     .accessibilityLabel("Set the day for \(chore.title)")
                 } else {
                     chip(chipText, unset: unset)
+                }
+                // Not gated on chore.manage: any member may finish a task, the server's own rule.
+                if chore.completableInstanceId != nil {
+                    Button {
+                        Task { await model.markDone(chore, weekStart: props.weekStart) }
+                    } label: {
+                        chip("✓ Done", unset: false)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(frozen)
+                    .accessibilityLabel("Mark \(chore.title) done")
                 }
                 Spacer(minLength: 4)
                 if chore.rewardAmount > 0 {

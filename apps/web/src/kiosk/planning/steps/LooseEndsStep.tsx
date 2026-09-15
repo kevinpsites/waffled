@@ -33,7 +33,6 @@ const KIND_LABEL: Record<LooseEnd['kind'], string> = {
   chore: 'Chore',
   list: 'List',
   rhythm: 'Rhythm',
-  goal: 'Goal',
   parked: 'Parked',
 }
 
@@ -120,7 +119,14 @@ function Body({ step, sessionId, weekStart, setDecisionData, busy }: StepBodyPro
     () => (Array.isArray(step.data?.routes) ? (step.data.routes as LooseEndRoute[]) : [])
   )
   const [answered, setAnswered] = useState(0)
+  // Answered this sitting. The module may still report one (a habit logged once can still be
+  // short), and it must not come straight back to the top of the deck.
+  const [settled, setSettled] = useState<string[]>([])
+  // The order each card first appeared in, so a re-read after an answer can't reshuffle the
+  // deck or shrink "2 of 3" back to "1 of 2".
+  const [order, setOrder] = useState<Record<LooseEndGroup, string[]>>({ notDone: [], parked: [] })
   const [note, setNote] = useState('')
+  const [trailOpen, setTrailOpen] = useState(false)
   const sections = useRef<Partial<Record<LooseEndGroup, HTMLElement | null>>>({})
 
   const load = useCallback(async () => {
@@ -128,8 +134,13 @@ function Body({ step, sessionId, weekStart, setDecisionData, busy }: StepBodyPro
       const next = await looseEndsApi.get(weekStart, sessionId)
       setView(next)
       setRoutes(next.routes)
+      const seen = (known: string[], items: LooseEnd[]) =>
+        [...known, ...items.map((i) => i.key).filter((k) => !known.includes(k))]
+      setOrder((o) => ({ notDone: seen(o.notDone, next.notDone), parked: seen(o.parked, next.parked) }))
+      return next
     } catch {
       setView(null)
+      return null
     } finally {
       setLoading(false)
     }
@@ -137,7 +148,7 @@ function Body({ step, sessionId, weekStart, setDecisionData, busy }: StepBodyPro
 
   useEffect(() => { void load() }, [load])
 
-  useEffect(() => { setSetAside([]); setAnswered(0) }, [weekStart])
+  useEffect(() => { setSetAside([]); setAnswered(0); setSettled([]); setOrder({ notDone: [], parked: [] }) }, [weekStart])
 
   // Opening see-all lands on the section for the group you were on. A starting POSITION, not a
   // second filter. Guarded because jsdom has no scrollIntoView.
@@ -151,9 +162,15 @@ function Body({ step, sessionId, weekStart, setDecisionData, busy }: StepBodyPro
   const openIn = useCallback(
     (g: LooseEndGroup): LooseEnd[] => {
       const all = g === 'notDone' ? view?.notDone : view?.parked
-      return (all ?? []).filter((i) => !routedKeys.has(i.key) && !setAside.includes(i.key))
+      const place = (key: string) => {
+        const at = order[g].indexOf(key)
+        return at < 0 ? Number.MAX_SAFE_INTEGER : at
+      }
+      return (all ?? [])
+        .filter((i) => !routedKeys.has(i.key) && !setAside.includes(i.key) && !settled.includes(i.key))
+        .sort((a, b) => place(a.key) - place(b.key))
     },
-    [view, routedKeys, setAside]
+    [view, routedKeys, setAside, settled, order]
   )
 
   const remaining = useMemo(
@@ -200,6 +217,7 @@ function Body({ step, sessionId, weekStart, setDecisionData, busy }: StepBodyPro
     guard(async () => {
       await looseEndsApi.resolve(item.kind, item.id, action, sessionId)
       setAnswered((n) => n + 1)
+      setSettled((keys) => (keys.includes(item.key) ? keys : [...keys, item.key]))
       await load()
       // No refresh() here: `resolve` emits 'weeklyPlanning' and the shell is already
       // subscribed, so calling both would fetch the session view twice per answer.
@@ -259,16 +277,21 @@ function Body({ step, sessionId, weekStart, setDecisionData, busy }: StepBodyPro
   if (!view) return <div className="wp-le"><div className="wp-le-empty">Couldn't read your loose ends — reload and try again.</div></div>
 
   const card = openIn(group)[0] ?? null
-  const total = (group === 'notDone' ? view.notDone : view.parked).length
+  // Everything this group has shown this sitting, answered or not.
+  const total = Math.max(order[group].length, (group === 'notDone' ? view.notDone : view.parked).length)
   const position = total - openIn(group).length + 1
   const other: LooseEndGroup = group === 'parked' ? 'notDone' : 'parked'
   const otherLabel = LOOSE_END_GROUPS.find((g) => g.key === other)!.label
   const groupNote = LOOSE_END_GROUPS.find((g) => g.key === group)!.note
-  const trail = routes.slice(-3).reverse()
-  // Step NAMES for the trail: "Not done"'s destination labels ARE the step titles, while
-  // "Parked"'s are verbs ("Make it a task") which read wrong after an arrow — so the trail
-  // always uses the notDone label, falling back to the key for a step whose module is off.
-  const stepName = (to: string) => view.destinations.notDone.find((d) => d.to === to)?.label ?? to
+  // Everything sent this sitting, newest first, like the done section of a list: each row
+  // undoes itself, and past three it folds behind "Show all".
+  const trail = [...routes].reverse()
+  // Step NAMES for the trail, never "Parked"'s verbs: the server's step title, then the notDone
+  // label, then the key for a step whose module has since gone off.
+  const stepName = (to: string) =>
+    [...view.destinations.notDone, ...view.destinations.parked].find((d) => d.to === to && d.stepTitle)?.stepTitle
+    ?? view.destinations.notDone.find((d) => d.to === to)?.label
+    ?? to
 
   // WHICH LISTS THIS STEP ASKS ABOUT. Sending somebody to Settings → Modules to silence a
   // someday list is the ejection this module exists to avoid, and that panel is admin-only;
@@ -284,7 +307,14 @@ function Body({ step, sessionId, weekStart, setDecisionData, busy }: StepBodyPro
     setRuling(id)
     try {
       await weeklyPlanningApi.setConfig({ lists: { [id]: on } })
-      await load()
+      const next = await load()
+      // Ruling a list out is not an answer: its cards leave the count as well as the deck,
+      // while anything already answered this sitting keeps counting.
+      if (next) {
+        const live = new Set([...next.notDone, ...next.parked].map((i) => i.key))
+        const keep = (k: string) => live.has(k) || settled.includes(k)
+        setOrder((o) => ({ notDone: o.notDone.filter(keep), parked: o.parked.filter(keep) }))
+      }
     } catch {
       setError('Couldn’t save that just now.')
     } finally {
@@ -479,14 +509,25 @@ function Body({ step, sessionId, weekStart, setDecisionData, busy }: StepBodyPro
           <span className="wp-le-trail-h" data-testid="wp-le-trail-h">
             Sent ahead — they&rsquo;ll come up at that step later tonight
           </span>
-          {trail.map((r, i) => (
+          {(trailOpen ? trail : trail.slice(0, 3)).map((r, i) => (
             <span key={routeKey(r)} className={`wp-le-trail-i${i === 0 ? ' last' : ''}`}>
-              <b>{r.title}</b> → {stepName(r.to)}
+              <b>{r.title}</b> → {stepName(r.to)}{' '}
+              <button
+                type="button"
+                className="wp-le-undo"
+                aria-label={`Undo sending ${r.title}`}
+                disabled={disabled}
+                onClick={() => void undoRoute(r)}
+              >
+                Undo
+              </button>
             </span>
           ))}
-          <button type="button" className="wp-le-undo" disabled={disabled} onClick={() => void undoRoute(trail[0])}>
-            Undo
-          </button>
+          {!trailOpen && trail.length > 3 && (
+            <button type="button" className="wp-le-undo" onClick={() => setTrailOpen(true)}>
+              Show all {trail.length}
+            </button>
+          )}
         </div>
       )}
 

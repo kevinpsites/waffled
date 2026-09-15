@@ -45,12 +45,12 @@ interface Card {
   id: string; title: string; emoji: string | null; rrule: string | null; cadence: string
   days: string[]; dueOn: string | null; dueTime: string | null; carriedOver: boolean
   rewardAmount: number; rewardCurrency: string; pendingInstanceIds: string[]
-  requiresApproval: boolean; requiresPhoto: boolean
+  requiresApproval: boolean; requiresPhoto: boolean; completableInstanceId: string | null
 }
 const chore = (over: Partial<Card> & { id: string; title: string }): Card => ({
   emoji: null, rrule: null, cadence: 'once', days: [], dueOn: null, dueTime: null,
   carriedOver: false, rewardAmount: 0, rewardCurrency: 'stars', pendingInstanceIds: [],
-  requiresApproval: false, requiresPhoto: false,
+  requiresApproval: false, requiresPhoto: false, completableInstanceId: null,
   ...over,
 })
 
@@ -67,17 +67,21 @@ const BOARD = {
     {
       id: 'p2', name: 'Wally', avatarEmoji: '🐢', colorHex: '#25A368', memberType: 'kid', isAdmin: false,
       recurringChores: 1,
-      chores: [chore({ id: 'w1', title: 'Vacuum upstairs', cadence: 'weekly', rrule: 'FREQ=WEEKLY;BYDAY=WE', days: ['2026-09-09'], dueTime: '18:00', requiresApproval: true })],
+      chores: [chore({ id: 'w1', title: 'Vacuum upstairs', cadence: 'weekly', rrule: 'FREQ=WEEKLY;BYDAY=WE', days: ['2026-09-09'], dueTime: '18:00', requiresApproval: true, completableInstanceId: 'i-vac' })],
     },
     {
       id: 'p3', name: 'Lottie', avatarEmoji: '🦊', colorHex: '#E0653F', memberType: 'kid', isAdmin: false,
       recurringChores: 0,
-      chores: [chore({ id: 'l1', title: 'Renew the passport', carriedOver: true })],
+      chores: [chore({ id: 'l1', title: 'Renew the passport', carriedOver: true, completableInstanceId: 'i-pass' })],
     },
   ],
   unassigned: [
     chore({ id: 'c1', title: 'Sweep the porch', emoji: '🧹', cadence: 'weekly', rrule: 'FREQ=WEEKLY;BYDAY=SU', days: [WEEK], rewardAmount: 2, pendingInstanceIds: ['i1', 'i2'] }),
     chore({ id: 'c2', title: 'Fold the towels', emoji: '🧺', rewardAmount: 1 }),
+  ],
+  rhythms: [
+    { id: 'r1', title: 'Water the plants', emoji: '🪴', personId: 'p2', detail: 'Due Wed', overdue: false, canComplete: true },
+    { id: 'r2', title: 'Book the dentist', emoji: null as string | null, personId: null as string | null, detail: 'Not booked yet', overdue: false, canComplete: false },
   ],
 }
 
@@ -85,10 +89,11 @@ let calls: { url: string; method: string; body: Record<string, unknown> | null }
 
 // A STATEFUL double: a PATCH really moves the chore, so what the screen shows after a
 // hand-out is the re-read rather than component bookkeeping.
-function mockApi(opts: { capabilities?: string[]; unassigned?: unknown[] } = {}) {
+function mockApi(opts: { capabilities?: string[]; unassigned?: unknown[]; rhythms?: unknown[] } = {}) {
   calls = []
   const state = JSON.parse(JSON.stringify(BOARD)) as typeof BOARD
   if (opts.unassigned) state.unassigned = opts.unassigned as typeof BOARD.unassigned
+  if (opts.rhythms) state.rhythms = opts.rhythms as typeof BOARD.rhythms
   globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
     const u = String(url)
     const method = init?.method ?? 'GET'
@@ -143,6 +148,17 @@ function mockApi(opts: { capabilities?: string[]; unassigned?: unknown[] } = {})
       return { ok: true, json: async () => ({ chore: { id } }) }
     }
     if (u.includes('/assign')) return { ok: true, json: async () => ({ instance: { id: 'i1', status: 'pending' } }) }
+    if (u.includes('/api/weekly-planning/loose-ends/resolve') && method === 'POST') {
+      state.rhythms = state.rhythms.filter((r) => r.id !== (body as { id?: string } | null)?.id)
+      return { ok: true, json: async () => ({ ok: true }) }
+    }
+    const completing = /\/api\/chore-instances\/([^/]+)\/complete$/.exec(u)
+    if (completing && method === 'POST') {
+      for (const c of [...state.unassigned, ...state.people.flatMap((p) => p.chores)]) {
+        if (c.completableInstanceId === completing[1]) c.completableInstanceId = null
+      }
+      return { ok: true, json: async () => ({ ok: true }) }
+    }
     return { ok: false, status: 404, json: async () => ({}) }
   }) as unknown as typeof fetch
 }
@@ -541,6 +557,66 @@ describe('TasksStep', () => {
 // PATCHes the chore DEFINITION and then assigns each pending instance. Once the
 // definition PATCH has landed, "nothing moved, so there's nothing to undo" is false —
 // the failure path still has to re-read and still has to say something.
+describe('TasksStep · marking a task done', () => {
+  it('completes the open day through the chores module, and the board re-reads', async () => {
+    mockApi()
+    render(<Body {...props()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Mark Renew the passport done' }))
+    await waitFor(() => expect(wrote('POST', '/api/chore-instances/i-pass/complete')).toHaveLength(1))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Mark Renew the passport done' })).toBeNull())
+  })
+
+  it('says an approval task is waiting for a parent, rather than looking finished', async () => {
+    mockApi()
+    render(<Body {...props()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Mark Vacuum upstairs done' }))
+    expect(await screen.findByText(/waiting for a parent/i)).toBeTruthy()
+  })
+
+  it('offers Done to a viewer who can’t hand chores out — anyone can finish a task', async () => {
+    mockApi({ capabilities: [] })
+    render(<Body {...props()} />)
+    expect(await screen.findByRole('button', { name: 'Mark Renew the passport done' })).toBeTruthy()
+  })
+
+  it('offers no Done where nothing is due yet', async () => {
+    mockApi()
+    render(<Body {...props()} />)
+    await waitFor(() => expect(screen.getByText(/Sweep the porch/)).toBeTruthy())
+    expect(screen.queryByRole('button', { name: 'Mark Dishes done' })).toBeNull()
+  })
+})
+
+describe('TasksStep · rhythms due this week', () => {
+  it('lists the week’s rhythms, and Done settles one through step 1’s resolve', async () => {
+    mockApi()
+    render(<Body {...props()} />)
+    const section = await screen.findByTestId('wpt-rhythms')
+    expect(within(section).getByText(/Water the plants/)).toBeTruthy()
+    expect(within(section).getByText('Due Wed')).toBeTruthy()
+
+    fireEvent.click(within(section).getByRole('button', { name: 'Mark Water the plants done' }))
+    await waitFor(() => expect(wrote('POST', '/api/weekly-planning/loose-ends/resolve')).toHaveLength(1))
+    expect(wrote('POST', '/api/weekly-planning/loose-ends/resolve')[0].body).toEqual({ kind: 'rhythm', id: 'r1', action: 'done', sessionId: 's1' })
+    await waitFor(() => expect(within(screen.getByTestId('wpt-rhythms')).queryByText(/Water the plants/)).toBeNull())
+  })
+
+  it('offers no Done on a rhythm that is settled by booking it', async () => {
+    mockApi()
+    render(<Body {...props()} />)
+    const section = await screen.findByTestId('wpt-rhythms')
+    expect(within(section).getByText('Not booked yet')).toBeTruthy()
+    expect(within(section).queryByRole('button', { name: 'Mark Book the dentist done' })).toBeNull()
+  })
+
+  it('draws no rhythms section when nothing is due', async () => {
+    mockApi({ rhythms: [] })
+    render(<Body {...props()} />)
+    await waitFor(() => expect(screen.getByText(/Sweep the porch/)).toBeTruthy())
+    expect(screen.queryByTestId('wpt-rhythms')).toBeNull()
+  })
+})
+
 describe('tasks · when handing a chore over half-fails', () => {
   it('re-reads the board and says so, rather than claiming nothing moved', async () => {
     mockApi()

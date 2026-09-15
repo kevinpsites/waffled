@@ -9,6 +9,7 @@ import {
   setConfig,
   upsertOccurrence,
   createOccurrenceEvent,
+  readOccurrenceEventDetails,
   scheduleEvent,
   unscheduleEvent,
   type FamilyNightConfig,
@@ -53,8 +54,12 @@ export function registerFamilyNightRoutes(api: Api): void {
   }))
 
   api.post('/api/family-night/occurrence', tenantRoute(async (tenant, req: Request, res: Response) => {
-    const body = (req.body ?? {}) as Partial<UpsertOccurrenceInput> & { createEvent?: unknown }
+    const body = (req.body ?? {}) as Partial<UpsertOccurrenceInput> & { createEvent?: unknown; event?: unknown }
     if (!body.date) return res.status(400).json({ error: 'BadRequest', message: 'date is required' })
+    const eventDetails = body.createEvent === true ? readOccurrenceEventDetails(body.event) : {}
+    if (!eventDetails) {
+      return res.status(400).json({ error: 'BadRequest', message: 'event needs a title, an HH:MM time and a length in minutes' })
+    }
     // PRESENCE IS THE MESSAGE, so each field is copied only when the caller sent it.
     // `personId: a.personId ?? null` would turn "I only named the treat" into "…and nobody
     // has it". `personId` and `detail` answer different questions and travel independently.
@@ -105,7 +110,7 @@ export function registerFamilyNightRoutes(api: Api): void {
     // client round trip. Runs AFTER the upsert so a theme sent in the same call names the
     // event, and is ignored when the caller also named an event explicitly.
     if (body.createEvent === true && eventId === undefined) {
-      const made = await createOccurrenceEvent(tenant, body.date)
+      const made = await createOccurrenceEvent(tenant, body.date, eventDetails)
       return { ...result, eventId: made.eventId }
     }
     return result

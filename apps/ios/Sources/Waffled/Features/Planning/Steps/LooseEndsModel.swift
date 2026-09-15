@@ -25,7 +25,7 @@ enum LooseEndGroup: String, CaseIterable, Sendable {
     var note: String {
         switch self {
         case .notDone:
-            return "Computed from your modules — overdue chores, unchecked items on your lists, rhythms past due, habit goals short for the week. Nobody typed these; they are simply still open."
+            return "Computed from your modules — overdue chores, unchecked items on your lists, rhythms past due. Nobody typed these; they are simply still open."
         case .parked:
             return "What somebody wrote down during the week that exists nowhere else yet. Which is why one of the answers here is to drop it."
         }
@@ -43,7 +43,6 @@ enum LooseEndCopy {
         case "chore": return "Chore"
         case "list": return "List"
         case "rhythm": return "Rhythm"
-        case "goal": return "Goal"
         case "parked": return "Parked"
         default: return kind.capitalized
         }
@@ -202,6 +201,12 @@ final class PlanningLooseEndsModel {
     /// anywhere, so it must not become a row.
     private var setAside: Set<String> = []
     private var routedKeys: Set<String> = []
+    /// Answered this sitting. The module may still report one (a habit logged once can still
+    /// be short), and it must not come straight back to the top of the deck.
+    private var settled: Set<String> = []
+    /// The order each card first appeared in, so a re-read after an answer can't reshuffle
+    /// the deck or shrink "2 of 3" back to "1 of 2".
+    private var order: [LooseEndGroup: [String]] = [:]
 
     private let fetchLooseEnds: FetchLooseEnds
     private let routeLooseEnd: RouteLooseEnd
@@ -272,6 +277,8 @@ final class PlanningLooseEndsModel {
     func resetForWeek() {
         setAside = []
         answered = 0
+        settled = []
+        order = [:]
         recompute()
     }
 
@@ -284,7 +291,7 @@ final class PlanningLooseEndsModel {
     /// Everything the server reported for this group, before triage — the denominator of
     /// "3 of 7".
     func total(_ group: LooseEndGroup) -> Int {
-        (group == .notDone ? view?.notDone : view?.parked)?.count ?? 0
+        max(order[group]?.count ?? 0, (group == .notDone ? view?.notDone : view?.parked)?.count ?? 0)
     }
 
     func destinations(_ group: LooseEndGroup) -> [WaffledAPI.LooseEndDestination] {
@@ -292,15 +299,19 @@ final class PlanningLooseEndsModel {
         return group == .notDone ? d.notDone : d.parked
     }
 
-    /// The trail: what was just routed, most recent first, capped at three.
-    var trail: [WaffledAPI.LooseEndRoute] { Array(routes.suffix(3).reversed()) }
+    /// The trail: everything routed this session, most recent first. The view shows three
+    /// until it is opened, and every row undoes itself.
+    var trail: [WaffledAPI.LooseEndRoute] { Array(routes.reversed()) }
 
     /// Step NAMES for the trail. "Not done"'s destination labels ARE the step titles;
     /// "Parked"'s are verbs ("Make it a task"), which read wrong after an arrow — so the
     /// trail always uses the notDone label, falling back to the key for a step whose
     /// module is off.
     func stepName(_ to: String) -> String {
-        view?.destinations.notDone.first { $0.to == to }?.label ?? to
+        let all = (view?.destinations.notDone ?? []) + (view?.destinations.parked ?? [])
+        return all.first { $0.to == to && $0.stepTitle != nil }?.stepTitle
+            ?? view?.destinations.notDone.first { $0.to == to }?.label
+            ?? to
     }
 
     /// THE CRUMB, and the cross-step contract in one. `routes` is here on purpose and is
@@ -342,6 +353,7 @@ final class PlanningLooseEndsModel {
         await guarded {
             _ = try await self.resolveLooseEnd(item.kind, item.id, action, sessionId)
             self.answered += 1
+            self.settled.insert(item.key)
             await self.reload(weekStart: weekStart, sessionId: sessionId)
         }
     }
@@ -377,7 +389,16 @@ final class PlanningLooseEndsModel {
         await guarded {
             try await self.ruleListCall(listId, relevant)
             await self.reload(weekStart: weekStart, sessionId: sessionId)
+            self.forgetCardsNoLongerAsked()
         }
+    }
+
+    /// Ruling a list out is not an answer: its cards leave the count as well as the deck,
+    /// while anything already answered this sitting keeps counting.
+    private func forgetCardsNoLongerAsked() {
+        let live = Set((view?.notDone ?? []).map(\.key)).union((view?.parked ?? []).map(\.key))
+        let answered = Set(settled)
+        order = order.mapValues { keys in keys.filter { live.contains($0) || answered.contains($0) } }
     }
 
     /// "Leave it open" / "Keep it parked" — the answer that writes nothing at all.
@@ -423,11 +444,31 @@ final class PlanningLooseEndsModel {
         }
     }
 
+    private func remember(_ group: LooseEndGroup, _ items: [WaffledAPI.LooseEnd]) {
+        var known = order[group] ?? []
+        for item in items where !known.contains(item.key) { known.append(item.key) }
+        order[group] = known
+    }
+
+    /// First-seen order; a card this sitting hasn't seen yet goes last, in the server's order.
+    private func ordered(_ group: LooseEndGroup, _ items: [WaffledAPI.LooseEnd]) -> [WaffledAPI.LooseEnd] {
+        let known = order[group] ?? []
+        return items.enumerated()
+            .sorted { lhs, rhs in
+                let l = known.firstIndex(of: lhs.element.key) ?? Int.max
+                let r = known.firstIndex(of: rhs.element.key) ?? Int.max
+                return l == r ? lhs.offset < rhs.offset : l < r
+            }
+            .map(\.element)
+    }
+
     private func recompute() {
         routedKeys = Set(routes.map { "\($0.kind):\($0.id)" })
-        let hidden = routedKeys.union(setAside)
-        openNotDone = (view?.notDone ?? []).filter { !hidden.contains($0.key) }
-        openParked = (view?.parked ?? []).filter { !hidden.contains($0.key) }
+        remember(.notDone, view?.notDone ?? [])
+        remember(.parked, view?.parked ?? [])
+        let hidden = routedKeys.union(setAside).union(settled)
+        openNotDone = ordered(.notDone, (view?.notDone ?? []).filter { !hidden.contains($0.key) })
+        openParked = ordered(.parked, (view?.parked ?? []).filter { !hidden.contains($0.key) })
         revision &+= 1
     }
 }

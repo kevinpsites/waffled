@@ -67,6 +67,18 @@ extension WaffledAPI {
         /// "meal_plan" / "meal_prep" mirrors are filtered out: offering one would put a meal
         /// where an evening goes.
         let origin: String?
+        var startsAt: String? = nil
+        var allDay: Bool? = nil
+        var personId: String? = nil
+        var personColor: String? = nil
+        var personEmoji: String? = nil
+
+        /// As the calendar's own event, so the picker paints with the calendar's chip.
+        var asSyncedEvent: SyncedEvent {
+            SyncedEvent(
+                id: id, title: title, startsAtRaw: startsAt, startsAt: EventTime.parse(startsAt),
+                allDay: allDay ?? false, personId: personId, colorHex: personColor, emoji: personEmoji)
+        }
     }
 
 
@@ -147,7 +159,20 @@ enum PlanningFamilyNightBody {
     /// ONE call that creates the event and links it SERVER-SIDE, not a create-then-adopt
     /// round trip — a client-made event may not exist server-side yet (PowerSync uploads
     /// afterwards), so the link would 404 on a race. An existing link is returned untouched.
-    static func addEvent(date: String) -> [String: JSONValue] {
-        ["date": .string(date), "createEvent": .bool(true)]
+    /// `event` carries what the sheet confirmed.
+    static func addEvent(date: String, title: String, time: String, durationMin: Int) -> [String: JSONValue] {
+        ["date": .string(date), "createEvent": .bool(true),
+         "event": .object(["title": .string(title), "time": .string(time), "durationMin": .int(durationMin)])]
+    }
+
+    /// The server refuses a longer title, so the sheet stops typing there.
+    static func limitEventTitle(_ title: String) -> String {
+        String(title.prefix(200))
+    }
+
+    /// What the event sheet opens on: the week's theme when it has one.
+    static func defaultEventTitle(theme: String?) -> String {
+        let t = theme?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return t.isEmpty ? "🏡 Family Night" : "🏡 \(t)"
     }
 }

@@ -39,20 +39,28 @@ struct HorizonStepView: View {
         PlanningMonth.advance(year: floorMonth.year, month: floorMonth.month, by: ahead)
     }
 
+    private var anchorDate: Date {
+        Cal.gregorian(tz).date(from: DateComponents(year: anchor.year, month: anchor.month, day: 1)) ?? Date()
+    }
+
     var body: some View {
-        // Resolved ONCE per render rather than per cell, via the day-indexed
-        // `SyncManager.eventsByDay`.
-        let cells = PlanningMonth.cells(
-            year: anchor.year, month: anchor.month, tz: tz, firstDay: firstDay,
-            eventsByDay: sync.eventsByDay, countdownsByDate: countdowns.byDate,
-            palette: sync.eventPalette)
+        let rows = PhoneCalendar.monthRows(anchorDate, tz: tz, firstDay: firstDay)
 
         VStack(alignment: .leading, spacing: 14) {
             header
 
-            PlanningMonthGrid(
-                cells: cells, firstDay: firstDay, selectedDay: selectedDay,
-                todayKey: Agenda.todayKey(tz), onSelect: { selectedDay = $0 })
+            // The Calendar tab's own month grid, so a change there reaches this step. It splits
+            // the height it is given across its rows, and this step is content-sized, so the
+            // height is fixed per row.
+            PhoneMonthGrid(
+                rows: rows, firstDay: firstDay, tz: tz, byDay: sync.eventsByDay,
+                countdownsByDay: countdowns.byDate, todayKey: Agenda.todayKey(tz),
+                selectedDay: selectedDay, onPick: { key in withAnimation { selectedDay = key } })
+                .frame(height: 21 + CGFloat(rows.count) * 72)
+                .padding(.vertical, 6)
+                .background(WF.card)
+                .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
 
             dayPanel
 

@@ -348,8 +348,7 @@ describe('weekly planning · the record', () => {
     }))
     draw()
     expect(await screen.findByText('The week is decided')).toBeTruthy()
-    expect(screen.getByText('Loose ends')).toBeTruthy()
-    expect(screen.getByText(/Skipped — a real answer/)).toBeTruthy()
+    expect(await screen.findByTestId('wpr-day-2026-09-06')).toBeTruthy()
     expect(screen.queryByText('Recap')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: /Reopen the session/ }))
@@ -375,10 +374,38 @@ describe('weekly planning · the record', () => {
     expect(screen.getByText('2 decisions')).toBeTruthy()
     expect(screen.getByTestId('wpr-alone-none:goals')).toBeTruthy()
 
-    // …and the per-step list survives underneath, because it is the only record of what
-    // was skipped ON PURPOSE.
-    expect(screen.getByText(/Skipped — a real answer/)).toBeTruthy()
+    // No step-by-step list under it: the read-back's "left alone on purpose" already names
+    // anything skipped.
+    expect(screen.queryByText('Step by step')).toBeNull()
+    expect(screen.queryByText(/Skipped — a real answer/)).toBeNull()
     expect(screen.getByRole('button', { name: /Reopen the session/ })).toBeTruthy()
+  })
+
+  it('offers another week first, above the read-back', async () => {
+    mockApi(baseView({
+      session: session({ status: 'completed', completedAt: '2026-09-06T17:40:00.000Z' }),
+      steps: [
+        step('looseEnds', 1, 'Loose ends', 'Intake', { status: 'done' }),
+        step('recap', 2, 'Recap', 'Close'),
+      ],
+    }))
+    draw()
+    const week = await screen.findByTestId('wpr-day-2026-09-06')
+    const another = screen.getByText(/Plan another week/)
+    expect(another.compareDocumentPosition(week) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('still lists the steps when there is no read-back to show', async () => {
+    mockApi(baseView({
+      session: session({ status: 'completed', completedAt: '2026-09-06T17:40:00.000Z' }),
+      steps: [
+        step('looseEnds', 1, 'Loose ends', 'Intake', { status: 'done' }),
+        step('calendar', 2, 'Calendar', 'Frame the week', { status: 'skipped' }),
+      ],
+    }))
+    draw()
+    expect(await screen.findByText('The week is decided')).toBeTruthy()
+    expect(screen.getByText(/Skipped — a real answer/)).toBeTruthy()
   })
 
   it('reads the record in the past tense, not "what tonight changed"', async () => {
@@ -617,5 +644,61 @@ describe('the parked-note handoff', () => {
       const patch = calls.find((c) => c.method === 'PATCH' && c.url.includes('/loose-ends/parked/pk1'))
       expect(patch!.body).toMatchObject({ stepKey: 'horizon', sessionId: 's1' })
     })
+  })
+})
+
+describe('weekly planning · parking a note from any step', () => {
+  const onCalendar = () => session({ currentStep: 'calendar' })
+
+  it('parks a note tagged for a step still ahead, against this session', async () => {
+    mockApi(baseView({ session: onCalendar() }))
+    draw()
+    fireEvent.click(await screen.findByRole('button', { name: /park a note/i }))
+
+    const card = await screen.findByTestId('wp-park')
+    fireEvent.change(within(card).getByLabelText('The note'), { target: { value: 'pack for camping' } })
+    fireEvent.click(within(card).getByRole('button', { name: 'Horizon scan' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Park it' }))
+
+    await waitFor(() => {
+      const post = sent('POST', '/loose-ends/parked')[0]
+      expect(post?.body).toEqual({ note: 'pack for camping', stepKey: 'horizon', sessionId: 's1' })
+    })
+    await waitFor(() => expect(screen.queryByTestId('wp-park')).toBeNull())
+  })
+
+  it('offers only the steps still ahead that can raise it, and No tag by default', async () => {
+    mockApi(baseView({ session: onCalendar() }))
+    draw()
+    fireEvent.click(await screen.findByRole('button', { name: /park a note/i }))
+
+    const tags = within(await screen.findByTestId('wp-park')).getByRole('group')
+    const labels = within(tags).getAllByRole('button').map((b) => b.textContent)
+    // Not Loose ends or Calendar (behind you), not Family night (module off), not Recap.
+    expect(labels).toEqual(['Horizon scan', 'No tag'])
+    expect(within(tags).getByRole('button', { name: 'No tag' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('sends no tag when none is chosen', async () => {
+    mockApi(baseView({ session: onCalendar() }))
+    draw()
+    fireEvent.click(await screen.findByRole('button', { name: /park a note/i }))
+    const card = await screen.findByTestId('wp-park')
+    fireEvent.change(within(card).getByLabelText('The note'), { target: { value: 'call grandma' } })
+    fireEvent.click(within(card).getByRole('button', { name: 'Park it' }))
+
+    await waitFor(() =>
+      expect(sent('POST', '/loose-ends/parked')[0]?.body).toEqual({ note: 'call grandma', sessionId: 's1' })
+    )
+  })
+
+  it('is left to the steps that already have their own park bar', async () => {
+    for (const currentStep of ['looseEnds', 'horizon']) {
+      mockApi(baseView({ session: session({ currentStep }) }))
+      const { unmount } = draw()
+      await waitFor(() => expect(screen.getByText(/of 4/)).toBeTruthy())
+      expect(screen.queryByRole('button', { name: /park a note/i })).toBeNull()
+      unmount()
+    }
   })
 })

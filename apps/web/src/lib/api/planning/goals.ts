@@ -17,6 +17,11 @@ export interface GoalPace {
 
 export interface PlanningGoalGoal extends Goal {
   pace: GoalPace | null
+  // A target for the planned week ("10 of the 750 hours"). Only a running count or total
+  // takes one; `weekDone` is what was logged that week. Optional for an older server.
+  weekTargetable?: boolean
+  weekTarget?: number | null
+  weekDone?: number
 }
 
 export interface PlanningGoalMember extends GoalListMember {
@@ -53,6 +58,10 @@ export const planningGoalsApi = {
   setFocus: (sessionId: string, listId: string, goalId: string | null) =>
     apiSend<PlanningGoalsView>('PUT', '/api/weekly-planning/goals/focus', { sessionId, listId, goalId })
       .then((r) => { emit('goals'); emit('weeklyPlanning'); return r }),
+  // `target: null` clears the week's target. It is the session's, not the goal's.
+  setWeekTarget: (sessionId: string, goalId: string, target: number | null) =>
+    apiSend<PlanningGoalsView>('PUT', '/api/weekly-planning/goals/week-target', { sessionId, goalId, target })
+      .then((r) => { emit('weeklyPlanning'); return r }),
 }
 
 // The crumb this step hands the session record, rebuilt from the server's answer and

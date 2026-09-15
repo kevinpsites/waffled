@@ -143,6 +143,37 @@ enum GoalDisplay {
         if g.goalType == "checklist" { return "\(base) steps" }
         return base + (unit.map { " \($0)" } ?? "")
     }
+
+    private static let weekDay: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    private static let weekLabel: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "MMM d"
+        return f
+    }()
+
+    /// "3 of 10 hours": a planned week's target against what was logged inside it.
+    static func weekPlanAmount(_ t: WaffledAPI.Goal.WeekTarget, unit: String?) -> String {
+        "\(goalFmt(t.done)) of \(goalFmt(t.target))\(unit.map { " \($0)" } ?? "")"
+    }
+
+    /// "This week: 3 of 10 hours", or before that week starts, "Week of Sep 21: 10 hours" — the
+    /// Swift twin of web's `goalWeekPlanLabel`.
+    static func weekPlanLabel(_ t: WaffledAPI.Goal.WeekTarget, unit: String?) -> String {
+        if t.current { return "This week: \(weekPlanAmount(t, unit: unit))" }
+        let day = weekDay.date(from: t.weekStart).map { weekLabel.string(from: $0) } ?? t.weekStart
+        return "Week of \(day): \(goalFmt(t.target))\(unit.map { " \($0)" } ?? "")"
+    }
+
+    static func weekTargetLabel(_ g: WaffledAPI.Goal) -> String? {
+        g.weekPlan.map { weekPlanLabel($0, unit: g.unit) }
+    }
 }
 
 extension WaffledAPI.Goal: GoalDisplayable {

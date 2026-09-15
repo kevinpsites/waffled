@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useEventsRange, useHousehold, type AgendaEvent } from '../../../lib/api'
-import { evVars, useEventColor } from '../../../lib/event-color'
+import { useEventColor } from '../../../lib/event-color'
 import { EventModal } from '../../components/EventModal'
 import { DOW, DOW_FULL, MONTHS_SHORT, addDays, localDate, ymd } from '../../components/cal-utils'
 import type { PlanningStepModule, StepBodyProps } from '../registry'
 import { useHandoffAction } from '../handoff'
+import { PlanningEventChip } from '../PlanningEventChip'
 import '../../../styles/planning-calendar.css'
 
 // Step 2 · Calendar — the week is the whole screen, and it is the REAL calendar.
@@ -57,13 +58,6 @@ export function weekSummary(total: number, openDays: string[]): string {
 
 // Deliberately not `fmtTime`: that renders a lowercase "all day", and the chip's leading cell is
 // a real label.
-function chipWhen(e: AgendaEvent): string {
-  if (e.allDay) return 'All day'
-  const d = new Date(e.startsAt)
-  const h = d.getHours()
-  return `${h % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`
-}
-
 interface Day {
   key: string
   /** "SUN" */
@@ -73,23 +67,6 @@ interface Day {
   /** "Sep 6" */
   date: string
   today: boolean
-}
-
-// One event, as the week draws it. `.ev-tint` + `evVars` is the same chip painting every other
-// calendar surface uses, so the unassigned/household case falls out of `useEventColor`.
-function Chip({ e, color }: { e: AgendaEvent; color: string }) {
-  const avatar = e.personEmoji ?? (e.personName ? e.personName.slice(0, 1).toUpperCase() : null)
-  return (
-    <span className={`wpc-chip ev-tint${avatar ? '' : ' bare'}`} style={evVars(color)}>
-      <span className="wpc-chip-w">{chipWhen(e)}</span>
-      <span className="wpc-chip-t">{e.title}</span>
-      {avatar && (
-        <i className="wpc-chip-av" role="img" aria-label={e.personName ?? undefined}>
-          {avatar}
-        </i>
-      )}
-    </span>
-  )
 }
 
 function Body({ weekStart, setDecisionData, refresh, busy }: StepBodyProps) {
@@ -134,6 +111,8 @@ function Body({ weekStart, setDecisionData, refresh, busy }: StepBodyProps) {
   // Which day the event modal is open on. The header's button preselects today when today is
   // inside the week being planned, else the week's first day.
   const [addOn, setAddOn] = useState<string | null>(null)
+  // The event the modal is open on to change. An edit isn't an addition, so it leaves the count alone.
+  const [editing, setEditing] = useState<AgendaEvent | null>(null)
   // Per day, and never reset by a refetch: a row that collapsed under someone mid-read is worse.
   const [opened, setOpened] = useState<Set<string>>(() => new Set())
   // The crumb, and only ever a count: the recap reads through to the calendar itself.
@@ -199,7 +178,7 @@ function Body({ weekStart, setDecisionData, refresh, busy }: StepBodyProps) {
 
               <div className="wpc-evs">
                 {shown.map((e) => (
-                  <Chip key={`${e.id}-${e.occurrenceStart ?? ''}`} e={e} color={colorOf(e)} />
+                  <PlanningEventChip key={`${e.id}-${e.occurrenceStart ?? ''}`} e={e} color={colorOf(e)} label={`Edit ${e.title}`} onClick={() => setEditing(e)} />
                 ))}
                 {hidden > 0 && (
                   <button
@@ -239,6 +218,13 @@ function Body({ weekStart, setDecisionData, refresh, busy }: StepBodyProps) {
           {...(fromNote !== null ? { prefill: { title: fromNote } } : {})}
           onClose={onCloseModal}
           onSaved={onSaved}
+        />
+      )}
+      {editing && (
+        <EventModal
+          event={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { refetch(); refresh() }}
         />
       )}
     </div>

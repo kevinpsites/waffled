@@ -519,8 +519,7 @@ async function resolveRoutedKeys(
   const out = new Set<string>()
   const instanceIds: string[] = []
   for (const r of mine) {
-    if (r.kind === 'goal') out.add(`goal:${r.id}`)
-    else if (r.kind === 'chore' && UUID_RE.test(r.id)) instanceIds.push(r.id)
+    if (r.kind === 'chore' && UUID_RE.test(r.id)) instanceIds.push(r.id)
   }
   if (instanceIds.length) {
     const { rows } = await query<{ chore_id: string }>(

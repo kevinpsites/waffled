@@ -340,16 +340,44 @@ describe('FamilyNightStep · what each part actually is', () => {
 })
 
 describe('FamilyNightStep · this week on the calendar', () => {
-  it('adds this week to the calendar in one call, without an event form', async () => {
+  it('confirms the title, time and length before adding this week to the calendar', async () => {
     mockApi()
     render(<Body {...props()} />)
     fireEvent.click(await screen.findByRole('button', { name: /add to calendar/i }))
 
+    const dialog = await screen.findByRole('dialog', { name: /add family night to the calendar/i })
+    expect(wrote('/api/family-night/occurrence')).toHaveLength(0)
+    const title = within(dialog).getByLabelText(/title/i) as HTMLInputElement
+    expect(title.value).toBe(BOARD.theme ? `🏡 ${BOARD.theme}` : '🏡 Family Night')
+    // The server refuses a longer title, and the step can only say "try again".
+    expect(title.maxLength).toBe(200)
+    expect((within(dialog).getByLabelText(/^time/i) as HTMLInputElement).value).toBe(BOARD.time)
+
+    fireEvent.change(title, { target: { value: '🌮 Taco night' } })
+    fireEvent.change(within(dialog).getByLabelText(/^time/i), { target: { value: '18:30' } })
+    fireEvent.change(within(dialog).getByLabelText(/duration/i), { target: { value: '90' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /^add to calendar$/i }))
+
     await waitFor(() => expect(wrote('/api/family-night/occurrence')).toHaveLength(1))
-    expect(wrote('/api/family-night/occurrence')[0].body).toEqual({ date: DATE, createEvent: true })
-    // Created SERVER-side and linked in the same call: the web writes events locally first,
+    // Still ONE call that creates and links server-side: the web writes events locally first,
     // so a client id may not exist server-side yet.
+    expect(wrote('/api/family-night/occurrence')[0].body).toEqual({
+      date: DATE,
+      createEvent: true,
+      event: { title: '🌮 Taco night', time: '18:30', durationMin: 90 },
+    })
     await waitFor(() => expect(screen.getByTestId('wpfn-cal').textContent).toMatch(/on the calendar for this week/i))
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('writes nothing when the sheet is cancelled', async () => {
+    mockApi()
+    render(<Body {...props()} />)
+    fireEvent.click(await screen.findByRole('button', { name: /add to calendar/i }))
+    const dialog = await screen.findByRole('dialog', { name: /add family night to the calendar/i })
+    fireEvent.click(within(dialog).getByRole('button', { name: /cancel/i }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(wrote('/api/family-night/occurrence')).toHaveLength(0)
   })
 
   it('points the week at an event it already has, and skips meal mirrors', async () => {
@@ -359,6 +387,10 @@ describe('FamilyNightStep · this week on the calendar', () => {
 
     const list = await screen.findByLabelText(/events on this week/i)
     expect(list.textContent).toMatch(/Movie night/)
+    // Each event comes with its day and time, in the calendar's own chip.
+    expect(list.textContent).toMatch(/\d{1,2}:\d{2} (AM|PM)/)
+    expect(list.textContent).toMatch(/(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday) · [A-Z][a-z]{2} \d{1,2}/)
+    expect(within(list).getAllByRole('button')).toHaveLength(1)
     // A planned dinner is not a family night — offering one puts a meal where an evening goes.
     expect(list.textContent).not.toMatch(/Spaghetti/)
 

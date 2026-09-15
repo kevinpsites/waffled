@@ -62,7 +62,7 @@ interface DayEvent {
   personId: string | null; personName: string | null; personColor: string | null
   participantIds: string[]
 }
-interface Day { date: string; meal: string | null; cook: string | null; events: DayEvent[]; more: number }
+interface Day { date: string; meal: string | null; cook: string | null; events: DayEvent[]; more: number; hidden: DayEvent[] }
 interface LastCall { id: string; note: string; detail: string | null }
 interface LeftAlone { key: string; label: string; detail: string; badge: string; stepKey: string | null }
 interface Recap {
@@ -73,6 +73,7 @@ interface Recap {
   lastCall: LastCall[]
   lastCallMore: number
   leftAlone: LeftAlone[]
+  lastWeekTargets: { goalId: string; title: string; emoji: string | null; unit: string | null; target: number; done: number }[]
   counts: { decisions: number; deferred: number; parked: number }
 }
 
@@ -189,12 +190,16 @@ describe('planning · recap · the week, read back', () => {
     expect(dance).not.toHaveProperty('colorHex')
   })
 
-  // The strip caps and reports the remainder rather than growing.
-  it('caps a busy day and says how many it is holding back', async () => {
+  // The strip caps rather than growing, and ships what it held back so a day can open.
+  it('caps a busy day and ships what it held back', async () => {
     const r = await recap()
     expect(r.days[5].events.length).toBeLessThanOrEqual(4)
     expect(r.days[5].more).toBeGreaterThan(0)
     expect(r.days[5].events.length + r.days[5].more).toBe(6)
+    expect(r.days[5].hidden).toHaveLength(r.days[5].more)
+    expect(r.days[5].hidden[0]).toHaveProperty('when')
+    expect(r.days[5].hidden[0]).toHaveProperty('participantIds')
+    expect(r.days[1].hidden).toEqual([])
   })
 })
 
@@ -212,6 +217,17 @@ describe('planning · recap · grouped by the module the decision lives in', () 
     // THE POINTER RULE: undone elsewhere, the line stops claiming it.
     await call('DELETE', `/api/events/${added.event.id}`, kevin)
     expect(group(await recap(), 'calendar')).toBeUndefined()
+  })
+
+  it('counts only the groceries still to buy', async () => {
+    const toBuy = async () =>
+      Number(/(\d+) (?:grocery|groceries) to buy/.exec(group(await recap(), 'meals')?.headline ?? '')?.[1] ?? NaN)
+    await call('POST', '/api/meals/plan', kevin, { date: days[4], mealType: 'dinner', title: 'Tacos' })
+    const milk = json(await call('POST', '/api/lists/grocery/items', kevin, { name: 'Milk for the recap' })).item
+    const before = await toBuy()
+    expect(before).toBeGreaterThan(0)
+    await call('PATCH', `/api/list-items/${milk.id}`, kevin, { checked: true })
+    expect(await toBuy()).toBe(before - 1)
   })
 
   it('reads the meal plan and the grocery line back off the modules that own them', async () => {
@@ -276,6 +292,66 @@ describe('planning · recap · grouped by the module the decision lives in', () 
     expect(g.detail).toMatch(/Read every night/)
   })
 
+  it('reads back the target set for THIS week, not only the focus', async () => {
+    const listId = json(await call('POST', '/api/goal-lists', kevin, { name: 'Outside time', memberIds: [ownerId] })).list.id
+    const goalId = json(await call('POST', '/api/goals', kevin, {
+      title: '1,000 Hours Outside', goalListId: listId, goalType: 'total', unit: 'hours', targetValue: 1000,
+      trackingMode: 'shared_total', participantIds: [ownerId],
+    })).goal.id
+    expect((await call('PUT', '/api/weekly-planning/goals/week-target', kevin, { sessionId, goalId, target: 10 })).statusCode).toBe(200)
+
+    const g = group(await recap(), 'goals')!
+    expect(g.headline).toMatch(/1 target for the week/)
+    expect(g.detail).toMatch(/1,000 Hours Outside · 10 hours this week/)
+  })
+
+  it('reads last week’s targets back, with what was logged against them that week', async () => {
+    const { query } = await import('../src/platform/db')
+    const listId = json(await call('POST', '/api/goal-lists', kevin, { name: 'Kevin practice', memberIds: [ownerId] })).list.id
+    const goalId = json(await call('POST', '/api/goals', kevin, {
+      title: 'Practice guitar', goalListId: listId, goalType: 'total', unit: 'hours', targetValue: 750,
+      trackingMode: 'shared_total', participantIds: [ownerId],
+    })).goal.id
+    const lastWeek = addDays(weekStart, -7)
+    await query(
+      `insert into planning_goal_week_targets (household_id, goal_id, week_start, target) values ($1, $2, $3::date, 10)`,
+      [householdId, goalId, lastWeek]
+    )
+    // Two days into last week counts; a day into THIS week belongs to this week, not last.
+    await query(
+      `insert into goal_logs (household_id, goal_id, amount, logged_at)
+       select h.id, $2::uuid, v.amount, (($3::date + v.day) + time '12:00') at time zone h.timezone
+         from households h, (values (7, 2), (4, 7)) as v(amount, day)
+        where h.id = $1`,
+      [householdId, goalId, lastWeek]
+    )
+    const t = (await recap()).lastWeekTargets.find((x: { goalId: string }) => x.goalId === goalId)
+    expect(t).toMatchObject({ title: 'Practice guitar', unit: 'hours', target: 10, done: 7 })
+  })
+
+  it('still finds last week’s targets when the week start moved since that session', async () => {
+    const { query } = await import('../src/platform/db')
+    const listId = json(await call('POST', '/api/goal-lists', kevin, { name: 'Kevin reading', memberIds: [ownerId] })).list.id
+    const pages = json(await call('POST', '/api/goals', kevin, {
+      title: 'Read pages', goalListId: listId, goalType: 'total', unit: 'pages', targetValue: 5000,
+      trackingMode: 'shared_total', participantIds: [ownerId],
+    })).goal.id
+    const miles = json(await call('POST', '/api/goals', kevin, {
+      title: 'Walk miles', goalListId: listId, goalType: 'total', unit: 'miles', targetValue: 500,
+      trackingMode: 'shared_total', participantIds: [ownerId],
+    })).goal.id
+    // The last session's week began three days earlier than this one's (the household moved its
+    // week start in between), and a target from a fortnight ago is not "last week".
+    await query(
+      `insert into planning_goal_week_targets (household_id, goal_id, week_start, target)
+       values ($1, $2, $3::date, 40), ($1, $4, $5::date, 12)`,
+      [householdId, pages, addDays(weekStart, -3), miles, addDays(weekStart, -14)]
+    )
+    const targets = (await recap()).lastWeekTargets as { goalId: string; target: number }[]
+    expect(targets.find((x) => x.goalId === pages)).toMatchObject({ target: 40 })
+    expect(targets.find((x) => x.goalId === miles)).toBeUndefined()
+  })
+
   it('reports only PINNED family-night parts, never the rotation’s suggestion', async () => {
     expect(group(await recap(), 'familyNight')).toBeUndefined()
 
@@ -287,6 +363,16 @@ describe('planning · recap · grouped by the module the decision lives in', () 
     expect(g.count).toBe(1)
     expect(g.detail).toMatch(/Lottie/)
     expect(g.detail).toMatch(/rotation/)
+  })
+
+  it('says family night’s time the way a person would, not in 24-hour form', async () => {
+    const board = json(await call('GET', `/api/weekly-planning/familyNight?weekStart=${weekStart}`, kevin))
+    await call('POST', '/api/family-night/occurrence', kevin, {
+      date: board.date, assignments: [{ partId: board.parts[0].partId, personId: lottieId }],
+    })
+    const g = group(await recap(), 'familyNight')!
+    expect(g.headline).toMatch(/\b\d{1,2}:\d{2} [AP]M\b/)
+    expect(g.headline).not.toMatch(/\b\d{1,2}:\d{2}\b(?! [AP]M)/)
   })
 
   it('reads a kid back only when both of their questions are answered', async () => {

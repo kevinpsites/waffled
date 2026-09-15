@@ -1004,7 +1004,7 @@ struct ChoreEditSheet: View {
             _requiresPhoto = State(initialValue: false)
         case let .edit(i):
             editChoreId = i.choreId
-            editInstanceId = i.id
+            editInstanceId = Self.instanceId(editing: i)
             editStatus = i.status
             originalRrule = i.rrule
             _title = State(initialValue: i.choreTitle); _emoji = State(initialValue: i.emoji ?? "")
@@ -1311,7 +1311,7 @@ struct ChoreEditSheet: View {
         if freq == "once" {
             body["dueOn"] = .string(DateFmt.string(dueOn, "yyyy-MM-dd", .current))
         }
-        if editing, originalRrule != nil {
+        if editing, originalRrule != nil, editInstanceId != nil {
             scopeAction = .save(body: body, repeatChanged: buildRrule() != originalRrule)
         } else {
             performSave(body: body, scope: "all")
@@ -1325,6 +1325,13 @@ struct ChoreEditSheet: View {
         case let .save(body, _): performSave(body: body, scope: scope)
         case .delete: performDelete(scope: scope)
         }
+    }
+
+    /// The occurrence an edit is anchored to. A caller editing the chore itself (Weekly
+    /// Planning's card) passes the chore's own id as the instance: there is no occurrence to
+    /// send, and the API answers 409 to a chore id sent as one.
+    static func instanceId(editing i: WaffledAPI.ChoreInstanceDTO) -> String? {
+        i.id == i.choreId ? nil : i.id
     }
 
     private func targetBody(_ body: [String: JSONValue], scope: String) -> [String: JSONValue] {

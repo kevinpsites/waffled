@@ -10,9 +10,9 @@ import SwiftUI
 /// web's strip.
 ///
 /// It deliberately builds no saved frame (the shell owns the finished record and renders
-/// this body above its own tick-list; the TENSE comes off the payload's `savedAt`), no
-/// second way to answer a note, and no write of any kind — saving the week is the shell's
-/// affirmative.
+/// this body in it; the TENSE comes off the payload's `savedAt`). Its only writes answer a
+/// parked note: drop it, or turn it into a task or an event through the app's own editors,
+/// settling the note only if one was saved. Saving the week is the shell's affirmative.
 struct RecapStepView: View {
     let props: PlanningStepProps
 
@@ -36,6 +36,7 @@ struct RecapStepView: View {
             } else {
                 week
                 changed
+                targetsCard
                 lastCall
                 leftAlone
                 footNote
@@ -56,6 +57,46 @@ struct RecapStepView: View {
         // Withdrawn explicitly, because the verb is the SHELL's state and would otherwise
         // still be step 9's.
         .onAppear { props.lendVerb(nil) }
+        .sheet(item: composerBinding) { composer in noteEditor(composer) }
+    }
+
+    /// `.sheet(item:)` hands nil back for a cancel and a save alike; the model knows which.
+    private var composerBinding: Binding<PlanningRecapModel.NoteComposer?> {
+        Binding(
+            get: { model.composer },
+            set: { new in
+                guard new == nil else { return }
+                Task { await model.composerDismissed(sessionId: props.sessionId) }
+            })
+    }
+
+    @ViewBuilder
+    private func noteEditor(_ composer: PlanningRecapModel.NoteComposer) -> some View {
+        // Never a day already past: planning mid-week, or reading a saved week back later,
+        // puts the week's start behind today.
+        let day = max(DateFmt.date(props.weekStart, "yyyy-MM-dd", .current) ?? Date(),
+                      Calendar.current.startOfDay(for: Date()))
+        switch composer {
+        case let .task(_, note):
+            ChoreEditSheet(
+                assignableMembers: sync.can("chore.manage")
+                    ? sync.members : sync.members.filter { $0.id == sync.currentPersonId },
+                currencies: sync.currencies,
+                target: .new(personId: nil),
+                initialDate: day,
+                prefillTitle: note,
+                canDelete: false,
+                onSave: { _, body in await model.saveChoreFromNote(body) },
+                onDelete: { _, _ in "Deleting isn’t part of planning a week." })
+        case let .event(_, note):
+            eventEditor(day: day, note: note)
+        }
+    }
+
+    private func eventEditor(day: Date, note: String) -> EventEditSheet {
+        var sheet = EventEditSheet(event: nil, initialDate: day, prefillTitle: note)
+        sheet.onSaved = { model.eventSaved() }
+        return sheet
     }
 
     // MARK: - The week, one last time
@@ -68,6 +109,9 @@ struct RecapStepView: View {
             }
         }
     }
+
+    /// Busy days opened in place, showing the events the server held back.
+    @State private var openDays: Set<String> = []
 
     private func day(_ row: PlanningRecapDayRow) -> some View {
         WaffledCard(padding: 12) {
@@ -87,12 +131,21 @@ struct RecapStepView: View {
                             .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    ForEach(row.events) { event in
+                    let open = openDays.contains(row.date)
+                    ForEach(open ? row.events + row.hidden : row.events) { event in
                         eventChip(event)
                     }
-                    if row.more > 0 {
-                        Text("+\(row.more) more")
-                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+                    if row.more > 0 && !open {
+                        if row.hidden.isEmpty {
+                            Text("+\(row.more) more")
+                                .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+                        } else {
+                            Button { withAnimation { _ = openDays.insert(row.date) } } label: {
+                                Text("+\(row.more) more")
+                                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     if row.mealLine == nil && row.events.isEmpty && row.more == 0 {
                         Text("Nothing on")
@@ -104,16 +157,12 @@ struct RecapStepView: View {
         }
     }
 
-    /// Tinted by THE EVENT'S OWNER — through `sync.eventPalette`, which is why the payload
+    /// Painted by THE EVENT'S OWNER through `sync.eventPalette`, which is why the payload
     /// carries `participantIds` rather than a resolved colour. The strip has to agree with
-    /// the calendar it is describing.
-    ///
-    /// Always the TINTED treatment, matching the web's `ev-tint`: this is an agenda
-    /// surface, not a calendar grid, and a row of solid blocks would shout over the week's
-    /// dinners.
+    /// the calendar it is describing, so it follows the household's solid-vs-tinted style
+    /// the way the web's `ev-tint` does.
     private func eventChip(_ event: PlanningRecapEventRow) -> some View {
-        let paint = EventChipPaint(
-            sync.eventPalette.color(for: event.synced, fallback: WF.ink3), style: .tinted)
+        let paint = sync.eventPalette.chip(for: event.synced)
         return Text(event.title)
             .font(.system(size: 12.5, weight: .semibold))
             .foregroundStyle(paint.foreground)
@@ -190,35 +239,51 @@ struct RecapStepView: View {
                     }
 
                     ForEach(open) { note in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(note.note)
-                                .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink)
-                                .fixedSize(horizontal: false, vertical: true)
-                            if let detail = note.detail, !detail.isEmpty {
-                                Text(detail)
-                                    .font(.system(size: 12)).foregroundStyle(WF.ink3)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            HStack(spacing: 8) {
-                                Button("Keep it parked") { model.keepParked(note.id) }
-                                    .font(.system(size: 12.5, weight: .bold))
-                                    .foregroundStyle(WF.ink2)
-                                    .buttonStyle(.plain)
-                                    .disabled(props.busy || model.working != nil)
-                                Button("Drop it") {
-                                    Task { await model.drop(note.id, sessionId: props.sessionId) }
+                        let disabled = props.busy || model.working != nil
+                        // One sub-card per note: what it says on top, the two ways to act on it
+                        // below, and the quiet answers (keep, drop) behind the ⋯ menu.
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(alignment: .top, spacing: 8) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(note.note)
+                                        .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    if let detail = note.detail, !detail.isEmpty {
+                                        Text(detail)
+                                            .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
                                 }
-                                .font(.system(size: 12.5, weight: .bold))
-                                .foregroundStyle(WF.danger)
-                                .buttonStyle(.plain)
-                                .disabled(props.busy || model.working != nil)
+                                Spacer(minLength: 4)
                                 if model.working == note.id {
                                     ProgressView().controlSize(.small).tint(WF.ink3)
                                 }
+                                Menu {
+                                    Button("Keep it parked") { model.keepParked(note.id) }
+                                    Button("Drop it", role: .destructive) {
+                                        Task { await model.drop(note.id, sessionId: props.sessionId) }
+                                    }
+                                } label: {
+                                    Image(systemName: "ellipsis")
+                                        .font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink3)
+                                        .frame(width: 30, height: 30)
+                                        .contentShape(Rectangle())
+                                }
+                                .disabled(disabled)
+                                .accessibilityLabel("Keep or drop this note")
+                            }
+                            HStack(spacing: 8) {
+                                if sync.module(.chores) {
+                                    WaffledPillButton(label: "Make a task", disabled: disabled) { model.makeTask(from: note) }
+                                }
+                                WaffledPillButton(label: "Make an event", disabled: disabled) { model.makeEvent(from: note) }
                                 Spacer(minLength: 0)
                             }
                         }
+                        .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(WF.panel)
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     }
 
                     if let more = model.view?.lastCallMore, more > 0 {
@@ -263,6 +328,33 @@ struct RecapStepView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+    }
+
+    /// The targets last week's session set, against what was logged that week.
+    @ViewBuilder private var targetsCard: some View {
+        if !model.lastWeekTargets.isEmpty {
+            WaffledCard(padding: 14) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Last week’s targets")
+                        .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
+                    ForEach(model.lastWeekTargets) { t in
+                        HStack(alignment: .top, spacing: 8) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(t.emoji.map { "\($0) " } ?? "")\(t.title)")
+                                    .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Text(PlanningRecapText.targetLine(t))
+                                    .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                            }
+                            Spacer(minLength: 6)
+                            WaffledStatusBadge(
+                                text: t.done >= t.target ? "met" : "short",
+                                color: t.done >= t.target ? WF.success : WF.ink3)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     @ViewBuilder private var leftAlone: some View {

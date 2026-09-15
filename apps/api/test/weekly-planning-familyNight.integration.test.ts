@@ -403,6 +403,39 @@ describe('planning · familyNight · this week on the calendar', () => {
     expect((await board(W1)).eventId).toBe(b.eventId)
   })
 
+  it('creates the event with the title, time and length confirmed before adding it', async () => {
+    const week = plusDays(W1, 35)
+    const before = await board(week)
+    expect(before.eventId).toBeNull()
+
+    const made = await call('POST', '/api/family-night/occurrence', kevin, {
+      date: before.date,
+      createEvent: true,
+      event: { title: '🌮 Taco night', time: '18:30', durationMin: 90 },
+    })
+    expect(made.statusCode).toBe(200)
+
+    const after = await board(week)
+    expect(after.eventTitle).toBe('🌮 Taco night')
+    const { event } = json(await call('GET', `/api/events/${after.eventId}`, kevin))
+    const start = new Date(event.startsAt).getTime()
+    const local = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    expect(local.format(start)).toBe('18:30')
+    expect(new Date(event.endsAt).getTime() - start).toBe(90 * 60_000)
+  })
+
+  it('refuses event details it cannot read, and writes nothing', async () => {
+    const week = plusDays(W1, 42)
+    const { date } = await board(week)
+    for (const event of [{ time: '7pm' }, { durationMin: 0 }, { title: 42 }]) {
+      const res = await call('POST', '/api/family-night/occurrence', kevin, { date, createEvent: true, event })
+      expect(res.statusCode).toBe(400)
+    }
+    const after = await board(week)
+    expect(after.eventId).toBeNull()
+    expect(after.occurrenceId).toBeNull()
+  })
+
   it('unlinks the week without deleting the event', async () => {
     const w0 = await board(W0)
     const eventId = (await board(W0)).eventId!

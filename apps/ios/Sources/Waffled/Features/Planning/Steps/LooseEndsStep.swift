@@ -445,14 +445,17 @@ struct LooseEndsStepView: View {
 
     // MARK: trail
 
+    @State private var trailOpen = false
+
     @ViewBuilder private var trail: some View {
         let items = model.trail
+        let shown = trailOpen ? items : Array(items.prefix(3))
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 Text(LooseEndCopy.trailCaption)
                     .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(WF.ink3)
                     .fixedSize(horizontal: false, vertical: true)
-                ForEach(Array(items.enumerated()), id: \.offset) { index, route in
+                ForEach(Array(shown.enumerated()), id: \.offset) { index, route in
                     HStack(spacing: 6) {
                         Text(route.title)
                             .font(.system(size: 13, weight: index == 0 ? .bold : .semibold))
@@ -462,14 +465,19 @@ struct LooseEndsStepView: View {
                         Text(model.stepName(route.to))
                             .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
                         Spacer(minLength: 6)
-                        if index == 0 {
-                            Button("Undo") { undo(route) }
+                        Button("Undo") { undo(route) }
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(WF.ai)
                             .buttonStyle(.plain)
                             .disabled(disabled)
-                        }
+                            .accessibilityLabel("Undo sending \(route.title)")
                     }
+                }
+                if !trailOpen && items.count > 3 {
+                    Button("Show all \(items.count)") { withAnimation { trailOpen = true } }
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(WF.ai)
+                        .buttonStyle(.plain)
                 }
             }
             .padding(12)

@@ -98,11 +98,11 @@
   border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-2);
 }
 .wph-tag:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-3); }
-.wph-tag.on { background: var(--ink); border-color: var(--ink); color: var(--on-accent); }
+.wph-tag.on { background: var(--ink); border-color: var(--ink); color: var(--on-inverse); }
 /* A CHOSEN CHIP KEEPS ITS COLOURS UNDER THE CURSOR. `:hover:not(:disabled)` scores (0,3,0)
    and `.on` only (0,2,0), so hover wins on specificity whichever is written first — without
    this rule the chosen tag paints `--ink` text on an `--ink` fill. */
-.wph-tag.on:hover:not(:disabled) { background: var(--ink); border-color: var(--ink); color: var(--on-accent); }
+.wph-tag.on:hover:not(:disabled) { background: var(--ink); border-color: var(--ink); color: var(--on-inverse); }
 .wph-tag:disabled { cursor: default; opacity: 0.6; }
 
 /* A refused park keeps the sentence — `parkItem` caps a note at 500 characters, so this is

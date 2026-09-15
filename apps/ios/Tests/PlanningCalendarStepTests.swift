@@ -111,6 +111,18 @@ import Testing
     // asserted against `PlanningRouteSeed.sentHere` in `PlanningSentHereTests`
     // (PlanningLooseEndsTests.swift).
 
+    /// Tapping an event opens the shared sheet ON it; saving that is an edit, not an addition,
+    /// so it must not raise the step's count.
+    @Test func anEditOpensOnTheEventAndIsNotCountedAsAdded() {
+        let event = SyncedEvent(
+            id: "e1", title: "Dentist", startsAtRaw: nil, startsAt: nil, allDay: false,
+            personId: nil, colorHex: nil, emoji: nil, participantIds: [])
+        #expect(PlanningCalendarComposer(day: Date(), prefillTitle: nil).countsAsAdded)
+        let edit = PlanningCalendarComposer(day: Date(), prefillTitle: nil, event: event)
+        #expect(edit.event?.id == "e1")
+        #expect(!edit.countsAsAdded)
+    }
+
     @Test func addingAnEventIsOnlyEverACount() {
         let model = PlanningCalendarModel()
         #expect(model.decisionData == ["added": .int(0)])
