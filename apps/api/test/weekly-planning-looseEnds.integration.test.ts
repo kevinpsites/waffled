@@ -160,9 +160,10 @@ describe('loose ends · where a card can send things', () => {
     expect(parked.slice(0, 2)).toEqual(['tasks', 'calendar'])
     expect(parked).toEqual(expect.arrayContaining(['connection', 'kids']))
     for (const never of ['looseEnds', 'horizon', 'recap']) expect(parked).not.toContain(never)
-    expect(p.destinations.parked[0]).toMatchObject({ to: 'tasks', label: 'Make it a task', primary: true })
-    // The step's own name, for the sent list's "→ Kids".
-    expect(p.destinations.parked.find((d) => d.to === 'kids')).toMatchObject({ stepTitle: 'Kids' })
+    // A button reads as the step it sends to, nothing more: "Tasks", not "Make it a task".
+    expect(p.destinations.parked[0]).toMatchObject({ to: 'tasks', label: 'Tasks', primary: true })
+    expect(p.destinations.parked.map((d) => d.label)).toEqual(p.destinations.parked.map((d) => d.stepTitle))
+    expect(p.destinations.parked.find((d) => d.to === 'kids')).toMatchObject({ label: 'Kids', stepTitle: 'Kids' })
   })
 
   it('drops a destination whose step this household is not running', async () => {

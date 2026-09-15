@@ -161,16 +161,16 @@ const DESTINATIONS: Record<LooseEndGroup, LooseEndDestination[]> = {
     { to: 'kids', label: 'Kids', hint: "It's really one of the kids'" },
     { to: 'goals', label: 'Goals', hint: 'It belongs to a goal' },
   ],
-  // Every later step that reads parked notes: the two with a verb first, then the rest in
-  // session order. Hints match Horizon's tag chips.
+  // Every later step that reads parked notes, Tasks and Calendar first, then session order.
+  // Labelled by the step's own title (see availableDestinations); hints match Horizon's tags.
   parked: [
-    { to: 'tasks', label: 'Make it a task', hint: 'Someone owns it this week', primary: true },
-    { to: 'calendar', label: 'Put it on the calendar', hint: 'A date to look, or a deadline' },
-    { to: 'familyNight', label: 'Save it for Family night', hint: 'It belongs to the gathering' },
-    { to: 'connection', label: 'Take it to Connection', hint: 'It’s time with someone' },
-    { to: 'goals', label: 'Take it to Goals', hint: 'Somebody’s working on it' },
-    { to: 'meals', label: 'Take it to Meals', hint: 'It changes what we eat' },
-    { to: 'kids', label: 'Take it to Kids', hint: 'It’s about one of the kids' },
+    { to: 'tasks', label: 'Tasks', hint: 'Someone owns it this week', primary: true },
+    { to: 'calendar', label: 'Calendar', hint: 'A date to look, or a deadline' },
+    { to: 'familyNight', label: 'Family night', hint: 'It belongs to the gathering' },
+    { to: 'connection', label: 'Connection', hint: 'It’s time with someone' },
+    { to: 'goals', label: 'Goals', hint: 'Somebody’s working on it' },
+    { to: 'meals', label: 'Meals', hint: 'It changes what we eat' },
+    { to: 'kids', label: 'Kids', hint: 'It’s about one of the kids' },
   ],
 }
 
@@ -184,7 +184,7 @@ async function availableDestinations(
   const titled = (d: LooseEndDestination): LooseEndDestination => ({ ...d, stepTitle: live.get(d.to) })
   return {
     notDone: DESTINATIONS.notDone.filter((d) => live.has(d.to)).map(titled),
-    parked: DESTINATIONS.parked.filter((d) => live.has(d.to)).map(titled),
+    parked: DESTINATIONS.parked.filter((d) => live.has(d.to)).map((d) => ({ ...titled(d), label: live.get(d.to) ?? d.label })),
   }
 }
 
