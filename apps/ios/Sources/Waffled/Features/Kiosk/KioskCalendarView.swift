@@ -294,23 +294,30 @@ struct KioskCalendarView: View {
                 }
             }
             ForEach(0..<6, id: \.self) { row in
+                let rowCells = Array(cells[min(row * 7, cells.count)..<min(row * 7 + 7, cells.count)])
+                let spans = PhoneCalendar.weekSpans(rowCells.map(\.key), byDay: byDay, tz: tz)
                 HStack(spacing: 6) {
                     ForEach(0..<7, id: \.self) { col in
-                        let idx = row * 7 + col
-                        if idx < cells.count {
-                            monthCell(cells[idx], items: byDay[cells[idx].key] ?? [], today: today)
+                        if col < rowCells.count {
+                            monthCell(rowCells[col], items: spans.chipsByDay[rowCells[col].key] ?? [],
+                                      lanes: spans.lanes, today: today)
                         } else { Color.clear }
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .topLeading) {
+                    MonthSpanBars(spans: spans, inMonth: rowCells.map(\.inMonth), kiosk: true)
+                }
             }
         }
         .frame(maxHeight: .infinity)
     }
 
-    private func monthCell(_ cell: PhoneCalendar.MonthDay, items: [SyncedEvent], today: String) -> some View {
+    /// `items` are the day's events the row's bars didn't take; `lanes` rows stay empty for the bars.
+    private func monthCell(_ cell: PhoneCalendar.MonthDay, items: [SyncedEvent], lanes: Int, today: String) -> some View {
         let isSelected = cell.key == selectedDay
         let isToday = cell.key == today
+        let chips = PhoneCalendar.cappedChips(eventCount: items.count, cap: 3, reserved: lanes)
         return Button { withAnimation { selectedDay = cell.key } } label: {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
@@ -329,9 +336,12 @@ struct KioskCalendarView: View {
                         .background(WF.warnT).clipShape(Capsule())
                     }
                 }
-                ForEach(items.prefix(3)) { ev in eventChip(ev) }
-                if items.count > 3 {
-                    Text("+\(items.count - 3) more").font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
+                if lanes > 0 {
+                    Color.clear.frame(height: MonthSpanBars.reservedHeight(lanes: lanes, kiosk: true))
+                }
+                ForEach(items.prefix(chips.shown)) { ev in eventChip(ev) }
+                if chips.more > 0 {
+                    Text("+\(chips.more) more").font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 0)
             }

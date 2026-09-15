@@ -402,3 +402,26 @@ private func trip(_ id: String, _ first: String, throughExclusive end: String) -
         #expect(c.more == 1)
     }
 }
+
+// Bars over a month row: phone cells touch, iPad cells have a gap. A bar covers its columns and
+// the gaps between them, inset from both ends.
+@Suite struct MonthSpanGeometryTests {
+    @Test func aPhoneBarCoversItsColumnsInsetFromBothEnds() {
+        let g = PhoneCalendar.spanBarX(startCol: 2, endCol: 4, rowWidth: 350, spacing: 0, inset: 2)
+        #expect(g.x == 102)
+        #expect(g.width == 146)
+    }
+
+    @Test func anIPadBarAlsoCoversTheGapsBetweenItsCells() {
+        let g = PhoneCalendar.spanBarX(startCol: 1, endCol: 3, rowWidth: 736, spacing: 6, inset: 2)
+        #expect(g.x == 108)
+        #expect(g.width == 308)
+    }
+
+    @Test func aCellWithBarsShowsFewerChipsAndCountsTheRest() {
+        #expect(PhoneCalendar.cappedChips(eventCount: 5, cap: 3, reserved: 0) == .init(shown: 3, more: 2))
+        #expect(PhoneCalendar.cappedChips(eventCount: 5, cap: 3, reserved: 2) == .init(shown: 1, more: 4))
+        #expect(PhoneCalendar.cappedChips(eventCount: 1, cap: 3, reserved: 2) == .init(shown: 1, more: 0))
+        #expect(PhoneCalendar.cappedChips(eventCount: 2, cap: 3, reserved: 3) == .init(shown: 0, more: 2))
+    }
+}

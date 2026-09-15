@@ -48,7 +48,7 @@ struct PhoneMonthGrid: View {
                                     cell(d, rowHeight: rowHeight, chips: spans.chipsByDay[d.key] ?? [], lanes: spans.lanes)
                                 }
                             }
-                            .overlay(alignment: .topLeading) { spanBars(spans, days: row.days) }
+                            .overlay(alignment: .topLeading) { MonthSpanBars(spans: spans, inMonth: row.days.map(\.inMonth)) }
                         }
                         .frame(height: rowHeight)
                     }
@@ -90,34 +90,6 @@ struct PhoneMonthGrid: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel(d, count: (byDay[d.key]?.count ?? 0) + countdowns.count))
-    }
-
-    /// One bar per multi-day event across its days in this row. Taps fall through to the day
-    /// cell underneath, like tapping a chip.
-    private func spanBars(_ spans: PhoneCalendar.WeekSpans, days: [PhoneCalendar.MonthDay]) -> some View {
-        GeometryReader { geo in
-            let col = geo.size.width / 7
-            ForEach(spans.bars, id: \.event.id) { bar in
-                let paint = sync.eventPalette.phoneChip(for: bar.event)
-                let lead: CGFloat = bar.continuesBefore ? 0 : 4
-                let trail: CGFloat = bar.continuesAfter ? 0 : 4
-                Text(RhythmMark.prefixed(bar.event.title, isRhythm: bar.event.isRhythm))
-                    .font(.system(size: 9, weight: .bold)).foregroundStyle(paint.foreground)
-                    .lineLimit(1)
-                    .padding(.horizontal, 3)
-                    .frame(width: max(0, CGFloat(bar.endCol - bar.startCol + 1) * col - 4),
-                           height: PhoneCalendar.chipHeight, alignment: .leading)
-                    .background(paint.background, in: UnevenRoundedRectangle(
-                        topLeadingRadius: lead, bottomLeadingRadius: lead,
-                        bottomTrailingRadius: trail, topTrailingRadius: trail, style: .continuous))
-                    .opacity(days[bar.startCol].inMonth || days[bar.endCol].inMonth ? 1 : 0.42)
-                    .offset(x: CGFloat(bar.startCol) * col + 2,
-                            y: PhoneCalendar.cellTopPadding + PhoneCalendar.dayNumberHeight + PhoneCalendar.chipGap
-                                + CGFloat(bar.lane) * (PhoneCalendar.chipHeight + PhoneCalendar.chipGap))
-            }
-        }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 
     private func dayNumber(_ d: PhoneCalendar.MonthDay, isToday: Bool, isSelected: Bool) -> some View {

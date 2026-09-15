@@ -115,6 +115,26 @@ enum PhoneCalendar {
 
     static let maxSpanLanes = 2
 
+    struct ChipCap: Equatable {
+        let shown: Int
+        let more: Int
+    }
+
+    /// An iPad month cell's chips: a fixed cap, less the row's bar lanes; the rest are "+N more".
+    static func cappedChips(eventCount: Int, cap: Int, reserved: Int) -> ChipCap {
+        let shown = min(eventCount, max(0, cap - reserved))
+        return ChipCap(shown: shown, more: eventCount - shown)
+    }
+
+    /// A bar's x and width in a row of seven equal cells `spacing` apart: its columns and the gaps
+    /// between them, `inset` in from both ends.
+    static func spanBarX(startCol: Int, endCol: Int, rowWidth: CGFloat, spacing: CGFloat,
+                         inset: CGFloat) -> (x: CGFloat, width: CGFloat) {
+        let col = (rowWidth - spacing * 6) / 7
+        let cols = CGFloat(endCol - startCol + 1)
+        return (CGFloat(startCol) * (col + spacing) + inset, max(0, cols * col + (cols - 1) * spacing - inset * 2))
+    }
+
     /// Multi-day all-day events in one month row, laid out as bars across their days like Google's
     /// month view: earliest start first, longer first on a tie, each in the first lane free by its
     /// start. Beyond `maxLanes` an event stays a chip in each of its days.
