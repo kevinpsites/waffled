@@ -1,7 +1,7 @@
 import {
   formatInterval, cadenceLabel, dueLabel, periodLabel, splitCadence, intervalDays,
   nudgePlan, nudgeExplainer, urgencyOf, countdown, periodProgress, daysToGo,
-  addCadence, consequence, pushOut,
+  addCadence, consequence, pushOut, asksAhead, dayHintLabel,
   type AttentionItem, type RhythmWithPeriod,
 } from './rhythms'
 
@@ -170,9 +170,11 @@ describe('nudgePlan — the ceiling depends on the shape', () => {
     expect(nudgePlan('7 days', 14, 'completion')).toEqual({ effectiveDays: 3, capped: true })
   })
 
-  it('clamps a booking rhythm to its window when it has one', () => {
-    // With a window the runway is the span it exists to ask in, so the window is the cap.
-    expect(nudgePlan('1 mon', 30, 'scheduling', '7 days')).toEqual({ effectiveDays: 7, capped: true })
+  it('caps a booking rhythm at its cycle even when it has a window', () => {
+    // A windowed runway may reach back before the window opens — "ask me three weeks
+    // before date-night week" — so the cycle, not the window, is the ceiling.
+    expect(nudgePlan('1 mon', 21, 'scheduling')).toEqual({ effectiveDays: 21, capped: false })
+    expect(nudgePlan('1 mon', 45, 'scheduling')).toEqual({ effectiveDays: 30, capped: true })
   })
 })
 
@@ -196,9 +198,11 @@ describe('nudgeExplainer', () => {
     expect(nudgeExplainer('1 mon', 5)).toMatch(/last 5 days/i)
   })
 
-  it('clamps to the booking window rather than the cadence when there is one', () => {
-    // The window is the stretch the runway exists to ask in, so it is the ceiling.
-    expect(nudgeExplainer('1 mon', 30, '7 days')).toMatch(/trimmed to 7 days/i)
+  it('with a window, says how far ahead of it the asking starts', () => {
+    // The runway is the notice plus the window, so 21 on a 7-day window is 14 days' notice.
+    expect(nudgeExplainer('1 mon', 21, '7 days')).toMatch(/14 days before it opens/i)
+    expect(nudgeExplainer('1 mon', 7, '7 days')).toMatch(/from the day it opens/i)
+    expect(nudgeExplainer('1 mon', 45, '7 days')).toMatch(/trimmed/i)
   })
 
   it('says a zero runway nudges only on the final day', () => {
@@ -302,7 +306,38 @@ describe('urgencyOf', () => {
   })
 })
 
+describe('asksAhead', () => {
+  it('is true only while the period being asked about has not started', () => {
+    expect(asksAhead('2026-09-01', NOW)).toBe(true)
+    expect(asksAhead('2026-08-20', NOW)).toBe(false)
+    expect(asksAhead(null, NOW)).toBe(false)
+  })
+})
+
+describe('dayHintLabel', () => {
+  it('names the day a rhythm suggests', () => {
+    expect(dayHintLabel('FREQ=MONTHLY;BYDAY=3SA')).toBe('the third Saturday')
+    expect(dayHintLabel('FREQ=MONTHLY;BYDAY=-1FR')).toBe('the last Friday')
+    expect(dayHintLabel('FREQ=WEEKLY;INTERVAL=2;BYDAY=SA')).toBe('Saturdays')
+  })
+
+  it('says nothing for a rule it cannot name in a few words', () => {
+    expect(dayHintLabel(null)).toBeNull()
+    expect(dayHintLabel('FREQ=MONTHLY')).toBeNull()
+    expect(dayHintLabel('FREQ=WEEKLY;BYDAY=MO,WE')).toBeNull()
+  })
+})
+
 describe('countdown', () => {
+  it('keeps an ask about a period that has not started out of the late colour', () => {
+    // Asked three weeks ahead of date-night week: it is on the list, but nothing is late.
+    const r = rhythm({
+      satisfiedBy: 'scheduling', satisfied: false,
+      currentPeriodStart: '2026-09-01', currentPeriodEnd: '2026-10-01', currentWindowEnd: '2026-09-08',
+    })
+    expect(countdown(r, 'now', NOW)).toEqual({ num: '19', unit: 'days left', tone: 'near' })
+  })
+
   it('counts overdue days up, so the worst row reads loudest', () => {
     const r = rhythm({ nextDueAt: at(8, 14), satisfied: false })
     expect(countdown(r, 'now', NOW)).toEqual({ num: '6', unit: 'days late', tone: 'late' })

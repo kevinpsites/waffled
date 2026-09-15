@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { rhythmsApi, cadenceLabel, type RhythmPeriod } from '../../lib/api'
+import { rhythmsApi, cadenceLabel, dayHintLabel, type RhythmPeriod } from '../../lib/api'
 
 // Book a period: turn "this should happen" into an actual dated event.
 //
@@ -81,9 +81,13 @@ export function BookRhythmModal({
   const series = rhythm.autoSchedule && !item.hasSeries
   const last = lastBookableDay(windowEnd)
   const today = ymd(new Date())
-  // Default to today when today is inside the period (the common case — the runway
-  // only opens near the end), otherwise the first day it could go.
-  const [date, setDate] = useState(today >= periodStart && today <= last ? today : periodStart)
+  // The day the rhythm suggests when it has one inside the window; otherwise today when
+  // today is inside the window, otherwise the first day it could go.
+  const suggested = item.suggestedOn && item.suggestedOn >= periodStart && item.suggestedOn <= last
+    ? item.suggestedOn
+    : null
+  const hint = rhythm.autoSchedule ? null : dayHintLabel(rhythm.rrule)
+  const [date, setDate] = useState(suggested ?? (today >= periodStart && today <= last ? today : periodStart))
   const [time, setTime] = useState('18:00')
   const [allDay, setAllDay] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -150,6 +154,11 @@ export function BookRhythmModal({
               ? `That's outside this period — pick a day between ${day(periodStart)} and ${day(last)} for it to count.`
               : windowNote(periodStart, last, today)}
           </div>
+          {suggested && (
+            <div className="tiny muted" style={{ marginBottom: 10 }}>
+              {`It suggests ${day(suggested)}${hint ? `, ${hint}` : ''} — any day in the window still works.`}
+            </div>
+          )}
           {failed && <div className="tiny muted" style={{ marginBottom: 10 }}>Couldn't book it — try again.</div>}
 
           <button type="submit" className="btn btn-primary" disabled={busy || outside} style={{ width: '100%', justifyContent: 'center' }}>

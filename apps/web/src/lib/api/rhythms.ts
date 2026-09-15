@@ -40,8 +40,9 @@ export interface Rhythm {
    */
   bookWithin: string | null
   /**
-   * Postgres interval text, clamped server-side to the booking window where there is one
-   * and to half of `every` where there isn't.
+   * Postgres interval text, clamped server-side to the whole of `every` on a booking rhythm
+   * and to half of it on one you mark done. Measured back from the booking window's end, so
+   * with a window it may reach back before the window opens.
    */
   leadTime: string
   lastCompletedAt: string | null
@@ -81,6 +82,11 @@ export interface RhythmWithPeriod extends Rhythm {
    * one period has nothing in it. Different sentences, different buttons.
    */
   hasSeries: boolean
+  /**
+   * The day this period's rule points at inside the booking window (YYYY-MM-DD), or null.
+   * A suggestion only — a booking on any other day inside the window counts the same.
+   */
+  suggestedOn?: string | null
 }
 
 // One period of one rhythm — enough to book or skip it. An unscheduled attention
@@ -95,6 +101,8 @@ export interface RhythmPeriod {
   windowEnd: string
   /** See RhythmWithPeriod.hasSeries. Decides whether booking restores the recurrence. */
   hasSeries: boolean
+  /** See RhythmWithPeriod.suggestedOn. */
+  suggestedOn?: string | null
 }
 
 export type AttentionItem =
@@ -108,6 +116,8 @@ export type AttentionItem =
       windowEnd: string
       /** See RhythmWithPeriod.hasSeries. */
       hasSeries: boolean
+      /** See RhythmWithPeriod.suggestedOn. */
+      suggestedOn?: string | null
     }
 
 export interface Completion {
@@ -146,10 +156,11 @@ export interface CreateRhythmInput {
   startsOn?: string
   autoSchedule?: boolean
   rrule?: string | null
+  bookWithin?: string | null
 }
 
-// Only the fields that are safe to change in place. `satisfiedBy`, `startsOn`,
-// `autoSchedule` and `rrule` are absent on purpose, and the server refuses them:
+// Only the fields that are safe to change in place. `satisfiedBy`, `startsOn` and
+// `autoSchedule` are absent on purpose, and the server refuses them:
 // re-anchoring a live rhythm would silently re-interpret the periods it has already
 // skipped (they're keyed on period_start) and point its bookings at periods that no
 // longer exist. Changing the shape or the anchor means retiring it and making a new one.
@@ -160,6 +171,9 @@ export interface UpdateRhythmInput {
   personId?: string | null
   every?: string
   leadTime?: string
+  bookWithin?: string | null
+  /** A hand-booked rhythm's which-day hint; null lets any day count. Refused on one that books itself. */
+  rrule?: string | null
   isActive?: boolean
   /**
    * completion shape only — the server refuses it on a scheduling rhythm, whose periods
@@ -314,7 +328,7 @@ export function intervalDays(leadTime: string): number {
  *
  * The ceiling depends on the shape, because only one of the two has a floor:
  *
- * - **scheduling** — the whole cycle, or the booking window where there is one. Its feed
+ * - **scheduling** — the whole cycle, window or not. Its feed
  *   stops asking when the window closes, so a runway equal to the cycle opens on the
  *   period's first day and shuts on its last. This is what makes "remind me on the 1st to
  *   plan the outing, I'll book it for whenever suits" sayable; under a half cap a monthly
@@ -330,14 +344,10 @@ export function nudgePlan(
   every: string,
   leadDays: number,
   satisfiedBy: SatisfiedBy = 'completion',
-  bookWithin?: string | null
 ): { effectiveDays: number; capped: boolean } {
   const asked = Math.max(0, Math.round(leadDays || 0))
   const cycle = intervalDays(every)
-  const cap =
-    satisfiedBy === 'scheduling'
-      ? (bookWithin ? intervalDays(bookWithin) : cycle)
-      : Math.floor(cycle / 2)
+  const cap = satisfiedBy === 'scheduling' ? cycle : Math.floor(cycle / 2)
   // An unreadable cadence gives no cap to apply — better to echo the request than to
   // invent a clamp from a number we couldn't parse.
   if (cap <= 0) return { effectiveDays: asked, capped: false }
@@ -354,10 +364,25 @@ export function nudgePlan(
  */
 export function nudgeExplainer(every: string, leadDays: number, bookWithin?: string | null): string {
   // Always the scheduling shape: this sentence is only ever shown on a booking rhythm, and
-  // its ceiling is the whole cycle (or the window) rather than half of it.
-  const { effectiveDays, capped } = nudgePlan(every, leadDays, 'scheduling', bookWithin)
+  // its ceiling is the whole cycle rather than half of it.
+  const { effectiveDays, capped } = nudgePlan(every, leadDays, 'scheduling')
   const window = cadenceLabel(every) || 'every period'
-  const span = bookWithin ? intervalDays(bookWithin) : intervalDays(every)
+  const clamp = capped
+    ? ` (${plural(Math.max(0, Math.round(leadDays || 0)), 'day')} won't fit in ${window.replace(/^every /, 'a ')}, so it's trimmed to ${plural(effectiveDays, 'day')} — a runway longer than the cycle never goes quiet)`
+    : ''
+  // With a window the runway is the notice plus the window, so what is worth saying is how
+  // far ahead of the window the asking starts.
+  if (bookWithin) {
+    const width = intervalDays(bookWithin)
+    const ahead = effectiveDays - width
+    const when = ahead > 0
+      ? `from ${plural(ahead, 'day')} before it opens`
+      : effectiveDays <= 0
+        ? 'on its last day'
+        : effectiveDays >= width ? 'from the day it opens' : `for the last ${plural(effectiveDays, 'day')} of it`
+    return `A fresh window to book it opens ${window} and stays open ${plural(width, 'day')}. You'll be nudged ${when}, and only while nothing's on the calendar for it${clamp}.`
+  }
+  const span = intervalDays(every)
   // Asking for the whole span is the case worth naming rather than describing as "the last
   // N days of it" — "the last 30 days of every month" is a riddle; "from the first day" is
   // the thing the person actually asked for.
@@ -366,9 +391,6 @@ export function nudgeExplainer(every: string, leadDays: number, bookWithin?: str
     : effectiveDays >= span && span > 0
       ? 'from its first day'
       : `for the last ${plural(effectiveDays, 'day')} of it`
-  const clamp = capped
-    ? ` (${plural(Math.max(0, Math.round(leadDays || 0)), 'day')} won't fit in ${bookWithin ? 'that window' : window.replace(/^every /, 'a ')}, so it's trimmed to ${plural(effectiveDays, 'day')} — a runway longer than the stretch it belongs to never goes quiet)`
-    : ''
   return `A fresh window to book it opens ${window}. You'll be nudged ${tail}, and only while nothing's on the calendar for it${clamp}.`
 }
 
@@ -495,6 +517,36 @@ export function urgencyOf(
   return days <= COMING_UP_DAYS ? 'soon' : 'steady'
 }
 
+/** Whether the period a booking rhythm is asking about has yet to start — an early ask. */
+export function asksAhead(periodStart: string | null, now: Date = new Date()): boolean {
+  if (!periodStart) return false
+  return dayDiff(asMoment(periodStart), now) > 0
+}
+
+const HINT_ORDINALS = ['', 'first', 'second', 'third', 'fourth', 'fifth']
+const HINT_DAYS: Record<string, string> = {
+  SU: 'Sunday', MO: 'Monday', TU: 'Tuesday', WE: 'Wednesday', TH: 'Thursday', FR: 'Friday', SA: 'Saturday',
+}
+
+/** "the third Saturday" / "Saturdays" for a rhythm's which-day rule; null for anything longer. */
+export function dayHintLabel(rrule: string | null): string | null {
+  if (!rrule) return null
+  const parts: Record<string, string> = {}
+  for (const seg of rrule.replace(/^RRULE:/i, '').toUpperCase().split(';')) {
+    const [k, v] = seg.split('=')
+    if (k && v) parts[k] = v
+  }
+  const m = /^(-?\d)?([A-Z]{2})$/.exec(parts.BYDAY ?? '')
+  if (!m || !HINT_DAYS[m[2]]) return null
+  if (parts.FREQ === 'WEEKLY' && !m[1]) return `${HINT_DAYS[m[2]]}s`
+  if (parts.FREQ === 'MONTHLY' && m[1]) {
+    const n = Number(m[1])
+    const ord = n === -1 ? 'last' : HINT_ORDINALS[n]
+    return ord ? `the ${ord} ${HINT_DAYS[m[2]]}` : null
+  }
+  return null
+}
+
 /** The number and unit that anchor a row, plus how loudly to say it. */
 export interface RhythmCountdown {
   num: string
@@ -546,9 +598,11 @@ export function countdown(
   const tone: RhythmCountdown['tone'] = urgency === 'now' ? 'late' : urgency === 'soon' ? 'near' : 'soft'
 
   if (r.satisfiedBy === 'scheduling') {
-    // Always about the window, never about follow-through.
-    if (days <= 0) return { num: 'Today', unit: 'last day', tone }
-    return { num: String(days), unit: days === 1 ? 'day left' : 'days left', tone }
+    // Always about the window, never about follow-through. An early ask about a period
+    // that has not started is on the list, but nothing about it is late.
+    const t = tone === 'late' && asksAhead(r.currentPeriodStart, now) ? 'near' : tone
+    if (days <= 0) return { num: 'Today', unit: 'last day', tone: t }
+    return { num: String(days), unit: days === 1 ? 'day left' : 'days left', tone: t }
   }
   if (days < 0) {
     const late = -days
