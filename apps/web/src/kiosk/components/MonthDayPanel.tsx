@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import type { AgendaEvent } from '../../lib/api'
 import { useEventColor } from '../../lib/event-color'
-import { localDate, ymd } from './cal-utils'
+import { ymd } from './cal-utils'
+import { eventCoversDay } from './month-spans'
 import { AgendaRow, isPastEvent } from './AgendaView'
 
 // Relative name for the selected day, so the panel header reads "Today" / "Tomorrow"
@@ -38,7 +39,7 @@ export function MonthDayPanel({
 
   // Events on the selected local day, all-day first then chronological.
   const dayEvents = useMemo(() => {
-    const list = events.filter((e) => localDate(e.startsAt, tz) === day)
+    const list = events.filter((e) => eventCoversDay(e, day, tz))
     list.sort((a, b) => {
       if (a.allDay !== b.allDay) return a.allDay ? -1 : 1
       return new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
