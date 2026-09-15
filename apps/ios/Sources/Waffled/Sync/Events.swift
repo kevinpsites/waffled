@@ -219,8 +219,10 @@ enum Agenda {
         return start <= day && day < end
     }
 
-    /// The exclusive end day of a multi-day all-day event; nil for anything on a single day.
-    private static func exclusiveEndKey(_ e: SyncedEvent, _ tz: TimeZone) -> String? {
+    /// The exclusive end day of an all-day event with an end after its start day; nil otherwise.
+    /// Internal, not private: the month grid's span layout compares against it instead of
+    /// building the day list.
+    static func exclusiveEndKey(_ e: SyncedEvent, _ tz: TimeZone) -> String? {
         guard e.allDay, let end = e.endsAt else { return nil }
         let key = EventTime.dayKey(end, tz)
         return key > dayKey(e, tz) ? key : nil

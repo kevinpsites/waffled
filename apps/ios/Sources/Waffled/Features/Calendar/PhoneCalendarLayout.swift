@@ -124,16 +124,24 @@ enum PhoneCalendar {
             return WeekSpans(bars: [], lanes: 0, chipsByDay: [:])
         }
         struct Candidate { let event: SyncedEvent; let start: Int; let end: Int; let before: Bool; let after: Bool }
+        // Runs per row per render, so only key comparisons per event — one date step per row
+        // for the day after it.
+        let afterRow = DateFmt.date(lastDay, "yyyy-MM-dd", tz)
+            .flatMap { Cal.gregorian(tz).date(byAdding: .day, value: 1, to: $0) }
+            .map { EventTime.dayKey($0, tz) } ?? lastDay
         var seen = Set<String>()
         var candidates: [Candidate] = []
         for (col, key) in days.enumerated() {
             for e in byDay[key] ?? [] where e.allDay && !seen.contains(e.id) {
-                let keys = Agenda.dayKeys(e, tz)
-                guard keys.count > 1, let first = keys.first, let last = keys.last else { continue }
+                guard let endExclusive = Agenda.exclusiveEndKey(e, tz) else { continue }
                 seen.insert(e.id)
-                let end = days.lastIndex { $0 <= last } ?? col
-                candidates.append(Candidate(event: e, start: col, end: max(col, end),
-                                            before: first < firstDay, after: last > lastDay))
+                let end = max(col, days.lastIndex { $0 < endExclusive } ?? col)
+                let before = Agenda.dayKey(e, tz) < firstDay
+                let after = endExclusive > afterRow
+                // A one-day all-day event also has an exclusive end; it covers more than one day
+                // only if it runs past this row or across another column in it.
+                guard before || after || end > col else { continue }
+                candidates.append(Candidate(event: e, start: col, end: end, before: before, after: after))
             }
         }
         candidates.sort {
