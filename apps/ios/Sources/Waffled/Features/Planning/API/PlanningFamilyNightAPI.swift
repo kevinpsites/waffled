@@ -153,6 +153,11 @@ enum PlanningFamilyNightBody {
          "event": .object(["title": .string(title), "time": .string(time), "durationMin": .int(durationMin)])]
     }
 
+    /// The server refuses a longer title, so the sheet stops typing there.
+    static func limitEventTitle(_ title: String) -> String {
+        String(title.prefix(200))
+    }
+
     /// What the event sheet opens on: the week's theme when it has one.
     static func defaultEventTitle(theme: String?) -> String {
         let t = theme?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

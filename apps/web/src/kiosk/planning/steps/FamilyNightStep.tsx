@@ -381,7 +381,7 @@ function AddEventModal({ board, onClose, onAdd }: {
         <div className="wpfn-modal-s">{day}</div>
         <label className="field">
           <span>Title</span>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} autoFocus />
         </label>
         <div className="wpfn-modal-row">
           <label className="field">

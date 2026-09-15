@@ -349,6 +349,8 @@ describe('FamilyNightStep · this week on the calendar', () => {
     expect(wrote('/api/family-night/occurrence')).toHaveLength(0)
     const title = within(dialog).getByLabelText(/title/i) as HTMLInputElement
     expect(title.value).toBe(BOARD.theme ? `🏡 ${BOARD.theme}` : '🏡 Family Night')
+    // The server refuses a longer title, and the step can only say "try again".
+    expect(title.maxLength).toBe(200)
     expect((within(dialog).getByLabelText(/^time/i) as HTMLInputElement).value).toBe(BOARD.time)
 
     fireEvent.change(title, { target: { value: '🌮 Taco night' } })

@@ -171,6 +171,11 @@ private func model(_ feed: FamilyNightBoardFeed) -> PlanningFamilyNightModel {
         ]))
     }
 
+    @Test func theEventTitleStopsAtWhatTheServerTakes() {
+        #expect(PlanningFamilyNightBody.limitEventTitle(String(repeating: "a", count: 250)).count == 200)
+        #expect(PlanningFamilyNightBody.limitEventTitle("🏡 Taco night") == "🏡 Taco night")
+    }
+
     @Test func theEventSheetOpensOnTheThemeOrFamilyNight() {
         #expect(PlanningFamilyNightBody.defaultEventTitle(theme: "Board games") == "🏡 Board games")
         #expect(PlanningFamilyNightBody.defaultEventTitle(theme: "  ") == "🏡 Family Night")

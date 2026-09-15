@@ -409,6 +409,10 @@ private struct FamilyNightEventSheet: View {
                 VStack(alignment: .leading, spacing: 14) {
                     WaffledFieldCard(title: "Title") {
                         TextField("🏡 Family Night", text: $title)
+                            .onChange(of: title) { _, new in
+                                let limited = PlanningFamilyNightBody.limitEventTitle(new)
+                                if limited != new { title = limited }
+                            }
                             .font(.system(size: 16, weight: .semibold))
                             .padding(.horizontal, 14).padding(.vertical, 12)
                             .wfField()
