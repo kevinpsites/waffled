@@ -226,7 +226,7 @@ export function AgendaView({
               <span className="wf-serif">{dayLabel(g.date, todayMid)}</span>
               <span className="muted">{g.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
               {/* Add on this specific day — parity with tapping a day elsewhere. */}
-              <button type="button" className="ag-group-add" title={`Add an event on ${g.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`} aria-label="Add an event on this day" onClick={() => onCreate(g.key)}>＋</button>
+              <button type="button" className="ag-group-add" title={`Add an event on ${g.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`} aria-label="Add an event on this day" onClick={() => onCreate(g.key)}><Icon name="plus" /></button>
             </div>
             {g.events.map((e) => (
               <AgendaRow key={e.id} event={e} past={isPastEvent(e, today)} color={colorOf(e)} onClick={() => onOpenEvent(e)} />

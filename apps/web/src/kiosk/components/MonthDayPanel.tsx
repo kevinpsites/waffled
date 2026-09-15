@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { AgendaEvent } from '../../lib/api'
 import { useEventColor } from '../../lib/event-color'
+import { Icon } from '../icons'
 import { ymd } from './cal-utils'
 import { eventCoversDay } from './month-spans'
 import { AgendaRow, isPastEvent } from './AgendaView'
@@ -64,7 +65,7 @@ export function MonthDayPanel({
           aria-label="Add an event on this day"
           onClick={() => onCreate(day)}
         >
-          ＋
+          <Icon name="plus" />
         </button>
       </div>
       {dayEvents.length === 0 ? (

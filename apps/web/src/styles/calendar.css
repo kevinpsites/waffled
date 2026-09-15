@@ -186,6 +186,7 @@
 .ag-group .ag-group-add { opacity: 0; }
 .ag-group:hover .ag-group-add { opacity: 1; }
 .ag-group-add:hover { background: var(--primary); color: var(--on-accent); border-color: var(--primary); }
+.ag-group-add svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; }
 .ag-row { display: flex; align-items: center; gap: 14px; background: var(--card); border-radius: var(--r-md);
   box-shadow: var(--sh-1); padding: 14px 16px; margin-bottom: 8px; cursor: pointer; }
 .ag-row:hover { box-shadow: var(--sh-2); }
