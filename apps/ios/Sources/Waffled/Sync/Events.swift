@@ -199,9 +199,7 @@ enum Agenda {
     static func dayKeys(_ e: SyncedEvent, _ tz: TimeZone) -> [String] {
         let start = dayKey(e, tz)
         guard !start.isEmpty else { return [] }
-        guard e.allDay, let end = e.endsAt else { return [start] }
-        let endKey = EventTime.dayKey(end, tz)
-        guard endKey > start, var day = DateFmt.date(start, "yyyy-MM-dd", tz) else { return [start] }
+        guard let endKey = exclusiveEndKey(e, tz), var day = DateFmt.date(start, "yyyy-MM-dd", tz) else { return [start] }
         let cal = Cal.gregorian(tz)
         var keys = [start]
         while keys.count < maxSpanDays, let next = cal.date(byAdding: .day, value: 1, to: day) {
@@ -213,8 +211,19 @@ enum Agenda {
         return keys
     }
 
+    /// Day keys are `yyyy-MM-dd`, so string order is date order — no need to build the span.
     static func covers(_ e: SyncedEvent, day: String, tz: TimeZone) -> Bool {
-        dayKeys(e, tz).contains(day)
+        let start = dayKey(e, tz)
+        guard !start.isEmpty else { return false }
+        guard let end = exclusiveEndKey(e, tz) else { return day == start }
+        return start <= day && day < end
+    }
+
+    /// The exclusive end day of a multi-day all-day event; nil for anything on a single day.
+    private static func exclusiveEndKey(_ e: SyncedEvent, _ tz: TimeZone) -> String? {
+        guard e.allDay, let end = e.endsAt else { return nil }
+        let key = EventTime.dayKey(end, tz)
+        return key > dayKey(e, tz) ? key : nil
     }
 
     /// Today's key in `tz`.
@@ -240,8 +249,11 @@ enum Agenda {
     /// Mirrors the web's `isPastEvent`. Used to subtly fade already-done events.
     static func isPast(_ e: SyncedEvent, _ tz: TimeZone, now: Date = Date()) -> Bool {
         if e.allDay {
-            let last = dayKeys(e, tz).last ?? ""
-            return !last.isEmpty && last < todayKey(tz, now: now)
+            let start = dayKey(e, tz)
+            guard !start.isEmpty else { return false }
+            let today = todayKey(tz, now: now)
+            if let end = exclusiveEndKey(e, tz) { return end <= today }
+            return start < today
         }
         return (e.endsAt ?? e.startsAt ?? .distantFuture) < now
     }
