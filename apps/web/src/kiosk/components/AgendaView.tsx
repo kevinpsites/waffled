@@ -3,8 +3,9 @@ import { usePersons, useHousehold, eventsApi, type AgendaEvent } from '../../lib
 import { useEventColor } from '../../lib/event-color'
 import { Icon } from '../icons'
 import { RhythmMark } from './RhythmMark'
+import { DayPicker } from './DayPicker'
 import {
-  MONTHS, ymd, addDays, startOfWeek, monthGridStart, dowFrom, localDate, fmtTime, eventPeople,
+  ymd, addDays, startOfWeek, localDate, fmtTime, eventPeople,
 } from './cal-utils'
 
 // A day's worth of upcoming events, with a friendly header.
@@ -48,15 +49,6 @@ export function AgendaRow({ event, past = false, color: colorProp, onClick }: { 
 // Small month grid in the sidebar with per-day event dots; clicking a day jumps
 // the calendar to that week.
 function MiniMonth({ events, tz, colorOf, onPickDate, firstDay }: { events: AgendaEvent[]; tz: string; colorOf: (e: AgendaEvent) => string; onPickDate: (d: Date) => void; firstDay: number }) {
-  const today = new Date()
-  const [view, setView] = useState({ year: today.getFullYear(), month: today.getMonth() })
-  const todayKey = ymd(today)
-
-  const cells = useMemo(
-    () => Array.from({ length: 42 }, (_, i) => addDays(monthGridStart(view.year, view.month, firstDay), i)),
-    [view, firstDay]
-  )
-
   const dots = useMemo(() => {
     const map: Record<string, Set<string>> = {}
     for (const e of events) {
@@ -66,50 +58,13 @@ function MiniMonth({ events, tz, colorOf, onPickDate, firstDay }: { events: Agen
     return map
   }, [events, tz, colorOf])
 
-  function shift(delta: number) {
-    setView((v) => {
-      const m = v.month + delta
-      return { year: v.year + Math.floor(m / 12), month: ((m % 12) + 12) % 12 }
-    })
-  }
-
   return (
-    <div className="card ag-mini">
-      <div className="ag-mini-head">
-        <div className="wf-serif" style={{ fontSize: 19, fontWeight: 600 }}>{MONTHS[view.month]}</div>
-        <div className="ag-mini-nav">
-          <button type="button" aria-label="Previous month" onClick={() => shift(-1)}><Icon name="cl" /></button>
-          <button type="button" aria-label="Next month" onClick={() => shift(1)}><Icon name="cr" /></button>
-        </div>
-      </div>
-      <div className="ag-mini-dow">
-        {dowFrom(['S', 'M', 'T', 'W', 'T', 'F', 'S'], firstDay).map((d, i) => <div key={i}>{d}</div>)}
-      </div>
-      <div className="ag-mini-grid">
-        {cells.map((d) => {
-          const key = ymd(d)
-          const dim = d.getMonth() !== view.month
-          const colors = dots[key]
-          return (
-            <button
-              type="button"
-              key={key}
-              className={`ag-mini-cell ${dim ? 'dim' : ''} ${key === todayKey ? 'today' : ''}`}
-              onClick={() => onPickDate(d)}
-            >
-              <span className="ag-mini-n">{d.getDate()}</span>
-              {colors && (
-                <span className="ag-mini-dots">
-                  {[...colors].slice(0, 3).map((c, i) => (
-                    <span key={i} className="ag-mini-dot" style={{ background: c }} />
-                  ))}
-                </span>
-              )}
-            </button>
-          )
-        })}
-      </div>
-    </div>
+    <DayPicker
+      className="card ag-mini"
+      firstDay={firstDay}
+      dotsFor={(key) => (dots[key] ? [...dots[key]] : undefined)}
+      onPick={(key) => onPickDate(new Date(`${key}T00:00:00`))}
+    />
   )
 }
 

@@ -15,11 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Set when an event ends on iPhone and iPad.** A new event's all-day toggle now comes with an
-  **Ends** date, so a trip can span several days, and a timed event has an **Ends** date and time
-  in place of the duration menu — including an end on a later day. Moving the start keeps the
-  event's length. All day, Starts and Ends sit together in one card, and every date and time reads
-  the same way ("Sep 14, 2026", "5:00 PM"); tap one to pick it.
+- **Set when an event ends, on web, iPhone and iPad.** The event editor's all-day toggle now
+  comes with an **Ends** date, so a trip can span several days, and a timed event has an **Ends**
+  date and time in place of the duration menu — including an end on a later day. Moving the start
+  keeps the event's length. All day, Starts and Ends sit together in one card that looks the same
+  on every screen, and every date and time reads the same way ("Sep 14, 2026", "5:00 PM"); tap one
+  to pick it from a calendar or a list of times.
 - **Tell goal suggestions to ignore an event for good.** When Review events keeps offering
   the same kind of event for a goal, pick a word from its title (web: **Ignore…**, iPhone and
   iPad: **Dismiss → Ignore events like this…**) and events containing it are never suggested for
@@ -50,6 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   day panel lists it on each of those days. On iPhone and iPad it also appears on each day of the
   week cards, day view and agenda, shows on Today and a person's day while it's on, and only
   fades as past once its last day is over.
+- **The web calendar's round ＋ buttons are centred.** The add button beside the month view's day
+  panel, and on each agenda day, drew its plus a little right of centre.
 - **A habit's Log sheet says when today is already submitted.** On iPhone and iPad a habit
   with no one to pick (a family habit) never showed that today was done, and a sheet opened from
   an older list could still offer "Mark done for today" after someone had logged it — the tap

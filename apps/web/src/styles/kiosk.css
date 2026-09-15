@@ -642,6 +642,28 @@ body {
   min-width: 140px;
 }
 
+/* The event editor's When card (EventWhenField): All day, Starts and Ends in one box, dates and
+   times as pills that open their picker under the row — the iPhone editor's layout. */
+.ew { margin-bottom: 12px; padding: 12px 14px; background: var(--card); border: 1px solid var(--hair);
+  border-radius: var(--r-md); }
+.ew-allday { display: flex; align-items: center; justify-content: space-between; width: 100%;
+  border: 0; border-bottom: 1px solid var(--hair); background: none; padding: 0 0 12px; margin-bottom: 12px;
+  font: inherit; font-size: 15px; font-weight: 650; color: var(--ink); cursor: pointer; }
+.ew-row + .ew-row { margin-top: 12px; }
+.ew-label { display: block; font-size: 13px; font-weight: 600; color: var(--ink-2); margin-bottom: 6px; }
+.ew-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.ew-pill { border: 1px solid var(--hair); background: var(--card-2); color: var(--ink); font: inherit;
+  font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; padding: 7px 14px;
+  border-radius: 999px; cursor: pointer; }
+.ew-pill.on { border-color: var(--primary); color: var(--primary); box-shadow: 0 0 0 3px var(--ring); }
+.ew-picker { margin-top: 10px; max-width: 320px; }
+.ew-times { margin-top: 10px; max-width: 200px; max-height: 220px; overflow-y: auto; position: relative;
+  background: var(--card-2); border: 1px solid var(--hair); border-radius: var(--r-sm); }
+.ew-time { display: block; width: 100%; text-align: left; border: 0; background: none; font: inherit;
+  font-size: 14px; padding: 7px 12px; color: var(--ink); cursor: pointer; }
+.ew-time:hover { background: var(--panel); }
+.ew-time.on { color: var(--primary); font-weight: 700; }
+
 /* Stepper's typable value — a +/- pair alone can only land on multiples of
    its step, so the number itself is directly editable too. */
 .stepper-input {
