@@ -34,6 +34,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A habit's Log sheet says when today is already submitted.** On iPhone and iPad a habit
+  with no one to pick (a family habit) never showed that today was done, and a sheet opened from
+  an older list could still offer "Mark done for today" after someone had logged it — the tap
+  looked like it worked but added nothing. The sheet now checks today's log when it opens and
+  shows **Already submitted today ✓**; you can still pick another day to catch one up.
 - **Thaw reminders are no longer suggested as goal events.** Review events skipped planned
   meals but still offered each week's "Thaw for Dinner" reminder for a goal; Waffled's own meal
   and thaw reminders are now never suggested.
