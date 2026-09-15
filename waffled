@@ -1175,12 +1175,11 @@ case "$cmd" in
     update_repo_for_upgrade "$target" || exit 1
     # If the move replaced this script, restart the upgrade under the new copy NOW —
     # before the backup/pin/pull — so ensure_env and compose logic match the new tree.
-    # The resolved version rides along, so the new copy targets the same release.
-    if [ "$skip_backup" -eq 1 ]; then
-      maybe_reexec_upgrade "$script_before" --version "$target" --skip-backup
-    else
-      maybe_reexec_upgrade "$script_before" --version "$target"
-    fi
+    # The resolved version rides along, so the new copy targets the same release; every
+    # upgrade flag belongs in this one list or the restarted run silently loses it.
+    reexec_args=(--version "$target")
+    if [ "$skip_backup" -eq 1 ]; then reexec_args+=(--skip-backup); fi
+    maybe_reexec_upgrade "$script_before" ${reexec_args[@]+"${reexec_args[@]}"}
     # Snapshot the DB BEFORE changing the version pin or swapping images.
     # Migrations are forward-only, so a missing rollback point is fatal unless
     # the operator explicitly accepts it.

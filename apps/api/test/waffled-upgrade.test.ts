@@ -208,7 +208,8 @@ describe('waffled upgrade safety', () => {
 
     expect(upgradeCase).not.toContain('.env.example')
     expect(upgradeCase).toContain('update_repo_for_upgrade "$target"')
-    expect(upgradeCase).toMatch(/maybe_reexec_upgrade "\$script_before" --version "\$target"/)
+    expect(upgradeCase).toContain('reexec_args=(--version "$target")')
+    expect(upgradeCase).toMatch(/maybe_reexec_upgrade "\$script_before" \$\{reexec_args\[@\]\+"\$\{reexec_args\[@\]\}"\}/)
     expect(upgradeCase.indexOf('check_upgrade_target')).toBeLessThan(upgradeCase.indexOf('update_repo_for_upgrade'))
   })
 
