@@ -14,6 +14,7 @@ struct MealsStepView: View {
 
     @State private var editing: String?
     @State private var shopping = false
+    @State private var groceryList = false
     @State private var groceryDraft = ""
 
     /// The library the planner's manual-pick sheet browses, loaded only when it opens.
@@ -92,6 +93,9 @@ struct MealsStepView: View {
                 onClear: {
                     write { await model.clearNight(weekStart: props.weekStart, date: target.date) }
                 })
+        }
+        .sheet(isPresented: $groceryList) {
+            MealsStepGroceryListSheet(model: model, weekStart: props.weekStart)
         }
         .sheet(isPresented: $shopping) {
             MealsStepShopperSheet(
@@ -260,7 +264,11 @@ struct MealsStepView: View {
                         }
                         Spacer(minLength: 6)
                     }
-                    Pill(text: PlanningMealsText.groceryPill(groceries))
+                    Button { groceryList = true } label: {
+                        Pill(text: PlanningMealsText.groceryPill(groceries))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens this week’s grocery list")
 
                     HStack(spacing: 8) {
                         TextField("Add to groceries…", text: $groceryDraft)

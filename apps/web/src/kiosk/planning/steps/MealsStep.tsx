@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { mealBuilderApi, mealsApi, personsApi, planningMealsApi, useRecipes, type Meal, type Person } from '../../../lib/api'
-import { groceryApi } from '../../../lib/api/grocery'
+import { groceryApi, useGroceryBoard, type GroceryBoardItem } from '../../../lib/api/grocery'
 import { isEatingOut } from '../../components/MealsColumn'
 import { PlanWeek } from '../../components/PlanWeek'
 import { RecipeBrowser } from '../../components/RecipeBrowser'
+import { CHECK } from '../../components/CheckGlyph'
+import { AISLE_ORDER } from '../../components/share-list'
 import type {
   PlanCard,
   PlanningMealsView,
@@ -14,6 +16,7 @@ import type {
   PlanningShoppingTrip,
 } from '../../../lib/api'
 import type { PlanningStepModule, StepBodyProps } from '../registry'
+import '../../../styles/grocery.css'
 import '../../../styles/planning-meals.css'
 
 // Step 7 · Meals — the same seven columns as Calendar, each night showing its events above the
@@ -127,6 +130,85 @@ function GroceryAdd({ weekStart, disabled }: { weekStart: string; disabled: bool
       />
       <button type="submit" className="btn btn-primary" disabled={disabled || !draft.trim()}>Add item</button>
     </form>
+  )
+}
+
+// Ticking an item off changes what's left to buy, so the step's own count re-reads.
+async function checkGrocery(weekStart: string, id: string, checked: boolean): Promise<boolean> {
+  try {
+    await groceryApi.setItemChecked(id, checked)
+    await reread(weekStart)
+    return true
+  } catch {
+    return false
+  }
+}
+
+const aisleRank = (aisle: string) => {
+  const i = AISLE_ORDER.indexOf(aisle)
+  return i < 0 ? AISLE_ORDER.length : i
+}
+
+// The week's list, opened from the count: the grocery board's own rows (grocery.css) without
+// its edit and remove, so the only thing to do here is tick an item off or put it back.
+function GroceryListModal({ weekStart, onClose }: { weekStart: string; onClose: () => void }) {
+  const { board, loading, error } = useGroceryBoard(weekStart)
+  const [flipped, setFlipped] = useState<Record<string, boolean>>({})
+  const [failed, setFailed] = useState<string | null>(null)
+  const items = (board?.items ?? [])
+    .map((i) => (i.id in flipped ? { ...i, checked: flipped[i.id] } : i))
+    .sort((a, b) => aisleRank(a.aisle) - aisleRank(b.aisle))
+  const toBuy = items.filter((i) => !i.checked)
+  const inCart = items.filter((i) => i.checked)
+
+  const toggle = async (item: GroceryBoardItem) => {
+    const checked = !item.checked
+    setFailed(null)
+    setFlipped((f) => ({ ...f, [item.id]: checked }))
+    if (!(await checkGrocery(weekStart, item.id, checked))) {
+      setFlipped((f) => {
+        const next = { ...f }
+        delete next[item.id]
+        return next
+      })
+      setFailed(`${item.name} didn't change — try again.`)
+    }
+  }
+
+  const row = (item: GroceryBoardItem) => (
+    <button
+      key={item.id}
+      type="button"
+      className={`gitem wpm-gitem${item.checked ? ' done' : ''}`}
+      aria-label={item.checked ? `Put ${item.name} back` : `Check off ${item.name}`}
+      onClick={() => void toggle(item)}
+    >
+      <span className="gck" aria-hidden>{item.checked ? CHECK : null}</span>
+      <span className="gitem-body"><span className="gnm">{item.name}</span></span>
+      {item.quantity && <span className="gqty">{item.quantity}</span>}
+    </button>
+  )
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card wpm-modal" role="dialog" aria-label="This week’s groceries" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="modal-close" onClick={onClose} aria-label="Close">×</button>
+        <div className="wpm-modal-t wf-serif">This week’s groceries</div>
+        <div className="wpm-modal-s">
+          {loading && !board
+            ? 'Reading the list…'
+            : error
+              ? "Couldn't read the list — try again."
+              : `${toBuy.length} to buy · aisle order${inCart.length ? ` · ${inCart.length} in the cart` : ''}`}
+        </div>
+        {failed && <p className="wpm-gro-err" role="alert">{failed}</p>}
+        <div className="wpm-gro-rows">
+          {toBuy.map(row)}
+          {inCart.length > 0 && <div className="wpm-modal-h wpm-gro-cart">In the cart</div>}
+          {inCart.map(row)}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -310,6 +392,7 @@ function Body(p: StepBodyProps) {
   const s = useMealsStep(p, true)
   const [editing, setEditing] = useState<string | null>(null)
   const [shopping, setShopping] = useState(false)
+  const [groceryList, setGroceryList] = useState(false)
   const autoDates = useMemo(
     () => new Set([...s.filled.map((f) => f.date), ...s.autoMarks]),
     [s.filled, s.autoMarks]
@@ -321,7 +404,7 @@ function Body(p: StepBodyProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoDates])
 
-  useEffect(() => { setEditing(null); setShopping(false); if (state.planner) set({ planner: false }) }, [s.key])
+  useEffect(() => { setEditing(null); setShopping(false); setGroceryList(false); if (state.planner) set({ planner: false }) }, [s.key])
 
   // The nights the planner may touch. Noon-local, like every date on this screen: a bare
   // YYYY-MM-DD parses as UTC and PlanWeek reads the day back with local getters.
@@ -351,10 +434,10 @@ function Body(p: StepBodyProps) {
                 : "built from what's planned so far · staples skipped"}
             </span>
           </div>
-          <span className="wpm-gro-pill">
+          <button type="button" className="wpm-gro-pill wpm-gro-open" onClick={() => setGroceryList(true)}>
             {s.view.groceries.items - s.view.groceries.checked} to buy · aisle order
             {s.view.groceries.checked > 0 ? ` · ${s.view.groceries.checked} done` : ''}
-          </span>
+          </button>
           {/* The trip is a REAL one-off chore on the Tasks board; with the chores module off
               there is nowhere for it to live, so the control goes away rather than sit dead. */}
           {s.view.choresOn && (
@@ -382,6 +465,8 @@ function Body(p: StepBodyProps) {
           onSave={(t) => { setShopping(false); void setShopper(p.weekStart, t, p.refresh) }}
         />
       )}
+
+      {groceryList && <GroceryListModal weekStart={p.weekStart} onClose={() => setGroceryList(false)} />}
 
       {s.kept.length > 0 && (
         <div className="wpm-note">
