@@ -387,6 +387,10 @@ describe('FamilyNightStep · this week on the calendar', () => {
 
     const list = await screen.findByLabelText(/events on this week/i)
     expect(list.textContent).toMatch(/Movie night/)
+    // Each event comes with its day and time, in the calendar's own chip.
+    expect(list.textContent).toMatch(/\d{1,2}:\d{2} (AM|PM)/)
+    expect(list.textContent).toMatch(/(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday) · [A-Z][a-z]{2} \d{1,2}/)
+    expect(within(list).getAllByRole('button')).toHaveLength(1)
     // A planned dinner is not a family night — offering one puts a meal where an evening goes.
     expect(list.textContent).not.toMatch(/Spaghetti/)
 

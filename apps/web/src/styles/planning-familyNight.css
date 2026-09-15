@@ -105,31 +105,17 @@
 .wpfn-cal-act { flex: none; padding: 8px 14px; font-size: 13px; }
 
 .wpfn-cal-list {
-  list-style: none;
   margin: 10px 0 0;
-  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  max-height: 168px;
+  gap: 10px;
+  max-height: 220px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-.wpfn-cal-pick {
-  width: 100%;
-  text-align: left;
-  font: inherit;
-  font-size: 13.5px;
-  font-weight: 650;
-  color: var(--ink);
-  background: var(--card-2);
-  border: 1px solid var(--hair-2);
-  border-radius: var(--r-md);
-  padding: 9px 12px;
-  cursor: pointer;
-}
-.wpfn-cal-pick:hover:not(:disabled) { border-color: var(--line); }
-.wpfn-cal-pick:disabled { opacity: 0.55; cursor: default; }
+.wpfn-cal-dow { font-size: 11px; font-weight: 800; color: var(--ink-3); margin-bottom: 5px; }
+.wpfn-cal-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.wpfn-cal-chips .wpc-chip:disabled { opacity: 0.55; cursor: default; }
 .wpfn-cal-empty { font-size: 12.5px; font-weight: 600; color: var(--ink-3); padding: 4px 2px; }
 .wpfn-theme.field > span {
   margin-bottom: 0;

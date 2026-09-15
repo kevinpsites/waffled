@@ -1,11 +1,15 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { avTint } from '../../components/Avatar'
-import { addDays, ymd } from '../../components/cal-utils'
+import { DOW_FULL, MONTHS_SHORT, addDays, localDate, ymd } from '../../components/cal-utils'
+import { useEventColor } from '../../../lib/event-color'
+import { PlanningEventChip } from '../PlanningEventChip'
 import type { PlanningStepModule, StepBodyProps } from '../registry'
 import {
   planningFamilyNightApi,
   planningFamilyNightDecision,
   useEventsRange,
+  useHousehold,
+  type AgendaEvent,
   weekdayName,
   type PlanningFamilyNightBoard,
   type PlanningFamilyNightPart,
@@ -247,27 +251,42 @@ function EventPicker({ weekStart, disabled, onPick }: {
   disabled: boolean
   onPick: (eventId: string) => void
 }) {
+  const { household } = useHousehold()
+  const tz = household?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  const colorOf = useEventColor()
   // The last day of the week the SERVER handed us — never a week computed here.
   const { events } = useEventsRange(weekStart, ymd(addDays(new Date(`${weekStart}T00:00:00`), 6)))
   // A meal-plan mirror is not family night; offering one puts a dinner where an evening goes.
   const linkable = events.filter((e) => e.origin !== 'meal_plan' && e.origin !== 'meal_prep')
 
+  // Under the household-local day each happens in, all-day first then by time, as the Calendar step.
+  const byDay: Record<string, AgendaEvent[]> = {}
+  for (const e of linkable) (byDay[localDate(e.startsAt, tz)] ??= []).push(e)
+  const days = Object.keys(byDay).sort()
+  for (const k of days) {
+    byDay[k].sort((a, b) =>
+      a.allDay === b.allDay ? new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime() : a.allDay ? -1 : 1
+    )
+  }
+  const dayLabel = (key: string) => {
+    const d = new Date(`${key}T00:00:00`)
+    return `${DOW_FULL[d.getDay()]} · ${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`
+  }
+
   return (
-    <ul className="wpfn-cal-list" aria-label="Events on this week">
-      {linkable.length === 0 && <li className="wpfn-cal-empty">Nothing on the week to point at yet.</li>}
-      {linkable.map((e) => (
-        <li key={e.id}>
-          <button
-            type="button"
-            className="wpfn-cal-pick"
-            disabled={disabled}
-            onClick={() => onPick(e.id)}
-          >
-            {e.title}
-          </button>
-        </li>
+    <div className="wpfn-cal-list" aria-label="Events on this week">
+      {linkable.length === 0 && <div className="wpfn-cal-empty">Nothing on the week to point at yet.</div>}
+      {days.map((key) => (
+        <div key={key} className="wpfn-cal-day">
+          <div className="wpfn-cal-dow">{dayLabel(key)}</div>
+          <div className="wpfn-cal-chips">
+            {byDay[key].map((e) => (
+              <PlanningEventChip key={e.id} e={e} color={colorOf(e)} label={`Link ${e.title}`} disabled={disabled} onClick={() => onPick(e.id)} />
+            ))}
+          </div>
+        </div>
       ))}
-    </ul>
+    </div>
   )
 }
 

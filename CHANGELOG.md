@@ -56,6 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Weekly Planning's Horizon scan on iPhone draws the Calendar tab's month view.** Event chips,
   countdowns and "+N more" match the calendar, and a change to that view shows up here too.
+- **Weekly Planning shows events as the calendar's chips.** On iPhone and iPad the Calendar step's
+  events wrap as chips instead of full-width rows, and Family night's "Link an event" list groups
+  the week's events by day with their time and colour, on the web too.
 - **A parked note in Weekly Planning's Loose ends can go to any later step.** Besides making it
   a task or putting it on the calendar, you can take it to Family night, Connection, Goals,
   Meals or Kids, and the sent list names that step.

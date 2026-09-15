@@ -67,6 +67,18 @@ extension WaffledAPI {
         /// "meal_plan" / "meal_prep" mirrors are filtered out: offering one would put a meal
         /// where an evening goes.
         let origin: String?
+        var startsAt: String? = nil
+        var allDay: Bool? = nil
+        var personId: String? = nil
+        var personColor: String? = nil
+        var personEmoji: String? = nil
+
+        /// As the calendar's own event, so the picker paints with the calendar's chip.
+        var asSyncedEvent: SyncedEvent {
+            SyncedEvent(
+                id: id, title: title, startsAtRaw: startsAt, startsAt: EventTime.parse(startsAt),
+                allDay: allDay ?? false, personId: personId, colorHex: personColor, emoji: personEmoji)
+        }
     }
 
 

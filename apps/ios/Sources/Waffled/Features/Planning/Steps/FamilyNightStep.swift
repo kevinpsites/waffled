@@ -16,6 +16,7 @@ import SwiftUI
 struct FamilyNightStepView: View {
     let props: PlanningStepProps
 
+    @Environment(SyncManager.self) private var sync
     @State private var model = PlanningFamilyNightModel()
     /// Closed again after a pick, so a second tap on a stale list can't relink.
     @State private var picking = false
@@ -236,19 +237,26 @@ struct FamilyNightStepView: View {
                 Text("Nothing on the week to point at yet.")
                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
             } else {
-                ForEach(model.weekEvents) { event in
-                    Button {
-                        picking = false
-                        save(PlanningFamilyNightBody.linkEvent(date: board.date, eventId: event.id))
-                    } label: {
-                        Text(event.title)
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 11).padding(.vertical, 9)
-                            .wfField(radius: WF.rSM, fill: WF.panel)
+                // Under each day, in the calendar's own chips, so a title comes with its when.
+                ForEach(PlanningFamilyNightFormat.weekEventDays(
+                    model.weekEvents, weekStart: props.weekStart, tz: sync.householdTz), id: \.day.key) { entry in
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("\(entry.day.full) · \(entry.day.date)")
+                            .font(.system(size: 11, weight: .heavy)).foregroundStyle(WF.ink3)
+                        ChipFlow(spacing: 6, lineSpacing: 6) {
+                            ForEach(entry.events) { event in
+                                Button {
+                                    picking = false
+                                    save(PlanningFamilyNightBody.linkEvent(date: board.date, eventId: event.id))
+                                } label: {
+                                    PlanningEventChip(event: event)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(disabled)
+                                .accessibilityLabel("Link \(event.title)")
+                            }
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .disabled(disabled)
                 }
             }
         }

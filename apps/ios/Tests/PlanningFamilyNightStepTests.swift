@@ -183,6 +183,28 @@ private func model(_ feed: FamilyNightBoardFeed) -> PlanningFamilyNightModel {
     }
 
 
+    @Test func theLinkPickerGroupsTheWeeksEventsByDayInTimeOrder() throws {
+        let json = Data("""
+        {"events":[
+          {"id":"e2","title":"Movie night","startsAt":"2026-09-11T01:00:00Z","allDay":false,"origin":"manual","personId":"p1","personColor":"#E0548B","personEmoji":"🦄"},
+          {"id":"e1","title":"Swim","startsAt":"2026-09-10T15:00:00Z","allDay":false,"origin":null},
+          {"id":"e3","title":"Soccer","startsAt":"2026-09-10T22:30:00Z","allDay":false,"origin":null}
+        ]}
+        """.utf8)
+        struct Resp: Decodable { let events: [WaffledAPI.PlanningWeekEvent] }
+        let events = try WaffledAPI.decoder.decode(Resp.self, from: json).events
+        let tz = TimeZone(identifier: "America/Chicago")!
+
+        let days = PlanningFamilyNightFormat.weekEventDays(events, weekStart: "2026-09-06", tz: tz)
+
+        // 8 PM on the 10th in Chicago is the 11th in UTC; it belongs to the evening it happens in.
+        #expect(days.map(\.day.key) == ["2026-09-10"])
+        #expect(days.first?.events.map(\.title) == ["Swim", "Soccer", "Movie night"])
+        // Carried into the calendar's own event, so the chip paints in the owner's colour.
+        #expect(days.first?.events.last?.colorHex == "#E0548B")
+        #expect(days.first?.events.last?.emoji == "🦄")
+    }
+
     @Test func decodesTheBoardVerbatimOffTheWire() throws {
         let board = try decodedBoard()
         #expect(board.weekStart == "2026-09-06")
