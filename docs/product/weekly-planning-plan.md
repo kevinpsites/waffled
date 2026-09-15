@@ -120,12 +120,12 @@ port properly rather than transliterating:**
   `data.routes` on step 1's OWN row, so a destination step cannot read it from `step.data`
   — the shell passes it down. The web does not surface these at all; iOS is ahead, kept
   because it is the same fix the parked-note handoff was, and owed back to web.
-- **No month-chip squash fix on Horizon**, because an iOS month cell draws dots rather than
-  chips: there is nothing to compress, and tapping a day *is* "+N more".
+- **No month-chip squash fix on Horizon**: it draws the Calendar tab's `PhoneMonthGrid`, whose
+  cells already fit their chips to the row and say "+N more".
 
-**Known debt from the port:** `CalendarView`'s `monthCells`/`monthCell` are `private`, so
-the planning month grid is a documented copy of that 42-cell grid. Two copies will drift;
-extracting one shared grid is the fix.
+**Month grid:** the Horizon scan draws the Calendar tab's own `PhoneMonthGrid`
+(`Features/Calendar/PhoneCalendarViews.swift`), so a change to the iPhone month view reaches
+the step too. Web's Horizon reuses `MonthView` the same way.
 
 **Known debt found beside it (pre-existing, not the port's):** iOS's `RecipePickerSheet` —
 the Meals tab's own night picker, and the planner's manual pick — supplies no `onPickMeal`,

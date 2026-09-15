@@ -54,6 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Weekly Planning's Horizon scan on iPhone draws the Calendar tab's month view.** Event chips,
+  countdowns and "+N more" match the calendar, and a change to that view shows up here too.
 - **Editing a task from Weekly Planning on iPhone saves again.** The Tasks step's editor
   failed with "Couldn't save this task"; it now saves the task itself, and a one-off's new date
   moves its open day.
