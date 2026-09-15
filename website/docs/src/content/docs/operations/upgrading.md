@@ -24,18 +24,25 @@ upgrade`**. This page covers what it does, how versioning works, and how to roll
 
 That does the whole thing, in order:
 
-1. **Fast-forwards the repo** (`git pull --ff-only`). The tagged repo and the images
-   are a *matched pair* — the compose file, configs, and `./waffled` script must agree
-   with the image you're about to run — so the code is updated first. If the pull can't
-   fast-forward (local changes or diverged history), the upgrade **stops before changing
-   images**; resolve the repository state and re-run.
+1. **Moves your checkout onto the release's tag** — fast-forwarding your branch to it, or
+   checking the tag out if you're on a detached HEAD. The target is the newest **GitHub
+   Release** (or the one you name with `--version`); a release is only published once its
+   images are on GHCR, so the version it picks can never be one whose images are missing.
+   The tagged repo and the images are a *matched pair* — the compose file, configs, and
+   `./waffled` script must agree with the image you're about to run — and `main` between a
+   merge and its tag is **not** that pair, which is why upgrade targets tags. If the move
+   can't happen (local changes, or history that has diverged), the upgrade **stops before
+   changing images**; resolve the repository state and re-run. A checkout that is already
+   *ahead* of the newest release stops it too — its compose file and `./waffled` expect
+   newer images than any published release ships, so there is nothing safe to pin. Run
+   `./waffled up --build` to run that checkout from source, or `git checkout` the tag you
+   want.
 2. **Takes a database backup** (via the running backup sidecar) as your rollback point,
    *before* changing the version pin or images. If the backup service is unavailable or
    the backup fails, the upgrade stops.
-3. **Bumps `WAFFLED_VERSION` in your `.env`** to match the version this checkout points
-   at. This is the step that used to be manual: `./waffled` only writes `.env` on first
-   run, so an existing `.env` kept its *old* version and a plain `./waffled up` would
-   re-pull the old image.
+3. **Bumps `WAFFLED_VERSION` in your `.env`** to the release being installed. This is the
+   step that used to be manual: `./waffled` only writes `.env` on first run, so an existing
+   `.env` kept its *old* version and a plain `./waffled up` would re-pull the old image.
 4. **Pulls the new images and restarts** the stack. The one-shot **migrate** service
    reruns automatically (the image tag changed) and applies any new migrations before
    `api` comes up.
@@ -46,6 +53,19 @@ That does the whole thing, in order:
 
 Migrations are **idempotent** — only the ones you don't have yet are applied, and it's
 safe to re-run `upgrade`.
+
+To move to a **particular** release rather than the newest one, name it:
+
+```bash
+./waffled upgrade --version 0.15.1
+```
+
+Upgrade only ever moves **forward** — naming a release older than your current
+`WAFFLED_VERSION` is refused, because migrations are forward-only and an older image would
+meet a newer schema. Going back is a [rollback](#rolling-back), restored backup and all.
+(If your `.env` pin isn't a plain version — unset, `latest`, or a tag of your own — there's
+nothing to compare against, so upgrade says it can't check the direction and leaves that
+call to you.)
 
 If you have independently created and verified a rollback point, you can explicitly bypass
 the automatic snapshot with `./waffled upgrade --skip-backup`. This is intentionally opt-in:
@@ -82,9 +102,9 @@ the `./waffled upgrade` command, so you don't have to watch the repo.
 `WAFFLED_VERSION` in `infra/compose/.env` (the single version knob). `./waffled upgrade`
 just moves that pin forward and pulls. A few variations:
 
-- **Pin to a specific release** instead of "latest on this branch": check out the tag
-  first, then upgrade — `git checkout v0.2.0 && ./waffled upgrade`. (`upgrade` reads the
-  target version from the checkout's `.env.example`, so the tag you're on decides it.)
+- **Pin to a specific release** instead of the newest one: `./waffled upgrade --version
+  0.2.0`. It moves the checkout to `v0.2.0` for you, so there's no `git checkout` to do
+  first — but it still won't move you *backwards* from a newer pin.
 - **Run bleeding-edge from source** instead of published images: `./waffled up --build`
   after a `git pull` builds the images locally and stamps the current git SHA.
 - **Point at a custom registry/tag**: an explicit `WAFFLED_API_IMAGE` /

@@ -4,8 +4,9 @@
 #   ./waffled up        start everything (checks prereqs, creates .env on first run, PULLS
 #                    the published images, runs migrations), then status + what's-next
 #   ./waffled up --build   same, but build the images from source (dev / bleeding-edge)
-#   ./waffled upgrade [--skip-backup]   pull the latest release: fast-forward the repo,
-#                    back up the DB, bump the pinned version, and apply migrations
+#   ./waffled upgrade [--version X.Y.Z] [--skip-backup]   move to a published release:
+#                    move the checkout to its tag, back up the DB, bump the pinned
+#                    version, and apply migrations (default: the newest release)
 #   ./waffled setup     guided: how devices reach this server (localhost / LAN IP / hostname)
 #   ./waffled status    show each container's state + health (✓/✗)
 #   ./waffled down      stop & remove the stack
@@ -287,24 +288,74 @@ wait_for_services() {
   return 1
 }
 
+# The release a plain `upgrade` moves to. A GitHub Release is created only after its
+# images reach GHCR (publish-images.yml: the release job needs the image merge), so this
+# can never name a version whose images are missing — a bare `git tag` can.
+latest_release_version() {
+  local repo body version
+  repo="$(env_val UPDATE_CHECK_REPO)"; repo="${repo:-kevinpsites/waffled}"
+  body="$(curl -fsSL --max-time 20 -H 'Accept: application/vnd.github+json' \
+    "https://api.github.com/repos/$repo/releases/latest" || true)"
+  version="$(printf '%s\n' "$body" | sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v?([0-9]+\.[0-9]+\.[0-9]+)".*/\1/p' | head -1)"
+  if [ -z "$version" ]; then
+    echo "${c_red}✗ Couldn't read the latest release from github.com/$repo.${c_reset}" >&2
+    echo "Check this machine's network access, or name the release yourself: ./waffled upgrade --version X.Y.Z" >&2
+    return 1
+  fi
+  printf '%s\n' "$version"
+}
+
+# Migrations are forward-only, so the images must never be older than the schema they
+# meet. A pin that isn't a plain version (unset, `latest`, a custom tag) gives nothing to
+# compare against — say so rather than passing silently, because the caller then moves the
+# pin wherever it was told.
+check_upgrade_target() {
+  local target="$1" current="${2:-}"
+  if ! printf '%s' "$current" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+    echo "${c_ylw}⚠ WAFFLED_VERSION is ${current:-unset}, so upgrade can't tell whether $target moves forward.${c_reset} Migrations are forward-only: check $target isn't older than what you're running."
+    return 0
+  fi
+  if version_is_newer "$current" "$target"; then
+    echo "${c_red}✗ $target is older than the pinned $current.${c_reset} Waffled's migrations are forward-only, so upgrade only moves forward."
+    echo "To go back, restore the matching pre-upgrade backup: https://docs.waffled.app/operations/upgrading/#rolling-back"
+    return 1
+  fi
+}
+
+# Put the checkout ON the release tag, never on a branch tip: the compose file, the
+# mounted configs and ./waffled must match the images, and `main` between a merge and
+# its tag is not that pair (docs/product/upgrade-simplification-plan.md §2).
 update_repo_for_upgrade() {
-  if ! git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
-    return 0
-  fi
+  local tag="v$1" branch
+  git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1 || return 0
 
-  local branch
-  branch="$(git -C "$ROOT" symbolic-ref --short -q HEAD || true)"
-  if [ -z "$branch" ]; then
-    echo "${c_ylw}⚠ Detached HEAD — skipping repo update. The checked-out release tag will determine the target version.${c_reset}"
-    return 0
-  fi
-
-  echo "${c_dim}Updating repo ($branch)…${c_reset}"
-  if ! git -C "$ROOT" pull --ff-only; then
-    echo "${c_red}✗ Couldn't fast-forward the repo (local changes or diverged history).${c_reset}"
+  echo "${c_dim}Moving the checkout to ${tag}…${c_reset}"
+  if ! git -C "$ROOT" fetch --quiet origin tag "$tag"; then
+    echo "${c_red}✗ Couldn't fetch $tag from origin.${c_reset}"
     echo "Resolve the repository state, then re-run './waffled upgrade'. No images were changed."
     return 1
   fi
+  [ "$(git -C "$ROOT" rev-parse HEAD)" = "$(git -C "$ROOT" rev-parse "$tag^{commit}")" ] && return 0
+  if git -C "$ROOT" merge-base --is-ancestor "$tag" HEAD; then
+    echo "${c_red}✗ This checkout is ahead of $tag, the release being installed.${c_reset}"
+    echo "Its compose file, configs and ./waffled expect newer images than $tag ships, which is the mismatch this command exists to prevent."
+    echo "Run './waffled up --build' to run this checkout from source, or 'git checkout $tag' to drop back to the release. No images were changed."
+    return 1
+  fi
+  if ! git -C "$ROOT" merge-base --is-ancestor HEAD "$tag"; then
+    echo "${c_red}✗ This checkout has diverged from $tag.${c_reset}"
+    echo "Resolve the repository state, then re-run './waffled upgrade'. No images were changed."
+    return 1
+  fi
+  branch="$(git -C "$ROOT" symbolic-ref --short -q HEAD || true)"
+  if [ -n "$branch" ]; then
+    git -C "$ROOT" merge --ff-only --quiet "$tag" && return 0
+  else
+    git -C "$ROOT" checkout --quiet "$tag" && return 0
+  fi
+  echo "${c_red}✗ Couldn't move this checkout to $tag — local changes are probably in the way.${c_reset}"
+  echo "Commit or discard them (customizations belong in .env or an --override file), then re-run './waffled upgrade'. No images were changed."
+  return 1
 }
 
 # The upgrade's fast-forward can replace ./waffled while bash is still executing the
@@ -1093,38 +1144,48 @@ case "$cmd" in
     backup_safety_warnings
     ;;
   upgrade)
-    # One-command upgrade to the latest published release. Closes the gap where an
-    # existing .env keeps its old WAFFLED_VERSION (ensure_env only writes .env once),
-    # so a plain `up` would re-pull the old image. Steps: fast-forward the repo (the
-    # tagged repo + image tag are a matched pair — compose/configs/./waffled must agree
-    # with the image), sync WAFFLED_VERSION in .env to this checkout's .env.example,
-    # then pull + up (the one-shot `migrate` reruns because the image tag changed).
-    skip_backup=0
-    for arg in "$@"; do
-      case "$arg" in
+    # One-command upgrade to a published release: the newest one, or --version X.Y.Z.
+    # The checkout moves to that release's TAG so compose, configs and ./waffled match
+    # the images it pins. Then: back up, re-pin WAFFLED_VERSION (ensure_env only writes
+    # .env once, so an existing install keeps its old pin until this moves it), pull + up
+    # (the one-shot `migrate` reruns because the image tag changed).
+    upgrade_usage() { echo "usage: ./waffled upgrade [--version X.Y.Z] [--skip-backup]"; exit 1; }
+    skip_backup=0; target=""; pinned=0
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
         --skip-backup) skip_backup=1 ;;
-        *) echo "usage: ./waffled upgrade [--skip-backup]"; exit 1 ;;
+        --version)     [ "$#" -ge 2 ] || upgrade_usage; target="$2"; pinned=1; shift ;;
+        --version=*)   target="${1#--version=}"; pinned=1 ;;
+        *)             upgrade_usage ;;
       esac
+      shift
     done
+    if [ "$pinned" -eq 1 ]; then
+      target="${target#v}"
+      printf '%s' "$target" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' || upgrade_usage
+    fi
     preflight || exit 1
     ensure_env
     ensure_powersync_proxy_env
     ensure_powersync_url_env
     ensure_google_callback_env
+    [ "$pinned" -eq 1 ] || target="$(latest_release_version)" || exit 1
+    check_upgrade_target "$target" "$(env_val WAFFLED_VERSION)" || exit 1
     script_before="$(script_checksum)"
-    update_repo_for_upgrade || exit 1
-    # If the update replaced this script, restart the upgrade under the new copy NOW —
+    update_repo_for_upgrade "$target" || exit 1
+    # If the move replaced this script, restart the upgrade under the new copy NOW —
     # before the backup/pin/pull — so ensure_env and compose logic match the new tree.
-    maybe_reexec_upgrade "$script_before" "$@"
+    # The resolved version rides along, so the new copy targets the same release; every
+    # upgrade flag belongs in this one list or the restarted run silently loses it.
+    reexec_args=(--version "$target")
+    if [ "$skip_backup" -eq 1 ]; then reexec_args+=(--skip-backup); fi
+    maybe_reexec_upgrade "$script_before" ${reexec_args[@]+"${reexec_args[@]}"}
     # Snapshot the DB BEFORE changing the version pin or swapping images.
     # Migrations are forward-only, so a missing rollback point is fatal unless
     # the operator explicitly accepts it.
     run_pre_upgrade_backup "$skip_backup" || exit 1
-    target="$(grep -E '^WAFFLED_VERSION=' "$ROOT/infra/compose/.env.example" 2>/dev/null | head -1 | cut -d= -f2- || true)"
     current="$(env_val WAFFLED_VERSION)"
-    if [ -z "$target" ]; then
-      echo "${c_ylw}⚠ No WAFFLED_VERSION in .env.example — leaving .env unchanged.${c_reset}"
-    elif [ "$target" = "$current" ]; then
+    if [ "$target" = "$current" ]; then
       echo "${c_grn}Already pinned to ${target}.${c_reset}"
     else
       set_env_var WAFFLED_VERSION "$target"

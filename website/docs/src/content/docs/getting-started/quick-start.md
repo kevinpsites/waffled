@@ -165,8 +165,9 @@ Run `./waffled up` after changing them.
   backup) — or **Settings → System Health** in the app. Both show the same report.
 - **Backups** run nightly out of the box; see [Backup & restore](/operations/backup/) to
   point them at a folder or S3, and to restore.
-- **Upgrading:** run **`./waffled upgrade`** — it fast-forwards the repo, bumps the pinned
-  version, snapshots the DB, pulls the new images, and applies migrations in one step. The
+- **Upgrading:** run **`./waffled upgrade`** — it moves your checkout onto the newest
+  release's tag, bumps the pinned version, snapshots the DB, pulls the new images, and
+  applies migrations in one step (`--version X.Y.Z` picks a specific release). The
   app also flags **"Update available"** in Settings → System Health when you're behind. Full
   details: the [upgrading guide](/operations/upgrading/). **Stuck?**
   [Troubleshooting](/operations/troubleshooting/).
