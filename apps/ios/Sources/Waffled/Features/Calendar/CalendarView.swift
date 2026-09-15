@@ -683,8 +683,7 @@ struct EventEditSheet: View {
                         }
                         if allDay {
                             group("Ends") {
-                                DatePicker("", selection: $lastDay, in: Cal.current.startOfDay(for: day)...,
-                                           displayedComponents: .date)
+                                DatePicker("", selection: $lastDay, displayedComponents: .date)
                                     .labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
                             }
                         } else {
@@ -697,8 +696,7 @@ struct EventEditSheet: View {
 
                     if !allDay {
                         group("Ends") {
-                            DatePicker("", selection: endsBinding, in: resolvedStart...,
-                                       displayedComponents: [.date, .hourAndMinute])
+                            DatePicker("", selection: endsBinding, displayedComponents: [.date, .hourAndMinute])
                                 .labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
@@ -790,6 +788,12 @@ struct EventEditSheet: View {
             }
             .onChange(of: participants) { _, _ in recomputeDefaultCalendar(); clearOrphanGoal(); scheduleSuggest() }
             .onChange(of: title) { _, _ in scheduleSuggest() }
+            // No `in:` range on the Ends pickers — a ranged compact picker renders its date in a
+            // different style from Starts — so the floor is kept here (timed: `EventEnd.minutes`).
+            .onChange(of: lastDay) { _, picked in
+                let floor = Cal.current.startOfDay(for: day)
+                if picked < floor { lastDay = floor }
+            }
             // Moving the start day carries an all-day span with it.
             .onChange(of: day) { old, new in
                 let cal = Cal.current
