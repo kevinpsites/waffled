@@ -174,7 +174,7 @@ support and keep the `google` segment, but they cover accounts from **every** pr
 | GET · POST · PATCH · DELETE | `/api/goal-lists[/:id]` | Goal lists | tenant / cap:goal.manage |
 | GET · POST · PATCH · DELETE | `/api/goals[/:id]` | Goals | tenant |
 | POST | `/api/goals/:id/log` · PATCH `/steps/:stepId` | Log progress / update a step | tenant |
-| GET · POST · DELETE | `/api/goal-calendar/*` | Calendar→goal recap, suggestions, memory | tenant |
+| GET · POST · DELETE | `/api/goal-calendar/*` | Calendar→goal recap, suggestions, per-goal ignored words, memory | tenant |
 
 ### Meals & recipes — `module(meals)`
 

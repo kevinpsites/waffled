@@ -61,6 +61,17 @@ function tokenize(text: string): Set<string> {
   return out
 }
 
+// The words a person can pick to ignore for a goal: the same filter as tokenize, but
+// kept readable (unstemmed) and in title order. Matching still compares stems.
+export function ignoreWordsOf(title: string): string[] {
+  const out: string[] = []
+  for (const raw of title.toLowerCase().split(/[^a-z0-9]+/)) {
+    if (raw.length < 3 || /^\d+$/.test(raw) || STOPWORDS.has(raw) || out.includes(raw)) continue
+    out.push(raw)
+  }
+  return out
+}
+
 // The meaningful, stemmed tokens of a string — the unit the learning cache keys
 // on (so "Mowing the grass" teaches mow→goal, grass→goal for the household).
 export function tokensOf(text: string): string[] {

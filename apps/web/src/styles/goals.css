@@ -1216,6 +1216,12 @@ button.goal-listhead-link:hover {
 .recap-didnt:hover { color: var(--ink); }
 .recap-didnt:disabled { opacity: 0.5; cursor: default; }
 
+/* "Ignore…" picker under a suggestion row: pick title words to stop suggesting for the goal. */
+.recap-ignore { display: flex; flex-direction: column; gap: 10px; padding: 0 0 15px 58px; }
+.recap-ignore-t { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.recap-ignore-words { display: flex; flex-wrap: wrap; gap: 6px; }
+.recap-ignore-act { display: flex; gap: 8px; justify-content: flex-end; }
+
 .recap-empty { display: flex; align-items: center; gap: 14px; padding: 22px 24px; font-size: 15px; font-weight: 600; color: var(--ink-2); }
 .recap-empty-emo { font-size: 28px; }
 

@@ -12,7 +12,8 @@ import { type Tenant } from '../households/households'
 import { moduleRoutes } from '../../platform/route-guards'
 import { localNoonSql, logProgress } from './goals.service'
 import { updateEvent } from '../events/events'
-import { keywordMatch, type MatchGoal } from './goal-match'
+import { ignoreWordsOf, keywordMatch, type MatchGoal } from './goal-match'
+import { addIgnores, isIgnored, loadIgnores, loadIgnoresGrouped, removeIgnore, usableIgnoreWords } from './goal-suggestion-ignores'
 import { loadMemory, loadMemoryGrouped, forgetMemory, clearMemory, memoryMatch, recordMatch, WEIGHT, AUTO_LINK_THRESHOLD } from './goal-match-memory'
 import { getAiConfig, completeJson } from '../../platform/llm'
 import { assertPersonsInHousehold } from '../../platform/household-refs'
@@ -328,6 +329,8 @@ export interface Suggestion {
   goalTitle: string
   goalEmoji: string | null
   via: 'memory' | 'keyword' | 'llm'
+  // Title words the person can pick to ignore for this goal.
+  ignoreWords: string[]
 }
 
 // Goals a given event's attendees are eligible for (participant superset rule;
@@ -399,11 +402,12 @@ export async function suggestionQueue(householdId: string): Promise<Suggestion[]
   const goalById = new Map(goals.map((g) => [g.id, g]))
 
   const mem = await loadMemory(householdId)
+  const ignores = await loadIgnores(householdId)
   const out: Suggestion[] = []
   const leftover: Array<{ ev: SuggestEventRow; candidates: SuggestGoalRow[] }> = []
 
   for (const ev of events) {
-    const cands = eligibleGoals(ev.person_ids, goals)
+    const cands = eligibleGoals(ev.person_ids, goals).filter((g) => !isIgnored(ev.title, g.id, ignores))
     if (cands.length === 0) continue
     const candIds = new Set(cands.map((c) => c.id))
     // Match on the TITLE only — event descriptions are full of scheduling
@@ -413,7 +417,7 @@ export async function suggestionQueue(householdId: string): Promise<Suggestion[]
     const matchId = memId ?? keywordMatch(ev.title, null, cands as MatchGoal[])
     if (matchId && candIds.has(matchId)) {
       const g = goalById.get(matchId)!
-      out.push({ eventId: ev.event_id, title: ev.title, startsAt: ev.starts_at, allDay: ev.all_day, goalId: g.id, goalTitle: g.title, goalEmoji: g.emoji, via: memId ? 'memory' : 'keyword' })
+      out.push({ eventId: ev.event_id, title: ev.title, startsAt: ev.starts_at, allDay: ev.all_day, goalId: g.id, goalTitle: g.title, goalEmoji: g.emoji, via: memId ? 'memory' : 'keyword', ignoreWords: ignoreWordsOf(ev.title) })
     } else {
       leftover.push({ ev, candidates: cands })
     }
@@ -444,7 +448,7 @@ export async function suggestionQueue(householdId: string): Promise<Suggestion[]
           if (!gid) continue
           const g = candidates.find((c) => c.id === gid)
           if (!g) continue
-          out.push({ eventId: ev.event_id, title: ev.title, startsAt: ev.starts_at, allDay: ev.all_day, goalId: g.id, goalTitle: g.title, goalEmoji: g.emoji, via: 'llm' })
+          out.push({ eventId: ev.event_id, title: ev.title, startsAt: ev.starts_at, allDay: ev.all_day, goalId: g.id, goalTitle: g.title, goalEmoji: g.emoji, via: 'llm', ignoreWords: ignoreWordsOf(ev.title) })
           // Teach the household's matcher so we never pay for this phrasing again.
           await recordMatch(householdId, ev.title, g.id, WEIGHT.llm)
         }
@@ -521,7 +525,8 @@ export async function suggestOne(
         and g.goal_type in ('total','count','habit')`,
     [householdId]
   )
-  const eligible = eligibleGoals(participantIds, goals)
+  const ignores = await loadIgnores(householdId)
+  const eligible = eligibleGoals(participantIds, goals).filter((g) => !isIgnored(title, g.id, ignores))
   if (eligible.length === 0) return null
   const eligIds = new Set(eligible.map((g) => g.id))
   const byId = new Map(eligible.map((g) => [g.id, g]))
@@ -688,6 +693,35 @@ export function registerGoalCalendarRoutes(api: Api): void {
     }
     const ok = await dismissSuggestion(tenant, body.eventId)
     if (!ok) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
+    return res.status(200).json({ ok: true })
+  }))
+
+  // "Never suggest events with these words for this goal."
+  api.post('/api/goal-calendar/suggestions/ignore', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const body = (req.body ?? {}) as { goalId?: string; words?: unknown }
+    if (!body.goalId || !UUID_RE.test(body.goalId)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'goalId is required' })
+    }
+    const words = usableIgnoreWords(body.words)
+    if (words.length === 0) {
+      return res.status(400).json({ error: 'BadRequest', message: 'words must include at least one matchable word' })
+    }
+    const goal = await query(`select 1 from goals where id = $1 and household_id = $2 and deleted_at is null`, [body.goalId, tenant.householdId])
+    if (!goal.rowCount) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
+    await addIgnores(tenant.householdId, body.goalId, words, tenant.personId)
+    return res.status(200).json({ ok: true })
+  }))
+
+  api.get('/api/goal-calendar/ignores', tenantRoute(async (tenant) => {
+    return { groups: await loadIgnoresGrouped(tenant.householdId) }
+  }))
+
+  api.post('/api/goal-calendar/ignores/remove', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const body = (req.body ?? {}) as { goalId?: string; word?: unknown }
+    if (!body.goalId || !UUID_RE.test(body.goalId) || typeof body.word !== 'string' || !body.word.trim()) {
+      return res.status(400).json({ error: 'BadRequest', message: 'goalId and word are required' })
+    }
+    await removeIgnore(tenant.householdId, body.goalId, body.word)
     return res.status(200).json({ ok: true })
   }))
 }

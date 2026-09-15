@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Tell goal suggestions to ignore an event for good.** When Review events keeps offering
+  the same kind of event for a goal, pick a word from its title (web: **Ignore…**, iPhone and
+  iPad: **Dismiss → Ignore events like this…**) and events containing it are never suggested for
+  that goal again — other goals still see them. The words are listed, and removable, in
+  **Settings → AI & Capture → Ignored for suggestions**.
+
 ### Changed
 
 - **A new iPhone calendar: Month, Week and Day.** Month now fills the screen, with week
@@ -28,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Thaw reminders are no longer suggested as goal events.** Review events skipped planned
+  meals but still offered each week's "Thaw for Dinner" reminder for a goal; Waffled's own meal
+  and thaw reminders are now never suggested.
 - **Goal charts on iPad no longer lock you into Month, and fit on narrow screens.** Picking
   Month on a goal's detail page could draw the calendar over its own card and hide the menu
   you use to switch views, leaving no way back. The view menu now has its own row at the top

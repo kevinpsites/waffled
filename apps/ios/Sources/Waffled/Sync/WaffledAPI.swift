@@ -3467,7 +3467,26 @@ struct WaffledAPI: Sendable {
         let goalTitle: String
         let goalEmoji: String?
         let via: String?                // memory | keyword | llm
+        /// Title words the person can pick to ignore for this goal; empty from an older server.
+        let ignoreWords: [String]
         var id: String { eventId }
+
+        enum CodingKeys: String, CodingKey {
+            case eventId, title, startsAt, allDay, goalId, goalTitle, goalEmoji, via, ignoreWords
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            eventId = try c.decode(String.self, forKey: .eventId)
+            title = try c.decode(String.self, forKey: .title)
+            startsAt = try c.decode(String.self, forKey: .startsAt)
+            allDay = try c.decode(Bool.self, forKey: .allDay)
+            goalId = try c.decode(String.self, forKey: .goalId)
+            goalTitle = try c.decode(String.self, forKey: .goalTitle)
+            goalEmoji = try c.decodeIfPresent(String.self, forKey: .goalEmoji)
+            via = try c.decodeIfPresent(String.self, forKey: .via)
+            ignoreWords = try c.decodeIfPresent([String].self, forKey: .ignoreWords) ?? []
+        }
     }
 
     /// Confirmed links awaiting review (household-wide).
@@ -3510,6 +3529,12 @@ struct WaffledAPI: Sendable {
     /// Permanently dismiss a suggestion for this household.
     func dismissSuggestion(eventId: String) async throws {
         try await send("POST", "/api/goal-calendar/suggestions/dismiss", body: ["eventId": .string(eventId)])
+    }
+
+    /// Never suggest events containing any of `words` for this goal.
+    func ignoreSuggestionWords(goalId: String, words: [String]) async throws {
+        try await send("POST", "/api/goal-calendar/suggestions/ignore",
+                       body: ["goalId": .string(goalId), "words": .array(words.map(JSONValue.string))])
     }
 
     /// A live single-event goal match (memory → keyword → LLM) for the event editor's

@@ -172,7 +172,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Checklist **named steps** + per-type **milestones** (text) | ✅ | ✅ | ✅ | ✅ Done |
 | **Person profile** + **Family overview** | ✅ | ✅ | ✅ | ✅ Done (iPad = `KioskFamilyView` grid) |
 | **Calendar → goal** auto-count recap (single events) | ✅ | ✅ | ✅ | ✅ Done (Phase 1) — a confirmed recap is dated to **the event's own day**, not the day you answered it, so catching up later doesn't move your progress |
-| Smart "might count toward a goal" suggestions + learning | ✅ | ✅ | ✅ | ✅ Done (Phase B) |
+| Smart "might count toward a goal" suggestions + learning | ✅ | ✅ | ✅ | ✅ Done (Phase B) — **ignore words per goal** from a suggestion (web **Ignore…**, iOS **Dismiss → Ignore events like this…**), removable in Settings → AI & Capture; Waffled's own meal and thaw reminders are never suggested |
 | Recurring-event goal counting | ✅ | ✅ | ✅ | ✅ Done |
 | **Capability gating** — `goal.manage` for others' / shared goals; own progress stays open | ✅ | ✅ | ✅ | ✅ Done |
 | **Apple Health → goals** auto-fill (steps / flights / exercise / energy / distance — walk + run, cycling, swimming, wheelchair / **workouts by type** — running, cycling, swimming, yoga, strength or any / mindful / rings / mood), habit daily thresholds, grouped + searchable "Track from Apple Health" picker, gap catch-up | ❌ N/A | ✅ | ❌ N/A | ✅ Done (iPhone; iPad/web display the synced number). Distance is fractional in mi/km per device region; workout metrics count minutes on a total, sessions on a count, and any-workout or N-minute days on a habit |

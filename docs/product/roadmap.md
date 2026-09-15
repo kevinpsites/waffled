@@ -103,7 +103,7 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   ("Trade"), saving-toward jar/bar.
 - **Goals** — types (count/total/habit/checklist), shared vs each-tracks, create/edit/
   detail read-model, person + family overview, **calendar → goal** auto-count (single
-  and recurring events) with learned suggestions, **swappable data views** on the goal-detail
+  and recurring events) with learned suggestions and **per-goal ignored words**, **swappable data views** on the goal-detail
   page (heatmaps, year grid, pace-to-target, year ring, by-person bars, collection grid,
   consistency calendar) matched to goal type + timeframe. The Log sheet's **note chips
   now suggest a goal's own most-logged notes** (scoped per participant, blended with the

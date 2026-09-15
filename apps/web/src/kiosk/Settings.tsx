@@ -3,7 +3,7 @@ import { avTint } from './components/Avatar'
 import { useSearchParams } from 'react-router'
 import { useSyncHealth, type SyncHealthStatus } from '../lib/powersync/sync-health'
 import { restartPowerSyncHard } from '../lib/powersync/db'
-import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, useWeeklyPlanning, weeklyPlanningApi, planningDayName, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type IcsFeed, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef, type PlanningListCandidate } from '../lib/api'
+import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, useWeeklyPlanning, weeklyPlanningApi, planningDayName, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type IcsFeed, type MealCalendarSettings, type Currency, type MemoryGroup, type IgnoreGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef, type PlanningListCandidate } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
 import { useThemePref } from '../lib/theme'
 import { eventStyle } from '../lib/display'
@@ -1095,7 +1095,44 @@ function LearnedMatches() {
           {confirmClear ? 'Tap again to reset everything' : 'Reset learned matches'}
         </button>
       )}
+      <IgnoredWords />
     </SettingCard>
+  )
+}
+
+// Words ignored per goal from Review events → "Ignore…". Removing one lets matching
+// events be suggested for that goal again.
+function IgnoredWords() {
+  const [groups, setGroups] = useState<IgnoreGroup[]>([])
+  const load = () => goalCalendarApi.ignores().then((d) => setGroups(d.groups)).catch(() => setGroups([]))
+  useEffect(() => { load() }, [])
+  if (groups.length === 0) return null
+
+  async function remove(goalId: string, word: string) {
+    await goalCalendarApi.removeIgnore({ goalId, word })
+    load()
+  }
+  return (
+    <div style={{ marginTop: 18 }}>
+      <div className="set-row2-t" style={{ marginBottom: 4 }}>Ignored for suggestions</div>
+      <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 12 }}>
+        Events with these words are never suggested for the goal. Remove one to allow it again.
+      </div>
+      <div className="sm-list">
+        {groups.map((g) => (
+          <div key={g.goalId} className="sm-group">
+            <div className="sm-goal">{g.goalEmoji ? `${g.goalEmoji} ` : ''}{g.goalTitle}</div>
+            <div className="sm-chips">
+              {g.words.map((w) => (
+                <button key={w} type="button" className="sm-chip" onClick={() => remove(g.goalId, w)} title="Stop ignoring this word">
+                  {w}<span className="sm-x">✕</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
