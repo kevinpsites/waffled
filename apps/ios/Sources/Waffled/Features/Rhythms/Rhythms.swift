@@ -180,28 +180,23 @@ enum RhythmFormat {
     ///
     /// The ceiling depends on the shape, because only one of the two has a floor:
     ///
-    /// - **scheduling** — the whole cycle, or the booking window where there is one. Its
-    ///   feed stops asking once the window closes, so a runway equal to the cycle opens on
-    ///   the period's first day and shuts on its last. That is what makes "remind me on the
-    ///   1st to plan the outing, I'll book it for whenever suits" sayable; under a half cap
-    ///   a monthly rhythm could not be asked before the 16th.
-    /// - **completion** — half the cycle, still. Its feed has no upper bound on purpose (an
-    ///   overdue thing can still be done and should keep asking), so a runway as long as
-    ///   the cycle would surface it the instant it was completed and never let it go quiet.
+    /// - **scheduling** — the whole cycle, window or not. Its feed stops asking once the
+    ///   window closes, so a runway equal to the cycle opens on the period's first day and
+    ///   shuts on its last — and with a window it may open before the window does.
+    /// - **completion** — half the cycle. Its feed has no upper bound on purpose (an overdue
+    ///   thing can still be done and should keep asking), so a runway as long as the cycle
+    ///   would surface it the instant it was completed and never let it go quiet.
     ///
-    /// Longer than the ceiling is refused either way, which is the real rule: a runway that
-    /// outlives its own period never closes.
+    /// Longer than the ceiling is refused either way: a runway that outlives its own period
+    /// never closes.
     static func nudgePlan(
         every: String,
         leadDays: Int,
-        satisfiedBy: WaffledAPI.RhythmShape = .completion,
-        bookWithin: String? = nil
+        satisfiedBy: WaffledAPI.RhythmShape = .completion
     ) -> (effectiveDays: Int, capped: Bool) {
         let asked = max(0, leadDays)
         let cycle = days(fromInterval: every)
-        let cap: Int = satisfiedBy == .scheduling
-            ? (bookWithin.map { days(fromInterval: $0) } ?? cycle)
-            : cycle / 2
+        let cap = satisfiedBy == .scheduling ? cycle : cycle / 2
         // An unreadable cadence gives no cap to apply — echoing the request beats
         // inventing a clamp out of a number we couldn't parse.
         guard cap > 0 else { return (asked, false) }
@@ -238,9 +233,8 @@ enum RhythmFormat {
     /// `least(leadTime, every / 2)`, so a weekly rhythm asked for 14 days' notice would
     /// otherwise be promised a nudge on a day nothing is ever going to happen.
     static func consequence(shape: WaffledAPI.RhythmShape, every: String, leadDays: Int,
-                            anchor: Date, calendar: Calendar = Cal.current,
-                            bookWithin: String? = nil) -> Consequence? {
-        let plan = nudgePlan(every: every, leadDays: leadDays, satisfiedBy: shape, bookWithin: bookWithin)
+                            anchor: Date, calendar: Calendar = Cal.current) -> Consequence? {
+        let plan = nudgePlan(every: every, leadDays: leadDays, satisfiedBy: shape)
         // A booking rhythm's anchor is where the period grid STARTS, so its first window
         // closes one cadence later. A completion rhythm's anchor is the due date itself —
         // the cadence has already been added to reach it, and adding it twice would
@@ -283,15 +277,12 @@ enum RhythmFormat {
     /// Both numbers appear together on purpose: the whole failure was a field showing 14
     /// and a server delivering 3, with the two never once in the same sentence.
     static func capNote(every: String, leadDays: Int,
-                        satisfiedBy: WaffledAPI.RhythmShape = .completion,
-                        bookWithin: String? = nil) -> String? {
-        let plan = nudgePlan(every: every, leadDays: leadDays, satisfiedBy: satisfiedBy, bookWithin: bookWithin)
+                        satisfiedBy: WaffledAPI.RhythmShape = .completion) -> String? {
+        let plan = nudgePlan(every: every, leadDays: leadDays, satisfiedBy: satisfiedBy)
         guard plan.capped else { return nil }
-        let window = bookWithin != nil
-            ? "that booking window"
-            : cadenceLabel(every).replacingOccurrences(of: "every ", with: "a ")
-        return "\(plural(max(0, leadDays), "day"))’ notice won’t fit in \(window), so it’s trimmed"
-            + " to \(plan.effectiveDays) — a runway longer than the stretch it belongs to never goes quiet."
+        let cycle = cadenceLabel(every).replacingOccurrences(of: "every ", with: "a ")
+        return "\(plural(max(0, leadDays), "day"))’ notice won’t fit in \(cycle), so it’s trimmed"
+            + " to \(plan.effectiveDays) — a runway longer than the cycle never goes quiet."
     }
 
     /// "November 19" — inside a sentence, where the year is noise.
@@ -305,10 +296,26 @@ enum RhythmFormat {
     /// one cadence: each is a fresh window to get it booked, and the runway is its tail.
     static func nudgeExplainer(every: String, leadDays: Int, bookWithin: String? = nil) -> String {
         // Always the scheduling shape: this sentence is only shown on a booking rhythm, and
-        // its ceiling is the whole cycle (or the window) rather than half of it.
-        let plan = nudgePlan(every: every, leadDays: leadDays, satisfiedBy: .scheduling, bookWithin: bookWithin)
+        // its ceiling is the whole cycle rather than half of it.
+        let plan = nudgePlan(every: every, leadDays: leadDays, satisfiedBy: .scheduling)
         let window = cadenceLabel(every).isEmpty ? "every period" : cadenceLabel(every)
-        let span = bookWithin.map { days(fromInterval: $0) } ?? days(fromInterval: every)
+        let clamp = plan.capped
+            ? " (\(plural(max(0, leadDays), "day")) won’t fit in \(window.replacingOccurrences(of: "every ", with: "a ")), so it’s trimmed to \(plural(plan.effectiveDays, "day")) — a runway longer than the cycle never goes quiet)"
+            : ""
+        let only = "and only while nothing’s on the calendar for it\(clamp)."
+        // With a window the runway is the notice plus the window, so what is worth saying is
+        // how far ahead of the window the asking starts.
+        if let bookWithin {
+            let width = days(fromInterval: bookWithin)
+            let ahead = plan.effectiveDays - width
+            let when = ahead > 0
+                ? "from \(plural(ahead, "day")) before it opens"
+                : (plan.effectiveDays <= 0
+                    ? "on its last day"
+                    : (plan.effectiveDays >= width ? "from the day it opens" : "for the last \(plural(plan.effectiveDays, "day")) of it"))
+            return "A fresh window to book it opens \(window) and stays open \(plural(width, "day")). You’ll be nudged \(when), \(only)"
+        }
+        let span = days(fromInterval: every)
         // Asking for the whole span is worth naming rather than describing as a tail —
         // "the last 30 days of every month" is a riddle; "from its first day" is the thing
         // that was actually asked for.
@@ -317,12 +324,58 @@ enum RhythmFormat {
             : (span > 0 && plan.effectiveDays >= span
                 ? "from its first day"
                 : "for the last \(plural(plan.effectiveDays, "day")) of it")
-        var line = "A fresh window to book it opens \(window). You’ll be nudged \(tail), and only while nothing’s on the calendar for it"
-        if plan.capped {
-            let fits = bookWithin != nil ? "that window" : window.replacingOccurrences(of: "every ", with: "a ")
-            line += " (\(plural(max(0, leadDays), "day")) won’t fit in \(fits), so it’s trimmed to \(plural(plan.effectiveDays, "day")) — a runway longer than the stretch it belongs to never goes quiet)"
+        return "A fresh window to book it opens \(window). You’ll be nudged \(tail), \(only)"
+    }
+
+    /// Whether the period a booking rhythm is asking about has yet to start — an early ask.
+    static func asksAhead(periodStart: String?, now: Date = Date(),
+                          calendar: Calendar = Cal.current) -> Bool {
+        guard let periodStart, let start = moment(periodStart, calendar) else { return false }
+        return dayDiff(start, now, calendar) > 0
+    }
+
+    /// Whether a row's verb is the filled one. An early ask about a period that has not
+    /// started is on the list, but nothing about it is late, so it stays quiet.
+    static func primaryVerb(_ r: WaffledAPI.Rhythm, urgency: Urgency, now: Date = Date(),
+                            calendar: Calendar = Cal.current) -> Bool {
+        urgency == .now
+            && !(r.satisfiedBy == .scheduling
+                 && asksAhead(periodStart: r.currentPeriodStart, now: now, calendar: calendar))
+    }
+
+    /// "the third Saturday" / "Saturdays" for a rhythm's which-day rule; nil for anything
+    /// that doesn't fit in a few words.
+    static func dayHintLabel(_ rrule: String?) -> String? {
+        guard let rrule, !rrule.isEmpty else { return nil }
+        let parts = Recurrence.ruleParts(Recurrence.stripPrefix(rrule))
+        guard let byday = parts["BYDAY"], byday.count >= 2,
+              let day = Recurrence.fullDay[String(byday.suffix(2))] else { return nil }
+        let ordinal = String(byday.dropLast(2))
+        if parts["FREQ"] == "WEEKLY", ordinal.isEmpty { return "\(day)s" }
+        guard parts["FREQ"] == "MONTHLY", let n = Int(ordinal) else { return nil }
+        if n == -1 { return "the last \(day)" }
+        return (1...5).contains(n) ? "the \(Recurrence.ordinals[n]) \(day)" : nil
+    }
+
+    /// The day the booking sheet opens on: the rhythm's suggestion when it lies inside the
+    /// window, otherwise today while today is bookable, otherwise the first day it could go.
+    static func bookingDay(periodStart: String?, bookableUntil: String?, suggestedOn: String?,
+                           now: Date = Date(), calendar: Calendar = Cal.current) -> Date? {
+        let tz = calendar.timeZone
+        guard let start = periodStart.flatMap({ DateFmt.date($0, "yyyy-MM-dd", tz) }),
+              let last = bookableUntil.flatMap({ DateFmt.date(lastDayOfPeriod($0, calendar: calendar), "yyyy-MM-dd", tz) }),
+              start <= last else { return nil }
+        if let s = suggestedOn.flatMap({ DateFmt.date($0, "yyyy-MM-dd", tz) }), s >= start, s <= last {
+            return s
         }
-        return line + "."
+        let today = calendar.startOfDay(for: now)
+        return today >= start && today <= last ? today : start
+    }
+
+    /// The booking sheet's line under the date when the rhythm suggests a day.
+    static func suggestionNote(_ day: Date, hint: String?, calendar: Calendar = Cal.current) -> String {
+        let date = DateFmt.localizedString(day, "MMM d", calendar.timeZone)
+        return "It suggests \(date)\(hint.map { ", \($0)" } ?? "") — any day in the window still works."
     }
 
     // MARK: - banding by when, not by kind
@@ -425,8 +478,11 @@ enum RhythmFormat {
         guard let days = daysToGo(r, now: now, calendar: calendar) else { return nil }
         let tone: Countdown.Tone = urgency == .now ? .late : (urgency == .soon ? .near : .soft)
         if r.satisfiedBy == .scheduling {
-            if days <= 0 { return Countdown(number: "Today", unit: "last day", tone: tone) }
-            return Countdown(number: "\(days)", unit: days == 1 ? "day left" : "days left", tone: tone)
+            // An early ask about a period that has not started is on the list, not late.
+            let t: Countdown.Tone = tone == .late
+                && asksAhead(periodStart: r.currentPeriodStart, now: now, calendar: calendar) ? .near : tone
+            if days <= 0 { return Countdown(number: "Today", unit: "last day", tone: t) }
+            return Countdown(number: "\(days)", unit: days == 1 ? "day left" : "days left", tone: t)
         }
         if days < 0 {
             let late = -days
@@ -572,6 +628,8 @@ final class RhythmsModel {
     private(set) var paused: [WaffledAPI.Rhythm] = []
     private(set) var countdowns: [String: RhythmFormat.Countdown] = [:]
     private(set) var progress: [String: Int] = [:]
+    /// Rows whose verb is the filled one — see `RhythmFormat.primaryVerb`.
+    private(set) var primaryVerbs: Set<String> = []
     /// Person id → name, supplied by the view from the household it already has. The
     /// register's subtitle names whose rhythm it is, and that name lives outside this
     /// endpoint's payload.
@@ -683,11 +741,13 @@ final class RhythmsModel {
         var grouped: [RhythmFormat.Urgency: [WaffledAPI.Rhythm]] = [:]
         var cds: [String: RhythmFormat.Countdown] = [:]
         var bars: [String: Int] = [:]
+        var verbs: Set<String> = []
         for r in rhythms {
             let band = RhythmFormat.urgency(r, attention: attentionItem(for: r), now: clock)
             grouped[band, default: []].append(r)
             if let cd = RhythmFormat.countdown(r, urgency: band, now: clock) { cds[r.id] = cd }
             if let bar = RhythmFormat.periodProgress(r, now: clock) { bars[r.id] = bar }
+            if RhythmFormat.primaryVerb(r, urgency: band, now: clock) { verbs.insert(r.id) }
         }
         // Soonest first inside each band, so the top of the page is always the thing most
         // worth the next minute. A rhythm with no date sorts last rather than first.
@@ -706,6 +766,7 @@ final class RhythmsModel {
         paused = (grouped[.paused] ?? []).sorted { $0.title < $1.title }
         countdowns = cds
         progress = bars
+        primaryVerbs = verbs
     }
 
     /// The attention row for a rhythm, when it has one — lets the register show the same
@@ -783,7 +844,9 @@ final class RhythmsModel {
                 out[item.rhythm.id] = RhythmFormat.dueLabel(item.dueAt ?? "", overdue: item.overdue ?? false,
                                                             now: now, calendar: calendar)
             case .unscheduled:
-                out[item.rhythm.id] = RhythmFormat.periodLabel(item.bookableUntil ?? "", now: now, calendar: calendar)
+                let status = RhythmFormat.periodLabel(item.bookableUntil ?? "", now: now, calendar: calendar)
+                let hint = item.rhythm.autoSchedule ? nil : RhythmFormat.dayHintLabel(item.rhythm.rrule)
+                out[item.rhythm.id] = [status, hint ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
             case .unknown:
                 continue
             }
@@ -807,6 +870,10 @@ final class RhythmsModel {
         var out: [String: String] = [:]
         for r in rhythms {
             var parts = [RhythmFormat.sentence(RhythmFormat.cadenceLabel(r.every))]
+            // A hand-booked rhythm's which-day hint belongs with the cadence it refines.
+            if r.satisfiedBy == .scheduling, !r.autoSchedule, let hint = RhythmFormat.dayHintLabel(r.rrule) {
+                parts.append(hint)
+            }
             if !r.isActive {
                 // A paused rhythm says only that it is paused. Its period state is still
                 // computed, but nothing nudges about it and nothing can be done with it —
@@ -828,10 +895,9 @@ final class RhythmsModel {
                     // Never "last done" — whether it happened is deliberately not tracked.
                     // The only question is whether this period has something booked.
                     //
-                    // No current period means the grid hasn't started: the server tiles
-                    // periods from `startsOn` up to now, so a rhythm anchored in the future
-                    // has none yet. "Not on the calendar yet" there was flatly wrong for an
-                    // auto-scheduled rhythm whose series was booked the moment it was made.
+                    // No current period means the grid hasn't started. The current server
+                    // reports the first period instead; an older one sends none, and "not on
+                    // the calendar yet" there is wrong for a series booked on creation.
                     if r.currentPeriodStart == nil, let start = r.startsOn {
                         parts.append("periods start \(RhythmFormat.shortDate(start, calendar: calendar))")
                     } else if r.satisfied ?? false {
@@ -906,9 +972,12 @@ struct RhythmForm {
     var leadDays: Int?
     /// nil means "still following the cadence" — see `firstDue(now:calendar:)`.
     var nextDue: Date?
-    var startsOn = Date()
+    /// nil until picked, so the default can follow the form — see `startDate(now:calendar:)`.
+    var startsOn: Date?
     var autoSchedule = false
-    var monthlyMode: MonthlyMode = .dayOfMonth
+    /// nil is "Any day": no day suggested on a rhythm booked by hand. A series has no any
+    /// day — its rule is what books it — so it reads nil as the same date (`autoMonthlyMode`).
+    var monthlyMode: MonthlyMode?
     /// Which weekday a weekly rhythm lands on. Empty means "follow the anchor", which is
     /// the sane default and was previously the ONLY option — so a rhythm you wanted on
     /// Wednesdays had to be anchored on a Wednesday.
@@ -924,7 +993,14 @@ struct RhythmForm {
     /// inside the period does this happen?") and the rule wins, because it is what creates
     /// the event. Sent together the server refuses the pair.
     var windowDays: Int?
+    /// Days of notice before a booking window opens; nil is none. The runway sent is this
+    /// plus the window, measured back from the window's end.
+    var aheadDays: Int?
     var customRule = ""
+    /// The which-day hint an edited hand-booked rhythm already carries. Editing can only
+    /// clear it (`hintCleared`); a new one is a create-time choice like the anchor.
+    private(set) var existingHint: String?
+    var hintCleared = false
 
     init() { editingId = nil }
 
@@ -946,7 +1022,12 @@ struct RhythmForm {
         customRule = r.rrule ?? ""
         if let due = r.nextDueAt, let d = EventTime.parse(due) { nextDue = d }
         if let start = r.startsOn, let d = DateFmt.date(start, "yyyy-MM-dd", calendar.timeZone) { startsOn = d }
-        if let w = r.bookWithin { windowDays = RhythmFormat.days(fromInterval: w) }
+        if let w = r.bookWithin {
+            let width = RhythmFormat.days(fromInterval: w)
+            windowDays = width
+            aheadDays = max(0, (leadDays ?? 0) - width)
+        }
+        if r.satisfiedBy == .scheduling, !r.autoSchedule { existingHint = r.rrule }
     }
 
     var trimmedTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -962,6 +1043,7 @@ struct RhythmForm {
     /// and then send that one, clamp and all, because the field is an escape hatch and the
     /// copy beside it says what the server will do with it.
     var effectiveLeadDays: Int {
+        if bookWithinInterval != nil, let width = windowDays { return max(0, aheadDays ?? 0) + width }
         if let leadDays { return max(0, leadDays) }
         return min(14, RhythmFormat.days(fromInterval: every) / 2)
     }
@@ -979,12 +1061,45 @@ struct RhythmForm {
     /// The rule is DERIVED from the cadence rather than asked for again: an rrule that
     /// disagreed with `every` would put the generated event outside the period it is
     /// supposed to satisfy. `customRule` is the escape hatch, not the normal path.
-    func rrule(calendar: Calendar = Cal.current) -> String? {
+    func rrule(now: Date = Date(), calendar: Calendar = Cal.current) -> String? {
         Recurrence.buildRrule(
             RepeatState(freq: .custom, byday: byday, interval: max(1, count),
-                        unit: unit.recurrenceUnit, monthlyMode: monthlyMode,
+                        unit: unit.recurrenceUnit, monthlyMode: autoMonthlyMode,
                         monthlyOrdinal: monthlyOrdinal, custom: customRule),
-            start: startsOn, calendar)
+            start: startDate(now: now, calendar: calendar), calendar)
+    }
+
+    var autoMonthlyMode: MonthlyMode { monthlyMode ?? .dayOfMonth }
+
+    /// The picked start, or the default. A monthly rhythm booked by hand starts on the 1st,
+    /// so "the first week" is the first week of the month rather than of the day it was made.
+    func startDate(now: Date = Date(), calendar: Calendar = Cal.current) -> Date {
+        if let startsOn { return startsOn }
+        guard shape == .scheduling, !autoSchedule, unit == .months else { return now }
+        return calendar.date(from: calendar.dateComponents([.year, .month], from: now)) ?? now
+    }
+
+    /// A hand-booked rhythm's which-day hint. It seeds the booking sheet and never decides
+    /// what settles a period. Only weeks and months have a day worth suggesting, and it
+    /// ignores `customRule`, which is the series' escape hatch rather than a hint's.
+    func hintRule(now: Date = Date(), calendar: Calendar = Cal.current) -> String? {
+        guard shape == .scheduling, !autoSchedule else { return nil }
+        let start = startDate(now: now, calendar: calendar)
+        switch unit {
+        case .weeks:
+            guard !byday.isEmpty else { return nil }
+            return Recurrence.buildRrule(
+                RepeatState(freq: .custom, byday: byday, interval: max(1, count), unit: .week),
+                start: start, calendar)
+        case .months:
+            guard let monthlyMode else { return nil }
+            return Recurrence.buildRrule(
+                RepeatState(freq: .custom, interval: max(1, count), unit: .month,
+                            monthlyMode: monthlyMode, monthlyOrdinal: monthlyOrdinal),
+                start: start, calendar)
+        case .days, .years:
+            return nil
+        }
     }
 
     /// The date the PERIOD GRID is anchored on, which is not always the date in the picker.
@@ -1003,15 +1118,14 @@ struct RhythmForm {
     /// building it. Anchoring on the first makes every period a calendar month, and a
     /// calendar month holds exactly one of any nth weekday.
     ///
-    /// Only when a series is actually generated: a rhythm booked by hand has no rule to
-    /// disagree with its grid. The rule itself is untouched — its ordinal is picked
-    /// explicitly and its weekday still comes from the date chosen.
-    func periodAnchor(calendar: Calendar = Cal.current) -> Date {
-        guard shape == .scheduling, autoSchedule, unit == .months, monthlyMode == .nthWeekday else {
-            return startsOn
-        }
-        let parts = calendar.dateComponents([.year, .month], from: startsOn)
-        return calendar.date(from: parts) ?? startsOn
+    /// A hand-booked rhythm's nth-weekday hint snaps the same way: a period with no third
+    /// Saturday in it has nothing to suggest. The rule itself is untouched — its ordinal is
+    /// picked explicitly and its weekday still comes from the date chosen.
+    func periodAnchor(now: Date = Date(), calendar: Calendar = Cal.current) -> Date {
+        let start = startDate(now: now, calendar: calendar)
+        let nthWeekday = autoSchedule ? autoMonthlyMode == .nthWeekday : monthlyMode == .nthWeekday
+        guard shape == .scheduling, unit == .months, nthWeekday else { return start }
+        return calendar.date(from: calendar.dateComponents([.year, .month], from: start)) ?? start
     }
 
     /// The window as the server wants it, or nil when the whole period counts.
@@ -1029,7 +1143,6 @@ struct RhythmForm {
     /// first day of each period" land on the first day of every period.
     var leadTimeToSend: String {
         let wholeCycle = shape == .scheduling
-            && bookWithinInterval == nil
             && effectiveLeadDays >= RhythmFormat.days(fromInterval: every)
         return wholeCycle ? every : "\(effectiveLeadDays) days"
     }
@@ -1054,9 +1167,10 @@ struct RhythmForm {
             body["nextDueAt"] = .string(RhythmFormat.isoInstant(
                 calendar.date(bySettingHour: 9, minute: 0, second: 0, of: day) ?? day))
         case .scheduling:
-            body["startsOn"] = .string(RhythmFormat.ymd(periodAnchor(calendar: calendar), calendar: calendar))
+            body["startsOn"] = .string(RhythmFormat.ymd(periodAnchor(now: now, calendar: calendar), calendar: calendar))
             body["autoSchedule"] = .bool(autoSchedule)
-            body["rrule"] = autoSchedule ? (rrule(calendar: calendar).map(JSONValue.string) ?? .null) : .null
+            let rule = autoSchedule ? rrule(now: now, calendar: calendar) : hintRule(now: now, calendar: calendar)
+            body["rrule"] = rule.map(JSONValue.string) ?? .null
             body["bookWithin"] = bookWithinInterval.map(JSONValue.string) ?? .null
         // Not reachable: `shape` is chosen in this form, never decoded from the server.
         // Total anyway, so a third shape has to be handled here rather than compiling.
@@ -1066,12 +1180,12 @@ struct RhythmForm {
         return body
     }
 
-    /// Only the fields the server allows to change in place. `satisfiedBy`, `startsOn`,
-    /// `autoSchedule` and `rrule` are deliberately absent — re-anchoring a live rhythm
-    /// would silently re-interpret its existing skips and point its bookings at periods
-    /// that no longer exist. Retire it and make a new one.
+    /// Only the fields the server allows to change in place. `satisfiedBy`, `startsOn` and
+    /// `autoSchedule` are deliberately absent — re-anchoring a live rhythm would silently
+    /// re-interpret its existing skips and point its bookings at periods that no longer
+    /// exist. `rrule` goes only to clear a hand-booked rhythm's hint, which moves no boundary.
     func patchBody() -> [String: JSONValue] {
-        [
+        var body: [String: JSONValue] = [
             "title": .string(trimmedTitle),
             "emoji": emoji.trimmingCharacters(in: .whitespaces).isEmpty ? .null : .string(emoji.trimmingCharacters(in: .whitespaces)),
             "notes": notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .null : .string(notes.trimmingCharacters(in: .whitespacesAndNewlines)),
@@ -1088,6 +1202,8 @@ struct RhythmForm {
             // widening back to the whole period has to be stated.
             "bookWithin": bookWithinInterval.map(JSONValue.string) ?? .null,
         ]
+        if hintCleared { body["rrule"] = .null }
+        return body
     }
 
     /// "7 days" → (1, .weeks); "3 mons" → (3, .months).

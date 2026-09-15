@@ -3987,8 +3987,9 @@ struct WaffledAPI: Sendable {
         /// night, in the first week of the month" needs them separated. Optional so an
         /// older server still decodes.
         let bookWithin: String?
-        /// Postgres interval text, clamped server-side to the booking window where there
-        /// is one and to half of `every` where there isn't.
+        /// Postgres interval text, clamped server-side to the whole of `every` on a booking
+        /// rhythm and to half of it on one you mark done. Measured back from the booking
+        /// window's end, so with a window it may reach back before the window opens.
         let leadTime: String
         let lastCompletedAt: String?
         let nextDueAt: String?
@@ -4018,6 +4019,10 @@ struct WaffledAPI: Sendable {
         /// MIDNIGHT, so printing a time for one shows "12:00 AM" — an hour nobody chose.
         /// This is what says to stop at the date.
         let bookedAllDay: Bool?
+        /// The day this period's rule points at inside the booking window (YYYY-MM-DD), or
+        /// nil. A suggestion only — a booking on any other day inside the window counts the
+        /// same. Optional: single-row reads and older servers omit it.
+        let suggestedOn: String?
 
         /// The deadline a person is actually working against: where bookings stop
         /// counting. Every "how long have I got" line wants this one — "12 days left"
@@ -4053,6 +4058,8 @@ struct WaffledAPI: Sendable {
         let windowEnd: String?
         /// `.unscheduled` only — see `Rhythm.hasSeries`.
         let hasSeries: Bool?
+        /// `.unscheduled` only — see `Rhythm.suggestedOn`.
+        let suggestedOn: String?
         var id: String { rhythm.id }
 
         /// The last boundary a booking still counts against — the window's, not the
@@ -4080,8 +4087,9 @@ struct WaffledAPI: Sendable {
         return try await sendReturning("POST", "/api/rhythms", body: body, as: Resp.self).rhythm
     }
 
-    /// Edit. The server accepts only title/emoji/notes/personId/every/leadTime/isActive —
-    /// re-anchoring a live rhythm would re-interpret its skips and bookings.
+    /// Edit. The server accepts title/emoji/notes/personId/every/leadTime/bookWithin/isActive,
+    /// plus `rrule` on a hand-booked scheduling rhythm (its which-day hint; null clears it).
+    /// Re-anchoring a live rhythm would re-interpret its skips and bookings.
     @discardableResult
     func updateRhythm(id: String, _ body: [String: JSONValue]) async throws -> Rhythm {
         struct Resp: Decodable { let rhythm: Rhythm }
