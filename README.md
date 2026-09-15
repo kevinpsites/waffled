@@ -112,8 +112,9 @@ To move to a newer release, run:
 ./waffled upgrade
 ```
 
-One command does the whole update: it fast-forwards the repo (so the compose file,
-configs, and `./waffled` match the new images), bumps the pinned `WAFFLED_VERSION` in
+One command does the whole update: it moves your checkout onto the newest release's tag
+(so the compose file, configs, and `./waffled` match the new images), bumps the pinned
+`WAFFLED_VERSION` in
 your `.env`, **snapshots the database** as a rollback point, pulls the new images, and
 runs the one-shot **migrate** service to apply any new migrations — then restarts and
 prints a health table. Migrations are idempotent, so it's safe to re-run.

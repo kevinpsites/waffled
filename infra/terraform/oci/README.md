@@ -163,13 +163,14 @@ compose and drop port 443. Commands that don't recreate containers (`status`, `l
 
 Two upgrade nuances:
 
-- **`upgrade` moves to the latest release.** It re-pins `WAFFLED_VERSION` to what the pulled
-  `.env.example` ships (stock behaviour). If you deployed a specific `waffled_version` and want to
-  *stay* on it, don't run `upgrade` — re-run `terraform apply` (which re-writes your pin), or set
-  `WAFFLED_VERSION` back in `.env`.
+- **`upgrade` moves to the latest release.** It moves the checkout to that release's tag and
+  re-pins `WAFFLED_VERSION` to it (stock behaviour). If you deployed a specific `waffled_version`
+  and want to *stay* on it, don't run `upgrade` — re-run `terraform apply` (which re-writes your
+  pin). To move somewhere specific instead, `./waffled upgrade --version X.Y.Z`.
 - **Deployed on a tag/SHA.** If `waffled_ref` is a tag or SHA, the checkout is a detached HEAD;
-  `./waffled upgrade` skips the repo fast-forward (it says so) and only refreshes images — re-run
-  `terraform apply` with a new `waffled_ref` to advance the code.
+  `./waffled upgrade` checks the target release's tag out over it, so the code advances with the
+  images. Re-run `terraform apply` with a new `waffled_ref` when you want Terraform's own pin to
+  match.
 
 > Terraform is for the **infrastructure** (create / resize / destroy the box). The app version
 > is a **day-2, on-box** concern. Two tools, two jobs.

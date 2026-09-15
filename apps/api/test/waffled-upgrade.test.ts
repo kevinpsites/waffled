@@ -19,7 +19,7 @@ describe('waffled upgrade safety', () => {
     const result = spawnSync('bash', [cli, 'upgrade', '--unknown'], { encoding: 'utf8' })
 
     expect(result.status).toBe(1)
-    expect(result.stdout).toContain('usage: ./waffled upgrade [--skip-backup]')
+    expect(result.stdout).toContain('usage: ./waffled upgrade [--version X.Y.Z] [--skip-backup]')
     expect(result.stdout).not.toContain("Docker isn't installed")
   })
 
@@ -30,41 +30,168 @@ describe('waffled upgrade safety', () => {
     expect(upgradeCase.indexOf('run_pre_upgrade_backup')).toBeLessThan(upgradeCase.indexOf('set_env_var WAFFLED_VERSION'))
   })
 
-  it('aborts when the repository cannot fast-forward', () => {
+  it('rejects a malformed --version before running preflight work', () => {
+    for (const args of [['--version', 'banana'], ['--version'], ['--version=1.2']]) {
+      const result = spawnSync('bash', [cli, 'upgrade', ...args], { encoding: 'utf8' })
+
+      expect(result.status).toBe(1)
+      expect(result.stdout).toContain('usage: ./waffled upgrade [--version X.Y.Z] [--skip-backup]')
+      expect(result.stdout).not.toContain("Docker isn't installed")
+    }
+  })
+
+  it('targets the newest published GitHub release of UPDATE_CHECK_REPO', () => {
     const result = runShell(`
-      git() {
-        case "$*" in
-          *"rev-parse --git-dir"*) return 0 ;;
-          *"symbolic-ref --short -q HEAD"*) printf 'main'; return 0 ;;
-          *"pull --ff-only"*) return 1 ;;
-        esac
+      ENV_FILE="$(mktemp)"
+      printf 'UPDATE_CHECK_REPO=acme/waffled\\n' > "$ENV_FILE"
+      curl() {
+        for a in "$@"; do last="$a"; done
+        printf 'url=%s\\n' "$last" >&2
+        printf '{\\n  "url": "x",\\n  "tag_name": "v0.16.0",\\n  "name": "Waffled v0.16.0"\\n}\\n'
       }
       set +e
-      output="$(update_repo_for_upgrade 2>&1)"
-      code=$?
-      printf 'exit=%s\n%s' "$code" "$output"
+      version="$(latest_release_version 2>"$ENV_FILE.err")"
+      printf 'exit=%s version=%s\\n' "$?" "$version"
+      cat "$ENV_FILE.err"
+    `)
+
+    expect(result).toContain('exit=0 version=0.16.0')
+    expect(result).toContain('url=https://api.github.com/repos/acme/waffled/releases/latest')
+  })
+
+  it('stops with a --version hint when the latest release cannot be looked up', () => {
+    const result = runShell(`
+      ENV_FILE="$(mktemp)"
+      curl() { return 22; }
+      set +e
+      output="$(latest_release_version 2>&1)"
+      printf 'exit=%s\\n%s' "$?" "$output"
     `)
 
     expect(result).toContain('exit=1')
-    expect(result).toContain("Couldn't fast-forward the repo")
-    expect(result).toContain('No images were changed')
+    expect(result).toContain('kevinpsites/waffled')
+    expect(result).toContain('--version X.Y.Z')
   })
 
-  it('allows a checked-out release tag without pulling', () => {
+  it('refuses to move WAFFLED_VERSION backwards', () => {
     const result = runShell(`
-      git() {
-        case "$*" in
-          *"rev-parse --git-dir"*) return 0 ;;
-          *"symbolic-ref --short -q HEAD"*) return 1 ;;
-          *"pull --ff-only"*) return 99 ;;
-        esac
-      }
-      update_repo_for_upgrade
-      printf 'exit=%s' "$?"
+      set +e
+      for pair in "0.15.0 0.15.1" "0.15.1 0.15.1" "0.16.0 0.15.1" "0.16.0 latest" "0.16.0 "; do
+        set -- $pair
+        check_upgrade_target "$1" "\${2:-}" >/dev/null 2>&1
+        printf '%s<-%s=%s\\n' "$1" "\${2:-unset}" "$?"
+      done
+      check_upgrade_target 0.15.0 0.15.1 2>&1 || true
     `)
 
-    expect(result).toContain('Detached HEAD')
-    expect(result).toContain('exit=0')
+    expect(result).toContain('0.15.0<-0.15.1=1')
+    expect(result).toContain('0.15.1<-0.15.1=0')
+    expect(result).toContain('0.16.0<-0.15.1=0')
+    expect(result).toContain('0.16.0<-latest=0')
+    expect(result).toContain('0.16.0<-unset=0')
+    expect(result).toContain('forward-only')
+  })
+
+  describe('moving the checkout to the release tag', () => {
+    // Stubs `git -C "$ROOT" …`; each scenario sets the repository shape through env vars.
+    const gitStub = `
+      calls="$(mktemp)"
+      git() {
+        shift 2
+        printf '%s\\n' "$*" >> "$calls"
+        case "$*" in
+          "rev-parse --git-dir") return \${IS_REPO:-0} ;;
+          "fetch --quiet origin tag v0.16.0") return \${FETCH_EXIT:-0} ;;
+          "rev-parse HEAD") printf '%s\\n' "\${HEAD_SHA:-aaa}" ;;
+          "rev-parse v0.16.0^{commit}") printf '%s\\n' "\${TAG_SHA:-bbb}" ;;
+          "merge-base --is-ancestor v0.16.0 HEAD") return \${TAG_IN_HEAD:-1} ;;
+          "merge-base --is-ancestor HEAD v0.16.0") return \${HEAD_IN_TAG:-0} ;;
+          "symbolic-ref --short -q HEAD") [ -n "\${BRANCH-main}" ] || return 1; printf '%s\\n' "\${BRANCH-main}" ;;
+          "merge --ff-only --quiet v0.16.0") return \${MOVE_EXIT:-0} ;;
+          "checkout --quiet v0.16.0") return \${MOVE_EXIT:-0} ;;
+          *) return 97 ;;
+        esac
+      }
+      set +e
+    `
+    const run = (env: string) => runShell(`
+      ${gitStub}
+      ${env}
+      output="$(update_repo_for_upgrade 0.16.0 2>&1)"
+      code=$?
+      printf 'exit=%s\\n%s\\n--calls--\\n' "$code" "$output"
+      cat "$calls"
+    `)
+
+    it('fast-forwards a branch to the tag instead of pulling main', () => {
+      const result = run('')
+
+      expect(result).toContain('exit=0')
+      expect(result).toContain('merge --ff-only --quiet v0.16.0')
+      expect(result).not.toMatch(/\bpull\b/)
+    })
+
+    it('checks the tag out on a detached HEAD', () => {
+      const result = run('BRANCH=""')
+
+      expect(result).toContain('exit=0')
+      expect(result).toContain('checkout --quiet v0.16.0')
+    })
+
+    it('leaves a checkout that is already at the tag alone', () => {
+      const result = run('HEAD_SHA=bbb TAG_IN_HEAD=0')
+
+      expect(result).toContain('exit=0')
+      expect(result).not.toContain('merge --ff-only')
+      expect(result).not.toContain('checkout --quiet')
+    })
+
+    it('warns, without moving it, when the checkout is ahead of the release', () => {
+      const result = run('TAG_IN_HEAD=0 HEAD_IN_TAG=1')
+
+      expect(result).toContain('exit=0')
+      expect(result).toContain('ahead of v0.16.0')
+      expect(result).not.toContain('merge --ff-only')
+    })
+
+    it('aborts before any image change when the tag cannot be fetched', () => {
+      const result = run('FETCH_EXIT=1')
+
+      expect(result).toContain('exit=1')
+      expect(result).toContain("Couldn't fetch v0.16.0")
+      expect(result).toContain('No images were changed')
+    })
+
+    it('aborts when the checkout has diverged from the release', () => {
+      const result = run('HEAD_IN_TAG=1')
+
+      expect(result).toContain('exit=1')
+      expect(result).toContain('No images were changed')
+      expect(result).not.toContain('merge --ff-only')
+    })
+
+    it('aborts when local changes block the move', () => {
+      const result = run('MOVE_EXIT=1')
+
+      expect(result).toContain('exit=1')
+      expect(result).toContain('No images were changed')
+    })
+
+    it('skips the repository step outside a git checkout', () => {
+      const result = run('IS_REPO=1')
+
+      expect(result).toContain('exit=0')
+      expect(result).not.toContain('fetch')
+    })
+  })
+
+  it('pins the resolved release, not the checkout .env.example, and re-execs with it', () => {
+    const upgradeCase = cliSource.slice(cliSource.indexOf('  upgrade)'), cliSource.indexOf('  down)'))
+
+    expect(upgradeCase).not.toContain('.env.example')
+    expect(upgradeCase).toContain('update_repo_for_upgrade "$target"')
+    expect(upgradeCase).toMatch(/maybe_reexec_upgrade "\$script_before" --version "\$target"/)
+    expect(upgradeCase.indexOf('check_upgrade_target')).toBeLessThan(upgradeCase.indexOf('update_repo_for_upgrade'))
   })
 
   it('aborts when the backup service is unavailable', () => {

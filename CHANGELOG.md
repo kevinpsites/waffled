@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Upgrades follow published releases instead of the tip of `main`.** `./waffled upgrade`
+  now moves your checkout onto the newest release's tag — so the compose file, configs and
+  `./waffled` always match the images it pulls — where before it fast-forwarded `main` and
+  could pair a newer config with older images in the days between a merge and its release.
+  Name a particular release with `./waffled upgrade --version X.Y.Z`; upgrading backwards is
+  refused, because migrations only run forward.
+
 ### Fixed
 
 ## [0.15.1] - 2026-09-15
