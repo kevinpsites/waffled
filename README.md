@@ -142,7 +142,7 @@ docker compose -f infra/compose/docker-compose.yml --env-file infra/compose/.env
 ./waffled up
 ```
 
-All three images are multi-arch (amd64 + arm64), so they run on a regular x86 box or an
+Every published image is multi-arch (amd64 + arm64), so they run on a regular x86 box or an
 ARM SBC (e.g. a Raspberry Pi). They're published by the
 `.github/workflows/publish-images.yml` GitHub Action **when you cut a release** (see
 [Cutting a release](#cutting-a-release-maintainers) below), which builds the `X.Y.Z` /
