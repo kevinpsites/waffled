@@ -33,7 +33,10 @@ That does the whole thing, in order:
    merge and its tag is **not** that pair, which is why upgrade targets tags. If the move
    can't happen (local changes, or history that has diverged), the upgrade **stops before
    changing images**; resolve the repository state and re-run. A checkout that is already
-   *ahead* of the latest release is left alone, with a warning.
+   *ahead* of the newest release stops it too — its compose file and `./waffled` expect
+   newer images than any published release ships, so there is nothing safe to pin. Run
+   `./waffled up --build` to run that checkout from source, or `git checkout` the tag you
+   want.
 2. **Takes a database backup** (via the running backup sidecar) as your rollback point,
    *before* changing the version pin or images. If the backup service is unavailable or
    the backup fails, the upgrade stops.

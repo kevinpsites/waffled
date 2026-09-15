@@ -146,11 +146,15 @@ describe('waffled upgrade safety', () => {
       expect(result).not.toContain('checkout --quiet')
     })
 
-    it('warns, without moving it, when the checkout is ahead of the release', () => {
+    // Warning and carrying on would re-pin WAFFLED_VERSION to the older release and pull
+    // its images under a newer compose file and ./waffled — the pairing this whole command
+    // exists to prevent. Stopping leaves the running stack untouched.
+    it('stops when the checkout is ahead of the release', () => {
       const result = run('TAG_IN_HEAD=0 HEAD_IN_TAG=1')
 
-      expect(result).toContain('exit=0')
+      expect(result).toContain('exit=1')
       expect(result).toContain('ahead of v0.16.0')
+      expect(result).toContain('No images were changed')
       expect(result).not.toContain('merge --ff-only')
     })
 

@@ -332,8 +332,10 @@ update_repo_for_upgrade() {
   fi
   [ "$(git -C "$ROOT" rev-parse HEAD)" = "$(git -C "$ROOT" rev-parse "$tag^{commit}")" ] && return 0
   if git -C "$ROOT" merge-base --is-ancestor "$tag" HEAD; then
-    echo "${c_ylw}⚠ This checkout is ahead of $tag, so its compose file and ./waffled may expect newer images than this release ships. Leaving it as it is.${c_reset}"
-    return 0
+    echo "${c_red}✗ This checkout is ahead of $tag, the release being installed.${c_reset}"
+    echo "Its compose file, configs and ./waffled expect newer images than $tag ships, which is the mismatch this command exists to prevent."
+    echo "Run './waffled up --build' to run this checkout from source, or 'git checkout $tag' to drop back to the release. No images were changed."
+    return 1
   fi
   if ! git -C "$ROOT" merge-base --is-ancestor HEAD "$tag"; then
     echo "${c_red}✗ This checkout has diverged from $tag.${c_reset}"
