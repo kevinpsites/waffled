@@ -368,8 +368,8 @@ describe('planning · tasks · a brand-new task is not carried over', () => {
   })
 })
 
-// Done completes the earliest open day that has already come. A day still ahead can't be
-// done yet, and a photo chore needs the camera, so neither is offered.
+// Done completes a one-off's open day once it has come, and a recurring chore's day for today.
+// A day still ahead can't be done yet, and a photo chore needs the camera, so neither is offered.
 describe('planning · tasks · marking a task done', () => {
   it('offers the open day that has come, and completing it takes the offer away', async () => {
     await call('POST', '/api/chores', kevin, { title: 'Post the forms', personId: wallyId, rrule: null })
@@ -381,6 +381,27 @@ describe('planning · tasks · marking a task done', () => {
     const done = await call('POST', `/api/chore-instances/${before.completableInstanceId}/complete`, kevin, {})
     expect(done.statusCode).toBeLessThan(300)
     expect((await find())?.completableInstanceId ?? null).toBeNull()
+  })
+
+  it('on a daily chore with an old backlog, offers today’s day, not the oldest, so Done visibly lands', async () => {
+    const created = await call('POST', '/api/chores', kevin, { title: 'Brush teeth', personId: wallyId, rrule: 'FREQ=DAILY' })
+    const choreId = json(created).chore.id
+    await call('GET', '/api/chore-instances/today', kevin)
+    const { query } = await import('../src/platform/db')
+    await query(
+      `insert into chore_instances (household_id, chore_id, person_id, due_on, status)
+       select $1, $2, $3, (now() at time zone 'America/Chicago')::date - n, 'pending' from generate_series(20, 22) n`,
+      [householdId, choreId, wallyId]
+    )
+    const { rows } = await query<{ id: string }>(
+      `select id from chore_instances where chore_id = $1 and due_on = (now() at time zone 'America/Chicago')::date`,
+      [choreId]
+    )
+    const find = async () => who(await board(), 'Wally').chores.find((c) => c.title === 'Brush teeth')!
+
+    expect((await find()).completableInstanceId).toBe(rows[0].id)
+    expect((await call('POST', `/api/chore-instances/${rows[0].id}/complete`, kevin, {})).statusCode).toBeLessThan(300)
+    expect((await find()).completableInstanceId).toBeNull()
   })
 
   it('offers nothing for a day still ahead', async () => {

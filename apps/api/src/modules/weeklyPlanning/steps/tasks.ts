@@ -176,6 +176,16 @@ async function pendingInstanceIds(householdId: string): Promise<Map<string, Pend
   return new Map(rows.map((r) => [r.chore_id, { ids: r.ids, due: r.due }]))
 }
 
+// A recurring chore's Done is today's day. An old backlog is Loose ends' to ask about, and
+// ticking its oldest day off would leave the card, and its Done, looking untouched.
+function completableDay(rrule: string | null, pending: PendingDays, today: string): string | null {
+  if (rrule) {
+    const i = pending.due.indexOf(today)
+    return i >= 0 ? pending.ids[i] : null
+  }
+  return pending.due[0] && pending.due[0] <= today ? pending.ids[0] : null
+}
+
 function present(
   r: ChoreRowForBoard,
   days: string[],
@@ -198,7 +208,7 @@ function present(
     requiresApproval: r.requires_approval,
     requiresPhoto: r.requires_photo,
     pendingInstanceIds: pending.ids,
-    completableInstanceId: !r.requires_photo && pending.due[0] && pending.due[0] <= today ? pending.ids[0] : null,
+    completableInstanceId: r.requires_photo ? null : completableDay(r.rrule, pending, today),
   }
 }
 
