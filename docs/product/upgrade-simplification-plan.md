@@ -71,18 +71,23 @@ We keep an **exact** pin rather than a floating tag: migrations are forward-only
 
 ### Stage 1a — images carry their config; upgrade targets releases (this PR)
 
-- [ ] **`upgrade` moves to the latest *release tag*, not `main`.** The target comes from
+- [x] **`upgrade` moves to the latest *release tag*, not `main`.** The target comes from
       the GitHub releases API (`UPDATE_CHECK_REPO`, the same call as the in-app update
       notifier). A GitHub Release is only created after its images are published, so the
       target can never name a missing image. `--version X.Y.Z` pins a specific release;
       moving backwards is refused (forward-only migrations). The checkout fast-forwards to
       the tag (or checks it out on a detached HEAD); a checkout already ahead of the release
       is left alone with a warning.
-- [ ] **The caddy image bakes the Caddyfile** (`COPY` into `/etc/caddy/Caddyfile`). The
+- [x] **The caddy image bakes the Caddyfile** (`COPY` into `/etc/caddy/Caddyfile`). The
       compose mount stays for now and shadows it with identical content.
-- [ ] **Publish `waffled-powersync`** — `FROM journeyapps/powersync-service:<pinned>` +
+- [x] **Publish `waffled-powersync`** — `FROM journeyapps/powersync-service:<pinned>` +
       the two YAMLs. Built and published for every release; the compose file keeps the stock
       image until 1b. A test holds the Dockerfile's base tag equal to the compose tag.
+
+Verified on the local `:8080` stack by recreating caddy and powersync from the new images
+with **no config bind mounts at all** (the Stage 1b shape): `/healthz` 200, the SPA served,
+`/api/*` proxied, `/media/*` handled, the PowerSync front on `:8090` 200, and powersync
+loading its baked sync config and resuming replication.
 
 ### Stage 1b — drop the config mounts (after the 1a release is published)
 
