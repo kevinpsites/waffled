@@ -124,8 +124,9 @@ goal you pinned yourself is never un-pinned. **＋ New goal for this week** open
 editor over the session; the new goal comes back as that group's suggestion. Adding a goal to
 a group that isn't just yours needs permission to manage goals. A goal that counts up to a
 number — hours, pages, runs — can also take a target for **this week**, a slice of the bigger
-one ("10 hours this week toward 750"). What's been logged that week shows beside it, and next
-week's recap reads it back. Habits already have a target per period, so they don't get one.
+one ("10 hours this week toward 750"). What's been logged that week shows beside it; the goal's card
+on the Goals page and Today shows it all week ("This week: 3 of 10 hours"), this session's recap
+lists it, and next week's recap reads it back. Habits already have a target per period, so they don't get one.
 
 ### Run the household
 
@@ -139,13 +140,15 @@ however many) takes back exactly what it wrote; a night changed by hand since is
 and the step says so. It uses the AI provider you set up — bring your own model or key. With
 Chores on, **Who's shopping?** turns the grocery trip into a real chore with a person and a
 day. Remembered something else you need? Type it into **Add to groceries** under the grocery
-line and it goes straight onto the list; the count beside it is what's still to buy.
+line and it goes straight onto the list; the count beside it is what's still to buy — tap it to
+open the week's list in aisle order and tick things off, or put them back.
 
 **8 · Tasks** — *"Who's doing what?"* A column per person, with everything nobody has taken in
 an **Up for grabs** strip across the top. Tap a face or drag a card to hand a chore over, or
 leave it up for grabs. Tap a task's name — or the day beside it — to open the chore editor and
 fix the title, the stars or the day. Each column shows what that person already carries. A
-task whose day has come has **✓ Done** — anyone can press it, as on the Tasks board — and one
+task whose day has come has **✓ Done** — anyone can press it, as on the Tasks board, and on a
+repeating chore it checks off today — and one
 that needs a parent's OK says it's waiting for one. A task that needs a photo is finished from
 the Tasks board, where the camera is. With [Rhythms](/features/rhythms/) on, **Rhythms this
 week** lists every rhythm due in the week you're planning, late or not; the ones you do
@@ -162,8 +165,8 @@ one thing**.
 
 **10 · Recap** — *"Here's the week you just decided."* The week read back: the seven days
 with their dinners and events (a busy day shows **+N more** — tap it to see the rest), what
-the session changed, grouped by where each decision lives (Calendar, Meals, Chores, Goals, Family Night,
-Kids); **Still on the board** — a last call on notes nobody picked up, with how long they've
+the session changed, grouped by where each decision lives (Calendar, Meals, Chores, Goals — including any target
+set for the week — Family Night, Kids); **Still on the board** — a last call on notes nobody picked up, with how long they've
 waited, where each can be kept parked, dropped, or turned into a task or an event (the note is
 settled once that's saved); and **Left alone on purpose**. **Save the week** finishes the session.
 
