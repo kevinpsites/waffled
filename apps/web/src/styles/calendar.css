@@ -75,6 +75,14 @@
 .wk-allday-cell:last-child { border-right: 0; }
 .wk-allday-ev { font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 7px; max-width: 100%;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+/* Multi-day bars (month-spans.ts) laid over the strip's cells, which reserve their lanes with
+   .wk-span-gap. A lane is a 21px chip plus the cell's 4px gap; the top is the cell's padding. */
+.wk-span { grid-row: 1; grid-column: var(--span-col) / span var(--span-len); align-self: start; z-index: 1;
+  box-sizing: border-box; height: 21px; line-height: 15px; max-width: none;
+  margin: calc(5px + var(--lane) * 25px) 5px 0; }
+.wk-span.cont-before { margin-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.wk-span.cont-after { margin-right: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.wk-span-gap { flex: none; height: calc(var(--lanes) * 25px - 4px); }
 
 /* padding-top keeps the first hour label (positioned at top:-8px) from being
    clipped by the scroll container's top edge. */
