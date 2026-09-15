@@ -324,9 +324,9 @@ check_upgrade_target() {
 
 # Put the checkout ON the release tag, never on a branch tip: the compose file, the
 # mounted configs and ./waffled must match the images, and `main` between a merge and
-# its tag does not (v0.13.1's compose landed a week before the tag it belongs to).
+# its tag is not that pair (docs/product/upgrade-simplification-plan.md §2).
 update_repo_for_upgrade() {
-  local version="$1" tag="v$1" branch
+  local tag="v$1" branch
   git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1 || return 0
 
   echo "${c_dim}Moving the checkout to ${tag}…${c_reset}"
