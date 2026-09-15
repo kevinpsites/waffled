@@ -742,10 +742,9 @@ struct GoalLogSheet: View {
                 .padding(20)
             }
             .background(WF.canvas)
-            .task {
-                if isChecklist { await loadSteps() } else { await loadHealthSuggestion() }
-                if isHabit, let d = try? await api.goalDetail(id: goal.id) { freshLoggedTodayBy = d.loggedTodayBy }
-            }
+            .task { if isChecklist { await loadSteps() } else { await loadHealthSuggestion() } }
+            // Its own task: the Health read above can sit on a permission prompt.
+            .task { if isHabit, let d = try? await api.goalDetail(id: goal.id) { freshLoggedTodayBy = d.loggedTodayBy } }
             .task(id: focusPerson) { await loadNoteSuggestions() }
             .navigationTitle(isChecklist ? "Checklist" : "Log progress")
             .navigationBarTitleDisplayMode(.inline)
