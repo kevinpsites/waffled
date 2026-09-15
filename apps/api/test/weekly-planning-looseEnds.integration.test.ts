@@ -207,6 +207,28 @@ describe('loose ends · overdue chores', () => {
     expect(item!.actions).toEqual(['done'])
   })
 
+  // A repeating chore missed for months is not a pile of loose ends: only its last week of misses
+  // is asked about. A one-off stays asked about however late it is.
+  it('asks about a repeating chore’s misses from the last week only, and a one-off however late', async () => {
+    const today = (await query(`select (now() at time zone timezone)::date::text as t from households where id = $1`, [householdId])).rows[0].t as string
+    const { rows: daily } = await query(
+      `insert into chores (household_id, title, person_id, rrule, is_active) values ($1,'Brush teeth',$2,'FREQ=DAILY',true) returning id`,
+      [householdId, ownerId]
+    )
+    const miss = async (daysAgo: number) => (await query(
+      `insert into chore_instances (household_id, chore_id, person_id, due_on, status) values ($1,$2,$3,$4::date,'pending') returning id`,
+      [householdId, daily[0].id, ownerId, addDays(today, -daysAgo)]
+    )).rows[0].id as string
+    const recent = await miss(3)
+    const old = await miss(20)
+
+    const ids = (await read()).notDone.map((i) => i.id)
+    expect(ids).toContain(recent)
+    expect(ids).not.toContain(old)
+    expect(ids).toContain(overdueId)
+    await query(`update chores set deleted_at = now() where id = $1`, [daily[0].id])
+  })
+
   it('does NOT surface an instance still to come, or one already answered', async () => {
     const week = await currentWeekStart()
     const { rows: soon } = await query(

@@ -200,6 +200,9 @@ async function overdueChores(householdId: string, today: string): Promise<Source
         and ci.deleted_at is null
         and ci.status in ('pending','expired')
         and ci.due_on < $2::date
+        -- A repeating chore missed for months is not months of loose ends: only its last week of
+        -- misses is asked about. A one-off stays asked about however late it is.
+        and (c.rrule is null or ci.due_on >= $2::date - 7)
       order by ci.due_on
       limit ${PER_SOURCE_LIMIT}`,
     [householdId, today]
