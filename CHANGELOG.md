@@ -47,8 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   calendar smoother.
 - **Multi-day all-day events show on every day they cover.** A trip synced from Google as a
   several-day all-day event appeared only on its first day; it now draws as one bar across its
-  days in the month view on iPhone, iPad and web (like Google's month view), and the web month's
-  day panel lists it on each of those days. On iPhone and iPad it also appears on each day of the
+  days in the month view on iPhone, iPad and web and across the web week view's all-day strip
+  (like Google's), and the web month's day panel lists it on each of those days — including a trip
+  that began before the week or month on screen. On iPhone and iPad it also appears on each day of the
   week cards, day view and agenda, shows on Today and a person's day while it's on, and only
   fades as past once its last day is over.
 - **The web calendar's round ＋ buttons are centred.** The add button beside the month view's day
