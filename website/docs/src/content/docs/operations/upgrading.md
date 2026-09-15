@@ -39,6 +39,9 @@ That does the whole thing, in order:
 4. **Pulls the new images and restarts** the stack. The one-shot **migrate** service
    reruns automatically (the image tag changed) and applies any new migrations before
    `api` comes up.
+   If a migration can't get a table lock because the previous version is still using that
+   table, it retries for about a minute, then stops with a message naming the blocking
+   sessions. See [Upgrade stuck on migrate](/operations/troubleshooting/#upgrade-stuck-on-migrate).
 5. **Prints a health table** so you can see everything came back healthy.
 
 Migrations are **idempotent** — only the ones you don't have yet are applied, and it's

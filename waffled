@@ -320,7 +320,11 @@ maybe_reexec_upgrade() {
     return 0
   fi
   echo "${c_dim}./waffled was updated — restarting the upgrade with the new version…${c_reset}"
-  WAFFLED_UPGRADE_REEXEC=1 exec "$ROOT/waffled" upgrade "$@"
+  # The global parse already took --override out of "$@"; without handing it back, the
+  # new copy would recreate the stack from the base compose file alone.
+  local _o override_args=()
+  for _o in ${COMPOSE_OVERRIDES[@]+"${COMPOSE_OVERRIDES[@]}"}; do override_args+=(--override "$_o"); done
+  WAFFLED_UPGRADE_REEXEC=1 exec "$ROOT/waffled" upgrade ${override_args[@]+"${override_args[@]}"} "$@"
 }
 
 run_pre_upgrade_backup() {

@@ -4,7 +4,6 @@ import Charts
 /// By person — stacked columns by month. Who is driving the family total.
 struct ByPersonBarsView: View {
     let ctx: GoalDataContext
-    var headerRight: AnyView?
 
     private var year: Int { GoalDateKey.calendar.component(.year, from: GoalDateKey.parse(ctx.stats.today)) }
     private var currentMonth: Int { GoalDateKey.calendar.component(.month, from: GoalDateKey.parse(ctx.stats.today)) - 1 } // 0-indexed
@@ -13,13 +12,9 @@ struct ByPersonBarsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("By month · by person").font(WF.serif(17, .semibold)).foregroundStyle(WF.ink)
-                    Text("who is driving the family total").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
-                }
-                Spacer()
-                headerRight
+            VStack(alignment: .leading, spacing: 2) {
+                Text("By month · by person").font(WF.serif(17, .semibold)).foregroundStyle(WF.ink)
+                Text("who is driving the family total").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
             }
 
             Chart {

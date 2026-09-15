@@ -62,63 +62,15 @@ struct GoalDataViewSwitcher: View {
             onMonthTap: { y, m in selectedMonth = MonthItem(year: y, month: m) },
             firstDay: sync.householdWeekStart ?? .sunday
         )
-        VStack(alignment: .leading, spacing: 12) {
-            switch view! {
-            case .week: WeekHeatmapView(ctx: ctx, headerRight: AnyView(segControl))
-            case .month: MonthHeatmapView(ctx: ctx, headerRight: AnyView(segControl))
-            case .pace: PaceChartView(ctx: ctx, headerRight: AnyView(segControl))
-            case .year: YearGridView(ctx: ctx, headerRight: AnyView(segControl))
-            case .byPerson: ByPersonBarsView(ctx: ctx, headerRight: AnyView(segControl))
-            case .yearRing: YearRingView(ctx: ctx, headerRight: AnyView(segControl))
-            case .collection: CollectionGridView(ctx: ctx, headerRight: AnyView(segControl))
-            case .consistency: ConsistencyCalendarView(ctx: ctx, headerRight: AnyView(segControl))
-            }
+        GoalDataViewCard(ctx: ctx, view: view!, offered: offered) { v in
+            view = v
+            GoalViewPreference.set(goal.id, v)
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .wfField()
         .sheet(item: $selectedDay) { item in
             GoalDayDetailSheet(goal: goal, dateKey: item.dateKey, dayEntry: ctx.stats.dayEntry(item.dateKey), personMap: personMap)
         }
         .sheet(item: $selectedMonth) { item in
             GoalMonthDetailSheet(goal: goal, year: item.year, month: item.month, stats: ctx.stats, personMap: personMap)
-        }
-    }
-
-    // A segmented control tops out around 4-5 short labels (HIG); this goal type can offer
-    // six. A horizontal-scroll wrapper read as broken rather than scrollable, so a menu:
-    // it scales to any option count with no overflow and no hidden gesture.
-    private var segControl: some View {
-        Menu {
-            ForEach(offered, id: \.self) { v in
-                Button {
-                    view = v
-                    GoalViewPreference.set(goal.id, v)
-                } label: {
-                    if v == view { Label(Self.label(v), systemImage: "checkmark") } else { Text(Self.label(v)) }
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Text(Self.label(view ?? offered[0])).font(.system(size: 13, weight: .bold))
-                Image(systemName: "chevron.up.chevron.down").font(.system(size: 10, weight: .bold))
-            }
-            .foregroundStyle(WF.ink2)
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(WF.panel, in: Capsule())
-        }
-    }
-
-    private static func label(_ v: GoalViewKey) -> String {
-        switch v {
-        case .week: return "Week"
-        case .month: return "Month"
-        case .pace: return "Pace"
-        case .year: return "Year"
-        case .byPerson: return "By person"
-        case .yearRing: return "Year ring"
-        case .collection: return "Collection"
-        case .consistency: return "Consistency"
         }
     }
 
@@ -130,6 +82,73 @@ struct GoalDataViewSwitcher: View {
             view = (saved.map { offered.contains($0) } == true) ? saved : GoalStats.defaultView(goalType: goal.goalType, timeframe: timeframe)
         }
         loading = false
+    }
+}
+
+/// The chart card. The view menu sits in the card's own header row rather than inside
+/// each chart's header, so no chart's layout can crowd it out or draw over it.
+struct GoalDataViewCard: View {
+    let ctx: GoalDataContext
+    let view: GoalViewKey
+    let offered: [GoalViewKey]
+    let onSelect: (GoalViewKey) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Text("Progress").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
+                Spacer(minLength: 8)
+                viewMenu
+            }
+            switch view {
+            case .week: WeekHeatmapView(ctx: ctx)
+            case .month: MonthHeatmapView(ctx: ctx)
+            case .pace: PaceChartView(ctx: ctx)
+            case .year: YearGridView(ctx: ctx)
+            case .byPerson: ByPersonBarsView(ctx: ctx)
+            case .yearRing: YearRingView(ctx: ctx)
+            case .collection: CollectionGridView(ctx: ctx)
+            case .consistency: ConsistencyCalendarView(ctx: ctx)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .wfField()
+    }
+
+    // A segmented control tops out around 4-5 short labels (HIG); this goal type can offer
+    // six. A horizontal-scroll wrapper read as broken rather than scrollable, so a menu:
+    // it scales to any option count with no overflow and no hidden gesture.
+    private var viewMenu: some View {
+        Menu {
+            ForEach(offered, id: \.self) { v in
+                Button { onSelect(v) } label: {
+                    if v == view { Label(Self.label(v), systemImage: "checkmark") } else { Text(Self.label(v)) }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(Self.label(view)).font(.system(size: 13, weight: .bold))
+                Image(systemName: "chevron.up.chevron.down").font(.system(size: 10, weight: .bold))
+            }
+            .foregroundStyle(WF.ink2)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(WF.panel, in: Capsule())
+        }
+        .fixedSize()
+    }
+
+    static func label(_ v: GoalViewKey) -> String {
+        switch v {
+        case .week: return "Week"
+        case .month: return "Month"
+        case .pace: return "Pace"
+        case .year: return "Year"
+        case .byPerson: return "By person"
+        case .yearRing: return "Year ring"
+        case .collection: return "Collection"
+        case .consistency: return "Consistency"
+        }
     }
 }
 

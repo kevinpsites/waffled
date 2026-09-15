@@ -5,9 +5,9 @@ import SwiftUI
 /// optional view — a Canvas-drawn donut, cheap enough for a single detail screen.
 struct YearRingView: View {
     let ctx: GoalDataContext
-    var headerRight: AnyView?
 
-    private static let s: CGFloat = 260
+    // The canvas leaves room outside `r1` for the month labels drawn at `r1 + 13`.
+    private static let s: CGFloat = 300
     private static let r0: CGFloat = 56
     private static let r1: CGFloat = 116
     private static let gapDeg: Double = 3
@@ -21,20 +21,22 @@ struct YearRingView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("The year in a ring").font(WF.serif(17, .semibold)).foregroundStyle(WF.ink)
-                    Text("each wedge is a month — longer = more \(ctx.goal.unit ?? "logged")")
-                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
-                }
-                Spacer()
-                headerRight
+            VStack(alignment: .leading, spacing: 2) {
+                Text("The year in a ring").font(WF.serif(17, .semibold)).foregroundStyle(WF.ink)
+                Text("each wedge is a month — longer = more \(ctx.goal.unit ?? "logged")")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
             }
 
-            HStack(alignment: .center, spacing: 8) {
-                ring
-                    .frame(width: Self.s, height: Self.s)
-                monthList
+            // Side by side when the card is wide enough for the bars to read; stacked otherwise.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 16) {
+                    ring.frame(width: Self.s, height: Self.s)
+                    monthList.frame(minWidth: 220)
+                }
+                VStack(spacing: 8) {
+                    ring.frame(width: Self.s, height: Self.s)
+                    monthList
+                }
             }
         }
     }
@@ -102,7 +104,7 @@ struct YearRingView: View {
                         }
                     }
                     .frame(height: 8)
-                    Text(GoalViewFmt.num(ctx.stats.byMonth[m])).font(WF.serif(12.5, .semibold)).foregroundStyle(WF.ink).frame(width: 34, alignment: .trailing)
+                    Text(GoalViewFmt.num(ctx.stats.byMonth[m])).font(WF.serif(12.5, .semibold)).foregroundStyle(WF.ink).frame(width: 44, alignment: .trailing)
                 }
             }
             Text("\(GoalViewFmt.num(max(0, target - total)))\(ctx.goal.unit.map { " \($0)" } ?? "") to go")

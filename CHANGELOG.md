@@ -72,6 +72,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Purple, blue, green, red and pink events are easier to read.** Solid event chips on
   those colors now use white text instead of black, on the calendar, Today and the
   Weekly Planning recap. Gold and teal keep black, where white would wash out.
+- **A new iPhone calendar: Month, Week and Day.** Month now fills the screen, with week
+  numbers down the side and each day's event titles (a countdown shows as a small pill).
+  Tapping a day opens a full Day timeline you can swipe back from, and Week is a row of day
+  cards where tapping an event opens it for editing — swipe past the last day, or swipe the
+  day strip, to move to the next week. Planned dinners show in amber, thaw reminders stay
+  in the background, and each week card ends with that night's dinner. Switch views from the
+  header's view button (its icon shows where you are) or pinch; Agenda and the per-person
+  filter are in that menu too.
+
+### Fixed
+
+- **Goal charts on iPad no longer lock you into Month, and fit on narrow screens.** Picking
+  Month on a goal's detail page could draw the calendar over its own card and hide the menu
+  you use to switch views, leaving no way back. The view menu now has its own row at the top
+  of the Progress card, the month grid sizes correctly the first time, and the other charts
+  rearrange instead of squeezing: the year ring's month labels are no longer cut off and its
+  list moves below the ring on iPhone, and Pace and Year stack their badges and stats when
+  there isn't room for one row.
+- **`./waffled upgrade` keeps your `--override` file when it restarts itself.** When an
+  upgrade pulls a newer copy of `./waffled`, the upgrade hands off to that new copy — and the
+  hand-off used to drop any `--override` you passed, so the rest of the upgrade recreated
+  containers from the base compose file alone. On the Oracle Cloud deploy that cost Caddy its
+  HTTPS port. The override now carries through the restart. The hand-off is run by the copy
+  you started, so the upgrade *onto* this release can still drop it once: finish with
+  `./waffled --override <file> up` if you use one.
+- **Migrations give up on a blocked table lock instead of hanging the upgrade.** The migrate step
+  runs while the previous api and PowerSync are still connected, and a migration that needed a
+  table another session was holding would wait forever, leaving `waffled-migrate` stuck with
+  nothing in its logs. It now waits up to 10 seconds per lock, retries three times, and if the
+  table is still busy it stops and names the sessions holding it, with the fix: stop `api` and
+  `powersync`, then bring the stack back up. Set `MIGRATE_LOCK_TIMEOUT` in `.env` (for example
+  `30s`, or `0` to wait indefinitely) to change the wait.
 
 ## [0.15.0] - 2026-09-11
 

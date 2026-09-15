@@ -27,6 +27,7 @@ the api's config; "auto" means `./waffled` generates it for you when missing.
 | `POSTGRES_PASSWORD` | Database password | auto |
 | `POSTGRES_DB` | Database name | set in `.env` |
 | `POSTGRES_PORT` | Loopback-only host port for local Postgres tools | `5432` |
+| `MIGRATE_LOCK_TIMEOUT` | How long a migration waits for a table lock before retrying; milliseconds or a duration like `30s`, `0` waits indefinitely. See [Upgrade stuck on migrate](/operations/troubleshooting/#upgrade-stuck-on-migrate) | `10s` |
 | `DATABASE_URL` | Built by compose (`postgres://…@postgres:5432/…`) for api/migrate/backup | derived |
 | `LOCAL_JWT_SECRET` | HS256 secret for built-in auth + dev tokens | auto |
 | `TOKEN_ENCRYPTION_KEY` | AES key that encrypts Google **and** OIDC secrets at rest | auto |

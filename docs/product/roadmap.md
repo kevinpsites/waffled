@@ -17,6 +17,14 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Done ✅
 
+- **iPhone calendar: Month → Week → Day** — the phone Calendar tab rebuilt from the design
+  handoff: a full-height month grid with ISO week numbers and up to four titles a day, a
+  horizontal week card rail (tap an event to edit it), and a pushed Day timeline with overlap
+  lanes, switched from the header's view menu or a pinch. Planned meals and thaw reminders
+  get their own amber / faint styling, and week cards close on that night's dinner. Agenda
+  stays, in the same menu. The
+  decisions behind it: [ios-calendar-redesign.md](ios-calendar-redesign.md).
+
 - **Per-person calendar columns (web/kiosk + iPad)** — a **People** view beside
   Month/Week/Day/Agenda that splits one day into a column per family member (the layout the
   dispencer17 fork had). "Whose column" resolves to **`events.person_id`** — the assignee
@@ -30,7 +38,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   needed: participants already ride both the REST payload and the PowerSync replica, so the
   view works offline like the others. On iOS it's **iPad-only**, as the original sizing
   predicted — it was briefly on iPhone too, but four members already truncate titles to
-  "Dinn…", so the phone keeps Agenda/Month/Day and its person filter. The iPad reuses the
+  "Dinn…", so the phone keeps its person filter instead (its views are now Month → Week →
+  Day, plus Agenda). The iPad reuses the
   same `CalTimeGrid` the Week view uses, generalised so a column can be a person instead of
   a date; the person filter chips are hidden in People mode, since the columns already are
   that split.

@@ -335,10 +335,8 @@ describe('weekly planning · goals · pace', () => {
   //
   // The habit fixture above cannot catch that: it anchors its own logs with the same
   // expression, so it reads correctly under either rule. This one pins the log to a REAL
-  // calendar Sunday and then flips the household's setting — under the bug the answer
-  // does not move when the setting does. (On a Sunday run both rules agree, so the first
-  // assertion is never wrong, just less sharp; pinning `now()` is not available to us in
-  // SQL.)
+  // calendar day and then flips the household's setting — under the bug the answer
+  // does not move when the setting does.
   it('reads “last week” off the household’s week_start, not Postgres’s Monday', async () => {
     const { query } = await import('../src/platform/db')
     const gRule = json(await call('POST', '/api/goals', kevin, {
@@ -346,12 +344,19 @@ describe('weekly planning · goals · pace', () => {
       habitTargetPerPeriod: 5, trackingMode: 'each_tracks', participantIds: [kevinId],
     })).goal.id as string
 
-    // This week's SUNDAY, always — `today - dow`, independent of any household setting.
-    const thisSunday = `((now() at time zone h.timezone)::date - (extract(dow from (now() at time zone h.timezone))::int))`
+    // A day in last week under a MONDAY start but not under a SUNDAY start. Mid-week that is
+    // this week's Sunday (`today - dow`); on a Sunday both rules call that day this week, so
+    // it is the Saturday eight days back. `now()` can't be pinned, so the weekday picks.
+    // The second log is today's, so the goal never reads as stalled.
+    const local = `(now() at time zone h.timezone)`
+    const dow = `extract(dow from ${local})::int`
+    const ruleDay = `(case when ${dow} = 0 then ${local}::date - 8 else ${local}::date - ${dow} end)`
     await query(
       `insert into goal_logs (household_id, goal_id, amount, logged_at)
-       select h.id, $2::uuid, 1, (${thisSunday} + interval '3 hours') at time zone h.timezone
-         from households h where h.id = $1`,
+       select h.id, $2::uuid, 1, (${ruleDay} + interval '3 hours') at time zone h.timezone
+         from households h where h.id = $1
+       union all
+       select h.id, $2::uuid, 1, now() from households h where h.id = $1`,
       [householdId, gRule]
     )
     const paceFor = async () => {
@@ -359,15 +364,18 @@ describe('weekly planning · goals · pace', () => {
       return g?.pace?.text
     }
 
-    // Sunday-start household: that log is THIS week, so last week saw nothing.
-    await query(`update households set week_start = 'sunday' where id = $1`, [householdId])
-    expect(await paceFor()).toBe('0 of 5 last week')
+    // Reset in `finally`: a household left on monday breaks every test after this one.
+    try {
+      // Sunday-start household: that log is before last week, or in this week.
+      await query(`update households set week_start = 'sunday' where id = $1`, [householdId])
+      expect(await paceFor()).toBe('0 of 5 last week')
 
-    // Monday-start household: the very same log now belongs to the week that just ended.
-    await query(`update households set week_start = 'monday' where id = $1`, [householdId])
-    expect(await paceFor()).toBe('1 of 5 last week')
-
-    await query(`update households set week_start = 'sunday' where id = $1`, [householdId])
+      // Monday-start household: the very same log now belongs to the week that just ended.
+      await query(`update households set week_start = 'monday' where id = $1`, [householdId])
+      expect(await paceFor()).toBe('1 of 5 last week')
+    } finally {
+      await query(`update households set week_start = 'sunday' where id = $1`, [householdId])
+    }
   })
 
   it('measures a habit against the cadence it set itself, on last period’s count', async () => {
