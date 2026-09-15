@@ -1183,6 +1183,24 @@ struct RhythmEditorTests {
         #expect(!doing!.capped)
     }
 
+    @Test("A windowed booking rhythm's promise closes with its window, and moves on once that has passed")
+    func consequenceFollowsTheWindow() {
+        let anchor = at("2026-09-01T00:00:00")
+        // The first week of September, asked 14 days before it opens: 21 days back from Sep 8.
+        let ahead = RhythmFormat.consequence(shape: .scheduling, every: "1 mons", leadDays: 21,
+                                             anchor: anchor, calendar: utcCal, bookWithin: "7 days")
+        #expect(RhythmFormat.ymd(ahead!.landsOn, calendar: utcCal) == "2026-09-08")
+        #expect(RhythmFormat.ymd(ahead!.nudgeFrom, calendar: utcCal) == "2026-08-18")
+        #expect(!ahead!.capped)
+
+        // Made on Sep 15, September's window has gone, so the server asks about October's.
+        let next = RhythmFormat.consequence(shape: .scheduling, every: "1 mons", leadDays: 21,
+                                            anchor: anchor, calendar: utcCal, bookWithin: "7 days",
+                                            now: at("2026-09-15T12:00:00"))
+        #expect(RhythmFormat.ymd(next!.landsOn, calendar: utcCal) == "2026-10-08")
+        #expect(RhythmFormat.ymd(next!.nudgeFrom, calendar: utcCal) == "2026-09-17")
+    }
+
     @Test("Adding a cadence to a month-end date lands inside the next month")
     func addCadenceClampsShortMonths() {
         // Jan 31 + 1 month is Feb 28, not Mar 3. Rolling the month over on a date whose

@@ -290,7 +290,8 @@ struct RhythmEditorSheet: View {
     @ViewBuilder private var consequence: some View {
         let anchor = form.shape == .scheduling ? form.periodAnchor() : form.firstDue()
         if let plan = RhythmFormat.consequence(shape: form.shape, every: form.every,
-                                               leadDays: form.effectiveLeadDays, anchor: anchor) {
+                                               leadDays: form.effectiveLeadDays, anchor: anchor,
+                                               bookWithin: form.bookWithinInterval, now: Date()) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: form.shape == .completion ? "checkmark.circle.fill" : "calendar")
                     .font(.system(size: 15, weight: .bold))

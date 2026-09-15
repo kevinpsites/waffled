@@ -231,7 +231,7 @@ export function RhythmModal({
   const leadTimeToSend = wantsWholeCycle ? every : `${leadNum} days`
 
   const anchor = shape === 'scheduling' ? periodAnchor : firstDue
-  const plan = consequence({ satisfiedBy: shape, every, leadDays: leadNum, anchor })
+  const plan = consequence({ satisfiedBy: shape, every, leadDays: leadNum, anchor, bookWithin, now: new Date() })
   const clamp = nudgePlan(every, leadNum, shape)
 
   // The rule is DERIVED from the cadence rather than asked for again: an rrule that

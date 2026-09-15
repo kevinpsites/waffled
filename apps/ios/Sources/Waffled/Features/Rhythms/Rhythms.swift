@@ -233,15 +233,35 @@ enum RhythmFormat {
     /// `least(leadTime, every / 2)`, so a weekly rhythm asked for 14 days' notice would
     /// otherwise be promised a nudge on a day nothing is ever going to happen.
     static func consequence(shape: WaffledAPI.RhythmShape, every: String, leadDays: Int,
-                            anchor: Date, calendar: Calendar = Cal.current) -> Consequence? {
+                            anchor: Date, calendar: Calendar = Cal.current,
+                            bookWithin: String? = nil, now: Date? = nil) -> Consequence? {
         let plan = nudgePlan(every: every, leadDays: leadDays, satisfiedBy: shape)
-        // A booking rhythm's anchor is where the period grid STARTS, so its first window
-        // closes one cadence later. A completion rhythm's anchor is the due date itself —
-        // the cadence has already been added to reach it, and adding it twice would
-        // promise a day a whole cycle too far out.
-        let landsOn = shape == .scheduling
-            ? addCadence(from: anchor, every: every, calendar: calendar)
-            : anchor
+        // A completion rhythm's anchor is the due date itself. A booking rhythm's is where its
+        // grid STARTS, and the promise is when a window closes — the window's end, or the
+        // period's without one — walked from the anchor (n × cadence) so a month end doesn't
+        // drift. Given `now`, it names the first window still open, as the server reports it.
+        var landsOn = anchor
+        if shape == .scheduling {
+            let p = parts(every)
+            func closes(_ n: Int) -> Date {
+                var move = DateComponents()
+                move.year = p.year * n
+                move.month = p.month * n
+                move.day = (p.week * 7 + p.day) * n
+                let start = n == 0 ? anchor : (calendar.date(byAdding: move, to: anchor) ?? anchor)
+                guard let bookWithin else { return addCadence(from: start, every: every, calendar: calendar) }
+                return calendar.date(byAdding: .day, value: days(fromInterval: bookWithin), to: start) ?? start
+            }
+            landsOn = closes(0)
+            if let now {
+                let today = calendar.startOfDay(for: now)
+                var n = 1
+                while landsOn <= today, n <= 1000 {
+                    landsOn = closes(n)
+                    n += 1
+                }
+            }
+        }
         guard let nudgeFrom = calendar.date(byAdding: .day, value: -plan.effectiveDays, to: landsOn)
         else { return nil }
         return Consequence(landsOn: landsOn, nudgeFrom: nudgeFrom, capped: plan.capped)

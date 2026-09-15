@@ -595,6 +595,31 @@ describe('consequence', () => {
     expect(c!.capped).toBe(false)
   })
 
+  it('caps a booking rhythm at its cycle, so a month of notice on a month is not "trimmed"', () => {
+    const c = consequence({ satisfiedBy: 'scheduling', every: '1 month', leadDays: 30, anchor: '2026-09-01' })
+    expect(c!.capped).toBe(false)
+    expect(ymd(c!.landsOn)).toBe('2026-10-01')
+    expect(ymd(c!.nudgeFrom)).toBe('2026-09-01')
+  })
+
+  it('closes a windowed booking rhythm when its window does, and asks ahead of it', () => {
+    // The first week of September, asked 14 days before it opens: a 21-day runway back from Sep 8.
+    const c = consequence({
+      satisfiedBy: 'scheduling', every: '1 month', leadDays: 21, anchor: '2026-09-01', bookWithin: '7 days',
+    })
+    expect(ymd(c!.landsOn)).toBe('2026-09-08')
+    expect(ymd(c!.nudgeFrom)).toBe('2026-08-18')
+  })
+
+  it('names the next window once the first has already closed, as the server will', () => {
+    const c = consequence({
+      satisfiedBy: 'scheduling', every: '1 month', leadDays: 21, anchor: '2026-09-01', bookWithin: '7 days',
+      now: new Date(2026, 8, 15),
+    })
+    expect(ymd(c!.landsOn)).toBe('2026-10-08')
+    expect(ymd(c!.nudgeFrom)).toBe('2026-09-17')
+  })
+
   it('declines to promise anything from an unreadable anchor', () => {
     expect(consequence({ satisfiedBy: 'completion', every: '3 months', leadDays: 14, anchor: '' })).toBeNull()
   })

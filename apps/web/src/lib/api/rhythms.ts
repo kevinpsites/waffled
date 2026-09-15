@@ -691,6 +691,10 @@ export interface ConsequenceInput {
    * scheduling  — the day the first period opens (YYYY-MM-DD).
    */
   anchor: string
+  /** scheduling: the booking window, when it is narrower than the period. */
+  bookWithin?: string | null
+  /** When given, a booking promise names the first window still open at this moment, as the server does. */
+  now?: Date
 }
 
 export interface Consequence {
@@ -743,10 +747,26 @@ export function consequence(input: ConsequenceInput): Consequence | null {
   const anchor = input.anchor ? asMoment(input.anchor) : null
   if (!anchor || Number.isNaN(anchor.getTime())) return null
 
-  // A completion rhythm is anchored ON its due date; a booking window is anchored at
-  // its START, and what matters is when it closes — one cadence later.
-  const landsOn = input.satisfiedBy === 'scheduling' ? addCadence(anchor, input.every) : anchor
-  const { effectiveDays, capped } = nudgePlan(input.every, input.leadDays)
+  // A completion rhythm is anchored ON its due date; a booking rhythm at the START of its
+  // grid, and what matters is when a window closes — the window's end, or the period's
+  // without one. Walked from the anchor (n × cadence) so a month-end anchor doesn't drift.
+  let landsOn = anchor
+  if (input.satisfiedBy === 'scheduling') {
+    const { count, unit } = splitCadence(input.every)
+    const closes = (n: number): Date => {
+      const start = n === 0 ? anchor : addCadence(anchor, `${count * n} ${unit}`)
+      if (!input.bookWithin) return addCadence(start, input.every)
+      const end = new Date(start.getTime())
+      end.setDate(end.getDate() + intervalDays(input.bookWithin))
+      return end
+    }
+    landsOn = closes(0)
+    if (input.now) {
+      const today = new Date(input.now.getFullYear(), input.now.getMonth(), input.now.getDate()).getTime()
+      for (let n = 1; landsOn.getTime() <= today && n <= 1000; n++) landsOn = closes(n)
+    }
+  }
+  const { effectiveDays, capped } = nudgePlan(input.every, input.leadDays, input.satisfiedBy)
   const nudgeFrom = new Date(landsOn.getTime())
   nudgeFrom.setDate(nudgeFrom.getDate() - effectiveDays)
   return { landsOn, nudgeFrom, capped }
