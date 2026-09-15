@@ -760,7 +760,26 @@ export async function goalDetail(householdId: string, id: string) {
     ).rows[0].sum
   )
 
-  return { ...base, milestones, steps, recent, thisWeek, streakDays }
+  // The weeks Weekly Planning set a target for, from the one under way onward, each against what
+  // was logged inside it.
+  const weekPlans = (
+    await query<{ weekStart: string; target: number; done: number; current: boolean }>(
+      `select t.week_start::text as "weekStart", t.target::float as target,
+              coalesce((select sum(gl.amount)::float from goal_logs gl
+                         where gl.goal_id = t.goal_id and gl.deleted_at is null and gl.counts_total
+                           and (gl.logged_at at time zone h.timezone)::date between t.week_start and t.week_start + 6), 0) as done,
+              t.week_start <= (now() at time zone h.timezone)::date as current
+         from planning_goal_week_targets t
+         join households h on h.id = t.household_id
+        where t.goal_id = $1 and t.household_id = $2
+          and t.week_start + 6 >= (now() at time zone h.timezone)::date
+        order by t.week_start
+        limit 8`,
+      [id, householdId]
+    )
+  ).rows
+
+  return { ...base, milestones, steps, recent, thisWeek, streakDays, weekPlans }
 }
 
 export interface GoalActivityDay {

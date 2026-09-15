@@ -2792,8 +2792,13 @@ struct GoalDetailView: View {
                 Spacer(minLength: 0)
                 HStack(spacing: 4) {
                     Text("THIS WEEK").font(.system(size: 9, weight: .heavy)).tracking(0.5).foregroundStyle(.white.opacity(0.8))
-                    Text("\(goalFmt(model.detail?.thisWeek ?? 0))\(unit.map { " \($0)" } ?? "")")
+                    Text(currentPlan.map { GoalDisplay.weekPlanAmount($0, unit: unit) }
+                         ?? "\(goalFmt(model.detail?.thisWeek ?? 0))\(unit.map { " \($0)" } ?? "")")
                         .font(.system(size: 12, weight: .heavy)).foregroundStyle(.white)
+                }
+                ForEach(laterPlans, id: \.weekStart) { t in
+                    Text(GoalDisplay.weekPlanLabel(t, unit: unit))
+                        .font(.system(size: 11, weight: .bold)).foregroundStyle(.white.opacity(0.88))
                 }
             }
         }
@@ -2802,6 +2807,9 @@ struct GoalDetailView: View {
         .background(Self.heroGreen)
         .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
     }
+
+    private var currentPlan: WaffledAPI.Goal.WeekTarget? { model.detail?.weekPlans?.first(where: \.current) }
+    private var laterPlans: [WaffledAPI.Goal.WeekTarget] { (model.detail?.weekPlans ?? []).filter { !$0.current } }
 
     private var heroSub: String {
         var parts: [String] = []

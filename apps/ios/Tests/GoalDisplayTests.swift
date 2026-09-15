@@ -56,6 +56,14 @@ private func goal(
         #expect(GoalDisplay.weekTargetLabel(g) == "Week of Sep 21: 10 hours")
     }
 
+    /// The goal's own page words a plan the same way, one per week planned.
+    @Test func aWeekPlanReadsTheSameOnTheGoalsOwnPage() {
+        let current = WaffledAPI.Goal.WeekTarget(weekStart: "2026-09-13", target: 10, done: 3, current: true)
+        let ahead = WaffledAPI.Goal.WeekTarget(weekStart: "2026-09-20", target: 12, done: 0, current: false)
+        #expect(GoalDisplay.weekPlanAmount(current, unit: "hours") == "3 of 10 hours")
+        #expect(GoalDisplay.weekPlanLabel(ahead, unit: "hours") == "Week of Sep 20: 12 hours")
+    }
+
     @Test func aGoalWithoutAWeekTargetHasNoLabel() {
         #expect(GoalDisplay.weekTargetLabel(goal()) == nil)
     }

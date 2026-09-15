@@ -3261,6 +3261,9 @@ struct WaffledAPI: Sendable {
         let deadline: String?
         let createdAt: String
         let thisWeek: Double
+        /// The weeks Weekly Planning set a target for, from the one under way onward. Optional
+        /// so an older response decodes.
+        let weekPlans: [Goal.WeekTarget]?
         let autoFromCalendar: Bool
         let healthMetric: String?
         /// Daily threshold for a health-linked habit ("2,000 steps a day"); nil otherwise.

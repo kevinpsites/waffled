@@ -541,6 +541,24 @@ describe('weekly planning · goals · a target for this week', () => {
     expect(goals.find((g) => g.id === gWater)!.weekPlan).toBeNull()
   })
 
+  it('the goal’s own page lists the week under way and the weeks planned after it', async () => {
+    const week = await weekOf()
+    await query(
+      `insert into planning_goal_week_targets (household_id, goal_id, week_start, target) values ($1, $2, $3::date + 7, 12)`,
+      [householdId, gHours, week]
+    )
+    const today = (await query<{ t: string }>(
+      `select (now() at time zone timezone)::date::text as t from households where id = $1`, [householdId]
+    )).rows[0].t
+    const detail = json(await call('GET', `/api/goals/${gHours}`, kevin)).goal
+
+    expect(detail.weekPlans).toEqual([
+      { weekStart: week, target: 10, done: 3, current: week <= today },
+      { weekStart: (await query<{ w: string }>(`select ($1::date + 7)::text as w`, [week])).rows[0].w, target: 12, done: 0, current: false },
+    ])
+    await query(`delete from planning_goal_week_targets where goal_id = $1 and week_start = $2::date + 7`, [gHours, week])
+  })
+
   it('clears the week’s target with null, leaving the goal’s own target alone', async () => {
     const res = await call('PUT', '/api/weekly-planning/goals/week-target', kevin, { sessionId, goalId: gHours, target: null })
     expect(res.statusCode).toBe(200)

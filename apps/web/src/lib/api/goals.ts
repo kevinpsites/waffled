@@ -101,15 +101,21 @@ export function goalFraction(g: Goal): number {
   const p = goalDisplayProgress(g)
   return t != null && t > 0 ? Math.min(p / t, 1) : 0
 }
+// "3 of 10 hours": a planned week's target against what was logged inside it.
+export function goalWeekPlanAmount(t: GoalWeekTarget, unit: string | null): string {
+  return `${fmtGoalNum(t.done)} of ${fmtGoalNum(t.target)}${unit ? ` ${unit}` : ''}`
+}
+
 // "This week: 3 of 10 hours", or before that week starts, "Week of Sep 21: 10 hours". Shared by
-// the goals list, the hero cards and the Today card.
-export function goalWeekTargetLabel(g: Goal): string | null {
-  const t = g.weekPlan
-  if (!t) return null
-  const unit = g.unit ? ` ${g.unit}` : ''
-  if (t.current) return `This week: ${fmtGoalNum(t.done)} of ${fmtGoalNum(t.target)}${unit}`
+// the goals list, the hero cards, the Today card and the goal's own page.
+export function goalWeekPlanLabel(t: GoalWeekTarget, unit: string | null): string {
+  if (t.current) return `This week: ${goalWeekPlanAmount(t, unit)}`
   const day = new Date(`${t.weekStart}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  return `Week of ${day}: ${fmtGoalNum(t.target)}${unit}`
+  return `Week of ${day}: ${fmtGoalNum(t.target)}${unit ? ` ${unit}` : ''}`
+}
+
+export function goalWeekTargetLabel(g: Goal): string | null {
+  return g.weekPlan ? goalWeekPlanLabel(g.weekPlan, g.unit) : null
 }
 
 // The one place goal amounts get formatted for display: at most 2 decimals, trailing
@@ -170,6 +176,8 @@ export interface GoalDetail extends Goal {
   steps: GoalStep[]
   recent: GoalLogEntry[]
   thisWeek: number
+  // From the week under way onward; see goalWeekPlanLabel.
+  weekPlans?: GoalWeekTarget[]
   streakDays: number
 }
 
