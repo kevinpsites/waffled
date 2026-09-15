@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.15.1] - 2026-09-15
+
+### Added
+
 - **Set when an event ends, on web, iPhone and iPad.** The event editor's all-day toggle now
   comes with an **Ends** date, so a trip can span several days, and a timed event has an **Ends**
   date and time in place of the duration menu — including an end on a later day. Moving the start
@@ -3029,7 +3037,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.15.1...HEAD
+[0.15.1]: https://github.com/kevinpsites/waffled/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/kevinpsites/waffled/compare/v0.14.3...v0.15.0
 [0.14.3]: https://github.com/kevinpsites/waffled/compare/v0.14.2...v0.14.3
 [0.14.2]: https://github.com/kevinpsites/waffled/compare/v0.14.1...v0.14.2
