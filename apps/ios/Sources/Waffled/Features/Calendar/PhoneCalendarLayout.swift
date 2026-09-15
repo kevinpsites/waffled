@@ -85,13 +85,103 @@ enum PhoneCalendar {
     /// Titles per day cell: as many chips as the row height holds, never more than four. One
     /// countdown pill takes a slot; further countdowns, like events that don't fit, count toward
     /// "+N more". Room for that line is always kept.
-    static func cellChips(eventCount: Int, countdownCount: Int, rowHeight: CGFloat) -> CellChips {
+    /// `reservedSlots` are the row's spanning-bar lanes, drawn over the cells by the grid.
+    static func cellChips(eventCount: Int, countdownCount: Int, rowHeight: CGFloat, reservedSlots: Int = 0) -> CellChips {
         let room = rowHeight - cellTopPadding - dayNumberHeight - moreLineHeight - chipGap
-        let slots = min(maxCellSlots, max(0, Int((room / (chipHeight + chipGap)).rounded(.down))))
+        let fit = min(maxCellSlots, max(0, Int((room / (chipHeight + chipGap)).rounded(.down))))
+        let slots = max(0, fit - reservedSlots)
         let showsCountdown = countdownCount > 0 && slots > 0
         let shown = min(eventCount, slots - (showsCountdown ? 1 : 0))
         let hiddenCountdowns = countdownCount - (showsCountdown ? 1 : 0)
         return CellChips(shown: shown, more: eventCount - shown + hiddenCountdowns, showsCountdown: showsCountdown)
+    }
+
+    struct SpanBar: Equatable {
+        let event: SyncedEvent
+        let startCol: Int
+        let endCol: Int
+        let lane: Int
+        /// The event started before this row / runs on past it, so that end is square.
+        let continuesBefore: Bool
+        let continuesAfter: Bool
+    }
+
+    struct WeekSpans: Equatable {
+        let bars: [SpanBar]
+        let lanes: Int
+        /// Each day's events that still draw as chips: everything the bars didn't take.
+        let chipsByDay: [String: [SyncedEvent]]
+    }
+
+    static let maxSpanLanes = 2
+
+    struct ChipCap: Equatable {
+        let shown: Int
+        let more: Int
+    }
+
+    /// An iPad month cell's chips: a fixed cap, less the row's bar lanes; the rest are "+N more".
+    static func cappedChips(eventCount: Int, cap: Int, reserved: Int) -> ChipCap {
+        let shown = min(eventCount, max(0, cap - reserved))
+        return ChipCap(shown: shown, more: eventCount - shown)
+    }
+
+    /// A bar's x and width in a row of seven equal cells `spacing` apart: its columns and the gaps
+    /// between them, `inset` in from both ends.
+    static func spanBarX(startCol: Int, endCol: Int, rowWidth: CGFloat, spacing: CGFloat,
+                         inset: CGFloat) -> (x: CGFloat, width: CGFloat) {
+        let col = (rowWidth - spacing * 6) / 7
+        let cols = CGFloat(endCol - startCol + 1)
+        return (CGFloat(startCol) * (col + spacing) + inset, max(0, cols * col + (cols - 1) * spacing - inset * 2))
+    }
+
+    /// Multi-day all-day events in one month row, laid out as bars across their days like Google's
+    /// month view: earliest start first, longer first on a tie, each in the first lane free by its
+    /// start. Beyond `maxLanes` an event stays a chip in each of its days.
+    static func weekSpans(_ days: [String], byDay: [String: [SyncedEvent]], tz: TimeZone,
+                          maxLanes: Int = maxSpanLanes) -> WeekSpans {
+        guard let firstDay = days.first, let lastDay = days.last else {
+            return WeekSpans(bars: [], lanes: 0, chipsByDay: [:])
+        }
+        struct Candidate { let event: SyncedEvent; let start: Int; let end: Int; let before: Bool; let after: Bool }
+        // Runs per row per render, so only key comparisons per event — one date step per row
+        // for the day after it.
+        let afterRow = DateFmt.date(lastDay, "yyyy-MM-dd", tz)
+            .flatMap { Cal.gregorian(tz).date(byAdding: .day, value: 1, to: $0) }
+            .map { EventTime.dayKey($0, tz) } ?? lastDay
+        var seen = Set<String>()
+        var candidates: [Candidate] = []
+        for (col, key) in days.enumerated() {
+            for e in byDay[key] ?? [] where e.allDay && !seen.contains(e.id) {
+                guard let endExclusive = Agenda.exclusiveEndKey(e, tz) else { continue }
+                seen.insert(e.id)
+                let end = max(col, days.lastIndex { $0 < endExclusive } ?? col)
+                let before = Agenda.dayKey(e, tz) < firstDay
+                let after = endExclusive > afterRow
+                // A one-day all-day event also has an exclusive end; it covers more than one day
+                // only if it runs past this row or across another column in it.
+                guard before || after || end > col else { continue }
+                candidates.append(Candidate(event: e, start: col, end: end, before: before, after: after))
+            }
+        }
+        candidates.sort {
+            if $0.start != $1.start { return $0.start < $1.start }
+            if $0.end != $1.end { return $0.end > $1.end }
+            return $0.event.id < $1.event.id
+        }
+        var laneEnds: [Int] = []
+        var bars: [SpanBar] = []
+        for c in candidates {
+            let lane = laneEnds.firstIndex { $0 < c.start } ?? laneEnds.count
+            guard lane < maxLanes else { continue }
+            if lane == laneEnds.count { laneEnds.append(c.end) } else { laneEnds[lane] = c.end }
+            bars.append(SpanBar(event: c.event, startCol: c.start, endCol: c.end, lane: lane,
+                                continuesBefore: c.before, continuesAfter: c.after))
+        }
+        let barIds = Set(bars.map(\.event.id))
+        var chips: [String: [SyncedEvent]] = [:]
+        for key in days { chips[key] = (byDay[key] ?? []).filter { !barIds.contains($0.id) } }
+        return WeekSpans(bars: bars, lanes: laneEnds.count, chipsByDay: chips)
     }
 
     // MARK: Week

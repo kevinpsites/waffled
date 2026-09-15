@@ -168,13 +168,16 @@ export function eventsForDay(rows: LocalEventRow[], tz: string, day: string): Ag
     .sort((a, b) => (a.allDay === b.allDay ? byStart(a, b) : a.allDay ? 1 : -1))
 }
 
-// A date range (Calendar screen) — ordered by start, like the server.
+// A date range (Calendar screen) — ordered by start, like the server. An all-day event that began
+// before the range is included while it is still on: its end is exclusive, so it covers `from`
+// only when that end is after it. The grids draw it as a bar (month-spans.ts).
 export function eventsForRange(rows: LocalEventRow[], tz: string, from: string, to: string): AgendaEvent[] {
   return rows
     .filter((r) => {
       if (!isVisibleToViewer(r)) return false
       const d = localDate(r.starts_at, tz)
-      return d >= from && d <= to
+      if (d >= from && d <= to) return true
+      return !!r.all_day && !!r.ends_at && d < from && localDate(r.ends_at, tz) > from
     })
     .map(rowToAgenda)
     .sort(byStart)

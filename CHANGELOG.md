@@ -15,6 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Set when an event ends, on web, iPhone and iPad.** The event editor's all-day toggle now
+  comes with an **Ends** date, so a trip can span several days, and a timed event has an **Ends**
+  date and time in place of the duration menu — including an end on a later day. Moving the start
+  keeps the event's length. All day, Starts and Ends sit together in one card that looks the same
+  on every screen, and every date and time reads the same way ("Sep 14, 2026", "5:00 PM"); tap one
+  to pick it from a calendar or a list of times.
+- **Tell goal suggestions to ignore an event for good.** When Review events keeps offering
+  the same kind of event for a goal, pick a word from its title (web: **Ignore…**, iPhone and
+  iPad: **Dismiss → Ignore events like this…**) and events containing it are never suggested for
+  that goal again — other goals still see them. The words are listed, and removable, in
+  **Settings → AI & Capture → Ignored for suggestions** on web, iPhone and iPad.
 - **Your chores, ticked off from the iPhone's Today.** The chores card now opens on whoever
   is signed in and lists their chores for today, each with a tick. Tap the card's title to
   see someone else's list or go back to the family summary — the phone remembers which.
@@ -34,6 +45,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The iPhone and iPad calendar redraws less.** Every background sync pass rebuilt the
+  calendar's day index and redrew the tab even when no event had changed, and filtering to one
+  person re-sorted every event on each redraw. Unchanged syncs are now skipped and the person
+  filter narrows the index that's already built, which should make opening and scrolling the
+  calendar smoother.
+- **Multi-day all-day events show on every day they cover.** A trip synced from Google as a
+  several-day all-day event appeared only on its first day; it now draws as one bar across its
+  days in the month view on iPhone, iPad and web and across the web week view's all-day strip
+  (like Google's), and on web the month's day panel, Day view and Agenda list it on each of those
+  days — including a trip that began before the week or month on screen, or before today. On iPhone and iPad it also appears on each day of the
+  week cards, day view and agenda, shows on Today and a person's day while it's on, and only
+  fades as past once its last day is over.
+- **The web calendar's round ＋ buttons are centred.** The add button beside the month view's day
+  panel, and on each agenda day, drew its plus a little right of centre.
+- **A habit's Log sheet says when today is already submitted.** On iPhone and iPad a habit
+  with no one to pick (a family habit) never showed that today was done, and a sheet opened from
+  an older list could still offer "Mark done for today" after someone had logged it — the tap
+  looked like it worked but added nothing. The sheet now checks today's log when it opens and
+  shows **Already submitted today ✓**; you can still pick another day to catch one up.
+- **Thaw reminders are no longer suggested as goal events.** Review events skipped planned
+  meals but still offered each week's "Thaw for Dinner" reminder for a goal; Waffled's own meal
+  and thaw reminders are now never suggested.
 - **Goal charts on iPad no longer lock you into Month, and fit on narrow screens.** Picking
   Month on a goal's detail page could draw the calendar over its own card and hide the menu
   you use to switch views, leaving no way back. The view menu now has its own row at the top

@@ -60,6 +60,12 @@ enum PlanningWeekDays {
         return "\(list.dropLast().joined(separator: ", ")) and \(list[list.count - 1])"
     }
 
+    /// Events on the week, each counted once: the day index files a multi-day event under
+    /// every day it covers.
+    static func eventCount(days: [PlanningWeekDay], byDay: [String: [SyncedEvent]]) -> Int {
+        Set(days.flatMap { byDay[$0.key] ?? [] }.map(\.id)).count
+    }
+
     /// THE OPEN DAYS ARE THE POINT OF THE STEP, so they are named, not counted.
     static func summary(total: Int, openDays: [String]) -> String {
         let count = total == 0 ? "Nothing on the week yet" : (total == 1 ? "1 event" : "\(total) events")

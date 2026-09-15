@@ -1,7 +1,8 @@
-import { useMemo, type MouseEvent } from 'react'
+import { useMemo, type CSSProperties, type MouseEvent } from 'react'
 import type { AgendaEvent, Countdown } from '../../lib/api'
 import { evVars, useEventColor } from '../../lib/event-color'
-import { DOW, dowFrom, monthGridStart, ymd, localDate } from './cal-utils'
+import { DOW, dowFrom, monthGridStart, ymd } from './cal-utils'
+import { eventsByDay, weekSpans } from './month-spans'
 import { MonthDayPanel } from './MonthDayPanel'
 import { RhythmMark } from './RhythmMark'
 
@@ -52,11 +53,13 @@ export function MonthView({
   const colorOf = useEventColor()
   const cells = useMemo(() => monthGrid(year, month, firstDay), [year, month, firstDay])
   const dowLabels = useMemo(() => dowFrom(DOW, firstDay), [firstDay])
-  const byDate = useMemo(() => {
-    const map: Record<string, AgendaEvent[]> = {}
-    for (const e of events) (map[localDate(e.startsAt, tz)] ??= []).push(e)
-    return map
-  }, [events, tz])
+  const byDate = useMemo(() => eventsByDay(events, tz), [events, tz])
+  // Bars are grid siblings of the cells (a cell clips its overflow), so every cell is placed
+  // explicitly and each bar takes its row and columns on top.
+  const rowSpans = useMemo(
+    () => Array.from({ length: 6 }, (_, r) => weekSpans(cells.slice(r * 7, r * 7 + 7).map(ymd), byDate, tz)),
+    [cells, byDate, tz],
+  )
   const today = ymd(new Date())
 
   return (
@@ -68,15 +71,18 @@ export function MonthView({
         ))}
       </div>
       <div className="cal-grid">
-        {cells.map((d) => {
+        {cells.map((d, i) => {
           const key = ymd(d)
-          const dayEvents = byDate[key] ?? []
+          const spans = rowSpans[Math.floor(i / 7)]
+          const dayEvents = spans.chipsByDay[key] ?? []
+          const shown = Math.max(0, chipCap - spans.lanes)
           const cds = countdownsByDate?.[key] ?? []
           const dim = d.getMonth() !== month
           return (
             <div
               key={key}
               className={`cal-cell ${dim ? 'dim' : ''} ${key === today ? 'today' : ''} ${key === selectedDay ? 'selected' : ''}`}
+              style={{ gridRow: Math.floor(i / 7) + 1, gridColumn: (i % 7) + 1 }}
               onClick={() => onSelectDay(key)}
             >
               <div className="dn">{d.getDate()}</div>
@@ -93,7 +99,8 @@ export function MonthView({
                   {cds.length > 1 && <span className="cal-cd-n">+{cds.length - 1}</span>}
                 </div>
               )}
-              {dayEvents.slice(0, chipCap).map((e) => {
+              {spans.lanes > 0 && <div className="cal-span-gap" style={{ '--lanes': spans.lanes } as CSSProperties} />}
+              {dayEvents.slice(0, shown).map((e) => {
                 const color = colorOf(e)
                 const isMeal = e.origin === 'meal_plan'
                 return (
@@ -116,7 +123,7 @@ export function MonthView({
                   </div>
                 )
               })}
-              {dayEvents.length > chipCap && (
+              {dayEvents.length > shown && (
                 <div
                   className="ev-more"
                   style={{ cursor: 'pointer' }}
@@ -125,12 +132,36 @@ export function MonthView({
                     onMore(key)
                   }}
                 >
-                  +{dayEvents.length - chipCap} more
+                  +{dayEvents.length - shown} more
                 </div>
               )}
             </div>
           )
         })}
+        {rowSpans.flatMap((spans, r) =>
+          spans.bars.map((b) => {
+            const days = cells.slice(r * 7, r * 7 + 7)
+            const outside = days[b.startCol].getMonth() !== month && days[b.endCol].getMonth() !== month
+            return (
+              <div
+                key={`${r}-${b.event.id}`}
+                className={`ev ev-tint cal-span ${b.continuesBefore ? 'cont-before' : ''} ${b.continuesAfter ? 'cont-after' : ''} ${outside ? 'dim' : ''}`}
+                style={{
+                  ...evVars(colorOf(b.event)),
+                  '--span-row': r + 1,
+                  '--span-col': b.startCol + 1,
+                  '--span-len': b.endCol - b.startCol + 1,
+                  '--lane': b.lane,
+                } as CSSProperties}
+                title={b.event.title}
+                onClick={() => onOpenEvent(b.event)}
+              >
+                <RhythmMark event={b.event} />
+                {b.event.title}
+              </div>
+            )
+          }),
+        )}
       </div>
     </div>
     <MonthDayPanel day={selectedDay} events={events} tz={tz} onOpenEvent={onOpenEvent} onCreate={onCreateOnDay} />

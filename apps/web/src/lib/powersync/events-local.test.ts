@@ -118,6 +118,15 @@ describe('eventsForRange', () => {
     const out = eventsForRange(rows, tz, '2026-06-23', '2026-06-30')
     expect(out.map((e) => e.id)).toEqual(['a', 'b'])
   })
+
+  // A week or month grid draws a trip that began before it (month-spans.ts), so the range read has
+  // to hand it over. All-day ends are exclusive: `ended`'s last day is Jun 22.
+  it('includes an all-day trip that started before the range and is still on in it', () => {
+    const trip = row({ id: 'trip', all_day: 1, starts_at: '2026-06-20T05:00:00Z', ends_at: '2026-06-25T05:00:00Z' })
+    const ended = row({ id: 'ended', all_day: 1, starts_at: '2026-06-19T05:00:00Z', ends_at: '2026-06-23T05:00:00Z' })
+    const out = eventsForRange([trip, ended, ...rows], tz, '2026-06-23', '2026-06-30')
+    expect(out.map((e) => e.id)).toEqual(['trip', 'a', 'b'])
+  })
 })
 
 describe('personal-calendar visibility', () => {

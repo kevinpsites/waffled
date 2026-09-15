@@ -11,6 +11,7 @@ struct AISettingsView: View {
     @State private var saving = false
     @State private var saved = false
     @State private var failed = false
+    @State private var ignores: [WaffledAPI.IgnoreGroup] = []
 
     private let api = WaffledAPI()
 
@@ -60,6 +61,7 @@ struct AISettingsView: View {
                     }
                     Text("Keys are read from the server environment and never leave it.")
                         .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                    if !ignores.isEmpty { ignoredSection }
                 } else if failed {
                     Text("Couldn’t load AI settings.").font(.system(size: 14)).foregroundStyle(WF.ink3).padding(.vertical, 30)
                 } else if loading {
@@ -71,6 +73,41 @@ struct AISettingsView: View {
         .background(WF.canvas)
         .navigationTitle("AI & Capture").navigationBarTitleDisplayMode(.inline)
         .task { await load() }
+    }
+
+    /// Words picked from Review events → "Ignore events like this…". Mirrors the web's
+    /// Settings → AI & Capture → Ignored for suggestions.
+    private var ignoredSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(text: "Ignored for suggestions")
+            Text("Events with these words are never suggested for the goal. Tap a word to allow it again.")
+                .font(.system(size: 12)).foregroundStyle(WF.ink3).fixedSize(horizontal: false, vertical: true)
+            ForEach(ignores) { g in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(g.goalEmoji.map { "\($0) \(g.goalTitle)" } ?? g.goalTitle)
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
+                    ChipFlow(spacing: 7, lineSpacing: 7) {
+                        ForEach(g.words, id: \.self) { word in
+                            Button { Task { await removeIgnore(g, word) } } label: {
+                                HStack(spacing: 5) {
+                                    Text(word).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
+                                    Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(WF.ink3)
+                                }
+                                .padding(.horizontal, 10).padding(.vertical, 6)
+                                .wfChip(selected: false)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Stop ignoring \(word)")
+                        }
+                    }
+                }
+                .padding(13).frame(maxWidth: .infinity, alignment: .leading)
+                .background(WF.card)
+                .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+            }
+        }
+        .padding(.top, 8)
     }
 
     private func providerCard(_ p: String, _ cfg: WaffledAPI.CaptureConfig) -> some View {
@@ -117,11 +154,18 @@ struct AISettingsView: View {
     }
 
     private func load() async {
+        // Its own fetch: the list needs the Goals module, the provider picker doesn't.
+        ignores = (try? await api.goalSuggestionIgnores()) ?? []
         do {
             let c = try await api.captureConfig()
             config = c; provider = c.provider; model = c.model ?? ""
         } catch { failed = true }
         loading = false
+    }
+
+    private func removeIgnore(_ g: WaffledAPI.IgnoreGroup, _ word: String) async {
+        guard (try? await api.removeGoalSuggestionIgnore(goalId: g.goalId, word: word)) != nil else { return }
+        ignores = (try? await api.goalSuggestionIgnores()) ?? ignores
     }
 
     private func save() async {

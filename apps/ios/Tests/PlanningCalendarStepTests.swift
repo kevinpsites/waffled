@@ -82,6 +82,21 @@ import Testing
                 == "28 events · every day has something")
     }
 
+    @Test func aTripCountsOnceNotOncePerDayItCovers() {
+        // The day index files a multi-day all-day event under every day it covers.
+        let days = PlanningWeekDays.days(weekStart: "2026-09-06", todayKey: "2026-09-09")
+        let denver = TimeZone(identifier: "America/Denver")!
+        let tripStart = "2026-09-07 06:00:00+00"
+        let trip = SyncedEvent(id: "trip", title: "trip", startsAtRaw: tripStart, startsAt: EventTime.parse(tripStart),
+                               allDay: true, personId: nil, colorHex: nil, emoji: nil,
+                               endsAt: EventTime.parse("2026-09-12 06:00:00+00"))
+        let dinnerStart = "2026-09-08T01:00:00Z"
+        let dinner = SyncedEvent(id: "dinner", title: "dinner", startsAtRaw: dinnerStart, startsAt: EventTime.parse(dinnerStart),
+                                 allDay: false, personId: nil, colorHex: nil, emoji: nil)
+        let byDay = Agenda.byDay([trip, dinner], denver)
+        #expect(PlanningWeekDays.eventCount(days: days, byDay: byDay) == 2)
+    }
+
     @Test func anEmptyWeekSaysSoBothWays() {
         let all = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
         #expect(

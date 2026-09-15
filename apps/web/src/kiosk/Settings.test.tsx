@@ -38,6 +38,47 @@ function mockApi() {
   }) as unknown as typeof fetch
 }
 
+describe('Settings → AI & Capture → ignored words', () => {
+  beforeEach(() => {
+    __resetSyncHealthForTests()
+  })
+
+  it('lists the words ignored per goal and removes one', async () => {
+    const calls: Array<{ url: string; method: string; body: unknown }> = []
+    let groups = [{ goalId: 'g1', goalTitle: 'Host 30 families', goalEmoji: '🏡', words: ['thaw'] }]
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      calls.push({ url: u, method: init?.method ?? 'GET', body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body })
+      if (u.includes('/api/goal-calendar/ignores/remove')) { groups = []; return ok({ ok: true }) }
+      if (u.includes('/api/goal-calendar/ignores')) return ok({ groups })
+      if (u.includes('/api/goal-calendar/memory')) return ok({ groups: [] })
+      if (u.includes('/api/capture/config')) {
+        return ok({ provider: 'heuristic', model: null, available: { heuristic: true, anthropic: false, openai: false, ollama: false }, defaultModels: { anthropic: 'a', openai: 'o', ollama: 'l' } })
+      }
+      if (u.includes('/api/household/settings')) return ok({ household, members })
+      if (u.includes('/api/household')) return ok({ provisioned: true, household, person: members[0] })
+      if (u.includes('/api/persons')) return ok({ persons: [] })
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.change(screen.getByLabelText('Settings section'), { target: { value: 'ai' } })
+
+    expect(await screen.findByText('Ignored for suggestions')).toBeInTheDocument()
+    const chip = await screen.findByRole('button', { name: /thaw/ })
+    expect(screen.getByText('🏡 Host 30 families')).toBeInTheDocument()
+    fireEvent.click(chip)
+
+    await waitFor(() => {
+      const post = calls.find((c) => c.url.includes('/ignores/remove'))
+      expect(post?.body).toEqual({ goalId: 'g1', word: 'thaw' })
+    })
+    await waitFor(() => expect(screen.queryByRole('button', { name: /thaw/ })).not.toBeInTheDocument())
+  })
+})
+
 describe('Settings screen', () => {
   // The sync-health store is module-global; reset it so a Live Sync assertion in
   // one test can't be satisfied by a snapshot another test published.

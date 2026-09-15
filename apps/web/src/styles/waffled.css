@@ -424,7 +424,16 @@ select.cap-edit-sub { cursor: pointer; }
   border-top: 1px solid var(--hair); border-left: 1px solid var(--hair); }
 .cal-cell { border-right: 1px solid var(--hair); border-bottom: 1px solid var(--hair);
   padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; min-height: 0; overflow: hidden; }
-.cal-cell .dn { font-size: 14px; color: var(--ink-2); font-weight: 600; }
+.cal-cell .dn { font-size: 14px; color: var(--ink-2); font-weight: 600; min-height: 26px; line-height: 26px; }
+/* Multi-day bars (month-spans.ts): grid siblings of the cells, laid over the space each cell
+   reserves under its day number. Top = cell padding + day number + gap; a lane is a chip + gap. */
+.cal-span-gap { flex: none; height: calc(var(--lanes) * 23px - 3px); }
+.cal-span { grid-row: var(--span-row); grid-column: var(--span-col) / span var(--span-len);
+  align-self: start; z-index: 1; box-sizing: border-box; height: 20px; line-height: 14px;
+  margin: calc(35px + var(--lane) * 23px) 5px 0; cursor: pointer; }
+.cal-span.cont-before { margin-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.cal-span.cont-after { margin-right: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.cal-span.dim { opacity: .5; }
 .cal-cell.dim .dn { color: var(--ink-3); }
 .cal-cell.today .dn { background: var(--primary); color: var(--on-accent); width: 26px; height: 26px;
   border-radius: 999px; display: grid; place-items: center; }

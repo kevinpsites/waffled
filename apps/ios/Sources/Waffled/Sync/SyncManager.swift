@@ -305,10 +305,14 @@ final class SyncManager {
     private let connectionTransitions = ConnectionTransitionQueue()
     private let testConnectionLifecycle: SyncConnectionLifecycle?
 
-    init(testConnectionLifecycle: SyncConnectionLifecycle? = nil, initialMembers: [SyncedMember] = []) {
+    init(testConnectionLifecycle: SyncConnectionLifecycle? = nil, initialMembers: [SyncedMember] = [],
+         initialEvents: [SyncedEvent] = []) {
         self.testConnectionLifecycle = testConnectionLifecycle
         self.members = initialMembers
+        self.allEvents = initialEvents
         db = PowerSyncDatabase(schema: SyncSchema.schema, dbFilename: "waffled.sqlite")
+        // `didSet` doesn't run from init.
+        if !initialEvents.isEmpty { rebuildEventIndex() }
     }
 
     /// Stand up watchers once, then connect. Safe to call on every app launch.
@@ -1162,6 +1166,9 @@ final class SyncManager {
                     }
                 )
                 for try await rows in stream {
+                    // The watch re-emits on any write to its tables, usually with identical rows;
+                    // assigning anyway rebuilds the day index and redraws every calendar view.
+                    guard rows != self.allEvents else { continue }
                     self.allEvents = rows
                     self.eventCount = rows.count
                 }
