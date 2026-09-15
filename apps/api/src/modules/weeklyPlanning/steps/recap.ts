@@ -96,6 +96,7 @@ const WD = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'S
 const weekdayOf = (iso: string) => WD[new Date(`${iso.slice(0, 10)}T00:00:00Z`).getUTCDay()]
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 const join = (bits: (string | null | undefined)[]) => bits.filter(Boolean).join(' · ')
+const amount = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 })
 
 function whenLabel(at: Date | string, allDay: boolean, tz: string): string {
   const d = new Date(at)
@@ -349,16 +350,23 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
     // showing an already-featured goal so nobody re-picks it — a flag, not a decision.
     const withFocus = goals.groups.filter((g) => g.settled && g.focusGoalId)
     const noFocus = goals.groups.filter((g) => g.settled && !g.focusGoalId)
-    if (withFocus.length) {
+    // A week's slice of a goal ("10 hours this week") is a decision too, with a focus or without.
+    const targeted = goals.groups.flatMap((g) => g.goals).filter((x) => x.weekTarget != null)
+    if (withFocus.length || targeted.length) {
       groups.push({
         key: 'goals',
         label: 'Goals',
-        headline: `${plural(withFocus.length, 'group')} ${withFocus.length === 1 ? 'has' : 'have'} a focus`,
-        detail: withFocus
+        headline: join([
+          withFocus.length ? `${plural(withFocus.length, 'group')} ${withFocus.length === 1 ? 'has' : 'have'} a focus` : null,
+          targeted.length ? `${plural(targeted.length, 'target')} for the week` : null,
+        ]),
+        detail: [
+          ...withFocus.map((g) => `${g.name} · ${g.goals.find((x) => x.id === g.focusGoalId)?.title ?? 'a goal'}`),
+          ...targeted.map((x) => `${x.title} · ${[amount(x.weekTarget ?? 0), x.unit].filter(Boolean).join(' ')} this week`),
+        ]
           .slice(0, DETAIL_CAP)
-          .map((g) => `${g.name} · ${g.goals.find((x) => x.id === g.focusGoalId)?.title ?? 'a goal'}`)
           .join(' · '),
-        count: withFocus.length,
+        count: withFocus.length + targeted.length,
         stepKey: 'goals',
       })
     }

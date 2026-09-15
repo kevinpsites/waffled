@@ -292,6 +292,19 @@ describe('planning · recap · grouped by the module the decision lives in', () 
     expect(g.detail).toMatch(/Read every night/)
   })
 
+  it('reads back the target set for THIS week, not only the focus', async () => {
+    const listId = json(await call('POST', '/api/goal-lists', kevin, { name: 'Outside time', memberIds: [ownerId] })).list.id
+    const goalId = json(await call('POST', '/api/goals', kevin, {
+      title: '1,000 Hours Outside', goalListId: listId, goalType: 'total', unit: 'hours', targetValue: 1000,
+      trackingMode: 'shared_total', participantIds: [ownerId],
+    })).goal.id
+    expect((await call('PUT', '/api/weekly-planning/goals/week-target', kevin, { sessionId, goalId, target: 10 })).statusCode).toBe(200)
+
+    const g = group(await recap(), 'goals')!
+    expect(g.headline).toMatch(/1 target for the week/)
+    expect(g.detail).toMatch(/1,000 Hours Outside · 10 hours this week/)
+  })
+
   it('reads last week’s targets back, with what was logged against them that week', async () => {
     const { query } = await import('../src/platform/db')
     const listId = json(await call('POST', '/api/goal-lists', kevin, { name: 'Kevin practice', memberIds: [ownerId] })).list.id
