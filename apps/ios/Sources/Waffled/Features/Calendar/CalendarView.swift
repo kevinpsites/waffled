@@ -542,6 +542,9 @@ struct EventEditSheet: View {
     @State private var allDay: Bool
     /// The last day an all-day event covers (inclusive); saved as the exclusive end.
     @State private var lastDay: Date
+    enum WhenField { case startDate, startTime, endDate, endTime }
+    /// The date or time pill whose picker is open inside the When card.
+    @State private var openWhen: WhenField?
     @State private var isCountdown: Bool
     /// Ordered so the first one picked is the "owner" (drives the calendar list).
     @State private var participants: [String]
@@ -633,9 +636,14 @@ struct EventEditSheet: View {
     }
 
     private var editing: Bool { event != nil }
-    private var endsBinding: Binding<Date> {
-        Binding(get: { resolvedStart.addingTimeInterval(Double(durationMin) * 60) },
-                set: { durationMin = EventEnd.minutes(from: resolvedStart, to: $0) })
+    private var timedEnd: Date { resolvedStart.addingTimeInterval(Double(durationMin) * 60) }
+    private var endDayBinding: Binding<Date> {
+        Binding(get: { timedEnd },
+                set: { durationMin = EventEnd.minutes(from: resolvedStart, to: combine($0, timedEnd)) })
+    }
+    private var endTimeBinding: Binding<Date> {
+        Binding(get: { timedEnd },
+                set: { durationMin = EventEnd.minutes(from: resolvedStart, to: combine(timedEnd, $0)) })
     }
     private var canSave: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty
@@ -676,36 +684,7 @@ struct EventEditSheet: View {
                             .padding(.horizontal, 13).padding(.vertical, 11).innerField()
                     }
 
-                    HStack(alignment: .top, spacing: 14) {
-                        group(allDay ? "Starts" : "Date") {
-                            DatePicker("", selection: $day, displayedComponents: .date)
-                                .labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        if allDay {
-                            group("Ends") {
-                                DatePicker("", selection: $lastDay, displayedComponents: .date)
-                                    .labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        } else {
-                            group("Starts") {
-                                DatePicker("", selection: $start, displayedComponents: .hourAndMinute)
-                                    .labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-                    }
-
-                    if !allDay {
-                        group("Ends") {
-                            DatePicker("", selection: endsBinding, displayedComponents: [.date, .hourAndMinute])
-                                .labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-
-                    Toggle(isOn: $allDay.animation()) {
-                        Text("All day").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
-                    }
-                    .tint(FamilyColor.person3.solid)
-                    .padding(14).cardBox()
+                    whenCard
 
                     Toggle(isOn: $isCountdown) {
                         VStack(alignment: .leading, spacing: 2) {
@@ -788,8 +767,8 @@ struct EventEditSheet: View {
             }
             .onChange(of: participants) { _, _ in recomputeDefaultCalendar(); clearOrphanGoal(); scheduleSuggest() }
             .onChange(of: title) { _, _ in scheduleSuggest() }
-            // No `in:` range on the Ends pickers — a ranged compact picker renders its date in a
-            // different style from Starts — so the floor is kept here (timed: `EventEnd.minutes`).
+            .onChange(of: allDay) { _, _ in openWhen = nil }
+            // An all-day end can't be picked before its start (timed ends floor in `EventEnd.minutes`).
             .onChange(of: lastDay) { _, picked in
                 let floor = Cal.current.startOfDay(for: day)
                 if picked < floor { lastDay = floor }
@@ -1471,10 +1450,71 @@ struct EventEditSheet: View {
     }
 
     private func combine(_ dayDate: Date, _ time: Date) -> Date {
-        let cal = Cal.current
-        let d = cal.dateComponents([.year, .month, .day], from: dayDate)
-        let t = cal.dateComponents([.hour, .minute], from: time)
-        return cal.date(from: DateComponents(year: d.year, month: d.month, day: d.day, hour: t.hour, minute: t.minute)) ?? dayDate
+        EventEnd.combine(day: dayDate, time: time, cal: Cal.current)
+    }
+
+    /// All day, Starts and Ends in one card. Dates and times are pills that open their picker
+    /// under the row, like Calendar's editor (labels: `EventEnd.dayLabel`).
+    private var whenCard: some View {
+        let tz = Cal.current.timeZone
+        return VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: $allDay.animation()) {
+                Text("All day").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+            }
+            .tint(FamilyColor.person3.solid)
+            Rectangle().fill(WF.hair).frame(height: 1)
+            whenRow("Starts") {
+                whenPill(.startDate, "Start date", EventEnd.dayLabel(day, tz: tz))
+                if !allDay { whenPill(.startTime, "Start time", EventEnd.timeLabel(start, tz: tz)) }
+            }
+            openPicker(among: [.startDate, .startTime])
+            whenRow("Ends") {
+                whenPill(.endDate, "End date", EventEnd.dayLabel(allDay ? lastDay : timedEnd, tz: tz))
+                if !allDay { whenPill(.endTime, "End time", EventEnd.timeLabel(timedEnd, tz: tz)) }
+            }
+            openPicker(among: [.endDate, .endTime])
+        }
+        .padding(14).cardBox()
+    }
+
+    private func whenRow<V: View>(_ label: String, @ViewBuilder _ pills: () -> V) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink2)
+            HStack(spacing: 8) { pills() }
+        }
+    }
+
+    private func whenPill(_ field: WhenField, _ name: String, _ text: String) -> some View {
+        let open = openWhen == field
+        return Button { withAnimation(.snappy) { openWhen = open ? nil : field } } label: {
+            Text(text).font(.system(size: 15, weight: .semibold)).monospacedDigit()
+                .foregroundStyle(open ? WF.primary : WF.ink)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .wfChip(selected: open)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(name).accessibilityValue(text)
+    }
+
+    @ViewBuilder private func openPicker(among fields: [WhenField]) -> some View {
+        if let field = openWhen, fields.contains(field) {
+            Group {
+                switch field {
+                case .startDate:
+                    DatePicker("Start date", selection: $day, displayedComponents: .date).datePickerStyle(.graphical)
+                case .startTime:
+                    DatePicker("Start time", selection: $start, displayedComponents: .hourAndMinute).datePickerStyle(.wheel)
+                case .endDate:
+                    DatePicker("End date", selection: allDay ? $lastDay : endDayBinding, displayedComponents: .date)
+                        .datePickerStyle(.graphical)
+                case .endTime:
+                    DatePicker("End time", selection: endTimeBinding, displayedComponents: .hourAndMinute).datePickerStyle(.wheel)
+                }
+            }
+            .labelsHidden().tint(WF.primary)
+            .frame(maxWidth: .infinity)
+            .transition(.opacity)
+        }
     }
 
     private func group<V: View>(_ label: String, @ViewBuilder _ content: () -> V) -> some View {

@@ -21,6 +21,24 @@ enum EventEnd {
         return max(first, last)
     }
 
+    /// "Sep 14, 2026" / "5:00 PM" — the editor's own pills, because a compact `DatePicker` chooses
+    /// between that and "9/14/26" on its own and two pickers in one card can disagree.
+    static func dayLabel(_ date: Date, locale: Locale = .current, tz: TimeZone = .current) -> String {
+        date.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted, locale: locale, timeZone: tz))
+    }
+
+    static func timeLabel(_ date: Date, locale: Locale = .current, tz: TimeZone = .current) -> String {
+        date.formatted(Date.FormatStyle(date: .omitted, time: .shortened, locale: locale, timeZone: tz))
+    }
+
+    /// One instant from a date picker's day and a time picker's clock time, so changing either
+    /// keeps the other.
+    static func combine(day: Date, time: Date, cal: Calendar) -> Date {
+        let d = cal.dateComponents([.year, .month, .day], from: day)
+        let t = cal.dateComponents([.hour, .minute], from: time)
+        return cal.date(from: DateComponents(year: d.year, month: d.month, day: d.day, hour: t.hour, minute: t.minute)) ?? day
+    }
+
     /// A timed event's length from its Ends picker; minutes stay the source of truth so moving
     /// the start keeps the length.
     static func minutes(from start: Date, to end: Date) -> Int {

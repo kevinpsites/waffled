@@ -39,6 +39,24 @@ private func local(_ key: String, hour: Int = 0) -> Date {
         #expect(Agenda.dayKeys(ev, denver) == ["2026-07-27", "2026-07-28", "2026-07-29", "2026-07-30"])
     }
 
+    @Test func aDatePickerAndATimePickerEachKeepTheOtherHalf() {
+        let current = cal.date(bySettingHour: 18, minute: 30, second: 0, of: local("2026-09-14"))!
+        let pickedDay = local("2026-09-16", hour: 9)
+        #expect(EventEnd.combine(day: pickedDay, time: current, cal: cal)
+            == cal.date(bySettingHour: 18, minute: 30, second: 0, of: local("2026-09-16")))
+        let pickedTime = cal.date(bySettingHour: 7, minute: 15, second: 0, of: local("2026-01-01"))!
+        #expect(EventEnd.combine(day: current, time: pickedTime, cal: cal)
+            == cal.date(bySettingHour: 7, minute: 15, second: 0, of: local("2026-09-14")))
+    }
+
+    @Test func everyWhenPillReadsTheSameWay() {
+        let us = Locale(identifier: "en_US")
+        let at = cal.date(bySettingHour: 17, minute: 0, second: 0, of: local("2026-09-14"))!
+        #expect(EventEnd.dayLabel(at, locale: us, tz: denver) == "Sep 14, 2026")
+        #expect(EventEnd.dayLabel(local("2026-09-17"), locale: us, tz: denver) == "Sep 17, 2026")
+        #expect(EventEnd.timeLabel(at, locale: us, tz: denver).replacingOccurrences(of: "\u{202F}", with: " ") == "5:00 PM")
+    }
+
     @Test func theTimedEndsPickerMapsToWholeMinutesWithAFloor() {
         let start = local("2026-07-11", hour: 17)
         #expect(EventEnd.minutes(from: start, to: start.addingTimeInterval(90 * 60)) == 90)
