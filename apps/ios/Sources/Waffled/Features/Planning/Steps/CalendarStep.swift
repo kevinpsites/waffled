@@ -29,7 +29,7 @@ struct CalendarStepView: View {
 
     var body: some View {
         let days = PlanningWeekDays.days(weekStart: props.weekStart, todayKey: Agenda.todayKey(tz))
-        let total = days.reduce(0) { $0 + (sync.eventsByDay[$1.key]?.count ?? 0) }
+        let total = PlanningWeekDays.eventCount(days: days, byDay: sync.eventsByDay)
         let openDays = days.filter { (sync.eventsByDay[$0.key] ?? []).isEmpty }.map(\.full)
 
         VStack(alignment: .leading, spacing: 14) {
