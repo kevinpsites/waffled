@@ -204,7 +204,9 @@ final class PlanningModel {
     /// Re-read the session view. A failure keeps the last good view and still marks the model
     /// loaded — the screen must not blank because one refresh lost the network.
     func load() async {
-        if let latest = try? await fetchView(requestedWeek) {
+        let week = requestedWeek
+        if let latest = try? await fetchView(week), week == requestedWeek {
+            // A slower read of a week the stepper has since left must not pull it back.
             apply(latest)
         }
         loaded = true
@@ -317,11 +319,18 @@ final class PlanningModel {
 
     /// Move the stepper, dropping the step: it would name a step of a different record.
     func goWeek(_ week: String) async {
+        let before = requestedWeek
         askedStep = nil
         clearCrumb()
         // `nil` when it IS the default, so the everyday case keeps following the calendar.
-        requestedWeek = (week == view?.defaultWeekStart) ? nil : week
+        let target = (week == view?.defaultWeekStart) ? nil : week
+        requestedWeek = target
         await load()
+        // `load()` keeps the last good view on a failure, and here that view is another week.
+        if let view, requestedWeek == target, view.weekStart != (target ?? view.defaultWeekStart) {
+            requestedWeek = before
+            errorMessage = "Couldn’t open that week. Check your connection and try again."
+        }
     }
 
     func goPreviousWeek() async {

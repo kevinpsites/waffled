@@ -81,6 +81,11 @@ private final class PlanningFeed {
 
     var fetchFails = false
     var decideFails = false
+    /// When set, each week reads back its own session, as the server does.
+    var sessionsByWeek: [String: WaffledAPI.PlanningSession]?
+    /// Holds the next read of the DEFAULT week open until `held` is resumed.
+    var holdDefaultFetch = false
+    var held: CheckedContinuation<Void, Never>?
     var parkFails = false
 
     var fetchCount = 0
@@ -112,6 +117,18 @@ private final class PlanningFeed {
             steps: steps)
     }
 
+    func snapshot(for week: String?) -> WaffledAPI.WeeklyPlanningView {
+        guard let sessionsByWeek else { return snapshot }
+        let start = week ?? defaultWeekStart
+        return WaffledAPI.WeeklyPlanningView(
+            config: config,
+            weekStart: start,
+            defaultWeekStart: defaultWeekStart,
+            minWeekStart: minWeekStart,
+            session: sessionsByWeek[start],
+            steps: steps)
+    }
+
     func setStatus(_ key: String, _ status: String) {
         steps = steps.map { s in
             guard s.key == key else { return s }
@@ -130,7 +147,11 @@ private func makeModel(_ feed: PlanningFeed, defaults: UserDefaults) -> Planning
             feed.fetchCount += 1
             feed.fetchedWeeks.append(week)
             if feed.fetchFails { throw PlanningCallFailure.rejected }
-            return feed.snapshot
+            if feed.holdDefaultFetch, week == nil {
+                feed.holdDefaultFetch = false
+                await withCheckedContinuation { feed.held = $0 }
+            }
+            return feed.snapshot(for: week)
         },
         fetchConfig: {
             WaffledAPI.WeeklyPlanningConfigView(
@@ -550,6 +571,38 @@ private func scratchDefaults() -> UserDefaults {
         // `#require` peels the outer optional off `Array.last`; the element is itself a
         // `String?`, and `last == nil` would be true for an empty log too.
         #expect(try #require(feed.fetchedWeeks.last) == "2026-09-13")
+    }
+
+    @Test func aRefreshOfThisWeekLandingLateCannotPullTheStepperBack() async throws {
+        let feed = PlanningFeed(session: session())
+        feed.sessionsByWeek = ["2026-09-06": session()]
+        let model = makeModel(feed, defaults: scratchDefaults())
+        await model.load()
+        #expect(model.session != nil)
+
+        // A sync refresh starts reading this week, and › is tapped before it answers.
+        feed.holdDefaultFetch = true
+        let refresh = Task { await model.load() }
+        while feed.held == nil { await Task.yield() }
+        await model.goNextWeek()
+        feed.held?.resume()
+        await refresh.value
+
+        #expect(model.view?.weekStart == "2026-09-13")
+        #expect(model.session == nil)
+    }
+
+    @Test func aWeekThatWontLoadSaysSoAndKeepsTheStepperOnTheWeekShown() async {
+        let feed = PlanningFeed(session: session())
+        let model = makeModel(feed, defaults: scratchDefaults())
+        await model.load()
+
+        feed.fetchFails = true
+        await model.goNextWeek()
+
+        #expect(model.errorMessage != nil)
+        #expect(model.requestedWeek == nil)
+        #expect(model.view?.weekStart == "2026-09-06")
     }
 
     @Test func steppingBackToTheDefaultWeekStopsPinningAWeek() async throws {

@@ -56,6 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Weekly Planning's Horizon scan on iPhone draws the Calendar tab's month view.** Event chips,
   countdowns and "+N more" match the calendar, and a change to that view shows up here too.
+- **Weekly Planning's week arrows no longer jump back to this week's session.** On iPhone and
+  iPad, tapping › could land you on the current week's step when a background refresh answered
+  late; a week that won't load now says so and stays where you were.
 - **Weekly Planning has its own tile in the iPad's More menu.** It showed a bare dot instead
   of an icon and a line saying what it is.
 - **Family Night's weekly calendar event starts at the time you set.** Putting Family Night on
