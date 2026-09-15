@@ -37,6 +37,29 @@ describe('Compose network defaults', () => {
     expect(dockerfile).toMatch(/^COPY\s+infra\/compose\/caddy\/Caddyfile\s+\/etc\/caddy\/Caddyfile$/m)
   })
 
+  // sync-config.yaml selects from tables a migration inside waffled-api creates, so the
+  // sync rules have to travel with a version rather than with whatever is on disk.
+  // Publishing the image one release BEFORE compose points at it means the switch can
+  // never land on a tag whose image was never built.
+  it('publishes a powersync image carrying the sync config', async () => {
+    const dockerfile = await readFile(resolve(root, 'infra/compose/powersync/Dockerfile'), 'utf8')
+    expect(dockerfile).toMatch(/^COPY\s+service\.yaml\s+sync-config\.yaml\s+\/config\/$/m)
+
+    const workflow = await readFile(resolve(root, '.github/workflows/publish-images.yml'), 'utf8')
+    expect(workflow).toContain('infra/compose/powersync/Dockerfile')
+    expect(workflow).toContain('image: [api, caddy, backup, powersync]')
+  })
+
+  // The engine version is named in two places until compose stops running the stock
+  // image; a drift here would sync against a different engine than the one we ship.
+  it('pins one PowerSync engine version across the image and compose', async () => {
+    const dockerfile = await readFile(resolve(root, 'infra/compose/powersync/Dockerfile'), 'utf8')
+    const compose = await readFile(resolve(root, 'infra/compose/docker-compose.yml'), 'utf8')
+    const baked = dockerfile.match(/FROM journeyapps\/powersync-service:(\S+)/)?.[1]
+    expect(baked).toBeDefined()
+    expect(compose).toContain(`image: journeyapps/powersync-service:${baked}`)
+  })
+
   // The api DERIVES the sync URL from x-forwarded-proto/-host, and oidc.ts builds
   // redirect URLs from the same pair — so what a caller may put in them matters.
   // caddy:2 already overwrites both for untrusted clients, but the Dockerfile tracks
