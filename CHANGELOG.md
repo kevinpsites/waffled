@@ -15,7 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Suggest a day for a rhythm you book yourself.** A rhythm you put on the calendar by hand
+  can now carry a day — *the third Saturday* for a monthly family outing, *Saturdays* for a
+  weekly one. Its row and the Today card name the day, and **Book a time** opens on it; a
+  booking on any other day still counts. On web, iPhone and iPad.
+
 ### Changed
+
+- **Rhythms with a booking window can ask you ahead of time.** "Date night in the first week
+  of the month" can now start nudging you days before that week, so there's time to plan it —
+  set **Start nudging me … days before it opens**. Once a window has passed, the rhythm moves
+  on to the next one instead of reporting a week that's already gone, and a new monthly
+  rhythm you book by hand starts on the 1st.
 
 ### Fixed
 
@@ -39,18 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   see someone else's list or go back to the family summary — the phone remembers which.
   Chores that need a parent's OK wait for one, and a chore that needs a photo opens the
   Tasks board to take it.
-- **Suggest a day for a rhythm you book yourself.** A rhythm you put on the calendar by hand
-  can now carry a day — *the third Saturday* for a monthly family outing, *Saturdays* for a
-  weekly one. Its row and the Today card name the day, and **Book a time** opens on it; a
-  booking on any other day still counts. On web, iPhone and iPad.
 
 ### Changed
 
-- **Rhythms with a booking window can ask you ahead of time.** "Date night in the first week
-  of the month" can now start nudging you days before that week, so there's time to plan it —
-  set **Start nudging me … days before it opens**. Once a window has passed, the rhythm moves
-  on to the next one instead of reporting a week that's already gone, and a new monthly
-  rhythm you book by hand starts on the 1st.
 - **Undo the one you meant in Loose ends.** Everything you've sent ahead to a later step is
   listed newest first, each with its own **Undo**; past three, **Show all** opens the rest.
 - **Weekly Planning's saved week gets to the point.** **Plan another week** is at the top,
