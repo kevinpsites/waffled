@@ -19,6 +19,7 @@ struct FamilyNightStepView: View {
     @State private var model = PlanningFamilyNightModel()
     /// Closed again after a pick, so a second tap on a stale list can't relink.
     @State private var picking = false
+    @State private var addingEvent = false
     /// ONE focus token for the whole step, so one keyboard "Done" dismisses whichever line is live.
     @FocusState private var focusedField: String?
 
@@ -168,9 +169,9 @@ struct FamilyNightStepView: View {
     /// TWO different things live here: `onCalendar` is the STANDING recurring series set once in
     /// Settings; `eventId` is the event THIS gathering points at, which a session can decide.
     ///
-    /// Neither button opens an event form. "Add to calendar" is ONE server call that creates and
-    /// links atomically — a create-then-adopt round trip could not be made safe, because the app
-    /// writes events LOCALLY first and the id would not exist server-side yet.
+    /// "Add to calendar" confirms the details in `FamilyNightEventSheet`, then makes ONE server
+    /// call that creates and links atomically — a create-then-adopt round trip could not be made
+    /// safe, because the app writes events LOCALLY first and the id would not exist server-side yet.
     @ViewBuilder
     private func calendarLine(_ board: WaffledAPI.PlanningFamilyNightBoard) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -203,7 +204,7 @@ struct FamilyNightStepView: View {
                         HStack(spacing: 8) {
                             ghostButton("Add to calendar", disabled: disabled || board.isSkipped) {
                                 picking = false
-                                save(PlanningFamilyNightBody.addEvent(date: board.date))
+                                addingEvent = true
                             }
                             ghostButton(picking ? "Never mind" : "Link an event",
                                         disabled: disabled || board.isSkipped) {
@@ -220,6 +221,9 @@ struct FamilyNightStepView: View {
             }
         }
         .padding(.top, 2)
+        .sheet(isPresented: $addingEvent) {
+            FamilyNightEventSheet(board: board) { save($0) }
+        }
     }
 
     @ViewBuilder
@@ -365,5 +369,83 @@ private struct PlanningCommitLine: View {
         let trimmed = draft.trimmingCharacters(in: .whitespaces)
         guard !disabled, trimmed != value else { return }
         onCommit(trimmed)
+    }
+}
+
+/// Confirms what the week's event will say before the server makes it. The server still
+/// creates and links it in one call; see `PlanningFamilyNightBody.addEvent`.
+private struct FamilyNightEventSheet: View {
+    let board: WaffledAPI.PlanningFamilyNightBoard
+    let onAdd: ([String: JSONValue]) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var title: String
+    @State private var time: Date
+    @State private var durationMin = 60
+
+    private static let durations = [30, 60, 90, 120, 180]
+
+    init(board: WaffledAPI.PlanningFamilyNightBoard, onAdd: @escaping ([String: JSONValue]) -> Void) {
+        self.board = board
+        self.onAdd = onAdd
+        _title = State(initialValue: PlanningFamilyNightBody.defaultEventTitle(theme: board.theme))
+        _time = State(initialValue: DateFmt.date(board.time, "HH:mm", .current) ?? Date())
+    }
+
+    private var trimmedTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    private var dayLabel: String {
+        DateFmt.date(board.date, "yyyy-MM-dd", .current).map { DateFmt.string($0, "EEEE, MMM d", .current) } ?? board.date
+    }
+
+    private static func durationLabel(_ m: Int) -> String {
+        if m < 60 { return "\(m) min" }
+        return m % 60 == 0 ? "\(m / 60) hr" : "\(m / 60) hr \(m % 60) min"
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    WaffledFieldCard(title: "Title") {
+                        TextField("🏡 Family Night", text: $title)
+                            .font(.system(size: 16, weight: .semibold))
+                            .padding(.horizontal, 14).padding(.vertical, 12)
+                            .wfField()
+                    }
+                    WaffledFieldCard(title: "When") {
+                        Text(dayLabel)
+                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                        DatePicker("Time", selection: $time, displayedComponents: .hourAndMinute)
+                            .font(.system(size: 15, weight: .semibold))
+                        HStack {
+                            Text("Duration").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                            Spacer()
+                            Picker("Duration", selection: $durationMin) {
+                                ForEach(Self.durations, id: \.self) { Text(Self.durationLabel($0)).tag($0) }
+                            }
+                            .pickerStyle(.menu)
+                        }
+                    }
+                }
+                .padding(16)
+            }
+            .background(WF.canvas)
+            .navigationTitle("Add family night")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        onAdd(PlanningFamilyNightBody.addEvent(
+                            date: board.date, title: trimmedTitle,
+                            time: DateFmt.string(time, "HH:mm", .current), durationMin: durationMin))
+                        dismiss()
+                    }
+                    .disabled(trimmedTitle.isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }

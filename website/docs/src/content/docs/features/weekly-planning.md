@@ -108,7 +108,9 @@ this session**, where **Edit** changes the wording, the tag, or both.
 [Family Night](/features/family-night/): who the rotation suggests for each part. Tap a face to
 pin a part for this week only, write what each part actually is ("charades, kids vs parents"),
 and set an optional theme. You can get *this* week's gathering onto the calendar — as a new
-event, or by pointing at something already on the week — or call the week off. Calling it off
+event, or by pointing at something already on the week — or call the week off. **Add to
+calendar** opens a short form first, with the title (your theme, if you gave one), the time and
+how long it runs, so you can check them before the event is made. Calling it off
 leaves the standing weekly event alone.
 
 **5 · Connection** — *"Who gets time with whom?"* Pairings the app can see from who's on

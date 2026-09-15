@@ -287,3 +287,10 @@
     width: 100%;
   }
 }
+
+.wpfn-modal { width: min(460px, 92vw); display: flex; flex-direction: column; gap: 12px; }
+.wpfn-modal .field { margin-bottom: 0; }
+.wpfn-modal-t { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+.wpfn-modal-s { font-size: 13px; font-weight: 600; color: var(--ink-3); margin-top: -8px; }
+.wpfn-modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.wpfn-modal-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }

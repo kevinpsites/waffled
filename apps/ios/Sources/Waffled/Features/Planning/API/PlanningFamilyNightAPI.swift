@@ -147,7 +147,15 @@ enum PlanningFamilyNightBody {
     /// ONE call that creates the event and links it SERVER-SIDE, not a create-then-adopt
     /// round trip — a client-made event may not exist server-side yet (PowerSync uploads
     /// afterwards), so the link would 404 on a race. An existing link is returned untouched.
-    static func addEvent(date: String) -> [String: JSONValue] {
-        ["date": .string(date), "createEvent": .bool(true)]
+    /// `event` carries what the sheet confirmed.
+    static func addEvent(date: String, title: String, time: String, durationMin: Int) -> [String: JSONValue] {
+        ["date": .string(date), "createEvent": .bool(true),
+         "event": .object(["title": .string(title), "time": .string(time), "durationMin": .int(durationMin)])]
+    }
+
+    /// What the event sheet opens on: the week's theme when it has one.
+    static func defaultEventTitle(theme: String?) -> String {
+        let t = theme?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return t.isEmpty ? "🏡 Family Night" : "🏡 \(t)"
     }
 }

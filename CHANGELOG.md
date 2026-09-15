@@ -56,6 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Weekly Planning's Horizon scan on iPhone draws the Calendar tab's month view.** Event chips,
   countdowns and "+N more" match the calendar, and a change to that view shows up here too.
+- **Family night's Add to calendar lets you check the event first.** In Weekly Planning it opens
+  a short form with the title, time and length before the event is made, and the event now lands
+  at your household's local time rather than hours off.
 - **Editing a task from Weekly Planning on iPhone saves again.** The Tasks step's editor
   failed with "Couldn't save this task"; it now saves the task itself, and a one-off's new date
   moves its open day.

@@ -159,12 +159,22 @@ private func model(_ feed: FamilyNightBoardFeed) -> PlanningFamilyNightModel {
         #expect(body["eventId"] == JSONValue.null)
     }
 
-    @Test func addToCalendarAsksTheSERVERToMakeTheEvent() {
-        let body = PlanningFamilyNightBody.addEvent(date: "2026-09-09")
+    @Test func addToCalendarAsksTheSERVERToMakeTheEventWithTheConfirmedDetails() {
+        let body = PlanningFamilyNightBody.addEvent(
+            date: "2026-09-09", title: "🌮 Taco night", time: "18:30", durationMin: 90)
         // Not create-then-adopt: a client-made event may have no server id yet.
-        assertKeys(body, ["date", "createEvent"], "the add-to-calendar body")
+        assertKeys(body, ["date", "createEvent", "event"], "the add-to-calendar body")
         #expect(body["createEvent"] == JSONValue.bool(true))
         #expect(body["eventId"] == nil)
+        #expect(body["event"] == JSONValue.object([
+            "title": .string("🌮 Taco night"), "time": .string("18:30"), "durationMin": .int(90),
+        ]))
+    }
+
+    @Test func theEventSheetOpensOnTheThemeOrFamilyNight() {
+        #expect(PlanningFamilyNightBody.defaultEventTitle(theme: "Board games") == "🏡 Board games")
+        #expect(PlanningFamilyNightBody.defaultEventTitle(theme: "  ") == "🏡 Family Night")
+        #expect(PlanningFamilyNightBody.defaultEventTitle(theme: nil) == "🏡 Family Night")
     }
 
 

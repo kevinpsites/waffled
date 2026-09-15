@@ -4,6 +4,7 @@
 // family_night_assignments record each actual gathering and who did what.
 import { getPool, query } from '../../platform/db'
 import { createEvent, softDeleteEvent } from '../events/events'
+import { zonedToUtc } from '../capture/tz'
 import type { Tenant } from '../households/households'
 
 export interface FamilyNightPart {
@@ -385,7 +386,11 @@ export async function scheduleEvent(tenant: Tenant): Promise<string> {
  * Returns the existing link untouched if the gathering already has one, so a double tap
  * cannot leave a stray event on the calendar.
  */
-export async function createOccurrenceEvent(tenant: Tenant, date: string): Promise<{ eventId: string }> {
+export async function createOccurrenceEvent(
+  tenant: Tenant,
+  date: string,
+  details: OccurrenceEventDetails = {}
+): Promise<{ eventId: string }> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw Object.assign(new Error('bad date'), { statusCode: 400 })
   const existing = await getOccurrence(tenant.householdId, date)
   if (existing?.occ.event_id) return { eventId: existing.occ.event_id }
@@ -396,14 +401,47 @@ export async function createOccurrenceEvent(tenant: Tenant, date: string): Promi
   // The theme names the night when somebody has given it one — the calendar should say
   // what the evening is, not just that the category exists.
   const theme = existing?.occ.theme?.trim()
+  // A real instant: a bare local time is read in the database's zone, not the household's.
+  const start = new Date(zonedToUtc(`${date}T${details.time ?? config.time}:00`, tz))
   const event = await createEvent(tenant, {
-    title: theme ? `🏡 ${theme}` : '🏡 Family Night',
-    startsAt: `${date}T${config.time}:00`,
+    title: details.title ?? (theme ? `🏡 ${theme}` : '🏡 Family Night'),
+    startsAt: start.toISOString(),
+    ...(details.durationMin ? { endsAt: new Date(start.getTime() + details.durationMin * 60_000).toISOString() } : {}),
     timezone: tz,
     // No rrule: this is THIS week. Omit calendarId → the household owner's ★ default.
   })
   await upsertOccurrence(tenant, { date, eventId: event.id })
   return { eventId: event.id }
+}
+
+// What somebody confirmed before adding the week's event. Each one left out falls back to the
+// theme and the household's family night time; with no length the event has no end.
+export interface OccurrenceEventDetails {
+  title?: string
+  time?: string
+  durationMin?: number
+}
+
+// Null when a detail is present but unreadable, so the route refuses before writing anything.
+export function readOccurrenceEventDetails(raw: unknown): OccurrenceEventDetails | null {
+  if (raw === undefined || raw === null) return {}
+  if (typeof raw !== 'object' || Array.isArray(raw)) return null
+  const r = raw as Record<string, unknown>
+  const out: OccurrenceEventDetails = {}
+  if (r.title !== undefined) {
+    if (typeof r.title !== 'string' || r.title.trim().length > 200) return null
+    if (r.title.trim()) out.title = r.title.trim()
+  }
+  if (r.time !== undefined) {
+    if (typeof r.time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(r.time)) return null
+    out.time = r.time
+  }
+  if (r.durationMin !== undefined) {
+    const n = r.durationMin
+    if (typeof n !== 'number' || !Number.isInteger(n) || n <= 0 || n > 24 * 60) return null
+    out.durationMin = n
+  }
+  return out
 }
 
 export async function unscheduleEvent(tenant: Tenant): Promise<void> {
