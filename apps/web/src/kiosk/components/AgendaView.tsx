@@ -4,8 +4,9 @@ import { useEventColor } from '../../lib/event-color'
 import { Icon } from '../icons'
 import { RhythmMark } from './RhythmMark'
 import { DayPicker } from './DayPicker'
+import { eventDayKeys } from './month-spans'
 import {
-  ymd, addDays, startOfWeek, localDate, fmtTime, eventPeople,
+  ymd, addDays, startOfWeek, fmtTime, eventPeople,
 } from './cal-utils'
 
 // A day's worth of upcoming events, with a friendly header.
@@ -52,8 +53,7 @@ function MiniMonth({ events, tz, colorOf, onPickDate, firstDay }: { events: Agen
   const dots = useMemo(() => {
     const map: Record<string, Set<string>> = {}
     for (const e of events) {
-      const k = localDate(e.startsAt, tz)
-      ;(map[k] ??= new Set()).add(colorOf(e))
+      for (const k of eventDayKeys(e, tz)) (map[k] ??= new Set()).add(colorOf(e))
     }
     return map
   }, [events, tz, colorOf])
@@ -126,13 +126,14 @@ export function AgendaView({
   const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate())
   const todayKey = ymd(today)
 
-  // Group upcoming (today onward) events by local day, in chronological order.
+  // Group upcoming (today onward) events by local day, in chronological order. A multi-day
+  // all-day event is listed under each day it covers, so a trip already under way still shows.
   const groups = useMemo(() => {
     const map: Record<string, AgendaEvent[]> = {}
     for (const e of events) {
-      const k = localDate(e.startsAt, tz)
-      if (k < todayKey) continue
-      ;(map[k] ??= []).push(e)
+      for (const k of eventDayKeys(e, tz)) {
+        if (k >= todayKey) (map[k] ??= []).push(e)
+      }
     }
     const keys = Object.keys(map).sort()
     for (const k of keys) {
@@ -153,8 +154,7 @@ export function AgendaView({
     const weEnd = ymd(addDays(ws, 6))
     const counts = new Map<string, number>()
     for (const e of events) {
-      const k = localDate(e.startsAt, tz)
-      if (k < weStart || k > weEnd) continue
+      if (!eventDayKeys(e, tz).some((k) => k >= weStart && k <= weEnd)) continue
       for (const p of eventPeople(e)) if (p.id !== '_') counts.set(p.id, (counts.get(p.id) ?? 0) + 1)
     }
     const rows = persons
