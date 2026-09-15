@@ -69,7 +69,7 @@ const VIEW = {
     ],
   },
   routes: [] as { kind: string; id: string; title: string; source: string; to: string }[],
-  sources: ['chores', 'lists', 'rhythms', 'goals'],
+  sources: ['chores', 'lists', 'rhythms'],
   lists: [
     { id: 'l1', name: 'Around the house', emoji: '🏠', relevant: true },
     { id: 'l2', name: 'Someday', emoji: '💭', relevant: true },
@@ -267,14 +267,13 @@ describe('loose ends · routing, which is the step', () => {
   })
 })
 
-describe('loose ends · why a goal is on the deck', () => {
-  it('labels a goal card as a weekly habit, since that is the only kind of goal that lands here', async () => {
-    const habit = end({ key: 'goal:g1', kind: 'goal', id: 'g1', title: 'Run three times', emoji: null, detail: 'Behind this week: 1 of 3' })
-    mockApi({ ...VIEW, notDone: [habit], counts: { notDone: 1, parked: 1 } })
+describe('loose ends · goals are the Goals step’s', () => {
+  it('says Not done reads chores, lists and rhythms, and names no goals', async () => {
+    mockApi()
     renderStep()
-    expect(await screen.findByText('Run three times')).toBeInTheDocument()
-    expect(screen.getByText('Weekly habit')).toBeInTheDocument()
-    expect(screen.getByText('Behind this week: 1 of 3')).toBeInTheDocument()
+    const note = await screen.findByText(/^Computed from your modules/)
+    expect(note.textContent).toMatch(/overdue chores, unchecked items on your lists, rhythms past due\./)
+    expect(note.textContent).not.toMatch(/goal|habit/i)
   })
 })
 
@@ -474,7 +473,7 @@ describe('loose ends · the cleared state', () => {
     mockApi({ ...VIEW, notDone: [], counts: { notDone: 0, parked: 1 } })
     renderStep()
     expect(await screen.findByText("Nothing's left undone")).toBeInTheDocument()
-    expect(screen.getByText(/we checked your chores, lists, rhythms, goals/i)).toBeInTheDocument()
+    expect(screen.getByText(/we checked your chores, lists, rhythms\./i)).toBeInTheDocument()
     expect(screen.getByText(/1 parked note is still waiting/i)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Go to Parked' }))

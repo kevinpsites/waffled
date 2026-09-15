@@ -25,7 +25,7 @@ enum LooseEndGroup: String, CaseIterable, Sendable {
     var note: String {
         switch self {
         case .notDone:
-            return "Computed from your modules — overdue chores, unchecked items on your lists, rhythms past due, habit goals short for the week. Nobody typed these; they are simply still open."
+            return "Computed from your modules — overdue chores, unchecked items on your lists, rhythms past due. Nobody typed these; they are simply still open."
         case .parked:
             return "What somebody wrote down during the week that exists nowhere else yet. Which is why one of the answers here is to drop it."
         }
@@ -43,7 +43,6 @@ enum LooseEndCopy {
         case "chore": return "Chore"
         case "list": return "List"
         case "rhythm": return "Rhythm"
-        case "goal": return "Weekly habit"
         case "parked": return "Parked"
         default: return kind.capitalized
         }

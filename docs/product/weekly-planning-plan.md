@@ -13,7 +13,7 @@ v1 lobby/join-code are all **deliberately gone**. Only two things are lifted fro
 ## The architectural point
 
 **Nine of the ten steps are a read over modules that already exist.** Loose ends are overdue
-`chore_instances`, unchecked `list_items`, rhythms past due and short habit goals; the
+`chore_instances`, unchecked `list_items` and rhythms past due (goals are step 6's alone); the
 calendar step is the real `events`; family night is the existing `familyNight` config and its
 rotation; connection is a query over `event_participants`; goals set the existing
 `is_featured` flag; meals is the existing plan; tasks is the existing chore assignment. The

@@ -12,7 +12,7 @@
 import { apiGet, apiSend } from '../client'
 import { emit } from '../bus'
 
-export type LooseEndKind = 'chore' | 'list' | 'rhythm' | 'goal' | 'parked'
+export type LooseEndKind = 'chore' | 'list' | 'rhythm' | 'parked'
 
 // The two answers that WRITE. Routing is not one of them — see the header.
 export type LooseEndAction = 'done' | 'drop'
@@ -97,7 +97,7 @@ export const LOOSE_END_GROUPS = [
     label: 'Not done',
     caption: 'already in the app',
     // Says what the step DOES read, and stops. The exclusions live in the server read, which owns them.
-    note: 'Computed from your modules — overdue chores, unchecked items on your lists, rhythms past due, habit goals short for the week. Nobody typed these; they are simply still open.',
+    note: 'Computed from your modules — overdue chores, unchecked items on your lists, rhythms past due. Nobody typed these; they are simply still open.',
   },
   {
     key: 'parked' as const,
@@ -155,7 +155,6 @@ export const looseEndsApi = {
       if (kind === 'chore') emit('chores')
       if (kind === 'list') emit('grocery')
       if (kind === 'rhythm') emit('rhythms')
-      if (kind === 'goal') emit('goals')
       return r
     }),
 

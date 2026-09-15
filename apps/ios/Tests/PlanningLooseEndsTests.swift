@@ -45,7 +45,7 @@ private let noteId = "22222222-2222-4222-8222-222222222222"
           "routes":[
             {"kind":"chore","id":"\(choreId)","title":"Take the bins out","source":"notDone","to":"tasks"}
           ],
-          "sources":["chores","lists","rhythms","goals"]
+          "sources":["chores","lists","rhythms"]
         }
         """
         let view = try WaffledAPI.decoder.decode(
@@ -54,7 +54,7 @@ private let noteId = "22222222-2222-4222-8222-222222222222"
         #expect(view.weekStart == "2026-09-06")
         #expect(view.counts.notDone == 1)
         #expect(view.counts.parked == 1)
-        #expect(view.sources == ["chores", "lists", "rhythms", "goals"])
+        #expect(view.sources == ["chores", "lists", "rhythms"])
         #expect(view.notDone.first?.key == "chore:\(choreId)")
         #expect(view.notDone.first?.detail == "3 days late")
         #expect(view.notDone.first?.actions == ["done"])
@@ -84,7 +84,7 @@ private let noteId = "22222222-2222-4222-8222-222222222222"
 
     @Test func decodesAnItemWithNoEmojiOrDetailKeys() throws {
         let json = """
-        {"key":"goal:\(choreId)","kind":"goal","id":"\(choreId)","title":"Run three times","actions":[]}
+        {"key":"rhythm:\(choreId)","kind":"rhythm","id":"\(choreId)","title":"Water the plants","actions":[]}
         """
         let item = try WaffledAPI.decoder.decode(WaffledAPI.LooseEnd.self, from: Data(json.utf8))
 
@@ -178,10 +178,11 @@ private let noteId = "22222222-2222-4222-8222-222222222222"
         #expect(built.quiet.first?.label == "Drop it")
     }
 
-    /// Only a weekly habit that is behind lands in Loose ends, so the card says so rather than
-    /// "Goal", which read like a deadline.
-    @Test func aGoalCardIsLabelledAWeeklyHabit() {
-        #expect(LooseEndCopy.kindLabel("goal") == "Weekly habit")
+    /// Goals are the Goals step's: Not done says it reads chores, lists and rhythms, and no more.
+    @Test func notDoneNamesNoGoals() {
+        #expect(LooseEndGroup.notDone.note.contains("overdue chores, unchecked items on your lists, rhythms past due."))
+        #expect(!LooseEndGroup.notDone.note.localizedCaseInsensitiveContains("goal"))
+        #expect(!LooseEndGroup.notDone.note.localizedCaseInsensitiveContains("habit"))
         #expect(LooseEndCopy.kindLabel("chore") == "Chore")
     }
 
@@ -592,7 +593,7 @@ private func model(_ feed: LooseEndsFeed) -> PlanningLooseEndsModel {
         let routes = [
             route(kind: "chore", id: "c1", title: "Bins", to: "calendar"),
             route(kind: "list", id: "l1", title: "Pack the tent", to: "calendar"),
-            route(kind: "goal", id: "g1", title: "Run a 5k", to: "goals"),
+            route(kind: "rhythm", id: "g1", title: "Book the dentist", to: "goals"),
         ]
 
         #expect(

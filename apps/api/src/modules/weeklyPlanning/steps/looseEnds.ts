@@ -13,7 +13,6 @@ import { earliestWeekStart, isStepKey, resolveSteps, STEPS, getSessionById, getC
 import { completeInstance, ProofRequiredError } from '../../chores/chores.service'
 import { setItemChecked, softDeleteItem } from '../../lists/lists.service'
 import { listAttention, completeRhythm, skipPeriod } from '../../rhythms/rhythms'
-import { listGoals, logProgress } from '../../goals/goals.service'
 
 // ─── The shape the step reads ───────────────────────────────────────────────
 
@@ -27,7 +26,7 @@ export interface LooseEndOwner {
   avatarEmoji: string | null
 }
 
-export type LooseEndKind = 'chore' | 'list' | 'rhythm' | 'goal' | 'parked'
+export type LooseEndKind = 'chore' | 'list' | 'rhythm' | 'parked'
 export type LooseEndGroup = 'notDone' | 'parked'
 
 // The two answers that actually WRITE (routing goes to the session, not to a module).
@@ -341,31 +340,6 @@ async function rhythmsPastDue(householdId: string, today: string): Promise<Sourc
   return out.slice(0, PER_SOURCE_LIMIT)
 }
 
-// `periodDone` is the goals module's read of the CURRENT period — a habit is this
-// period's count, never a lifetime.
-async function shortHabits(householdId: string): Promise<SourceEnd[]> {
-  const goals = await listGoals(householdId)
-  return goals
-    .filter((g) => g.goalType === 'habit' && g.habitPeriod === 'week')
-    .filter((g) => g.periodDone < Math.max(1, g.habitTargetPerPeriod ?? 1))
-    .slice(0, PER_SOURCE_LIMIT)
-    .map((g) => ({
-      key: `goal:${g.id}`,
-      kind: 'goal' as const,
-      id: g.id,
-      title: g.title,
-      emoji: g.emoji,
-      // ONE participant and a per-person basis ⇒ it is theirs. A family habit belongs to
-      // everybody.
-      ownerId: g.targetBasis !== 'family' && g.participants?.length === 1
-        ? (g.participants[0] as { personId: string }).personId
-        : null,
-      // Says WHY it is here: only a weekly habit that is behind lands in Loose ends.
-      detail: `Behind this week: ${g.periodDone} of ${Math.max(1, g.habitTargetPerPeriod ?? 1)}`,
-      actions: ['done'] as LooseEndAction[],
-    }))
-}
-
 // ─── "Parked" · the one group with a table ─────────────────────────────────
 
 export interface ParkedItem {
@@ -539,7 +513,7 @@ export type RouteResult =
   | { ok: true; routes: LooseEndRoute[] }
   | { ok: false; status: 400 | 404; error: string; message: string }
 
-const KINDS: LooseEndKind[] = ['chore', 'list', 'rhythm', 'goal', 'parked']
+const KINDS: LooseEndKind[] = ['chore', 'list', 'rhythm', 'parked']
 const GROUPS: LooseEndGroup[] = ['notDone', 'parked']
 
 // Route an item to the step that will handle it — or un-route it (`to: null`), which the
@@ -740,7 +714,6 @@ const SOURCE_LABELS: [ModuleKey, string][] = [
   ['chores', 'chores'],
   ['lists', 'lists'],
   ['rhythms', 'rhythms'],
-  ['goals', 'goals'],
 ]
 
 export async function getLooseEnds(householdId: string, weekStart: string, sessionId?: string | null): Promise<LooseEndsView> {
@@ -756,18 +729,17 @@ export async function getLooseEnds(householdId: string, weekStart: string, sessi
   // yet" (vacuous) from "ruled them all out" (the setting being used).
   const listCandidates = enabled(settings, 'lists') ? await planningListCandidates(householdId) : []
   const askableLists = listCandidates.filter((l) => l.relevant).map((l) => l.id)
-  const [chores, lists, rhythms, goals, parked, routes, people] = await Promise.all([
+  const [chores, lists, rhythms, parked, routes, people] = await Promise.all([
     enabled(settings, 'chores') ? overdueChores(householdId, today) : Promise.resolve([]),
     askableLists.length ? staleListItems(householdId, currentWeek, weekStart, askableLists) : Promise.resolve([]),
     enabled(settings, 'rhythms') ? rhythmsPastDue(householdId, today) : Promise.resolve([]),
-    enabled(settings, 'goals') ? shortHabits(householdId) : Promise.resolve([]),
     listParked(householdId),
     sessionId ? listRoutes(sessionId) : Promise.resolve([]),
     peopleById(householdId),
   ])
-  // Chores, lists, slow-burning maintenance, then habits: most-urgent to least, the order
-  // the deck walks.
-  const notDone = withOwners([...chores, ...lists, ...rhythms, ...goals], people)
+  // Chores, lists, then slow-burning maintenance: most-urgent to least, the order the deck
+  // walks. Goals are not here: the Goals step owns them.
+  const notDone = withOwners([...chores, ...lists, ...rhythms], people)
   return {
     weekStart,
     notDone,
@@ -775,7 +747,7 @@ export async function getLooseEnds(householdId: string, weekStart: string, sessi
     counts: { notDone: notDone.length, parked: parked.length },
     destinations,
     routes,
-    // "We checked chores, lists, rhythms and goals" has to be true: a household that
+    // "We checked chores, lists and rhythms" has to be true: a household that
     // ruled every list out was not asking about lists. Having NO custom lists is vacuous
     // rather than false, so it keeps the word.
     sources: SOURCE_LABELS
@@ -810,7 +782,6 @@ const OWNER: Record<LooseEndKind, ModuleKey | null> = {
   chore: 'chores',
   list: 'lists',
   rhythm: 'rhythms',
-  goal: 'goals',
   parked: null,
 }
 
@@ -823,7 +794,7 @@ const wrongAction = (kind: string, action: string): ResolveResult =>
 // write into the owner.
 export async function resolveLooseEnd(tenant: Tenant, input: ResolveInput): Promise<ResolveResult> {
   const kind = KINDS.find((k) => k === input.kind)
-  if (!kind) return bad('kind must be one of chore, list, rhythm, goal, parked')
+  if (!kind) return bad('kind must be one of chore, list, rhythm, parked')
   const action = ACTIONS.find((a) => a === input.action)
   if (!action) return bad('action must be one of done, drop')
   if (typeof input.id !== 'string' || !UUID_RE.test(input.id)) return bad('id must be a uuid')
@@ -862,8 +833,6 @@ export async function resolveLooseEnd(tenant: Tenant, input: ResolveInput): Prom
       return (await resolveListItem(tenant, id)) ?? (await retire())
     case 'rhythm':
       return (await resolveRhythm(tenant, id)) ?? (await retire())
-    case 'goal':
-      return (await resolveGoal(tenant, id)) ?? (await retire())
     case 'parked':
       return (await resolveParked(tenant, id, action)) ?? (await retire())
   }
@@ -915,18 +884,6 @@ async function resolveRhythm(tenant: Tenant, id: string): Promise<ResolveResult 
     return { ok: false, status: 400, error: 'nothing-to-settle', message: 'this rhythm has no open period to settle' }
   }
   await skipPeriod(tenant.householdId, id, item.periodStart, tenant.personId)
-  return null
-}
-
-async function resolveGoal(tenant: Tenant, id: string): Promise<ResolveResult | null> {
-  const { rows } = await query<{ id: string }>(
-    `select id from goals where household_id = $1 and id = $2 and deleted_at is null and is_active`,
-    [tenant.householdId, id]
-  )
-  if (!rows[0]) return missing()
-  // One, against the household — what a habit tick is worth anywhere else. `source` marks
-  // it as a planning catch-up.
-  await logProgress(tenant, id, 1, [null], null, { source: 'weekly_planning' })
   return null
 }
 

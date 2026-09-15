@@ -6,7 +6,7 @@ import { getLooseEnds, parkItem, resolveLooseEnd, routeLooseEnd, updateParkedIte
 
 type Api = ReturnType<typeof createAPI>
 
-// Step 1 · Loose ends — the reads over chores, lists, rhythms and goals, plus the one table
+// Step 1 · Loose ends — the reads over chores, lists and rhythms, plus the one table
 // it owns (planning_parked_items).
 //
 // Four routes and no more. The step is INTAKE: `route` writes nothing to any module and

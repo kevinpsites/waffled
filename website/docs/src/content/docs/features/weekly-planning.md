@@ -70,10 +70,10 @@ Meals needs Meals, and Tasks needs Chores. You can also switch any step off your
 card at a time or all at once with **See all**:
 
 - **Not done** — what's already in the app and still open: overdue chores, items left
-  unchecked on your lists, rhythms past due, and habit goals that are short for the week.
-  Each card says where it came from (Chore, List, Rhythm, Weekly habit) and who already has
-  it, so one with no name on it reads as up for grabs. A goal is only here when it's a weekly
-  habit that's behind, and its card says so ("Behind this week: 1 of 3").
+  unchecked on your lists, and rhythms past due. Each card says where it came from (Chore,
+  List, Rhythm) and who already has it, so one with no name on it reads as up for grabs.
+  Goals aren't asked about here — a habit that's behind for the week is still in progress,
+  and the **Goals** step is where the session looks at them.
 - **Parked** — notes somebody wrote down during the week that don't live anywhere else yet.
   You can park a new one from here too.
 

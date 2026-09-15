@@ -20,8 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Weekly Planning's saved week gets to the point.** **Plan another week** is at the top,
   and the step-by-step list under the read-back is gone — the read-back already names
   anything that was skipped.
-- **Loose ends says why a goal is there.** A goal card is labelled **Weekly habit** and reads
-  "Behind this week: 1 of 3" — the only goals it asks about are weekly habits that are short.
+- **Loose ends leaves goals to the Goals step.** It no longer asks about weekly habits that are
+  behind; it reads overdue chores, unchecked list items and late rhythms.
 
 ### Added
 
