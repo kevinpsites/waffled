@@ -248,7 +248,11 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   how much of it counts, and null (every rhythm predating the column) means the whole
   period. It is the one part of *when* that is editable in place, since it moves no boundary
   and re-keys no skip; it is refused alongside auto-schedule, whose rule already picks the
-  day. The **event editor links an existing event to a rhythm** ("Keeps a rhythm"), so an
+  day. A windowed rhythm can **ask ahead** — its runway reaches back up to a whole cadence
+  from the window's end, so "date night" can nudge in the previous month — and once a window
+  closes the rhythm moves on to its next period. A rhythm booked by hand can **suggest a
+  day** ("the third Saturday"): a hint that seeds the booking and names the day on its row,
+  never a rule about what counts. The **event editor links an existing event to a rhythm** ("Keeps a rhythm"), so an
   outing planned in the Calendar screen settles the period instead of leaving the rhythm
   asking for something already booked. Design and schema:
   [Rhythms plan](./rhythms-plan.md); how to use it:

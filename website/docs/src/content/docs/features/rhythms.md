@@ -89,6 +89,15 @@ You then choose whether Waffled can pick the time itself:
   can carry a **booking window** — see More options below — for the rhythms where *how
   often* and *when inside that* are two different answers.
 
+  You can still **suggest a day**: weekday chips on a weekly rhythm, and on a monthly one
+  the same "which day of the month" choice, with **Any day** as the default. *Family outing,
+  every month, the third Saturday* then shows **the third Saturday** on its row, and **Book a
+  time** opens on that Saturday. It's a suggestion, not a rule — a booking on any other day
+  inside the window still settles the period. As with a series, **the same weekday** and
+  **the last of that weekday** line the periods up with calendar months (the start date
+  picks which weekday you mean), and a suggestion that could never land inside the booking
+  window is refused when you save.
+
 ### "I mark it done"
 
 A period is closed by **you doing the thing**, and the clock restarts from when you
@@ -128,9 +137,9 @@ Two things worth knowing about those dates:
   means the first one lands in three months. If you're adding something you're already
   behind on, set **First one due** under More options.
 - **The date is the one you'll really get.** The runway is capped — at the whole cadence on
-  an it's-on-the-calendar rhythm, at half of it on one you mark done, or at the booking
-  window where you've set one (see below) — and the card quotes the capped number, so it
-  never promises a nudge on a day nothing is going to happen.
+  an it's-on-the-calendar rhythm, and at half of it on one you mark done (see below) — and
+  the card quotes the capped number, so it never promises a nudge on a day nothing is going
+  to happen.
 
 ### More options
 
@@ -138,16 +147,19 @@ Folded away, because each has a default worth having:
 
 - **First one due** *(I-mark-it-done)* or **First period starts** *(it's-on-the-calendar)* —
   the anchor. For a scheduled rhythm this is what makes "which period are we in?"
-  answerable: period *N* runs from the start date plus *N* cadences.
-- **Only the first … days of each period count** *(it's-on-the-calendar, booked by hand)* —
-  the booking window, when it isn't the whole period. Leave it blank and a booking anywhere
+  answerable: period *N* runs from the start date plus *N* cadences. A new **monthly**
+  rhythm you book by hand starts on the **1st of this month** unless you pick a date, so
+  "the first week" means the first week of the month rather than of the day you made it.
+- **It must be booked in the first … days** *(it's-on-the-calendar, booked by hand)* — the
+  booking window, when it isn't the whole period. Leave it blank and a booking anywhere
   in the period counts, which is how every rhythm behaved before this existed.
 
   Use it when *how often* and *when inside that* are two different answers. "Date night
   once a month" is a monthly cadence; "and it needs to be in the first week" is a 7-day
-  window inside it. Set both and Waffled asks you on the 1st, the date picker offers only
-  the 1st to the 7th, and a dinner booked on the 20th leaves the period still asking —
-  it's a real event on your calendar, it just isn't the thing this rhythm wanted.
+  window inside it. Set both and the date picker offers only the 1st to the 7th, and a
+  dinner booked on the 20th leaves the period still asking — it's a real event on your
+  calendar, it just isn't the thing this rhythm wanted. Once the 7th has passed, the rhythm
+  moves on to **next month's** first week rather than going on about a week that's gone.
 
   The window is measured from the **start** of each period, so put it at the other end by
   moving the anchor instead: **First period starts** on the 25th with a 7-day window is
@@ -160,30 +172,33 @@ Folded away, because each has a default worth having:
 - **Start nudging me** — how many days of warning you want. For an I-mark-it-done rhythm
   that's "this many days early"; for a scheduled one it's "this many days before the
   **booking window** closes". Without a window that's the whole period: a weekly rhythm
-  opens a fresh one every week, and the runway is the tail of it. With one, it's the tail
-  of the window, and the default is the whole window — "book it this week" means being
-  asked all week.
+  opens a fresh one every week, and the runway is the tail of it.
+
+  With a booking window the question turns around, because the thing worth planning ahead
+  for is the window itself: **"this many days before it opens"**, and the default is none —
+  you're asked from the day the window opens until it closes. Say 14 on first-week date
+  night and you're asked from around the 18th of the month before, with time to plan it;
+  book it then and it goes quiet. An ask about a window that hasn't opened yet sits in
+  *Needs you now* without the late colour or the filled button, because nothing is late.
 
   It **follows the cadence** unless you set it — up to 14 days. The ceiling depends on the
   shape, and the difference is worth knowing because one of them is how you say *"remind me
   at the start of the month to plan this"*:
 
-  - **it's on the calendar** — up to the **whole cadence**. Ask for a month's notice on a
-    monthly rhythm and it opens on the period's first day and closes on its last. This is
-    the setting for something that takes planning: you're asked on the 1st, and you can
-    still book it for the 20th.
+  - **it's on the calendar** — up to the **whole cadence**, window or not. Ask for a month's
+    notice on a monthly rhythm and it opens on the period's first day and closes on its
+    last. This is the setting for something that takes planning: you're asked on the 1st,
+    and you can still book it for the 20th.
   - **I mark it done** — never more than **half** the cycle. This one keeps asking however
     late it is, by design, so a runway as long as its cycle would surface it the moment you
     finished it and never let it go quiet.
-  - With a **booking window**, the window is the ceiling either way — it's the stretch the
-    runway exists to ask in.
 
   Longer than the ceiling is refused in every case, which is the real rule: a runway that
-  outlives its own period never closes, and you learn to ignore it. That cap is the real rule: a runway longer than the cycle never closes, so the item
-  would nag forever and you'd learn to ignore it. Ask for 14 days on a weekly rhythm and
-  you'll get three, and the form says so rather than letting a trimmed number become a
-  mystery later. This is also why a weekly rhythm set to one day's warning shows nothing on
-  Today for most of the week: that's the runway working, not a fault.
+  outlives its own period never closes, so the item would nag forever and you'd learn to
+  ignore it. Ask for 14 days on a weekly rhythm you mark done and you'll get three, and the
+  form says so rather than letting a trimmed number become a mystery later. This is also
+  why a weekly rhythm set to one day's warning shows nothing on Today for most of the week:
+  that's the runway working, not a fault.
 - **Put it on the calendar automatically** *(it's-on-the-calendar only)* — see above.
 - **Notes** — the bit you'll want later: *"Furnace, 20x25x1"*.
 
@@ -193,8 +208,9 @@ Folded away, because each has a default worth having:
 
 The Rhythms page is **sorted by when, not by kind**. Three groups, top to bottom:
 
-- **Needs you now** — late, or the booking window is closing. This is exactly what the
-  Today card is nudging you about, so the two can never disagree about the same rhythm.
+- **Needs you now** — late, the booking window is closing, or it's time to plan ahead for a
+  window that hasn't opened yet. This is exactly what the Today card is nudging you about,
+  so the two can never disagree about the same rhythm.
 - **Coming up** — due in the next fortnight, but not shouting yet.
 - **Steady** — nothing to do. On a healthy register this is most of them.
 
@@ -212,7 +228,8 @@ each group, so the top of the page is always the thing most worth your attention
 You won't see the two shapes named anywhere on this page, and that's deliberate — the
 difference shows up where it changes what you'd do. An I-mark-it-done rhythm reads *"last done
 Aug 19"* and offers **I did it**; a scheduled one reads *"not on the calendar yet"* and
-offers **Book a time**. Steady rows offer no button at all; everything else — backdating,
+offers **Book a time**, naming the day it suggests if it has one — *Every month · the third
+Saturday*. Steady rows offer no button at all; everything else — backdating,
 marking one handled, pushing it out a week, editing and pausing — lives in the row's **⋯** menu.
 **Push it out a week** only appears while a rhythm is actually asking — on a Steady row
 there is nothing to push away from, and a control that does nothing you can feel just teaches
@@ -263,6 +280,9 @@ rhythm, because that isn't a question rhythms ask.
 **Book a time** opens the smallest thing that could work: a date, a time, and an **All day**
 switch. The title and the assignee come from the rhythm itself — retyping "Temple visit" is
 precisely the friction that keeps these things off the calendar.
+
+If the rhythm suggests a day, the date starts on it — *It suggests Sep 19, the third
+Saturday* — and any other day inside the window still counts.
 
 The date picker is clamped to the period's **booking window**, because a booking outside it
 settles the wrong period — or, where the window is narrower than the period, settles nothing
@@ -382,8 +402,9 @@ countdown and a verb don't fit across one phone line. For the same reason the To
 phone, and that card shows its first four rows there with a **+N more** line rather than the
 full list.
 
-The editor is the same on every surface, including the day pickers for an auto-scheduled
-series — see [Put it on the calendar automatically](#its-on-the-calendar) above.
+The editor is the same on every surface, including the day pickers — for an auto-scheduled
+series, and as a suggestion on a rhythm you book by hand — see
+[It's on the calendar](#its-on-the-calendar) above.
 
 The events a scheduled rhythm books are ordinary calendar events, so they show up
 **everywhere** — including on your phone, and including offline — the moment they're booked.
@@ -418,6 +439,9 @@ Rhythms is an **optional module** (`rhythms`, default **OFF** — opt-in), toggl
   are counted from — would re-interpret the periods you've already skipped and point
   bookings at periods that no longer exist. The editor says so and points you at retiring
   it and making a new one, which is the honest fix.
+- 🗓️ **A suggested day can be cleared later, not changed in place.** Editing a rhythm you
+  book by hand shows the day it suggests with **Any day instead**. To suggest a different
+  day, clear it or make a new rhythm — the start date that picks the weekday is fixed.
 - 🌐 **Rhythms themselves need a connection.** The register and the Today card are
   online-only, like chores. The events a rhythm books are fully offline, like every other
   calendar event.
