@@ -544,6 +544,8 @@ struct EventEditSheet: View {
     @State private var start: Date
     @State private var durationMin: Int
     @State private var allDay: Bool
+    /// The last day an all-day event covers (inclusive); saved as the exclusive end.
+    @State private var lastDay: Date
     @State private var isCountdown: Bool
     /// Ordered so the first one picked is the "owner" (drives the calendar list).
     @State private var participants: [String]
@@ -590,7 +592,6 @@ struct EventEditSheet: View {
     @FocusState private var titleFocused: Bool
 
     private static let iso = ISO8601DateFormatter()
-    private static let durations = [15, 30, 45, 60, 90, 120, 180, 240]
 
     /// `prefillTitle` / `prefillStart` exist for surfaces that already KNOW what the event is.
     /// `prefillStart` is a full `Date`, not an hour: the gap is an instant the server computed in
@@ -613,7 +614,7 @@ struct EventEditSheet: View {
             ?? prefillStart
             ?? (cal.date(bySettingHour: 17, minute: 0, second: 0, of: initialDate) ?? initialDate)
         let mins: Int = {
-            guard let s = event?.startsAt, let e = event?.endsAt else { return 60 }
+            guard event?.allDay != true, let s = event?.startsAt, let e = event?.endsAt else { return 60 }
             return max(15, Int(e.timeIntervalSince(s) / 60))
         }()
         _title = State(initialValue: event?.title ?? prefillTitle ?? "")
@@ -621,6 +622,8 @@ struct EventEditSheet: View {
         _start = State(initialValue: startDate)
         _durationMin = State(initialValue: mins)
         _allDay = State(initialValue: event?.allDay ?? false)
+        _lastDay = State(initialValue: EventEnd.allDayLastDay(
+            start: startDate, end: event?.allDay == true ? event?.endsAt : nil, cal: cal))
         _isCountdown = State(initialValue: event?.isCountdown ?? false)
         let eventParticipants = event.map {
             !$0.participantIds.isEmpty ? $0.participantIds : ($0.personId.map { [$0] } ?? [])
@@ -634,6 +637,10 @@ struct EventEditSheet: View {
     }
 
     private var editing: Bool { event != nil }
+    private var endsBinding: Binding<Date> {
+        Binding(get: { resolvedStart.addingTimeInterval(Double(durationMin) * 60) },
+                set: { durationMin = EventEnd.minutes(from: resolvedStart, to: $0) })
+    }
     private var canSave: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty
         && (!wasRecurring || originalSeriesFields != nil)
@@ -673,31 +680,30 @@ struct EventEditSheet: View {
                             .padding(.horizontal, 13).padding(.vertical, 11).innerField()
                     }
 
-                    group("Date") {
-                        DatePicker("", selection: $day, displayedComponents: .date)
-                            .labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
-                    }
-
-                    if !allDay {
-                        HStack(spacing: 14) {
-                            group("Time") {
+                    HStack(alignment: .top, spacing: 14) {
+                        group(allDay ? "Starts" : "Date") {
+                            DatePicker("", selection: $day, displayedComponents: .date)
+                                .labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        if allDay {
+                            group("Ends") {
+                                DatePicker("", selection: $lastDay, in: Cal.current.startOfDay(for: day)...,
+                                           displayedComponents: .date)
+                                    .labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        } else {
+                            group("Starts") {
                                 DatePicker("", selection: $start, displayedComponents: .hourAndMinute)
                                     .labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            group("Duration") {
-                                Menu {
-                                    ForEach(durationOptions, id: \.self) { m in
-                                        Button(durationLabel(m)) { durationMin = m }
-                                    }
-                                } label: {
-                                    HStack {
-                                        Text(durationLabel(durationMin)).font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink)
-                                        Spacer()
-                                        Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
-                                    }
-                                    .padding(.horizontal, 13).padding(.vertical, 11).innerField()
-                                }
-                            }
+                        }
+                    }
+
+                    if !allDay {
+                        group("Ends") {
+                            DatePicker("", selection: endsBinding, in: resolvedStart...,
+                                       displayedComponents: [.date, .hourAndMinute])
+                                .labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
 
@@ -788,6 +794,12 @@ struct EventEditSheet: View {
             }
             .onChange(of: participants) { _, _ in recomputeDefaultCalendar(); clearOrphanGoal(); scheduleSuggest() }
             .onChange(of: title) { _, _ in scheduleSuggest() }
+            // Moving the start day carries an all-day span with it.
+            .onChange(of: day) { old, new in
+                let cal = Cal.current
+                let span = cal.dateComponents([.day], from: cal.startOfDay(for: old), to: cal.startOfDay(for: lastDay)).day ?? 0
+                lastDay = cal.date(byAdding: .day, value: max(0, span), to: cal.startOfDay(for: new)) ?? new
+            }
             .confirmationDialog(
                 scopePrompt == .delete ? "Delete repeating event" : "Save repeating event",
                 isPresented: Binding(get: { scopePrompt != nil }, set: { if !$0 { scopePrompt = nil } }),
@@ -1110,15 +1122,6 @@ struct EventEditSheet: View {
         calendarId = (ownerCals.first { $0.isWriteTarget } ?? ownerCals.first)?.id
     }
 
-    private var durationOptions: [Int] {
-        Self.durations.contains(durationMin) ? Self.durations : (Self.durations + [durationMin]).sorted()
-    }
-    private func durationLabel(_ m: Int) -> String {
-        if m < 60 { return "\(m) min" }
-        let h = Double(m) / 60
-        return h == h.rounded() ? "\(Int(h)) hr" : String(format: "%.1f hr", h)
-    }
-
     // MARK: repeats picker
 
     private static let freqOptions: [RepeatFreq] = [.none, .daily, .weekdays, .weekly, .monthly, .custom]
@@ -1313,7 +1316,9 @@ struct EventEditSheet: View {
     private func buildDraft() -> Draft {
         let startDate = resolvedStart
         let startISO = Self.iso.string(from: startDate)
-        let endISO = allDay ? nil : Self.iso.string(from: startDate.addingTimeInterval(Double(durationMin) * 60))
+        let endISO = allDay
+            ? Self.iso.string(from: EventEnd.allDayExclusiveEnd(lastDay: lastDay, cal: Cal.current))
+            : Self.iso.string(from: startDate.addingTimeInterval(Double(durationMin) * 60))
         let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedLoc = location.trimmingCharacters(in: .whitespaces)
         let base = Recurrence.buildRrule(repeatState, start: startDate)

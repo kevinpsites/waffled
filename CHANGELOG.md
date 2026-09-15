@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Set when an event ends on iPhone and iPad.** A new event's all-day toggle now comes with an
+  **Ends** date, so a trip can span several days, and a timed event has an **Ends** date and time
+  in place of the duration menu — including an end on a later day. Moving the start keeps the
+  event's length.
 - **Tell goal suggestions to ignore an event for good.** When Review events keeps offering
   the same kind of event for a goal, pick a word from its title (web: **Ignore…**, iPhone and
   iPad: **Dismiss → Ignore events like this…**) and events containing it are never suggested for

@@ -19,7 +19,8 @@ gated off**.
   event** (stacked avatars, each in the person's color) and a **per-person filter**.
 - 🧳 **Multi-day events** — an all-day event that runs several days (a trip synced from
   Google, say) shows on every day it covers, in the month grid, week cards, day view, agenda
-  and Today, and only fades as past once its last day is over.
+  and Today, and only fades as past once its last day is over. On iPhone and iPad the event editor
+  has an **Ends** field: a last day for an all-day event, or an end date and time for a timed one.
 - 🎨 **Color you control** — solid or tinted event chips, any custom hex per person,
   and a **family color** for events that involve everyone. See
   [Colors on the calendar](#colors-on-the-calendar).
