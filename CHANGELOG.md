@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same kind of event for a goal, pick a word from its title (web: **Ignore…**, iPhone and
   iPad: **Dismiss → Ignore events like this…**) and events containing it are never suggested for
   that goal again — other goals still see them. The words are listed, and removable, in
-  **Settings → AI & Capture → Ignored for suggestions**.
+  **Settings → AI & Capture → Ignored for suggestions** on web, iPhone and iPad.
 
 ### Changed
 
@@ -44,8 +44,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   filter narrows the index that's already built, which should make opening and scrolling the
   calendar smoother.
 - **Multi-day all-day events show on every day they cover (iPhone and iPad).** A trip synced
-  from Google as a several-day all-day event appeared only on its first day; it now fills each
-  day of the month grid, week cards, day view and agenda, shows on Today and a person's day while
+  from Google as a several-day all-day event appeared only on its first day; it now draws as one
+  bar across its days in the iPhone month grid (like Google's month view), appears on each day of
+  the week cards, day view and agenda, shows on Today and a person's day while
   it's on, and only fades as past once its last day is over.
 - **A habit's Log sheet says when today is already submitted.** On iPhone and iPad a habit
   with no one to pick (a family habit) never showed that today was done, and a sheet opened from

@@ -85,13 +85,75 @@ enum PhoneCalendar {
     /// Titles per day cell: as many chips as the row height holds, never more than four. One
     /// countdown pill takes a slot; further countdowns, like events that don't fit, count toward
     /// "+N more". Room for that line is always kept.
-    static func cellChips(eventCount: Int, countdownCount: Int, rowHeight: CGFloat) -> CellChips {
+    /// `reservedSlots` are the row's spanning-bar lanes, drawn over the cells by the grid.
+    static func cellChips(eventCount: Int, countdownCount: Int, rowHeight: CGFloat, reservedSlots: Int = 0) -> CellChips {
         let room = rowHeight - cellTopPadding - dayNumberHeight - moreLineHeight - chipGap
-        let slots = min(maxCellSlots, max(0, Int((room / (chipHeight + chipGap)).rounded(.down))))
+        let fit = min(maxCellSlots, max(0, Int((room / (chipHeight + chipGap)).rounded(.down))))
+        let slots = max(0, fit - reservedSlots)
         let showsCountdown = countdownCount > 0 && slots > 0
         let shown = min(eventCount, slots - (showsCountdown ? 1 : 0))
         let hiddenCountdowns = countdownCount - (showsCountdown ? 1 : 0)
         return CellChips(shown: shown, more: eventCount - shown + hiddenCountdowns, showsCountdown: showsCountdown)
+    }
+
+    struct SpanBar: Equatable {
+        let event: SyncedEvent
+        let startCol: Int
+        let endCol: Int
+        let lane: Int
+        /// The event started before this row / runs on past it, so that end is square.
+        let continuesBefore: Bool
+        let continuesAfter: Bool
+    }
+
+    struct WeekSpans: Equatable {
+        let bars: [SpanBar]
+        let lanes: Int
+        /// Each day's events that still draw as chips: everything the bars didn't take.
+        let chipsByDay: [String: [SyncedEvent]]
+    }
+
+    static let maxSpanLanes = 2
+
+    /// Multi-day all-day events in one month row, laid out as bars across their days like Google's
+    /// month view: earliest start first, longer first on a tie, each in the first lane free by its
+    /// start. Beyond `maxLanes` an event stays a chip in each of its days.
+    static func weekSpans(_ days: [String], byDay: [String: [SyncedEvent]], tz: TimeZone,
+                          maxLanes: Int = maxSpanLanes) -> WeekSpans {
+        guard let firstDay = days.first, let lastDay = days.last else {
+            return WeekSpans(bars: [], lanes: 0, chipsByDay: [:])
+        }
+        struct Candidate { let event: SyncedEvent; let start: Int; let end: Int; let before: Bool; let after: Bool }
+        var seen = Set<String>()
+        var candidates: [Candidate] = []
+        for (col, key) in days.enumerated() {
+            for e in byDay[key] ?? [] where e.allDay && !seen.contains(e.id) {
+                let keys = Agenda.dayKeys(e, tz)
+                guard keys.count > 1, let first = keys.first, let last = keys.last else { continue }
+                seen.insert(e.id)
+                let end = days.lastIndex { $0 <= last } ?? col
+                candidates.append(Candidate(event: e, start: col, end: max(col, end),
+                                            before: first < firstDay, after: last > lastDay))
+            }
+        }
+        candidates.sort {
+            if $0.start != $1.start { return $0.start < $1.start }
+            if $0.end != $1.end { return $0.end > $1.end }
+            return $0.event.id < $1.event.id
+        }
+        var laneEnds: [Int] = []
+        var bars: [SpanBar] = []
+        for c in candidates {
+            let lane = laneEnds.firstIndex { $0 < c.start } ?? laneEnds.count
+            guard lane < maxLanes else { continue }
+            if lane == laneEnds.count { laneEnds.append(c.end) } else { laneEnds[lane] = c.end }
+            bars.append(SpanBar(event: c.event, startCol: c.start, endCol: c.end, lane: lane,
+                                continuesBefore: c.before, continuesAfter: c.after))
+        }
+        let barIds = Set(bars.map(\.event.id))
+        var chips: [String: [SyncedEvent]] = [:]
+        for key in days { chips[key] = (byDay[key] ?? []).filter { !barIds.contains($0.id) } }
+        return WeekSpans(bars: bars, lanes: laneEnds.count, chipsByDay: chips)
     }
 
     // MARK: Week
