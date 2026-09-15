@@ -79,8 +79,9 @@ card at a time or all at once with **See all**:
   You can park a new one from here too.
 
 Each card gets sent on to the step that will deal with it — **Tasks**, **Calendar**, **Kids**
-or **Goals** for something not done; **Make it a task** or **Put it on the calendar** for a
-parked note. Sending something on writes nothing yet; it only decides where it comes up later
+or **Goals** for something not done. A parked note can become a task or go on the calendar,
+or be taken to any later step the household runs — **Family night**, **Connection**,
+**Goals**, **Meals** or **Kids** — where it waits in that step's "sent here" box. Sending something on writes nothing yet; it only decides where it comes up later
 in the session, and **Undo** takes it back. Marking something done already, or dropping a
 parked note, are the answers that act straight away.
 

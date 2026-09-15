@@ -253,7 +253,8 @@ private func looseEndsView(
                 WaffledAPI.LooseEndDestination(to: "calendar", label: "Calendar", hint: "It needs an appointment slot", primary: nil),
             ],
             parked: [
-                WaffledAPI.LooseEndDestination(to: "tasks", label: "Make it a task", hint: "Someone owns it this week", primary: true)
+                WaffledAPI.LooseEndDestination(to: "tasks", label: "Make it a task", hint: "Someone owns it this week", primary: true),
+                WaffledAPI.LooseEndDestination(to: "meals", label: "Take it to Meals", hint: "It changes what we eat", primary: nil, stepTitle: "Meals"),
             ]),
         routes: routes,
         sources: ["chores", "lists"],
@@ -553,15 +554,17 @@ private func model(_ feed: LooseEndsFeed) -> PlanningLooseEndsModel {
         #expect(m.remaining(.notDone) == 1)
     }
 
-    /// The trail names the STEP with the notDone label: "Parked"'s labels are verbs.
+    /// The trail names the STEP, never "Parked"'s verbs: the server's step title, then the notDone label.
     @Test func theTrailNamesTheStepNotTheVerb() async {
         let feed = LooseEndsFeed(snapshot: looseEndsView(notDone: [chore]))
         let m = model(feed)
         await m.load(weekStart: "2026-09-06", sessionId: session)
 
         #expect(m.stepName("tasks") == "Tasks")
+        // A step with no triage label of its own still reads by its title.
+        #expect(m.stepName("meals") == "Meals")
         // A route can outlive a module toggle, so an unknown destination falls back to its key.
-        #expect(m.stepName("meals") == "meals")
+        #expect(m.stepName("familyNight") == "familyNight")
     }
 
     /// Everything sent, most recent first; each row undoes itself, and the view folds past three.

@@ -49,6 +49,8 @@ export interface LooseEndDestination {
   label: string
   hint: string
   primary?: boolean
+  // The step's title ("Meals"), for naming where something was sent.
+  stepTitle?: string
 }
 
 // WHAT STEP 1 DECIDED, and the shape every later step reads.

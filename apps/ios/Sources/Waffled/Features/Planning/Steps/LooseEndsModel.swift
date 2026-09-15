@@ -308,7 +308,10 @@ final class PlanningLooseEndsModel {
     /// trail always uses the notDone label, falling back to the key for a step whose
     /// module is off.
     func stepName(_ to: String) -> String {
-        view?.destinations.notDone.first { $0.to == to }?.label ?? to
+        let all = (view?.destinations.notDone ?? []) + (view?.destinations.parked ?? [])
+        return all.first { $0.to == to && $0.stepTitle != nil }?.stepTitle
+            ?? view?.destinations.notDone.first { $0.to == to }?.label
+            ?? to
     }
 
     /// THE CRUMB, and the cross-step contract in one. `routes` is here on purpose and is

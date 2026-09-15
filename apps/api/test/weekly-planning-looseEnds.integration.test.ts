@@ -52,7 +52,7 @@ interface LooseEnd {
   actions: string[]
   owner?: { id: string; name: string; colorHex: string | null; avatarEmoji: string | null } | null
 }
-interface Destination { to: string; label: string; hint: string; primary?: boolean }
+interface Destination { to: string; label: string; hint: string; primary?: boolean; stepTitle?: string }
 interface Route { kind: string; id: string; title: string; source: string; to: string }
 interface LooseEndsPayload {
   weekStart: string
@@ -150,13 +150,19 @@ describe('loose ends · the module gate', () => {
 
 // ── Destinations ──────────────────────────────────────────────────────────────
 describe('loose ends · where a card can send things', () => {
-  it('offers the four triage destinations for "not done" and the two verbs for "parked"', async () => {
+  it('offers the four triage destinations for "not done", and every step still ahead for "parked"', async () => {
     const p = await read()
     expect(p.destinations.notDone.map((d) => d.to)).toEqual(['tasks', 'calendar', 'kids', 'goals'])
     expect(p.destinations.notDone[0]).toMatchObject({ to: 'tasks', label: 'Tasks', primary: true })
     expect(p.destinations.notDone[0].hint).toMatch(/owner and a day/i)
-    expect(p.destinations.parked.map((d) => d.to)).toEqual(['tasks', 'calendar'])
+    // A note can go to any step still ahead that reads notes, not only the two with a verb.
+    const parked = p.destinations.parked.map((d) => d.to)
+    expect(parked.slice(0, 2)).toEqual(['tasks', 'calendar'])
+    expect(parked).toEqual(expect.arrayContaining(['connection', 'kids']))
+    for (const never of ['looseEnds', 'horizon', 'recap']) expect(parked).not.toContain(never)
     expect(p.destinations.parked[0]).toMatchObject({ to: 'tasks', label: 'Make it a task', primary: true })
+    // The step's own name, for the sent list's "→ Kids".
+    expect(p.destinations.parked.find((d) => d.to === 'kids')).toMatchObject({ stepTitle: 'Kids' })
   })
 
   it('drops a destination whose step this household is not running', async () => {
@@ -165,7 +171,8 @@ describe('loose ends · where a card can send things', () => {
     // `tasks` requires chores, so routing there would send things into a step the session
     // skips.
     expect(p.destinations.notDone.map((d) => d.to)).not.toContain('tasks')
-    expect(p.destinations.parked.map((d) => d.to)).toEqual(['calendar'])
+    expect(p.destinations.parked.map((d) => d.to)).not.toContain('tasks')
+    expect(p.destinations.parked.map((d) => d.to)).toContain('calendar')
     expect(p.sources).not.toContain('chores')
 
     await call('PUT', '/api/weekly-planning/config', kevin, { steps: { kids: false } })
@@ -861,6 +868,14 @@ describe('loose ends · parked items', () => {
     await route({ sessionId, kind: 'parked', id: parkedId, to: null })
     const { rows: after } = await query(`select step_key from planning_parked_items where id = $1`, [parkedId])
     expect(after[0].step_key).toBe(null)
+  })
+
+  it('routes a note to a step with no verb of its own, such as Kids', async () => {
+    const res = await route({ sessionId, kind: 'parked', id: parkedId, title: 'Ask about the school trip', source: 'parked', to: 'kids' })
+    expect(res.statusCode).toBe(200)
+    const { rows } = await query(`select step_key from planning_parked_items where id = $1`, [parkedId])
+    expect(rows[0].step_key).toBe('kids')
+    await route({ sessionId, kind: 'parked', id: parkedId, to: null })
   })
 
   it('survives its session being discarded — the session goes, what it produced stays', async () => {

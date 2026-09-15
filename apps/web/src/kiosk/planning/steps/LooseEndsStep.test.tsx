@@ -201,6 +201,19 @@ describe('loose ends · routing, which is the step', () => {
     expect(await screen.findByText('Return the library books')).toBeInTheDocument()
   })
 
+  it('names the step a note went to, even one with no triage label of its own', async () => {
+    mockApi({
+      ...VIEW,
+      destinations: {
+        ...VIEW.destinations,
+        parked: [...VIEW.destinations.parked, { to: 'meals', label: 'Take it to Meals', hint: 'It changes what we eat', stepTitle: 'Meals' }],
+      },
+      routes: [{ kind: 'parked', id: 'p1', title: 'Ask about the school trip', source: 'parked', to: 'meals' }],
+    })
+    renderStep()
+    expect(await screen.findByText(/→ Meals/)).toBeInTheDocument()
+  })
+
   it('counts down the deck and leaves a trail with an undo', async () => {
     mockApi()
     renderStep()

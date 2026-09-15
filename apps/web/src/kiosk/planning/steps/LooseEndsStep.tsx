@@ -286,10 +286,12 @@ function Body({ step, sessionId, weekStart, setDecisionData, busy }: StepBodyPro
   // Everything sent this sitting, newest first, like the done section of a list: each row
   // undoes itself, and past three it folds behind "Show all".
   const trail = [...routes].reverse()
-  // Step NAMES for the trail: "Not done"'s destination labels ARE the step titles, while
-  // "Parked"'s are verbs ("Make it a task") which read wrong after an arrow — so the trail
-  // always uses the notDone label, falling back to the key for a step whose module is off.
-  const stepName = (to: string) => view.destinations.notDone.find((d) => d.to === to)?.label ?? to
+  // Step NAMES for the trail, never "Parked"'s verbs: the server's step title, then the notDone
+  // label, then the key for a step whose module has since gone off.
+  const stepName = (to: string) =>
+    [...view.destinations.notDone, ...view.destinations.parked].find((d) => d.to === to && d.stepTitle)?.stepTitle
+    ?? view.destinations.notDone.find((d) => d.to === to)?.label
+    ?? to
 
   // WHICH LISTS THIS STEP ASKS ABOUT. Sending somebody to Settings → Modules to silence a
   // someday list is the ejection this module exists to avoid, and that panel is admin-only;
