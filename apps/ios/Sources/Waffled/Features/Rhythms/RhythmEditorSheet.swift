@@ -26,8 +26,9 @@ import SwiftUI
 /// token is a `Menu` rather than a picker because both options need their consequence
 /// spelled out, and a two-`Text` menu button is exactly the native control for that.
 ///
-/// Editing asks LESS. The shape and the period anchor (`startsOn`, `autoSchedule`,
-/// `rrule`) are not editable and the server refuses them: moving the anchor of a live
+/// Editing asks LESS. The shape and the period anchor (`startsOn`, `autoSchedule`, and the
+/// rule of a rhythm that books itself) are not editable and the server refuses them — a
+/// hand-booked rhythm's day hint can only be cleared. Moving the anchor of a live
 /// rhythm would silently re-interpret the periods it has already skipped — they are keyed
 /// on `period_start` — and point its bookings at periods that no longer exist. So on an
 /// edit those clauses are stated rather than offered.
@@ -78,6 +79,17 @@ struct RhythmEditorSheet: View {
     private var dueBinding: Binding<Date> {
         Binding(get: { form.firstDue() }, set: { form.nextDue = $0 })
     }
+
+    private var startBinding: Binding<Date> {
+        Binding(get: { form.startDate() }, set: { form.startsOn = $0 })
+    }
+
+    private var aheadBinding: Binding<Int> {
+        Binding(get: { form.aheadDays ?? 0 }, set: { form.aheadDays = $0 })
+    }
+
+    /// With a window the runway field asks how far ahead of it to start, not how long.
+    private var asksAheadOfWindow: Bool { form.shape == .scheduling && form.bookWithinInterval != nil }
 
     /// The booking window as editable text.
     ///
@@ -276,10 +288,10 @@ struct RhythmEditorSheet: View {
     /// `least(leadTime, every / 2)`, so a weekly rhythm asked for 14 days' notice would
     /// otherwise be promised a nudge on a day nothing is ever going to happen.
     @ViewBuilder private var consequence: some View {
-        let anchor = form.shape == .scheduling ? form.startsOn : form.firstDue()
+        let anchor = form.shape == .scheduling ? form.periodAnchor() : form.firstDue()
         if let plan = RhythmFormat.consequence(shape: form.shape, every: form.every,
                                                leadDays: form.effectiveLeadDays, anchor: anchor,
-                                               bookWithin: form.bookWithinInterval) {
+                                               bookWithin: form.bookWithinInterval, now: Date()) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: form.shape == .completion ? "checkmark.circle.fill" : "calendar")
                     .font(.system(size: 15, weight: .bold))
@@ -290,8 +302,7 @@ struct RhythmEditorSheet: View {
                         .font(.system(size: 13.5)).foregroundStyle(WF.ink)
                         .fixedSize(horizontal: false, vertical: true)
                     if let cap = RhythmFormat.capNote(every: form.every, leadDays: form.effectiveLeadDays,
-                                                      satisfiedBy: form.shape,
-                                                      bookWithin: form.bookWithinInterval) {
+                                                      satisfiedBy: form.shape) {
                         Text(cap).font(.system(size: 12)).foregroundStyle(WF.ink3)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -351,8 +362,11 @@ struct RhythmEditorSheet: View {
     /// Single-select on purpose, unlike the calendar's event editor: a rule that fires
     /// twice inside one period would assert something the cadence never said, and the
     /// period is satisfied by ONE booking either way. Web behaves the same.
-    private var weekdayChips: some View {
-        let current = form.byday.first ?? Recurrence.weekdayCode(form.startsOn)
+    ///
+    /// As a `hint` nothing is picked by default — no day means any day — where a series
+    /// falls back to its anchor's weekday.
+    private func weekdayChips(hint: Bool) -> some View {
+        let current = form.byday.first ?? (hint ? nil : Recurrence.weekdayCode(form.startDate()))
         return HStack(spacing: 6) {
             ForEach(Recurrence.weekdays, id: \.self) { code in
                 WeekdayToggleChip(label: Self.chipDay[code] ?? code, isOn: current == code) {
@@ -372,11 +386,19 @@ struct RhythmEditorSheet: View {
         n == -1 ? "last" : (Self.ordinalWord.indices.contains(n) ? Self.ordinalWord[n] : "\(n)th")
     }
 
-    private var monthlyModeMenu: some View {
-        let weekdayName = DateFmt.string(form.startsOn, "EEEE", Cal.current.timeZone)
+    /// "Any day" only as a `hint`: a series' rule is what books it, so it has no any day.
+    private func monthlyModeMenu(hint: Bool) -> some View {
+        let weekdayName = DateFmt.string(form.startDate(), "EEEE", Cal.current.timeZone)
         func nth(_ ord: Int) -> String { "The \(ordinalWord(ord)) \(weekdayName)" }
-        let current = form.monthlyMode == .dayOfMonth ? "The same date" : nth(form.monthlyOrdinal)
+        let mode: MonthlyMode? = hint ? form.monthlyMode : form.autoMonthlyMode
+        let current: String
+        switch mode {
+        case nil: current = "Any day"
+        case .dayOfMonth?: current = "The same date"
+        case .nthWeekday?: current = nth(form.monthlyOrdinal)
+        }
         return Menu {
+            if hint { Button("Any day") { form.monthlyMode = nil } }
             Button("The same date") { form.monthlyMode = .dayOfMonth }
             ForEach(Self.monthlyOrdinals, id: \.self) { ord in
                 Button(nth(ord)) { form.monthlyMode = .nthWeekday; form.monthlyOrdinal = ord }
@@ -403,9 +425,33 @@ struct RhythmEditorSheet: View {
         }
     }
 
+    /// An optional day to suggest on a rhythm booked by hand. Unlike a series this is only
+    /// a hint: it seeds the booking sheet, and a booking on another day inside the window
+    /// still counts.
+    @ViewBuilder private var dayHintFields: some View {
+        if form.unit == .weeks {
+            Text("Suggest a day (optional)")
+                .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
+            weekdayChips(hint: true)
+            if !form.byday.isEmpty {
+                WaffledPillButton(label: "Any day") { form.byday = [] }
+            }
+        }
+        if form.unit == .months {
+            Text("Which day of the month")
+                .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
+            monthlyModeMenu(hint: true)
+        }
+        if let hint = form.hintRule() {
+            Text("\(Recurrence.describeRrule(hint, start: form.startDate())) is the suggestion — booking on another day still counts.")
+                .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     private var anchorNote: some View {
         LockNote(form.shape == .scheduling
-                 ? "Periods are anchored to \(RhythmFormat.shortDate(RhythmFormat.ymd(form.startsOn))), \(RhythmFormat.cadenceLabel(form.every)). Moving the anchor would re-interpret the periods you’ve already skipped or booked, so it can’t change here — retire this one and make a new one instead."
+                 ? "Periods are anchored to \(RhythmFormat.shortDate(RhythmFormat.ymd(form.startDate()))), \(RhythmFormat.cadenceLabel(form.every)). Moving the anchor would re-interpret the periods you’ve already skipped or booked, so it can’t change here — retire this one and make a new one instead."
                  : "The clock isn’t set by hand — marking it done restarts it from when you actually did it. Moving the anchor would mean a different rhythm, so retire this one and make a new one instead.")
     }
 
@@ -429,12 +475,21 @@ struct RhythmEditorSheet: View {
     }
 
     @ViewBuilder private var advancedFields: some View {
-        WaffledFieldCard(title: form.shape == .completion
-                         ? "Start nudging me this many days early"
-                         : "Start nudging me this many days before the window closes") {
+        WaffledFieldCard(title: asksAheadOfWindow
+                         ? "Start nudging me this many days before it opens"
+                         : (form.shape == .completion
+                            ? "Start nudging me this many days early"
+                            : "Start nudging me this many days before the window closes")) {
             VStack(alignment: .leading, spacing: 6) {
-                Stepper("\(form.effectiveLeadDays) days", value: leadBinding, in: 0...365)
-                    .font(.system(size: 15, weight: .semibold))
+                // With a window the runway sent is this notice plus the window.
+                Group {
+                    if asksAheadOfWindow {
+                        Stepper("\(form.aheadDays ?? 0) days", value: aheadBinding, in: 0...365)
+                    } else {
+                        Stepper("\(form.effectiveLeadDays) days", value: leadBinding, in: 0...365)
+                    }
+                }
+                .font(.system(size: 15, weight: .semibold))
                 // Spelled out against THIS rhythm's cadence rather than left as "the
                 // period", which was reasonably read as "what period? I'm scheduling it
                 // every week".
@@ -458,7 +513,7 @@ struct RhythmEditorSheet: View {
             } else {
                 WaffledFieldCard(title: "First period starts") {
                     VStack(alignment: .leading, spacing: 10) {
-                        DatePicker("First period starts", selection: $form.startsOn,
+                        DatePicker("First period starts", selection: startBinding,
                                    displayedComponents: [.date])
                             .datePickerStyle(.compact)
                             .labelsHidden()
@@ -467,22 +522,38 @@ struct RhythmEditorSheet: View {
                             .font(.system(size: 15, weight: .semibold))
                             .tint(WF.primary)
                         if form.autoSchedule {
-                            Text("\(Recurrence.describeRrule(form.rrule(), start: form.startsOn)) — booked once, then it just stays there.")
+                            Text("\(Recurrence.describeRrule(form.rrule(), start: form.startDate())) — booked once, then it just stays there.")
                                 .font(.system(size: 12)).foregroundStyle(WF.ink3)
                                 .fixedSize(horizontal: false, vertical: true)
                             // Which day it lands on. The weekday used to come from the
                             // anchor date and only from there, so a rhythm you wanted on
                             // Wednesdays had to be ANCHORED on a Wednesday. Web has had
                             // these since the redesign.
-                            if form.unit == .weeks { weekdayChips }
-                            if form.unit == .months { monthlyModeMenu }
+                            if form.unit == .weeks { weekdayChips(hint: false) }
+                            if form.unit == .months { monthlyModeMenu(hint: false) }
                             advancedRule
                         } else {
                             Text("When it happens is an open decision every period, so it’ll ask you to pick a time.")
                                 .font(.system(size: 12)).foregroundStyle(WF.ink3)
                                 .fixedSize(horizontal: false, vertical: true)
+                            dayHintFields
                         }
                     }
+                }
+            }
+        }
+
+        if !isNew, form.shape == .scheduling, !form.autoSchedule, let rule = form.existingHint {
+            WaffledFieldCard(title: "Which day") {
+                if form.hintCleared {
+                    Text("Any day in the window will count once you save.")
+                        .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("Suggests \(RhythmFormat.dayHintLabel(rule) ?? Recurrence.describeRrule(rule, start: form.startDate()).lowercased()) — booking on another day still counts.")
+                        .font(.system(size: 13)).foregroundStyle(WF.ink2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    WaffledPillButton(label: "Any day instead") { form.hintCleared = true }
                 }
             }
         }

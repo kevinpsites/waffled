@@ -43,7 +43,8 @@ private func rhythm(
     satisfied: Bool? = nil,
     hasSeries: Bool? = nil,
     bookedAt: String? = nil,
-    bookedAllDay: Bool? = nil
+    bookedAllDay: Bool? = nil,
+    suggestedOn: String? = nil
 ) -> WaffledAPI.Rhythm {
     WaffledAPI.Rhythm(
         id: id, title: title, emoji: emoji, notes: notes, personId: personId,
@@ -54,20 +55,24 @@ private func rhythm(
         // Without a window the server sends these as the same date, so a fixture naming
         // only the period end still describes a payload the server could produce.
         currentWindowEnd: currentWindowEnd ?? currentPeriodEnd,
-        satisfied: satisfied, hasSeries: hasSeries, bookedAt: bookedAt, bookedAllDay: bookedAllDay)
+        satisfied: satisfied, hasSeries: hasSeries, bookedAt: bookedAt, bookedAllDay: bookedAllDay,
+        suggestedOn: suggestedOn)
 }
 
 private func due(_ r: WaffledAPI.Rhythm, at dueAt: String, overdue: Bool) -> WaffledAPI.RhythmAttentionItem {
     WaffledAPI.RhythmAttentionItem(kind: .due, rhythm: r, dueAt: dueAt, overdue: overdue,
-                                  periodStart: nil, periodEnd: nil, windowEnd: nil, hasSeries: nil)
+                                  periodStart: nil, periodEnd: nil, windowEnd: nil, hasSeries: nil,
+                                  suggestedOn: nil)
 }
 
 private func unscheduled(_ r: WaffledAPI.Rhythm, start: String, end: String,
                          windowEnd: String? = nil,
-                         hasSeries: Bool? = nil) -> WaffledAPI.RhythmAttentionItem {
+                         hasSeries: Bool? = nil,
+                         suggestedOn: String? = nil) -> WaffledAPI.RhythmAttentionItem {
     WaffledAPI.RhythmAttentionItem(kind: .unscheduled, rhythm: r, dueAt: nil, overdue: nil,
                                   periodStart: start, periodEnd: end,
-                                  windowEnd: windowEnd ?? end, hasSeries: hasSeries)
+                                  windowEnd: windowEnd ?? end, hasSeries: hasSeries,
+                                  suggestedOn: suggestedOn)
 }
 
 // MARK: - interval rendering
@@ -715,10 +720,28 @@ struct RhythmEditorTests {
         #expect(form.createBody(calendar: utcCal)["startsOn"] == .string("2026-09-05"))
     }
 
-    @Test("A rhythm booked by hand keeps its anchor whatever the monthly mode says")
-    func manualBookingKeepsItsAnchor() {
-        // No rule is generated, so there is nothing for the grid to disagree with, and the
-        // anchor is nobody's business but the person who picked it.
+    // A hand-booked day is only a hint, but its grid has the same problem as a series:
+    // anchored on a third Saturday, some periods would hold no third Saturday to suggest.
+    @Test("A hand-booked nth-weekday hint anchors its periods on the first, and travels as a hint")
+    func manualNthWeekdayHintAnchorsOnTheFirst() {
+        var form = RhythmForm()
+        form.title = "Family outing"
+        form.shape = .scheduling
+        form.count = 1
+        form.unit = .months
+        form.startsOn = at("2026-09-19T00:00:00")   // a third Saturday
+        form.autoSchedule = false
+        form.monthlyMode = .nthWeekday
+        form.monthlyOrdinal = 3
+
+        let body = form.createBody(calendar: utcCal)
+        #expect(body["startsOn"] == .string("2026-09-01"))
+        #expect(body["autoSchedule"] == .bool(false))
+        #expect(body["rrule"] == .string("FREQ=MONTHLY;BYDAY=3SA"))
+    }
+
+    @Test("A rhythm booked by hand on any day keeps the anchor it was given, and sends no rule")
+    func manualAnyDayKeepsItsAnchor() {
         var form = RhythmForm()
         form.title = "Booked by hand"
         form.shape = .scheduling
@@ -726,10 +749,100 @@ struct RhythmEditorTests {
         form.unit = .months
         form.startsOn = at("2026-09-19T00:00:00")
         form.autoSchedule = false
-        form.monthlyMode = .nthWeekday
-        form.monthlyOrdinal = 3
 
-        #expect(form.createBody(calendar: utcCal)["startsOn"] == .string("2026-09-19"))
+        #expect(form.monthlyMode == nil)
+        let body = form.createBody(calendar: utcCal)
+        #expect(body["startsOn"] == .string("2026-09-19"))
+        #expect(body["rrule"] == .null)
+    }
+
+    @Test("A new monthly rhythm booked by hand starts on the first of this month unless a date is picked")
+    func manualMonthlyDefaultsToTheFirst() {
+        // So "the first week" is the first week of the month, not of the day it was made.
+        var form = RhythmForm()
+        form.title = "Date night"
+        form.shape = .scheduling
+        form.unit = .months
+        let now = at("2026-08-18T12:00:00")
+        #expect(form.createBody(now: now, calendar: utcCal)["startsOn"] == .string("2026-08-01"))
+
+        // Only for that case: a series or a weekly cadence still starts today.
+        form.autoSchedule = true
+        #expect(form.createBody(now: now, calendar: utcCal)["startsOn"] == .string("2026-08-18"))
+        form.autoSchedule = false
+        form.unit = .weeks
+        #expect(form.createBody(now: now, calendar: utcCal)["startsOn"] == .string("2026-08-18"))
+    }
+
+    @Test("A weekly rhythm booked by hand can suggest a day, and suggests none by default")
+    func manualWeeklyHint() {
+        var form = RhythmForm()
+        form.title = "Long run"
+        form.shape = .scheduling
+        form.unit = .weeks
+        form.startsOn = at("2026-09-03T00:00:00")   // a Thursday — not a suggestion
+        #expect(form.createBody(calendar: utcCal)["rrule"] == .null)
+
+        form.byday = ["SA"]
+        #expect(form.createBody(calendar: utcCal)["rrule"] == .string("FREQ=WEEKLY;BYDAY=SA"))
+        #expect(form.createBody(calendar: utcCal)["autoSchedule"] == .bool(false))
+        form.count = 2
+        #expect(form.createBody(calendar: utcCal)["rrule"] == .string("FREQ=WEEKLY;INTERVAL=2;BYDAY=SA"))
+    }
+
+    @Test("With a booking window the runway is the notice plus the window")
+    func aheadOfTheWindow() {
+        var form = RhythmForm()
+        form.title = "Date night"
+        form.shape = .scheduling
+        form.unit = .months
+        form.startsOn = at("2026-09-01T00:00:00")
+        form.windowDays = 7
+
+        // Untouched, it asks from the day the window opens — no earlier than it used to.
+        #expect(form.createBody(calendar: utcCal)["leadTime"] == .string("7 days"))
+
+        form.aheadDays = 14
+        let body = form.createBody(calendar: utcCal)
+        #expect(body["bookWithin"] == .string("7 days"))
+        #expect(body["leadTime"] == .string("21 days"))
+
+        // Reaching the whole cycle travels as the cadence, window or not.
+        form.aheadDays = 30
+        #expect(form.createBody(calendar: utcCal)["leadTime"] == .string("1 months"))
+    }
+
+    @Test("Editing a windowed rhythm seeds the notice from the runway minus the window")
+    func aheadSeedsFromTheRunway() {
+        let ahead = RhythmForm(editing: rhythm(id: "a", satisfiedBy: .scheduling, every: "1 mon",
+                                               startsOn: "2026-09-01", leadTime: "21 days",
+                                               bookWithin: "7 days"))
+        #expect(ahead.aheadDays == 14)
+        #expect(ahead.patchBody()["leadTime"] == .string("21 days"))
+
+        let inside = RhythmForm(editing: rhythm(id: "b", satisfiedBy: .scheduling, every: "1 mon",
+                                                startsOn: "2026-09-01", leadTime: "3 days",
+                                                bookWithin: "7 days"))
+        #expect(inside.aheadDays == 0)
+    }
+
+    @Test("A hand-booked rhythm's hint is shown on edit, and can be cleared to any day")
+    func editClearsTheHint() {
+        var form = RhythmForm(editing: rhythm(id: "o", title: "Family outing", satisfiedBy: .scheduling,
+                                              every: "1 mon", startsOn: "2026-08-01",
+                                              rrule: "FREQ=MONTHLY;BYDAY=3SA", leadTime: "1 mon"))
+        #expect(form.existingHint == "FREQ=MONTHLY;BYDAY=3SA")
+        // Never sent on an ordinary edit, so nothing moves unless it was asked to.
+        #expect(form.patchBody()["rrule"] == nil)
+
+        form.hintCleared = true
+        #expect(form.patchBody()["rrule"] == .null)
+
+        // A rhythm that books itself has a rule, not a hint, and it is not offered.
+        let series = RhythmForm(editing: rhythm(id: "s", satisfiedBy: .scheduling, every: "1 mon",
+                                                startsOn: "2026-08-01", autoSchedule: true,
+                                                rrule: "FREQ=MONTHLY;BYDAY=3SA"))
+        #expect(series.existingHint == nil)
     }
 
     // "Remind me on the 1st to plan the family outing; I'll book it for whenever suits."
@@ -764,12 +877,15 @@ struct RhythmEditorTests {
         #expect(plan.capped == true)
     }
 
-    @Test("A booking window is the ceiling when there is one")
-    func windowIsTheCeiling() {
-        let plan = RhythmFormat.nudgePlan(every: "1 mon", leadDays: 30,
-                                          satisfiedBy: .scheduling, bookWithin: "7 days")
-        #expect(plan.effectiveDays == 7)
-        #expect(plan.capped == true)
+    // A windowed runway may reach back before the window opens, so the cycle is the cap.
+    @Test("A booking rhythm is capped at its cycle even when it has a window")
+    func cycleIsTheCeilingWithAWindow() {
+        let within = RhythmFormat.nudgePlan(every: "1 mon", leadDays: 21, satisfiedBy: .scheduling)
+        #expect(within.effectiveDays == 21)
+        #expect(within.capped == false)
+        let over = RhythmFormat.nudgePlan(every: "1 mon", leadDays: 45, satisfiedBy: .scheduling)
+        #expect(over.effectiveDays == 30)
+        #expect(over.capped == true)
     }
 
     // The runway has to travel as the CADENCE, not as a day count. "30 days" is a month
@@ -1035,6 +1151,13 @@ struct RhythmEditorTests {
         // didn't happen is how the default came to teach the wrong thing.
         #expect(RhythmFormat.capNote(every: "3 mons", leadDays: 14) == nil)
         #expect(RhythmFormat.capNote(every: "7 days", leadDays: 3) == nil)
+
+        // A booking rhythm's clamp is the cycle, so it names the cycle — never a window.
+        let booking = RhythmFormat.capNote(every: "1 mon", leadDays: 45, satisfiedBy: .scheduling)
+        #expect(booking?.contains("a month") == true)
+        #expect(booking?.contains("trimmed to 30") == true)
+        #expect(booking?.contains("cycle") == true)
+        #expect(booking?.contains("window") == false)
     }
 
     @Test("The consequence block promises the dates the server will actually use")
@@ -1058,6 +1181,24 @@ struct RhythmEditorTests {
         #expect(RhythmFormat.ymd(doing!.landsOn, calendar: utcCal) == "2026-11-26")
         #expect(RhythmFormat.ymd(doing!.nudgeFrom, calendar: utcCal) == "2026-11-12")
         #expect(!doing!.capped)
+    }
+
+    @Test("A windowed booking rhythm's promise closes with its window, and moves on once that has passed")
+    func consequenceFollowsTheWindow() {
+        let anchor = at("2026-09-01T00:00:00")
+        // The first week of September, asked 14 days before it opens: 21 days back from Sep 8.
+        let ahead = RhythmFormat.consequence(shape: .scheduling, every: "1 mons", leadDays: 21,
+                                             anchor: anchor, calendar: utcCal, bookWithin: "7 days")
+        #expect(RhythmFormat.ymd(ahead!.landsOn, calendar: utcCal) == "2026-09-08")
+        #expect(RhythmFormat.ymd(ahead!.nudgeFrom, calendar: utcCal) == "2026-08-18")
+        #expect(!ahead!.capped)
+
+        // Made on Sep 15, September's window has gone, so the server asks about October's.
+        let next = RhythmFormat.consequence(shape: .scheduling, every: "1 mons", leadDays: 21,
+                                            anchor: anchor, calendar: utcCal, bookWithin: "7 days",
+                                            now: at("2026-09-15T12:00:00"))
+        #expect(RhythmFormat.ymd(next!.landsOn, calendar: utcCal) == "2026-10-08")
+        #expect(RhythmFormat.ymd(next!.nudgeFrom, calendar: utcCal) == "2026-09-17")
     }
 
     @Test("Adding a cadence to a month-end date lands inside the next month")
@@ -1383,10 +1524,27 @@ struct RhythmNudgeCopyTests {
         #expect(RhythmFormat.nudgeExplainer(every: "1 mon", leadDays: 5).contains("last 5 days"))
     }
 
-    @Test("It clamps to the booking window rather than the cadence when there is one")
-    func clampsToTheWindow() {
-        #expect(RhythmFormat.nudgeExplainer(every: "1 mon", leadDays: 30, bookWithin: "7 days")
-            .contains("trimmed to 7 days"))
+    // The runway is the notice plus the window, so 21 on a 7-day window is 14 days' notice.
+    @Test("With a window, it says how far ahead of the window the asking starts")
+    func saysHowFarAheadOfTheWindow() {
+        let ahead = RhythmFormat.nudgeExplainer(every: "1 mon", leadDays: 21, bookWithin: "7 days")
+        #expect(ahead.hasPrefix("A fresh window to book it opens every month and stays open 7 days."))
+        #expect(ahead.contains("nudged from 14 days before it opens, and only while nothing"))
+        #expect(!ahead.contains("trimmed"))
+        #expect(RhythmFormat.nudgeExplainer(every: "1 mon", leadDays: 7, bookWithin: "7 days")
+            .contains("nudged from the day it opens"))
+        #expect(RhythmFormat.nudgeExplainer(every: "1 mon", leadDays: 3, bookWithin: "7 days")
+            .contains("nudged for the last 3 days of it"))
+        #expect(RhythmFormat.nudgeExplainer(every: "1 mon", leadDays: 0, bookWithin: "7 days")
+            .contains("nudged on its last day"))
+
+        // The trim names the cadence, not the window.
+        let trimmed = RhythmFormat.nudgeExplainer(every: "1 mon", leadDays: 45, bookWithin: "7 days")
+        #expect(trimmed.contains("45 days won"))
+        #expect(trimmed.contains("fit in a month"))
+        #expect(trimmed.contains("trimmed to 30 days"))
+        #expect(trimmed.contains("a runway longer than the cycle never goes quiet"))
+        #expect(trimmed.contains("from 23 days before it opens"))
     }
 
     @Test("A zero runway nudges only on the final day")
@@ -1602,6 +1760,27 @@ struct RhythmCountdownTests {
         #expect(cd?.unit == "this period")
     }
 
+    // Asked three weeks ahead of date-night week: it is on the list, but nothing is late.
+    @Test("An ask about a period that has not started stays out of the late colour")
+    func earlyAskIsNotLate() {
+        let r = rhythm(satisfiedBy: .scheduling, every: "1 mon", bookWithin: "7 days",
+                       currentPeriodStart: "2026-09-01", currentPeriodEnd: "2026-10-01",
+                       currentWindowEnd: "2026-09-08", satisfied: false)
+        let cd = RhythmFormat.countdown(r, urgency: .now, now: now, calendar: utcCal)
+        #expect(cd == RhythmFormat.Countdown(number: "19", unit: "days left", tone: .near))
+        #expect(!RhythmFormat.primaryVerb(r, urgency: .now, now: now, calendar: utcCal))
+
+        // Once the period has started, a closing window is loud again.
+        let started = rhythm(satisfiedBy: .scheduling, every: "7 days",
+                             currentPeriodStart: "2026-08-17", currentPeriodEnd: "2026-08-24",
+                             satisfied: false)
+        #expect(RhythmFormat.countdown(started, urgency: .now, now: now, calendar: utcCal)?.tone == .late)
+        #expect(RhythmFormat.primaryVerb(started, urgency: .now, now: now, calendar: utcCal))
+        #expect(RhythmFormat.primaryVerb(rhythm(nextDueAt: "2026-08-14T09:00:00Z"), urgency: .now,
+                                         now: now, calendar: utcCal))
+        #expect(!RhythmFormat.primaryVerb(started, urgency: .soon, now: now, calendar: utcCal))
+    }
+
     @Test("An unbooked period counts down to the day the window closes")
     func windowClosing() {
         let r = rhythm(satisfiedBy: .scheduling, every: "7 days",
@@ -1643,5 +1822,131 @@ struct RhythmProgressTests {
         #expect(RhythmFormat.periodProgress(
             rhythm(lastCompletedAt: "2026-09-01T09:00:00Z", nextDueAt: "2026-08-25T09:00:00Z"),
             now: now, calendar: utcCal) == nil)
+    }
+}
+
+@MainActor
+@Suite("Asking ahead, and which day")
+struct RhythmAskAheadTests {
+    private let now = at("2026-08-20T12:00:00")
+
+    @Test("asksAhead is true only while the period being asked about has not started")
+    func asksAhead() {
+        #expect(RhythmFormat.asksAhead(periodStart: "2026-09-01", now: now, calendar: utcCal))
+        #expect(!RhythmFormat.asksAhead(periodStart: "2026-08-20", now: now, calendar: utcCal))
+        #expect(!RhythmFormat.asksAhead(periodStart: "2026-08-01", now: now, calendar: utcCal))
+        #expect(!RhythmFormat.asksAhead(periodStart: nil, now: now, calendar: utcCal))
+    }
+
+    @Test("dayHintLabel names the day a rhythm suggests")
+    func namesTheDay() {
+        #expect(RhythmFormat.dayHintLabel("FREQ=MONTHLY;BYDAY=3SA") == "the third Saturday")
+        #expect(RhythmFormat.dayHintLabel("FREQ=MONTHLY;BYDAY=-1FR") == "the last Friday")
+        #expect(RhythmFormat.dayHintLabel("FREQ=WEEKLY;INTERVAL=2;BYDAY=SA") == "Saturdays")
+        #expect(RhythmFormat.dayHintLabel("RRULE:FREQ=MONTHLY;BYDAY=1MO") == "the first Monday")
+    }
+
+    @Test("dayHintLabel says nothing for a rule it cannot name in a few words")
+    func staysQuiet() {
+        #expect(RhythmFormat.dayHintLabel(nil) == nil)
+        #expect(RhythmFormat.dayHintLabel("FREQ=MONTHLY") == nil)
+        #expect(RhythmFormat.dayHintLabel("FREQ=WEEKLY;BYDAY=MO,WE") == nil)
+        #expect(RhythmFormat.dayHintLabel("FREQ=WEEKLY;BYDAY=2SA") == nil)
+        #expect(RhythmFormat.dayHintLabel("FREQ=MONTHLY;BYDAY=SA") == nil)
+    }
+
+    @Test("suggestedOn decodes on a list row and an attention item")
+    func decodesSuggestedOn() throws {
+        let row = """
+        {"id":"o","title":"Family outing","emoji":null,"notes":null,"personId":null,
+         "satisfiedBy":"scheduling","every":"1 mon","startsOn":"2026-08-01",
+         "autoSchedule":false,"rrule":"FREQ=MONTHLY;BYDAY=3SA","bookWithin":null,"leadTime":"1 mon",
+         "lastCompletedAt":null,"nextDueAt":null,"isActive":true,
+         "currentPeriodStart":"2026-09-01","currentPeriodEnd":"2026-10-01",
+         "currentWindowEnd":"2026-10-01","satisfied":false,"hasSeries":false,
+         "bookedAt":null,"bookedAllDay":null,"suggestedOn":"2026-09-19"}
+        """
+        let r = try WaffledAPI.decoder.decode(WaffledAPI.Rhythm.self, from: Data(row.utf8))
+        #expect(r.suggestedOn == "2026-09-19")
+
+        let item = """
+        {"kind":"unscheduled","rhythm":\(row),"periodStart":"2026-09-01","periodEnd":"2026-10-01",
+         "windowEnd":"2026-10-01","hasSeries":false,"suggestedOn":"2026-09-19"}
+        """
+        let decoded = try WaffledAPI.decoder.decode(WaffledAPI.RhythmAttentionItem.self, from: Data(item.utf8))
+        #expect(decoded.suggestedOn == "2026-09-19")
+    }
+
+    @Test("The booking sheet opens on the suggested day when it falls in the window")
+    func bookingSeedsTheSuggestion() {
+        let today = at("2026-08-26T09:00:00")
+        func seed(_ suggested: String?) -> String? {
+            RhythmFormat.bookingDay(periodStart: "2026-08-01", bookableUntil: "2026-09-01",
+                                    suggestedOn: suggested, now: today, calendar: utcCal)
+                .map { RhythmFormat.ymd($0, calendar: utcCal) }
+        }
+        #expect(seed("2026-08-29") == "2026-08-29")
+        // Outside the window, or absent, it is today while today is bookable…
+        #expect(seed("2026-09-05") == "2026-08-26")
+        #expect(seed(nil) == "2026-08-26")
+        // …and otherwise the first day it could go.
+        let early = RhythmFormat.bookingDay(periodStart: "2026-09-01", bookableUntil: "2026-09-08",
+                                            suggestedOn: nil, now: today, calendar: utcCal)
+        #expect(early.map { RhythmFormat.ymd($0, calendar: utcCal) } == "2026-09-01")
+    }
+
+    @Test("The booking sheet says what it suggests, and that any day still works")
+    func suggestionNote() {
+        let day = at("2026-09-19T00:00:00")
+        #expect(RhythmFormat.suggestionNote(day, hint: "the third Saturday", calendar: utcCal)
+                == "It suggests Sep 19, the third Saturday — any day in the window still works.")
+        #expect(RhythmFormat.suggestionNote(day, hint: nil, calendar: utcCal)
+                == "It suggests Sep 19 — any day in the window still works.")
+    }
+
+    @Test("The register and the Today card name the day a hand-booked rhythm suggests")
+    func rowsNameTheHint() {
+        let now = at("2026-08-26T12:00:00")
+        let outing = rhythm(id: "o", title: "Family outing", satisfiedBy: .scheduling, every: "1 mon",
+                            startsOn: "2026-08-01", rrule: "FREQ=MONTHLY;BYDAY=3SA", leadTime: "1 mon",
+                            currentPeriodStart: "2026-08-01", currentPeriodEnd: "2026-09-01",
+                            satisfied: false)
+        #expect(RhythmsModel.detailLines(for: [outing], now: now, calendar: utcCal)["o"]
+                == "Every month · the third Saturday · not on the calendar yet")
+        let lines = RhythmsModel.statusLines(
+            for: [unscheduled(outing, start: "2026-08-01", end: "2026-09-02", suggestedOn: "2026-08-15")],
+            now: now, calendar: utcCal)
+        #expect(lines["o"] == "7 days left to book it · the third Saturday")
+
+        // A series has a rule, not a hint — the row says nothing about a day.
+        let series = rhythm(id: "s", satisfiedBy: .scheduling, every: "1 mon", startsOn: "2026-08-01",
+                            autoSchedule: true, rrule: "FREQ=MONTHLY;BYDAY=3SA",
+                            currentPeriodStart: "2026-08-01", currentPeriodEnd: "2026-09-01",
+                            satisfied: true, hasSeries: true)
+        #expect(RhythmsModel.detailLines(for: [series], now: now, calendar: utcCal)["s"]?
+            .contains("Saturday") == false)
+    }
+}
+
+@MainActor
+@Suite("Asking ahead in the register")
+struct RhythmAskAheadRegisterTests {
+    @Test("An early ask is in Needs you now without the filled verb")
+    func earlyAskIsQuiet() async {
+        let early = rhythm(id: "d", title: "Date night", satisfiedBy: .scheduling, every: "1 mon",
+                           startsOn: "2026-08-01", leadTime: "21 days", bookWithin: "7 days",
+                           currentPeriodStart: "2026-09-01", currentPeriodEnd: "2026-10-01",
+                           currentWindowEnd: "2026-09-08", satisfied: false)
+        let late = rhythm(id: "a", title: "Air filter", nextDueAt: "2026-08-14T09:00:00Z", satisfied: false)
+        let feed = RhythmFeed(attention: [unscheduled(early, start: "2026-09-01", end: "2026-10-01",
+                                                      windowEnd: "2026-09-08")],
+                              all: [early, late])
+        let model = feed.model(now: at("2026-08-20T12:00:00"))
+        await model.loadAll()
+        await model.loadAttention()
+
+        #expect(model.bands.first?.urgency == .now)
+        #expect(model.countdowns["d"]?.tone == .near)
+        #expect(model.primaryVerbs == ["a"])
     }
 }

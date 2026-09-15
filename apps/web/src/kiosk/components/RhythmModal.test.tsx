@@ -340,6 +340,92 @@ describe('New rhythm — what gets created', () => {
   })
 })
 
+const toBooking = () => {
+  openMode()
+  fireEvent.click(within(screen.getByRole('listbox')).getByText(/it's on the calendar/i))
+}
+
+describe('New rhythm — which day, and asking ahead', () => {
+  it('starts a monthly rhythm you book by hand on the first, with any day allowed', async () => {
+    const dialog = openCreate()
+    fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Family outing' } })
+    toBooking()
+    fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'months' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
+
+    await waitFor(() => expect(posts().length).toBe(1))
+    const body = posts()[0].body!
+    expect(body.startsOn).toBe('2026-08-01')
+    expect(body.autoSchedule).toBe(false)
+    expect(body.rrule ?? null).toBeNull()
+  })
+
+  it('offers which day of the month without booking itself, and sends it as a hint', async () => {
+    const dialog = openCreate()
+    fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Family outing' } })
+    toBooking()
+    fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'months' } })
+    fireEvent.click(moreOptions())
+    // Aug 15, 2026 is the third Saturday; the date picks the weekday, as it does for a series.
+    fireEvent.change(within(dialog).getByLabelText(/first period starts/i), { target: { value: '2026-08-15' } })
+    fireEvent.change(within(dialog).getByLabelText(/which day of the month/i), { target: { value: 'weekday' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
+
+    await waitFor(() => expect(posts().length).toBe(1))
+    const body = posts()[0].body!
+    expect(body.autoSchedule).toBe(false)
+    expect(body.rrule).toBe('FREQ=MONTHLY;BYDAY=3SA')
+    expect(body.startsOn).toBe('2026-08-01')
+  })
+
+  it('picks a weekday for a weekly rhythm you book by hand, with no day picked by default', async () => {
+    const dialog = openCreate()
+    fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Long run' } })
+    toBooking()
+    fireEvent.click(moreOptions())
+    expect(within(dialog).getByRole('button', { name: 'SA' })).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'SA' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
+
+    await waitFor(() => expect(posts().length).toBe(1))
+    const body = posts()[0].body!
+    expect(body.autoSchedule).toBe(false)
+    expect(body.rrule).toBe('FREQ=WEEKLY;BYDAY=SA')
+  })
+
+  it('asks ahead of a booking window, sending the notice plus the window as the runway', async () => {
+    const dialog = openCreate()
+    fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Date night' } })
+    toBooking()
+    fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'months' } })
+    fireEvent.click(moreOptions())
+    fireEvent.change(within(dialog).getByLabelText(/first .* days/i), { target: { value: '7' } })
+    fireEvent.change(within(dialog).getByLabelText(/days before it opens/i), { target: { value: '14' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
+
+    await waitFor(() => expect(posts().length).toBe(1))
+    const body = posts()[0].body!
+    expect(body.bookWithin).toBe('7 days')
+    expect(body.leadTime).toBe('21 days')
+  })
+
+  it('shows the day a hand-booked rhythm suggests, and can let any day count again', async () => {
+    const outing = {
+      ...filter, id: 'r-outing', title: 'Family outing', satisfiedBy: 'scheduling' as const, every: '1 mon',
+      startsOn: '2026-08-01', nextDueAt: null, lastCompletedAt: null, rrule: 'FREQ=MONTHLY;BYDAY=3SA',
+      bookWithin: null, leadTime: '1 mon',
+    }
+    const dialog = openEdit(outing)
+    fireEvent.click(moreOptions())
+    expect(within(dialog).getByText(/suggests the third saturday/i)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: /any day instead/i }))
+    fireEvent.click(within(dialog).getByRole('button', { name: /save changes/i }))
+
+    await waitFor(() => expect(calls.some((c) => c.method === 'PATCH')).toBe(true))
+    expect(calls.find((c) => c.method === 'PATCH')!.body!.rrule).toBeNull()
+  })
+})
+
 // `GET /:id/completions` and its `averageIntervalDays` have existed and been tested since
 // the migration, and were reachable from NO client — the web layer declared the call and
 // nothing invoked it. So the register kept a history it could not show you, and the one

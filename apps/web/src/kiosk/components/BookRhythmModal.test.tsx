@@ -33,6 +33,7 @@ const period = {
   periodEnd: '2026-09-02',
   windowEnd: '2026-09-02',
   hasSeries: false,
+  suggestedOn: null as string | null,
 }
 
 const open = (item = period) =>
@@ -90,6 +91,13 @@ describe('the bookable window is always visible', () => {
     // and the button it sits beside is enabled, which is why the claim would be a lie
     expect(screen.getByRole('button', { name: /put it on the calendar/i })).toBeEnabled()
     expect(screen.getByText(/counts/i).textContent).toMatch(/Aug 26/)
+  })
+
+  it('opens on the day the rhythm suggests, when it falls in the window', () => {
+    at('2026-08-26T09:00:00')
+    open({ ...period, suggestedOn: '2026-08-29' })
+    expect((screen.getByLabelText('Date') as HTMLInputElement).value).toBe('2026-08-29')
+    expect(screen.getByText(/suggests/i)).toBeInTheDocument()
   })
 
   it('still clamps the input to the period', () => {
