@@ -26,6 +26,15 @@ import Testing
         #expect(s.ignoreWords.isEmpty)
     }
 
+    @Test func decodesTheIgnoredWordsListForSettings() throws {
+        let groups = try JSONDecoder().decode(WaffledAPI.IgnoreGroupsResponse.self, from: Data("""
+        {"groups":[{"goalId":"g1","goalTitle":"Host 30 families","goalEmoji":null,"words":["thaw","salmon"]}]}
+        """.utf8)).groups
+        #expect(groups.map(\.goalTitle) == ["Host 30 families"])
+        #expect(groups.first?.words == ["thaw", "salmon"])
+        #expect(groups.first?.id == "g1")
+    }
+
     @Test func ignoringNeedsAtLeastOneWordPicked() {
         #expect(!ReviewEventsModel.canIgnore(picked: []))
         #expect(ReviewEventsModel.canIgnore(picked: ["thaw"]))
