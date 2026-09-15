@@ -665,24 +665,15 @@ export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Pr
   }
 
   const { rows } = await query<Row>(
-    // The runway is clamped to the WINDOW where there is one, and to the whole cycle where
-    // there isn't — not to half of it, as the completion shape still is.
-    //
-    // The two shapes can afford different ceilings because only one of them has a floor.
-    // A scheduling rhythm's feed is bounded above: it stops asking when the window closes,
-    // so a runway equal to the cycle opens on the period's first day and shuts on its
-    // last. That is what makes "remind me at the start of the month to plan the outing,
-    // and I'll book it for whenever suits" sayable at all — under a half-cycle cap a
-    // monthly rhythm could not be asked before the 16th, and the booking window is the
-    // wrong tool for it (it moves when a booking COUNTS, so an outing late in the month
-    // would stop settling the period).
-    //
-    // Longer than the cycle is still refused, and that is the real rule: a runway that
-    // outlives its own period never closes, and the thing is learned as noise.
+    // The runway is clamped to the whole cycle, window or not — not to half of it, as the
+    // completion shape is. A scheduling rhythm's feed closes when its window does, so a
+    // runway up to the cycle always closes; with a window it may open before the period
+    // does ("ask me three weeks before date-night week"). It cannot overlap the previous
+    // period's ask, because askingPeriodStart has moved on once that window closed.
     `insert into rhythms (household_id, title, emoji, notes, person_id, satisfied_by, every, lead_time,
                           starts_on, auto_schedule, rrule, book_within)
      values ($1,$2,$3,$4,$5,'scheduling',$6::interval,
-             least($7::interval, coalesce($11::interval, $6::interval)),$8::date,$9,$10,$11::interval)
+             least($7::interval, $6::interval),$8::date,$9,$10,$11::interval)
      returning id, title, emoji, notes, person_id, satisfied_by, every::text as every,
                starts_on, auto_schedule, rrule, book_within::text as book_within, lead_time::text as lead_time,
                last_completed_at, next_due_at, is_active`,
@@ -1231,21 +1222,14 @@ export async function updateRhythm(
        person_id  = case when $8::boolean then $9::uuid else person_id end,
        every      = coalesce($10::interval, every),
        book_within = case when $14::boolean then $15::interval else book_within end,
-       -- Re-clamped on every write, against the cadence AND the window as they will be
-       -- AFTER this update. Shortening a six-month rhythm to weekly would otherwise leave
-       -- it a 14-day runway it can never close; narrowing a fortnight-long window to three
-       -- days would leave a runway that opens before the period it belongs to.
-       --
-       -- Split by shape for the reason the inserts are: a scheduling rhythm's feed closes
-       -- when its window does, so it can afford a runway as long as its cycle; a
-       -- completion rhythm's never closes on its own, so it keeps half.
+       -- Re-clamped on every write against the cadence as it will be AFTER this update, so
+       -- shortening a six-month rhythm to weekly cannot leave a runway that never closes.
+       -- Split by shape for the reason the inserts are: scheduling keeps the whole cycle,
+       -- completion keeps half.
        lead_time  = least(
                       coalesce($11::interval, lead_time),
                       case when satisfied_by = 'scheduling'
-                           then coalesce(
-                                  case when $14::boolean then $15::interval else book_within end,
-                                  coalesce($10::interval, every)
-                                )
+                           then coalesce($10::interval, every)
                            else coalesce($10::interval, every) / 2
                       end
                     ),

@@ -1757,26 +1757,27 @@ describe('a booking window narrower than the period', () => {
     await call('DELETE', `/api/rhythms/${id}`, kevin)
   })
 
-  it('clamps the runway to the window instead of to half the period', async () => {
-    // Unclamped, a 30-day runway on a 7-day window opens three weeks before the period it
-    // belongs to even starts — inside the PREVIOUS period, asking about the wrong one.
-    const id = await makeRhythm({ title: 'Greedy runway', bookWithin: '7 days', leadTime: '30 days' })
-    const res = await call('GET', '/api/rhythms', kevin)
-    const row = JSON.parse(res.body).rhythms.find((r: { id: string }) => r.id === id)
-    expect(row.leadTime).toMatch(/7 days/)
-    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  it('lets the runway reach back past the window, up to the whole cycle', async () => {
+    // "Ask me three weeks before date-night week" is a runway longer than the week it points
+    // at. Only one longer than the cycle is refused: that one would never close.
+    const ahead = await makeRhythm({ title: 'Plan ahead', bookWithin: '7 days', leadTime: '21 days' })
+    const greedy = await makeRhythm({ title: 'Greedy runway', bookWithin: '7 days', leadTime: '40 days' })
+    const rows = JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms
+    expect(rows.find((r: { id: string }) => r.id === ahead).leadTime).toMatch(/21 days/)
+    expect(rows.find((r: { id: string }) => r.id === greedy).leadTime).toMatch(/1 mon/)
+    await call('DELETE', `/api/rhythms/${ahead}`, kevin)
+    await call('DELETE', `/api/rhythms/${greedy}`, kevin)
   })
 
-  it('re-clamps the runway when the window is narrowed in place', async () => {
-    // Unlike the cadence, a window can be edited: it moves no boundary and re-keys no
-    // skip. But it does bound the runway, so the clamp has to be re-applied against the
-    // window as it will be AFTER the edit.
+  it('keeps the runway when the window is narrowed in place, and still caps it at the cycle', async () => {
     const id = await makeRhythm({ title: 'Narrowing', bookWithin: '14 days', leadTime: '14 days' })
     const patch = await call('PATCH', `/api/rhythms/${id}`, kevin, { bookWithin: '3 days' })
     expect(patch.statusCode).toBe(200)
     const row = JSON.parse(patch.body).rhythm
     expect(row.bookWithin).toMatch(/3 days/)
-    expect(row.leadTime).toMatch(/3 days/)
+    expect(row.leadTime).toMatch(/14 days/)
+    const widened = await call('PATCH', `/api/rhythms/${id}`, kevin, { leadTime: '45 days' })
+    expect(JSON.parse(widened.body).rhythm.leadTime).toMatch(/1 mon/)
     await call('DELETE', `/api/rhythms/${id}`, kevin)
   })
 
@@ -1846,16 +1847,29 @@ describe('a booking window narrower than the period', () => {
     await call('DELETE', `/api/rhythms/${id}`, kevin)
   })
 
-  it('stays quiet in the period before the window it belongs to', async () => {
-    // The runway opens at window_end − lead_time, and lead_time is capped at the window's
-    // width, so the earliest it can open is exactly period_start. If it opened any earlier
-    // it would land inside the PREVIOUS period, and the two would be asking at once —
-    // about different periods, in one list, with no way for a reader to tell them apart.
+  it('stays quiet before its period when the runway is only the window', async () => {
     const id = await makeRhythm({ title: 'Quiet until it starts', bookWithin: '7 days', leadTime: '7 days' })
     // The last day of the period before the one starting 2027-03-01.
     expect(await unscheduledIds('2027-02-28')).not.toContain(id)
     // ...and the first day of its own.
     expect(await unscheduledIds('2027-03-01')).toContain(id)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('asks ahead about the coming period once a longer runway opens', async () => {
+    // Date night in the first week, asked about three weeks out: September's window closes
+    // on the 8th, so a 21-day runway opens Aug 18 — long after August's own window shut.
+    const id = await makeRhythm({ title: 'Date night ahead', bookWithin: '7 days', leadTime: '21 days' })
+    expect(await unscheduledIds('2027-08-17')).not.toContain(id)
+    const res = await call('GET', '/api/rhythms/attention?to=2027-08-18', kevin)
+    const item = JSON.parse(res.body).items.find((i: { rhythm: { id: string } }) => i.rhythm.id === id)
+    expect(item?.periodStart).toBe('2027-09-01')
+    expect(item?.windowEnd).toBe('2027-09-08')
+    const booked = await call('POST', `/api/rhythms/${id}/schedule`, kevin, {
+      startsAt: '2027-09-03T23:00:00Z', periodStart: '2027-09-01',
+    })
+    expect(booked.statusCode).toBe(201)
+    expect(await unscheduledIds('2027-08-18')).not.toContain(id)
     await call('DELETE', `/api/rhythms/${id}`, kevin)
   })
 

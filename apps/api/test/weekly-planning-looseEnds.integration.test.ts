@@ -771,6 +771,24 @@ describe('loose ends · rhythms past due', () => {
     expect((await read()).notDone.map((i) => i.id)).not.toContain(id)
   })
 
+  it('leaves out a rhythm asking ahead about a period that has not started', async () => {
+    // Its window opens in four days and the runway already reaches it — worth asking about
+    // on Today, but nothing in it is left undone yet.
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Plan date night',
+      satisfiedBy: 'scheduling',
+      every: '14 days',
+      startsOn: new Date(Date.now() - 10 * 864e5).toISOString().slice(0, 10),
+      bookWithin: '3 days',
+      leadTime: '14 days',
+    })
+    const id = json(res).rhythm.id
+    const attention = json(await call('GET', `/api/rhythms/attention?to=${new Date().toISOString().slice(0, 10)}`, kevin))
+    expect(attention.items.map((i: { rhythm: { id: string } }) => i.rhythm.id)).toContain(id)
+    expect((await read()).notDone.map((i) => i.id)).not.toContain(id)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
   it('contributes nothing when the rhythms module is off', async () => {
     await query(`update rhythms set next_due_at = now() - interval '5 days' where id = $1`, [rhythmId])
     expect((await read()).notDone.map((i) => i.id)).toContain(rhythmId)
