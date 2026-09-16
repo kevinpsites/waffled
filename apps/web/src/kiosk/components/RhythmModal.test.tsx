@@ -284,12 +284,14 @@ describe('New rhythm — what gets created', () => {
     fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'months' } })
     fireEvent.click(moreOptions())
     fireEvent.click(within(dialog).getByRole('switch', { name: /on the calendar automatically/i }))
-    fireEvent.change(within(dialog).getByLabelText(/which day of the month/i), { target: { value: 'weekday' } })
+    const monthly = within(dialog).getByLabelText(/which day of the month/i)
+    // Today is 2026-08-19, a Wednesday, so the options are named after Wednesdays.
+    expect(within(monthly).getByRole('option', { name: 'The third Wednesday' })).toBeTruthy()
+    fireEvent.change(monthly, { target: { value: 'weekday:3' } })
     fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
 
     await waitFor(() => expect(posts().length).toBe(1))
     const body = posts()[0].body!
-    // Today is 2026-08-19 — the third Wednesday of August.
     expect(body.startsOn).toBe('2026-08-01')
     expect(body.rrule).toBe('FREQ=MONTHLY;BYDAY=3WE')
   })
@@ -366,9 +368,10 @@ describe('New rhythm — which day, and asking ahead', () => {
     toBooking()
     fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'months' } })
     fireEvent.click(moreOptions())
-    // Aug 15, 2026 is the third Saturday; the date picks the weekday, as it does for a series.
-    fireEvent.change(within(dialog).getByLabelText(/first period starts/i), { target: { value: '2026-08-15' } })
-    fireEvent.change(within(dialog).getByLabelText(/which day of the month/i), { target: { value: 'weekday' } })
+    // The date picks the weekday, as it does for a series; the ordinal is chosen outright,
+    // so a Saturday anywhere in the month gets you "the third Saturday".
+    fireEvent.change(within(dialog).getByLabelText(/first period starts/i), { target: { value: '2026-08-08' } })
+    fireEvent.change(within(dialog).getByLabelText(/which day of the month/i), { target: { value: 'weekday:3' } })
     fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
 
     await waitFor(() => expect(posts().length).toBe(1))

@@ -4,7 +4,7 @@ import {
   nudgePlan, addCadence, consequence, dayHintLabel, type SatisfiedBy, type Rhythm, type Completion,
 } from '../../lib/api'
 import { ConfirmDialog } from './ConfirmDialog'
-import { buildRrule, describeRrule, weekdayCode, NO_REPEAT, type CustomUnit, type MonthlyMode } from './recurrence'
+import { buildRrule, describeRrule, monthlyModeLabel, weekdayCode, MONTHLY_ORDINALS, NO_REPEAT, type CustomUnit, type MonthlyMode } from './recurrence'
 import { WeekdayChips } from './WeekdayChips'
 
 // Create a rhythm by saying it as a sentence:
@@ -137,6 +137,9 @@ export function RhythmModal({
   const [autoSchedule, setAutoSchedule] = useState(false)
   // 'any' only means something on a rhythm booked by hand: no day suggested at all.
   const [monthlyMode, setMonthlyMode] = useState<MonthlyMode | 'any'>('any')
+  // Which nth weekday, picked outright rather than inferred from the start date — "the
+  // third Saturday" is the thing people mean, and hunting a calendar for one is not it.
+  const [monthlyOrdinal, setMonthlyOrdinal] = useState(1)
   // Days of notice before a booking window opens. The runway sent is this plus the window.
   const [aheadDays, setAheadDays] = useState<string | null>(
     editing && rhythm?.bookWithin
@@ -239,7 +242,7 @@ export function RhythmModal({
   // supposed to satisfy. The raw field is the escape hatch, not the normal path.
   const startDate = new Date(`${startsOn}T00:00:00`)
   const rrule = buildRrule(
-    { ...NO_REPEAT, freq: 'custom', interval: n, unit: CUSTOM_UNIT[unit], monthlyMode: autoMonthlyMode, custom: customRule, byday },
+    { ...NO_REPEAT, freq: 'custom', interval: n, unit: CUSTOM_UNIT[unit], monthlyMode: autoMonthlyMode, monthlyOrdinal, custom: customRule, byday },
     startDate
   )
   // A hand-booked rhythm's which-day hint: it seeds the booking sheet and never decides
@@ -248,8 +251,26 @@ export function RhythmModal({
     : unit === 'weeks' && byday.length
       ? buildRrule({ ...NO_REPEAT, freq: 'custom', interval: n, unit: 'week', byday }, startDate)
       : unit === 'months' && monthlyMode !== 'any'
-        ? buildRrule({ ...NO_REPEAT, freq: 'custom', interval: n, unit: 'month', monthlyMode }, startDate)
+        ? buildRrule({ ...NO_REPEAT, freq: 'custom', interval: n, unit: 'month', monthlyMode, monthlyOrdinal }, startDate)
         : null
+
+  // One list for both monthly pickers. The nth-weekday options carry their ordinal in the
+  // value because mode and ordinal are one choice to the person reading them.
+  const monthlyValue = (mode: MonthlyMode | 'any') => (mode === 'weekday' ? `weekday:${monthlyOrdinal}` : mode)
+  const pickMonthly = (value: string) => {
+    const [mode, ordinal] = value.split(':')
+    setMonthlyMode(mode as MonthlyMode | 'any')
+    if (ordinal) setMonthlyOrdinal(Number(ordinal))
+  }
+  const monthlyOptions = (
+    <>
+      <option value="day">{monthlyModeLabel('day', 1, startDate)}</option>
+      {MONTHLY_ORDINALS.map((o) => (
+        <option key={o} value={`weekday:${o}`}>{monthlyModeLabel('weekday', o, startDate)}</option>
+      ))}
+      <option value="lastWeekday">{monthlyModeLabel('lastWeekday', 1, startDate)}</option>
+    </>
+  )
 
   // A popover that only closes on its own trigger is a popover you have to hunt for
   // the way out of.
@@ -601,10 +622,8 @@ export function RhythmModal({
                       {unit === 'months' && (
                         <label className="field">
                           <span>Which day of the month</span>
-                          <select value={autoMonthlyMode} onChange={(e) => setMonthlyMode(e.target.value as MonthlyMode)}>
-                            <option value="day">The same date</option>
-                            <option value="weekday">The same weekday (e.g. the third Saturday)</option>
-                            <option value="lastWeekday">The last of that weekday</option>
+                          <select value={monthlyValue(autoMonthlyMode)} onChange={(e) => pickMonthly(e.target.value)}>
+                            {monthlyOptions}
                           </select>
                         </label>
                       )}
@@ -650,11 +669,9 @@ export function RhythmModal({
                       {unit === 'months' && (
                         <label className="field">
                           <span>Which day of the month</span>
-                          <select value={monthlyMode} onChange={(e) => setMonthlyMode(e.target.value as MonthlyMode | 'any')}>
+                          <select value={monthlyValue(monthlyMode)} onChange={(e) => pickMonthly(e.target.value)}>
                             <option value="any">Any day</option>
-                            <option value="day">The same date</option>
-                            <option value="weekday">The same weekday (e.g. the third Saturday)</option>
-                            <option value="lastWeekday">The last of that weekday</option>
+                            {monthlyOptions}
                           </select>
                         </label>
                       )}

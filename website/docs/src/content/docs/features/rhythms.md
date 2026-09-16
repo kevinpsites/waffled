@@ -64,14 +64,18 @@ You then choose whether Waffled can pick the time itself:
 
   **You pick which day it lands on**, on every surface: weekday chips like the
   [calendar](/features/calendar/) uses; monthly rhythms get a "which day of the month"
-  choice instead (the same date · the same weekday · the last of that weekday); and
+  choice instead, spelled out against the start date you set — *The 19th of the month · The
+  first Saturday … The fourth Saturday · The last Saturday*; and
   **Advanced** is there for imported rules and anything the pickers can't say. Leave the
   chips alone and it follows the start date you set, which is the sane default.
 
   One day at a time, deliberately — a rule that fired twice inside one period would claim
   something the cadence never said, and one booking settles the period either way.
 
-  For **the same weekday** and **the last of that weekday**, Waffled quietly lines the
+  The list stops at the fourth: most months have no fifth Saturday, so that period would
+  have nothing to book and would ask forever. **The last Saturday** covers what you meant.
+
+  For any **nth weekday**, Waffled quietly lines the
   periods up with calendar months, so each month holds exactly one of them. It has to:
   third Saturdays wander between the 15th and the 21st, so periods anchored on the 19th
   would put two in one month and none in the next — and a period with none can never be
@@ -93,8 +97,8 @@ You then choose whether Waffled can pick the time itself:
   the same "which day of the month" choice, with **Any day** as the default. *Family outing,
   every month, the third Saturday* then shows **the third Saturday** on its row, and **Book a
   time** opens on that Saturday. It's a suggestion, not a rule — a booking on any other day
-  inside the window still settles the period. As with a series, **the same weekday** and
-  **the last of that weekday** line the periods up with calendar months (the start date
+  inside the window still settles the period. As with a series, an **nth weekday** lines the
+  periods up with calendar months (the start date
   picks which weekday you mean), and a suggestion that could never land inside the booking
   window is refused when you save.
 

@@ -22,6 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A monthly rhythm's day picker says which day it means.** It now lists the days by name —
+  *The 19th of the month*, *The first Saturday* through *The fourth Saturday*, *The last
+  Saturday* — instead of asking you to decode "the last of that weekday", and you pick the
+  ordinal outright rather than hunting the calendar for a date that happens to be a third
+  Saturday. A fifth weekday is no longer offered anywhere: most months don't have one, so the
+  rhythm could never be booked in those months.
+
 - **Rhythms with a booking window can ask you ahead of time.** "Date night in the first week
   of the month" can now start nudging you days before that week, so there's time to plan it —
   set **Start nudging me … days before it opens**. Once a window has passed, the rhythm moves
