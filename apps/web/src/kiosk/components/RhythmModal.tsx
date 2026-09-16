@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   rhythmsApi, usePersons, splitCadence, intervalDays, cadenceLabel, nudgeExplainer,
-  nudgePlan, addCadence, consequence, type SatisfiedBy, type Rhythm, type Completion,
+  nudgePlan, addCadence, consequence, dayHintLabel, type SatisfiedBy, type Rhythm, type Completion,
 } from '../../lib/api'
 import { ConfirmDialog } from './ConfirmDialog'
-import { buildRrule, describeRrule, weekdayCode, NO_REPEAT, type CustomUnit, type MonthlyMode } from './recurrence'
+import { buildRrule, describeRrule, monthlyModeLabel, weekdayCode, MONTHLY_ORDINALS, NO_REPEAT, type CustomUnit, type MonthlyMode } from './recurrence'
 import { WeekdayChips } from './WeekdayChips'
 
 // Create a rhythm by saying it as a sentence:
@@ -28,7 +28,8 @@ import { WeekdayChips } from './WeekdayChips'
 // <select> has nowhere to put a second line.
 //
 // Editing an existing one asks LESS. The shape and the period anchor (`startsOn`,
-// `autoSchedule`, `rrule`) are not editable and the server refuses them: moving the
+// `autoSchedule`, and the rule of a rhythm that books itself) are not editable and the
+// server refuses them — a hand-booked rhythm's day hint can only be cleared: moving the
 // anchor of a live rhythm would silently re-interpret the periods it has already
 // skipped — they are keyed on period_start — and point its bookings at periods that
 // no longer exist. So on an edit those clauses of the sentence are stated rather than
@@ -131,9 +132,21 @@ export function RhythmModal({
   const today = ymd(new Date())
   // `null` means "still following the cadence" — see the derivation below.
   const [nextDue, setNextDue] = useState<string | null>(null)
-  const [startsOn, setStartsOn] = useState(today)
+  // Null until picked, so the default can follow the form — see `startsOn` below.
+  const [startsOnPicked, setStartsOnPicked] = useState<string | null>(null)
   const [autoSchedule, setAutoSchedule] = useState(false)
-  const [monthlyMode, setMonthlyMode] = useState<MonthlyMode>('day')
+  // 'any' only means something on a rhythm booked by hand: no day suggested at all.
+  const [monthlyMode, setMonthlyMode] = useState<MonthlyMode | 'any'>('any')
+  // Which nth weekday, picked outright rather than inferred from the start date — "the
+  // third Saturday" is the thing people mean, and hunting a calendar for one is not it.
+  const [monthlyOrdinal, setMonthlyOrdinal] = useState(1)
+  // Days of notice before a booking window opens. The runway sent is this plus the window.
+  const [aheadDays, setAheadDays] = useState<string | null>(
+    editing && rhythm?.bookWithin
+      ? String(Math.max(0, intervalDays(rhythm.leadTime) - intervalDays(rhythm.bookWithin)))
+      : null
+  )
+  const [hintCleared, setHintCleared] = useState(false)
   // How many days from the start of each period a booking still counts. Empty string is
   // the default and means the whole period — which is what `every` meant on its own, so
   // an untouched form creates exactly what it used to.
@@ -172,7 +185,11 @@ export function RhythmModal({
   // already promising a nudge on a day nothing happens, and explaining a clamp nobody
   // asked for. Follow the cadence until someone actually sets a number.
   const lead = leadDays ?? String(Math.min(14, Math.floor(intervalDays(every) / 2)))
-  const leadNum = Math.max(0, Math.round(Number(lead) || 0))
+  const ahead = aheadDays ?? '0'
+  // With a window the runway is the notice plus the window, measured back from its end.
+  const leadNum = bookWithin
+    ? Math.max(0, Math.round(Number(ahead) || 0)) + windowNum
+    : Math.max(0, Math.round(Number(lead) || 0))
 
   // A brand-new rhythm is due one full cadence out, not today. Anchoring it at today
   // makes "every 3 months" mean "and the first one is overdue right now", so every
@@ -180,6 +197,11 @@ export function RhythmModal({
   // field under More options — adding something you're already behind on is a real
   // case — but it follows the cadence until it's actually touched.
   const firstDue = nextDue ?? ymd(addCadence(new Date(), every))
+
+  // A monthly rhythm booked by hand starts on the 1st unless a date is picked, so "the first
+  // week" is the first week of the month rather than of whichever day it was created on.
+  const startsOn = startsOnPicked
+    ?? (shape === 'scheduling' && !autoSchedule && unit === 'months' ? `${today.slice(0, 8)}01` : today)
 
   // "The third Saturday of the month" asks `startsOn` to do two jobs that disagree.
   //
@@ -194,7 +216,11 @@ export function RhythmModal({
   // So the two jobs are split: the grid anchors on the first of the month, which makes
   // every period a calendar month and every calendar month hold exactly one of any nth
   // weekday, while the rule keeps reading its ordinal off the date actually picked.
-  const monthlyNthWeekday = shape === 'scheduling' && autoSchedule && unit === 'months' && monthlyMode !== 'day'
+  // A series has no "any day" — its rule is what books it — so it reads 'any' as the same
+  // date. A hand-booked rhythm's day is only a hint, but its grid has the same problem.
+  const autoMonthlyMode: MonthlyMode = monthlyMode === 'any' ? 'day' : monthlyMode
+  const monthlyNthWeekday = shape === 'scheduling' && unit === 'months'
+    && (autoSchedule ? autoMonthlyMode !== 'day' : monthlyMode === 'weekday' || monthlyMode === 'lastWeekday')
   const periodAnchor = monthlyNthWeekday ? `${startsOn.slice(0, 7)}-01` : startsOn
 
   // The runway to send.
@@ -204,19 +230,46 @@ export function RhythmModal({
   // the 2nd in a 31-day one and a day early in February. When the ask covers the whole
   // cycle, send the cadence itself and let Postgres do real calendar arithmetic — that is
   // what makes "from the first day of each period" land on the first day of every period.
-  const wantsWholeCycle = shape === 'scheduling' && !bookWithin && leadNum >= intervalDays(every)
+  const wantsWholeCycle = shape === 'scheduling' && leadNum >= intervalDays(every)
   const leadTimeToSend = wantsWholeCycle ? every : `${leadNum} days`
 
   const anchor = shape === 'scheduling' ? periodAnchor : firstDue
-  const plan = consequence({ satisfiedBy: shape, every, leadDays: leadNum, anchor })
-  const clamp = nudgePlan(every, leadNum, shape, bookWithin)
+  const plan = consequence({ satisfiedBy: shape, every, leadDays: leadNum, anchor, bookWithin, now: new Date() })
+  const clamp = nudgePlan(every, leadNum, shape)
 
   // The rule is DERIVED from the cadence rather than asked for again: an rrule that
   // disagrees with `every` would put the generated event outside the period it is
   // supposed to satisfy. The raw field is the escape hatch, not the normal path.
+  const startDate = new Date(`${startsOn}T00:00:00`)
   const rrule = buildRrule(
-    { ...NO_REPEAT, freq: 'custom', interval: n, unit: CUSTOM_UNIT[unit], monthlyMode, custom: customRule, byday },
-    new Date(`${startsOn}T00:00:00`)
+    { ...NO_REPEAT, freq: 'custom', interval: n, unit: CUSTOM_UNIT[unit], monthlyMode: autoMonthlyMode, monthlyOrdinal, custom: customRule, byday },
+    startDate
+  )
+  // A hand-booked rhythm's which-day hint: it seeds the booking sheet and never decides
+  // what settles a period. Only weeks and months have a day worth suggesting.
+  const hintRule = shape !== 'scheduling' || autoSchedule ? null
+    : unit === 'weeks' && byday.length
+      ? buildRrule({ ...NO_REPEAT, freq: 'custom', interval: n, unit: 'week', byday }, startDate)
+      : unit === 'months' && monthlyMode !== 'any'
+        ? buildRrule({ ...NO_REPEAT, freq: 'custom', interval: n, unit: 'month', monthlyMode, monthlyOrdinal }, startDate)
+        : null
+
+  // One list for both monthly pickers. The nth-weekday options carry their ordinal in the
+  // value because mode and ordinal are one choice to the person reading them.
+  const monthlyValue = (mode: MonthlyMode | 'any') => (mode === 'weekday' ? `weekday:${monthlyOrdinal}` : mode)
+  const pickMonthly = (value: string) => {
+    const [mode, ordinal] = value.split(':')
+    setMonthlyMode(mode as MonthlyMode | 'any')
+    if (ordinal) setMonthlyOrdinal(Number(ordinal))
+  }
+  const monthlyOptions = (
+    <>
+      <option value="day">{monthlyModeLabel('day', 1, startDate)}</option>
+      {MONTHLY_ORDINALS.map((o) => (
+        <option key={o} value={`weekday:${o}`}>{monthlyModeLabel('weekday', o, startDate)}</option>
+      ))}
+      <option value="lastWeekday">{monthlyModeLabel('lastWeekday', 1, startDate)}</option>
+    </>
   )
 
   // A popover that only closes on its own trigger is a popover you have to hunt for
@@ -250,6 +303,7 @@ export function RhythmModal({
           // so widening back to the whole period has to be stated. Only for the shape
           // that can carry one at all.
           ...(shape === 'scheduling' && !booksItself ? { bookWithin } : {}),
+          ...(hintCleared ? { rrule: null } : {}),
         })
         onSaved?.()
         onClose()
@@ -270,7 +324,7 @@ export function RhythmModal({
           : {
               startsOn: periodAnchor,
               autoSchedule,
-              rrule: autoSchedule ? rrule : null,
+              rrule: autoSchedule ? rrule : hintRule,
               ...(bookWithin ? { bookWithin } : {}),
             }),
       })
@@ -442,7 +496,7 @@ export function RhythmModal({
                 )}
                 {plan.capped && (
                   <div className="rhy-conseq-cap">
-                    {`${leadNum} days' notice won't fit in ${bookWithin ? 'that booking window' : cadenceLabel(every).replace(/^every /, 'a ')}, so it's trimmed to ${clamp.effectiveDays} — a runway longer than the stretch it belongs to never goes quiet.`}
+                    {`${leadNum} days' notice won't fit in ${cadenceLabel(every).replace(/^every /, 'a ')}, so it's trimmed to ${clamp.effectiveDays} — a runway longer than the cycle never goes quiet.`}
                   </div>
                 )}
               </div>
@@ -491,14 +545,21 @@ export function RhythmModal({
 
           {advanced && (
             <div className="rhy-adv">
-              <label className="field">
-                <span>
-                  {shape === 'completion'
-                    ? 'Start nudging me this many days early'
-                    : 'Start nudging me this many days before the window closes'}
-                </span>
-                <input type="number" min={0} value={lead} onChange={(e) => setLeadDays(e.target.value)} />
-              </label>
+              {shape === 'scheduling' && bookWithin ? (
+                <label className="field">
+                  <span>Start nudging me this many days before it opens</span>
+                  <input type="number" min={0} value={ahead} onChange={(e) => setAheadDays(e.target.value)} />
+                </label>
+              ) : (
+                <label className="field">
+                  <span>
+                    {shape === 'completion'
+                      ? 'Start nudging me this many days early'
+                      : 'Start nudging me this many days before the window closes'}
+                  </span>
+                  <input type="number" min={0} value={lead} onChange={(e) => setLeadDays(e.target.value)} />
+                </label>
+              )}
               {/* Spelled out against THIS rhythm's cadence rather than left as "the period",
                   which was reasonably read as "what period? I'm scheduling it every week".
                   It also states the clamp's effect in days — the server stores
@@ -520,7 +581,7 @@ export function RhythmModal({
                 <>
                   <label className="field">
                     <span>First period starts</span>
-                    <input type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
+                    <input type="date" value={startsOn} onChange={(e) => setStartsOnPicked(e.target.value)} />
                   </label>
 
                   <label
@@ -561,10 +622,8 @@ export function RhythmModal({
                       {unit === 'months' && (
                         <label className="field">
                           <span>Which day of the month</span>
-                          <select value={monthlyMode} onChange={(e) => setMonthlyMode(e.target.value as MonthlyMode)}>
-                            <option value="day">The same date</option>
-                            <option value="weekday">The same weekday (e.g. the third Saturday)</option>
-                            <option value="lastWeekday">The last of that weekday</option>
+                          <select value={monthlyValue(autoMonthlyMode)} onChange={(e) => pickMonthly(e.target.value)}>
+                            {monthlyOptions}
                           </select>
                         </label>
                       )}
@@ -589,11 +648,57 @@ export function RhythmModal({
                       </details>
                     </>
                   ) : (
-                    <div className="tiny muted" style={{ marginBottom: 10 }}>
-                      When it happens is an open decision every period, so it'll ask you to pick a time.
-                    </div>
+                    <>
+                      <div className="tiny muted" style={{ marginBottom: 10 }}>
+                        When it happens is an open decision every period, so it'll ask you to pick a time.
+                      </div>
+                      {/* An optional day to suggest. Unlike a series this is only a hint: it
+                          seeds the booking sheet, and a booking on another day inside the
+                          window still counts. */}
+                      {unit === 'weeks' && (
+                        <div className="field">
+                          <span>Suggest a day (optional)</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                            <WeekdayChips value={byday} weekday="" onChange={setByday} single />
+                            {byday.length > 0 && (
+                              <button type="button" className="btn btn-ghost" onClick={() => setByday([])}>Any day</button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {unit === 'months' && (
+                        <label className="field">
+                          <span>Which day of the month</span>
+                          <select value={monthlyValue(monthlyMode)} onChange={(e) => pickMonthly(e.target.value)}>
+                            <option value="any">Any day</option>
+                            {monthlyOptions}
+                          </select>
+                        </label>
+                      )}
+                      {hintRule && (
+                        <div className="tiny muted" style={{ marginTop: -6, marginBottom: 10 }}>
+                          {describeRrule(hintRule, startDate)} is the suggestion — booking on another day still counts.
+                        </div>
+                      )}
+                    </>
                   )}
                 </>
+              )}
+
+              {editing && rhythm?.satisfiedBy === 'scheduling' && !rhythm.autoSchedule && rhythm.rrule && (
+                <div className="field">
+                  <span>Which day</span>
+                  {hintCleared ? (
+                    <div className="tiny muted">Any day in the window will count once you save.</div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <span className="tiny">
+                        Suggests {dayHintLabel(rhythm.rrule) ?? describeRrule(rhythm.rrule, new Date(`${rhythm.startsOn}T00:00:00`)).toLowerCase()} — booking on another day still counts.
+                      </span>
+                      <button type="button" className="btn btn-ghost" onClick={() => setHintCleared(true)}>Any day instead</button>
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* The booking window — the one part of WHEN that is editable in place, so it

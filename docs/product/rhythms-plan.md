@@ -138,6 +138,87 @@ every completion rather than over the returned page.
   emptiness is refused: a rule firing more than once a period over-books but always settles
   it, and a household writing one by hand may well mean it.
 
+**Phase 6 — asking ahead, and which day. Built 2026-09-15 on API, web, iPhone and iPad.**
+Found by walking three household cases through the model; one PR, one commit per step, each
+step test-first. The case walk and decisions below are kept as the record of why; the floors
+case is still parked.
+
+| Case | Today |
+|---|---|
+| Date night in the first week of the month; done once it is booked | Expressible (`every 1 month`, anchored on the 1st, `book_within 7 days`), but the runway is capped at the window, so the first ask is on the 1st with a week left. Nothing can ask in late August about September: both queries only tile the period containing today, and every client passes today as the horizon. |
+| Family outing on the third Saturday, planned by hand | A hand-booked rhythm has no idea which day. Anchored on Sep 19 it tiles 19th→19th, and `[Oct 19, Nov 19)` holds no third Saturday. The first-of-month anchor fix exists only on the auto-schedule path, and booking defaults to today. |
+| Floors in the 1st and 3rd week, checked off | Not expressible: fixed periods close only on an event, and "I did it" belongs to the rolling shape. **Parked**: it needs a product call on periods that close on a check-off, and a schema change. Not in this phase. |
+
+Decisions, settled here so they are not relitigated mid-build:
+
+1. **The asking period is the earliest period whose window has not closed.** One SQL
+   fragment, shared by `listRhythms` and `listAttention`, so the register and the Today
+   card cannot name different periods (their countdown, progress and booking bounds all
+   read the period the server returns). Without a window the window ends where the period
+   does, so this is the current period and every existing rhythm is unchanged. With one,
+   the rhythm moves to the next period the day after its window closes. A missed window is
+   not reported: a period that got away is one you rebook, not a miss. Before the first
+   period starts, the asking period is period 0 (today `listAttention` filters out
+   `starts_on > horizon` and `listRhythms` returns a null period).
+2. **Asking ahead reuses `lead_time`; no new column.** It is still measured back from the
+   window's end, but the scheduling ceiling rises from `book_within` to `every`, so a
+   windowed runway can open before its period starts. At most one period asks at a time:
+   with runway ≤ `every`, period N's runway opens no earlier than period N−1's window
+   closes. The form says it as *"Start asking me [N] days before it opens"* when a window
+   is set and sends `N days + book_within`; without a window the field is unchanged. The
+   default stays the window, so nothing asks earlier than it does today. Rejected: a
+   separate `notice` column, which would be a second knob phasing the same runway.
+3. **"Which day" on a hand-booked rhythm is a hint, never a constraint.** Stored in the
+   existing `rrule` with `auto_schedule = false`: both CHECKs already allow it, and
+   `scheduleRhythm` builds a series only when `autoSchedule`. No client treats a non-null
+   rule as "books itself" (checked: web and iOS gate on `autoSchedule`). The server returns
+   a `suggestedOn` date for the asking period (the rule's first slot inside the window, via
+   `firstSlotOnOrAfter`), so neither client re-derives it. It seeds the booking date and
+   names the day on the row. A booking on another day inside the window still counts, so
+   no satisfaction predicate changes.
+4. **A monthly nth-weekday hint anchors the grid on the 1st**, the rule the auto-schedule
+   path already applies, and `assertRuleFillsEveryPeriod` runs for hints too, checked
+   against the window rather than only the period. A new monthly scheduling rhythm's
+   *First period starts* defaults to the 1st of the current month instead of today (the
+   date night created mid-month with a 15th-to-21st "first week").
+5. **The hint is editable in place.** It moves no boundary; a write re-validates it against
+   the existing anchor.
+
+Steps, one commit each:
+
+1. **API: the asking period.** The shared fragment in `rhythms.ts`, used by both queries,
+   including the future-anchor case. Tests: a first-week monthly rhythm on the 8th reports
+   the next period from both the list and `/attention`; a windowless rhythm is unchanged
+   (the existing tests stay green); a future `starts_on` reports period 0.
+2. **API: runway ceiling = `every` on the scheduling shape**, in the create insert and the
+   update re-clamp. Two tests pin the old rule and are rewritten deliberately: *"clamps the
+   runway to the window instead of to half the period"* now clamps to the cycle; *"stays
+   quiet in the period before the window it belongs to"* stays quiet at the default runway
+   and asks once the runway reaches back. New: `every 1 month`, `book_within 7 days`,
+   `lead 21 days` asks on Aug 18 (not Aug 17) about the September period, and a booking
+   claimed for Sep 1 made in August succeeds.
+3. **API: the day hint.** Accept `rrule` when `autoSchedule` is false (parses, no
+   COUNT/UNTIL, lands in every window); `PATCH` accepts it on a hand-booked scheduling
+   rhythm and refuses it on a completion one; `suggestedOn` on list rows and attention
+   items.
+4. **Web.** `nudgePlan` ceiling and `nudgeExplainer` copy; the "days before it opens"
+   field; the first-of-month default anchor; the day picker moved out from behind the
+   auto-schedule toggle with an **Any day** default, and `periodAnchor` extended to match;
+   `BookRhythmModal` seeded from `suggestedOn`; the row names the day. An ask about a
+   period that has not started renders the `near` tone, not `late`, and does not earn the
+   filled button.
+5. **iOS.** The same in `RhythmFormat.nudgePlan` / `capNote` / `nudgeExplainer`,
+   `RhythmForm` + `RhythmEditorSheet`, `BookRhythmSheet.seed()` and the `RhythmsView` row.
+   `RhythmsTests`; `xcodegen generate` plus a clean build on the iPhone 17 Pro simulator.
+6. **Docs.** `website/.../features/rhythms.md` (runway ceiling, asking period, which day),
+   `reference/features.md`, `roadmap.md`, this doc's status line, and `CHANGELOG.md`
+   under `[Unreleased]`. Grep for stale phrasing first: "window is the ceiling",
+   "clamped to the window", "Only the first", "ask you to pick a time".
+
+**Verify** on `:8081`: rebuild the demo api and caddy from `~/dev/nook` (never `up` from
+the worktree), create both example rhythms as Jerry, and walk the register, Today card and
+booking with Playwright. Then point the iPhone simulator at `:8081`.
+
 Still open, and both are UI shape rather than capability. Tracked outside this doc too, so
 they are findable: the roadmap's Rhythms entry names both, and the iPad one has a backlog
 item with resume context in `apps/ios/IPAD_ROADMAP.md` § Backlog B.

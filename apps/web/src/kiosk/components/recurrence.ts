@@ -18,6 +18,7 @@ export interface RepeatState {
   interval: number // custom: "every N" (>= 1)
   unit: CustomUnit // custom: the unit N counts
   monthlyMode: MonthlyMode // custom monthly: day-of-month vs nth weekday
+  monthlyOrdinal?: number // which nth weekday; unset means "whichever the start date is"
   custom: string // advanced raw RRULE — overrides the builder when set
 }
 
@@ -25,8 +26,8 @@ export const WEEKDAYS = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'] as const
 const WEEKDAY_SET = 'MO,TU,WE,TH,FR'
 const PLAIN_DAY = new Set<string>(WEEKDAYS)
 const DAY_NAME: Record<string, string> = { SU: 'Sun', MO: 'Mon', TU: 'Tue', WE: 'Wed', TH: 'Thu', FR: 'Fri', SA: 'Sat' }
-const FULL_DAY: Record<string, string> = { SU: 'Sunday', MO: 'Monday', TU: 'Tuesday', WE: 'Wednesday', TH: 'Thursday', FR: 'Friday', SA: 'Saturday' }
-const ORDINALS = ['', 'first', 'second', 'third', 'fourth', 'fifth']
+export const FULL_DAY: Record<string, string> = { SU: 'Sunday', MO: 'Monday', TU: 'Tuesday', WE: 'Wednesday', TH: 'Thursday', FR: 'Friday', SA: 'Saturday' }
+export const ORDINALS = ['', 'first', 'second', 'third', 'fourth', 'fifth']
 
 export const NO_REPEAT: RepeatState = { freq: 'none', byday: [], interval: 1, unit: 'week', monthlyMode: 'day', custom: '' }
 
@@ -38,6 +39,25 @@ export function weekdayCode(d: Date): string {
 // Which occurrence of its weekday a date is within its month (1 = first, …).
 export function nthWeekdayOfMonth(d: Date): number {
   return Math.floor((d.getDate() - 1) / 7) + 1
+}
+
+// The nth weekdays a monthly picker offers. No fifth: months without one leave a period
+// nothing could ever fall in, which is exactly what the rhythms API refuses.
+export const MONTHLY_ORDINALS = [1, 2, 3, 4]
+
+function ordinalSuffix(n: number): string {
+  const teen = n % 100
+  if (teen >= 11 && teen <= 13) return `${n}th`
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`
+}
+
+// "The third Saturday" — a monthly option spelled out against the date it would land on.
+// The weekday comes from the start date, and naming it is the whole point: the choice is
+// undecodable while the weekday only lives in a date field somewhere above.
+export function monthlyModeLabel(mode: MonthlyMode, ordinal: number, start: Date): string {
+  if (mode === 'day') return `The ${ordinalSuffix(start.getDate())} of the month`
+  const ord = mode === 'lastWeekday' ? 'last' : ORDINALS[ordinal] ?? `${ordinal}th`
+  return `The ${ord} ${FULL_DAY[weekdayCode(start)]}`
 }
 
 // Build the RRULE string for the picker state. `start` is the event's start date,
@@ -72,7 +92,7 @@ export function buildRrule(r: RepeatState, start: Date): string | null {
           return `FREQ=WEEKLY${iv};BYDAY=${days.join(',')}`
         }
         case 'month':
-          if (r.monthlyMode === 'weekday') return `FREQ=MONTHLY${iv};BYDAY=${nthWeekdayOfMonth(start)}${weekday}`
+          if (r.monthlyMode === 'weekday') return `FREQ=MONTHLY${iv};BYDAY=${r.monthlyOrdinal ?? nthWeekdayOfMonth(start)}${weekday}`
           if (r.monthlyMode === 'lastWeekday') return `FREQ=MONTHLY${iv};BYDAY=-1${weekday}`
           return `FREQ=MONTHLY${iv}`
         case 'year':
@@ -126,8 +146,16 @@ export function parseRepeat(rrule: string | null | undefined): RepeatState {
       return { ...NO_REPEAT, freq: 'custom', unit: 'month', interval, monthlyMode: 'day' }
     }
     if (freq === 'MONTHLY' && /^-?\d+[A-Z]{2}$/.test(parts.BYDAY ?? '')) {
-      const last = (parts.BYDAY ?? '').startsWith('-')
-      return { ...NO_REPEAT, freq: 'custom', unit: 'month', interval, monthlyMode: last ? 'lastWeekday' : 'weekday' }
+      const ordinal = parseInt(parts.BYDAY ?? '', 10)
+      const last = ordinal < 0
+      return {
+        ...NO_REPEAT,
+        freq: 'custom',
+        unit: 'month',
+        interval,
+        monthlyMode: last ? 'lastWeekday' : 'weekday',
+        monthlyOrdinal: last ? undefined : ordinal,
+      }
     }
     if (freq === 'YEARLY') return { ...NO_REPEAT, freq: 'custom', unit: 'year', interval }
   }

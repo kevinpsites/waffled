@@ -4,7 +4,7 @@ import { api, usePersons, useGoals, useRhythms, goalsApi, goalCalendarApi, calen
 import { suggestGoalForEvent } from '../../lib/goal-match'
 import { Icon } from '../icons'
 import { createEventLocal, updateEventLocal, deleteEventLocal, tombstoneEvent } from '../../lib/powersync/events-local'
-import { parseRepeat, buildRrule, describeRrule, weekdayCode, nthWeekdayOfMonth, type RepeatFreq, type CustomUnit, type MonthlyMode } from './recurrence'
+import { parseRepeat, buildRrule, describeRrule, weekdayCode, nthWeekdayOfMonth, FULL_DAY, ORDINALS, type RepeatFreq, type CustomUnit, type MonthlyMode } from './recurrence'
 import { WeekdayChips } from './WeekdayChips'
 import { EventWhenField } from './EventWhenField'
 import { allDayExclusiveEnd, allDayLastDay } from './event-when'
@@ -19,8 +19,6 @@ const REPEAT_OPTIONS: Array<{ value: RepeatFreq; label: string }> = [
   { value: 'monthly', label: 'Monthly' },
   { value: 'custom', label: 'Custom…' },
 ]
-const FULL_WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-const ORDINAL_LABEL = ['', 'first', 'second', 'third', 'fourth', 'fifth']
 const clampInterval = (v: string) => Math.max(1, Math.min(99, Math.round(Number(v) || 1)))
 
 // Calendars an event can be written to: writable (owner/writer), not read-only.
@@ -775,8 +773,8 @@ export function EventModal({
                     style={{ marginTop: 10, width: '100%' }}
                   >
                     <option value="day">On day {startDate.getDate()}</option>
-                    <option value="weekday">On the {ORDINAL_LABEL[nthWeekdayOfMonth(startDate)] ?? `${nthWeekdayOfMonth(startDate)}th`} {FULL_WEEKDAY[startDate.getDay()]}</option>
-                    <option value="lastWeekday">On the last {FULL_WEEKDAY[startDate.getDay()]}</option>
+                    <option value="weekday">On the {ORDINALS[nthWeekdayOfMonth(startDate)] ?? `${nthWeekdayOfMonth(startDate)}th`} {FULL_DAY[weekdayCode(startDate)]}</option>
+                    <option value="lastWeekday">On the last {FULL_DAY[weekdayCode(startDate)]}</option>
                   </select>
                 )}
 

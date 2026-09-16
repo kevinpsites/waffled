@@ -240,7 +240,7 @@ struct RhythmsView: View {
                 // One verb, full width. At phone widths there is no room for a title, a
                 // countdown and a verb across one line, and the verb is the half that
                 // cannot be truncated.
-                verb(r, doneToday: doneToday, primary: urgency == .now)
+                verb(r, doneToday: doneToday, primary: model.primaryVerbs.contains(r.id))
             }
         }
         .padding(.vertical, 4)
@@ -397,7 +397,8 @@ struct RhythmsView: View {
         return WaffledAPI.RhythmAttentionItem(kind: .unscheduled, rhythm: r, dueAt: nil,
                                               overdue: nil, periodStart: start, periodEnd: end,
                                               windowEnd: window,
-                                              hasSeries: r.hasSeries)
+                                              hasSeries: r.hasSeries,
+                                              suggestedOn: r.suggestedOn)
     }
 
     private func run(_ id: String, _ work: @escaping () async throws -> Void) {

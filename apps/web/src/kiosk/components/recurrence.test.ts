@@ -1,4 +1,4 @@
-import { buildRrule, parseRepeat, describeRrule, NO_REPEAT, weekdayCode, nthWeekdayOfMonth, type RepeatState } from './recurrence'
+import { buildRrule, parseRepeat, describeRrule, monthlyModeLabel, MONTHLY_ORDINALS, NO_REPEAT, weekdayCode, nthWeekdayOfMonth, type RepeatState } from './recurrence'
 
 const st = (over: Partial<RepeatState>): RepeatState => ({ ...NO_REPEAT, ...over })
 
@@ -71,7 +71,7 @@ describe('parseRepeat', () => {
     expect(parseRepeat('FREQ=DAILY;INTERVAL=3')).toEqual(st({ freq: 'custom', unit: 'day', interval: 3 }))
     expect(parseRepeat('FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH')).toEqual(st({ freq: 'custom', unit: 'week', interval: 2, byday: ['TU', 'TH'] }))
     expect(parseRepeat('FREQ=MONTHLY;INTERVAL=2')).toEqual(st({ freq: 'custom', unit: 'month', interval: 2, monthlyMode: 'day' }))
-    expect(parseRepeat('FREQ=MONTHLY;BYDAY=2TU')).toEqual(st({ freq: 'custom', unit: 'month', interval: 1, monthlyMode: 'weekday' }))
+    expect(parseRepeat('FREQ=MONTHLY;BYDAY=2TU')).toEqual(st({ freq: 'custom', unit: 'month', interval: 1, monthlyMode: 'weekday', monthlyOrdinal: 2 }))
     expect(parseRepeat('FREQ=MONTHLY;BYDAY=-1TU')).toEqual(st({ freq: 'custom', unit: 'month', interval: 1, monthlyMode: 'lastWeekday' }))
     expect(parseRepeat('FREQ=YEARLY;INTERVAL=2')).toEqual(st({ freq: 'custom', unit: 'year', interval: 2 }))
   })
@@ -111,6 +111,39 @@ describe('describeRrule', () => {
   it('appends a COUNT and falls back to the raw rule when unrecognised', () => {
     expect(describeRrule('FREQ=DAILY;COUNT=5', MON)).toBe('Every day, 5 times')
     expect(describeRrule('FREQ=HOURLY', MON)).toBe('FREQ=HOURLY')
+  })
+})
+
+// 2026-09-19 is the 3rd Saturday of September.
+const SAT_3RD = new Date('2026-09-19T12:00:00')
+
+describe('monthly nth-weekday ordinal', () => {
+  it('builds the ordinal the picker chose, not the one the start date happens to be', () => {
+    expect(buildRrule(st({ freq: 'custom', unit: 'month', monthlyMode: 'weekday', monthlyOrdinal: 3 }), TUE_2ND))
+      .toBe('FREQ=MONTHLY;BYDAY=3TU')
+  })
+  it('falls back to the start date ordinal when nothing was chosen', () => {
+    expect(buildRrule(st({ freq: 'custom', unit: 'month', monthlyMode: 'weekday' }), TUE_2ND))
+      .toBe('FREQ=MONTHLY;BYDAY=2TU')
+  })
+  it('reads the ordinal back off an existing rule', () => {
+    expect(parseRepeat('FREQ=MONTHLY;BYDAY=4SA').monthlyOrdinal).toBe(4)
+    expect(parseRepeat('FREQ=MONTHLY;BYDAY=-1SA').monthlyMode).toBe('lastWeekday')
+  })
+  it('round-trips a chosen ordinal', () => {
+    expect(buildRrule(parseRepeat('FREQ=MONTHLY;BYDAY=3SA'), SAT_3RD)).toBe('FREQ=MONTHLY;BYDAY=3SA')
+  })
+})
+
+describe('monthlyModeLabel', () => {
+  it('names the day each monthly option actually picks', () => {
+    expect(monthlyModeLabel('day', 3, SAT_3RD)).toBe('The 19th of the month')
+    expect(monthlyModeLabel('weekday', 3, SAT_3RD)).toBe('The third Saturday')
+    expect(monthlyModeLabel('weekday', 1, SAT_3RD)).toBe('The first Saturday')
+    expect(monthlyModeLabel('lastWeekday', 3, SAT_3RD)).toBe('The last Saturday')
+  })
+  it('offers first through fourth and last — a fifth weekday misses whole months', () => {
+    expect(MONTHLY_ORDINALS).toEqual([1, 2, 3, 4])
   })
 })
 
