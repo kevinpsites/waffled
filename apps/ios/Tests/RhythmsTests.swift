@@ -692,6 +692,14 @@ struct RhythmEditorTests {
         #expect(body["rrule"] == .string("FREQ=MONTHLY;BYDAY=3SA"))
     }
 
+    @Test("The monthly picker stops at the fourth weekday")
+    func monthlyOrdinalsStopAtTheFourth() {
+        // Every month holds a first through fourth of any weekday, and a last. A fifth
+        // does not exist in most months, so the period it belongs to could never be
+        // booked — the API refuses such a rule outright, so the picker must not offer it.
+        #expect(RhythmForm.monthlyOrdinals == [1, 2, 3, 4, -1])
+    }
+
     @Test("The same date each month keeps the anchor it was given")
     func monthlyByDateKeepsItsAnchor() {
         // "The 19th of every month" needs no snapping — boundaries and occurrences are

@@ -1002,9 +1002,12 @@ struct RhythmForm {
     /// the sane default and was previously the ONLY option — so a rhythm you wanted on
     /// Wednesdays had to be anchored on a Wednesday.
     var byday: [String] = []
-    /// For "the Nth <weekday> of the month": 1…5, or -1 for last. Only read when
+    /// For "the Nth <weekday> of the month": one of `monthlyOrdinals`. Only read when
     /// `monthlyMode == .nthWeekday`.
     var monthlyOrdinal = 1
+    /// The ordinals the picker offers. No fifth: most months have none, so the rule would
+    /// skip whole periods and the API refuses it.
+    static let monthlyOrdinals = [1, 2, 3, 4, -1]
     /// How many days from the start of each period a booking still counts, or nil for the
     /// whole period — which is what `every` meant on its own, and what every rhythm made
     /// before this column has.

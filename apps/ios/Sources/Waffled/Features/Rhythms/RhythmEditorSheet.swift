@@ -377,9 +377,6 @@ struct RhythmEditorSheet: View {
     }
 
     private static let chipDay = ["SU": "Su", "MO": "Mo", "TU": "Tu", "WE": "We", "TH": "Th", "FR": "Fr", "SA": "Sa"]
-    /// 1…5 and -1 (last) — "the last Saturday" is not expressible as a day number, and a
-    /// rhythm anchored on the 31st is the case that makes it necessary.
-    private static let monthlyOrdinals = [1, 2, 3, 4, 5, -1]
     private static let ordinalWord = ["", "first", "second", "third", "fourth", "fifth"]
 
     private func ordinalWord(_ n: Int) -> String {
@@ -400,7 +397,7 @@ struct RhythmEditorSheet: View {
         return Menu {
             if hint { Button("Any day") { form.monthlyMode = nil } }
             Button("The same date") { form.monthlyMode = .dayOfMonth }
-            ForEach(Self.monthlyOrdinals, id: \.self) { ord in
+            ForEach(RhythmForm.monthlyOrdinals, id: \.self) { ord in
                 Button(nth(ord)) { form.monthlyMode = .nthWeekday; form.monthlyOrdinal = ord }
             }
         } label: {
