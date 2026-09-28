@@ -168,17 +168,20 @@ describe("a habit's week follows the household's week_start", () => {
     // One goal, one pair of logs, two answers — the boundary is read live, never
     // stamped onto the rows, so changing the setting fixes history too.
     await setWeekStart('monday')
-    const mondayStart = snap(todayLocal(), 'monday')
+    const today = todayLocal()
     const goalId = await newHabit('Walk the dog')
 
-    // Monday plus the Sunday before it: one week under monday, two under sunday
-    // (that Sunday is the day the sunday-week began).
-    await markDone(goalId, mondayStart)
-    await markDone(goalId, addDays(mondayStart, -1))
-    expect((await readGoal(goalId)).periodDone).toBe(1)
+    // Mid-week: this week's Monday plus the Sunday before it — one week under monday, two
+    // under sunday. On a Sunday the sunday-week holds only today, so the pair is Saturday
+    // plus today, and the two answers swap.
+    const sunday = snap(today, 'sunday') === today
+    const first = sunday ? today : snap(today, 'monday')
+    await markDone(goalId, first)
+    await markDone(goalId, addDays(first, -1))
+    expect((await readGoal(goalId)).periodDone).toBe(sunday ? 2 : 1)
 
     await setWeekStart('sunday')
-    expect((await readGoal(goalId)).periodDone).toBe(2)
+    expect((await readGoal(goalId)).periodDone).toBe(sunday ? 1 : 2)
   })
 
   it('day and month habits are untouched by the week setting', async () => {

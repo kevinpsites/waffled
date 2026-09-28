@@ -6,11 +6,21 @@ import Observation
 @MainActor
 @Observable
 final class PhotosModel {
-    private(set) var photos: [WaffledAPI.Photo] = []
-    private(set) var loading = false
-    private(set) var error = false
+    typealias FetchPhotos = @Sendable () async throws -> [WaffledAPI.Photo]
 
-    private let api = WaffledAPI()
+    private let photosD = RestDomain<[WaffledAPI.Photo]>([], isEmpty: \.isEmpty)
+    private let fetchPhotos: FetchPhotos
+    private let api: WaffledAPI
+    private var loadGeneration = 0
+
+    init(fetchPhotos: FetchPhotos? = nil, api: WaffledAPI = WaffledAPI()) {
+        self.api = api
+        self.fetchPhotos = fetchPhotos ?? { try await api.photos() }
+    }
+
+    var photos: [WaffledAPI.Photo] { photosD.value }
+    var state: RestState { photosD.state }
+    var loading: Bool { state == .loading }
 
     /// The distinct album labels in the current wall (for the add/edit album pickers).
     var albums: [String] {
@@ -23,14 +33,12 @@ final class PhotosModel {
     }
 
     func load() async {
-        loading = true
-        defer { loading = false }
-        do {
-            photos = try await api.photos()
-            error = false
-        } catch {
-            self.error = true
-        }
+        loadGeneration &+= 1
+        let generation = loadGeneration
+        photosD.beginLoading()
+        let result = await RestFetch.result(fetchPhotos)
+        guard !Task.isCancelled, generation == loadGeneration else { return }
+        photosD.apply(result)
     }
 
     /// How many photos share a given album (for the detail "view all" line).

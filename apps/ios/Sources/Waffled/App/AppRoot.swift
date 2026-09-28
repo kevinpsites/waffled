@@ -1,15 +1,12 @@
 import SwiftUI
 
-/// The five surfaces of the phone app, mirroring the handoff tab bar:
-/// Today · Calendar · (✨ capture) · [flex module] · Family.
+/// The five surfaces of the phone app: Today · Calendar · (✨ capture) · [flex] · Family.
 enum Tab: Hashable {
     case today, calendar, flex, family
 }
 
-/// The 4th bottom-bar slot is a *flex module slot*: Meals when that module is on,
-/// otherwise it backfills with the first enabled of Goals → Chores → Lists → Pantry.
-/// Keeping the bar at five slots means the raised ✨ capture button stays centered —
-/// dropping a slot used to shove it off to one side. Icon + label follow the module.
+/// The 4th slot is a FLEX MODULE SLOT: Meals when on, else the first enabled of Goals →
+/// Chores → Lists → Pantry. Five slots is what keeps the raised ✨ button centered.
 enum FlexSlot: Hashable {
     case meals, goals, chores, lists, pantry
 
@@ -33,8 +30,7 @@ enum FlexSlot: Hashable {
     }
 }
 
-/// Root navigation: the current screen filling the canvas, with a custom bottom
-/// tab bar whose raised center button opens the AI capture sheet.
+/// Root navigation: the current screen, plus a custom bottom bar with the capture FAB.
 struct AppRoot: View {
     @Environment(SyncManager.self) private var sync
     @Environment(NotificationManager.self) private var notifications
@@ -43,37 +39,25 @@ struct AppRoot: View {
     @State private var showCapture = false
     /// Set when a reminder is tapped — routes the Calendar tab to open that event.
     @State private var calendarOpenEventId: String?
-    /// The Family tab's nav stack, lifted here so other tabs (e.g. a Today card)
-    /// can jump straight into a hub destination, and re-tapping Family pops to root.
     @State private var familyPath: [HubRoute] = []
-    /// The Meals tab's nav stack, lifted here so the Today meal card can open a
-    /// recipe, and re-tapping Meals pops to root.
     @State private var mealsPath: [MealsRoute] = []
-    /// The Today tab's nav stack — its summary cards (tonight's meal, chores,
-    /// grocery) and the greeting avatar push here (as `HubRoute`s), lifted so
-    /// re-tapping Today pops back to the dashboard.
+    /// The Today tab's nav stack, lifted so re-tapping Today pops back to the dashboard.
     @State private var todayPath: [HubRoute] = []
-    /// The flex slot's own nav stack + a recipes model — used when the 4th tab backfills
-    /// to a hub module (Goals/Chores/Lists/Pantry) because Meals is turned off.
+    /// The flex slot's own nav stack + recipes model, used when the 4th tab backfills.
     @State private var modulePath: [HubRoute] = []
     @State private var recipes = RecipesModel()
-    /// Household-wide pending approvals, driving the app-icon + Family-tab badge so a
-    /// parent sees there's something to OK without opening the app.
+    /// Household-wide pending approvals, driving the app-icon and Family-tab badge.
     @State private var approvals = ApprovalsModel()
 
-    /// Only those who can approve owe approvals — and the badge counts just the items
-    /// they can actually action (chore check-offs and/or reward purchases).
+    /// Only those who can approve owe approvals, and the badge counts what they can action.
     private var approvalCount: Int {
-        // No chores module ⇒ nothing to approve; keep the badge reactively at 0 even
-        // before the next approvals reload lands.
+        // No chores module ⇒ nothing to approve; keep the badge reactively at 0.
         guard sync.module(.chores) else { return 0 }
         return (sync.can("chore.approve") ? approvals.chores.count : 0)
-            + (sync.can("reward.approve") ? approvals.redemptions.count : 0)
+            + (sync.rewardsOn && sync.can("reward.approve") ? approvals.redemptions.count : 0)
     }
 
-    /// What the 4th ("flex") tab currently is: Meals if that module is on, else the
-    /// first enabled backfill module, else nil (hide the slot — only happens when
-    /// Meals + Goals + Chores + Lists + Pantry are *all* off).
+    /// Meals if on, else the first enabled backfill, else nil — only with all five off.
     private var flexSlot: FlexSlot? {
         if sync.module(.meals) { return .meals }
         if sync.module(.goals) { return .goals }
@@ -96,16 +80,14 @@ struct AppRoot: View {
         ZStack(alignment: .bottom) {
             WF.canvas.ignoresSafeArea()
 
-            // Active screen. Each tab keeps its own NavigationStack later; for the
-            // scaffold they're simple views.
+                // Active screen; each tab keeps its own NavigationStack.
             Group {
                 switch tab {
                 case .today:    TodayView(approvals: approvals, path: $todayPath, openCalendar: { tab = .calendar })
                 case .calendar: CalendarView(openEventId: $calendarOpenEventId)
                 case .flex:
-                    // The 4th slot follows the household's modules: Meals if on, else a
-                    // backfill (Goals/Chores/Lists/Pantry). If every candidate is off
-                    // there's nothing to show — self-correct back to Today.
+                        // The 4th slot follows the modules; with every candidate off there is
+                        // nothing to show, so self-correct back to Today.
                     switch flexSlot {
                     case .meals:          MealsView(path: $mealsPath)
                     case .some(let slot): FlexModuleView(slot: slot, path: $modulePath, recipes: recipes)
@@ -118,7 +100,10 @@ struct AppRoot: View {
             // App-wide offline / pending-sync strip, pushed below the status bar.
             .safeAreaInset(edge: .top, spacing: 0) { OfflineBanner() }
 
-            WaffledTabBar(tab: $tab, familyBadge: approvalCount,
+            // Gone while a keyboard is docked — see KeyboardState.hidesBottomBar: the bar and
+            // its FAB are unreachable during typing and cost 64pt.
+            if !KeyboardState.shared.hidesBottomBar {
+                WaffledTabBar(tab: $tab, familyBadge: approvalCount,
                        flexSlot: flexSlot,
                        onCapture: { showCapture = true },
                        onReselect: {
@@ -126,6 +111,7 @@ struct AppRoot: View {
                            if $0 == .flex { mealsPath = []; modulePath = [] }
                            if $0 == .today { todayPath = [] }
                        })
+            }
         }
         .sheet(isPresented: $showCapture) {
             CaptureSheet()
@@ -135,14 +121,13 @@ struct AppRoot: View {
         .overlay { ServerUpdateModal() }
         .onAppear {
             if DemoHooks.openCapture { showCapture = true }
-            // Headless pantry verification: land on the Family hub already pushed into
-            // the Pantry; `PantryView` opens the item itself once its list has loaded.
+            // Headless pantry verification: land on the Family hub already pushed into Pantry.
             if DemoHooks.pantryItem != nil { tab = .family; familyPath = [.pantry] }
             // The same, for any hub screen: land on the Family tab already pushed into it.
             if let route = DemoHooks.hubRoute { tab = .family; familyPath = [route] }
         }
-        // Local event reminders (6.7-ios): keep the schedule in step with the synced
-        // events, the signed-in person, and permission changes.
+        // Local event reminders: keep the schedule in step with the synced events, the person,
+        // and permission changes.
         .task {
             await notifications.refreshAuthorization()
             await sync.loadIdentity()
@@ -157,6 +142,7 @@ struct AppRoot: View {
         // Re-count whenever an approval lands or sign-in changes who we are.
         .onChange(of: sync.choresRev) { _, _ in Task { await refreshApprovalBadge() } }
         .onChange(of: sync.rewardsRev) { _, _ in Task { await refreshApprovalBadge() } }
+        .onChange(of: sync.modulesRev) { _, _ in Task { await refreshApprovalBadge() } }
         .onChange(of: sync.currentPersonId) { _, _ in Task { await refreshApprovalBadge() } }
         // A tapped reminder deep-links to its event on the Calendar tab.
         .onChange(of: notifications.pendingEventId) { _, id in
@@ -167,10 +153,13 @@ struct AppRoot: View {
         }
     }
 
-    /// Reload pending approvals and push the count to the app-icon badge. Kids (and the
-    /// signed-out state) resolve to 0, which clears any stale badge.
+    /// Reload pending approvals and push the count to the app-icon badge; kids resolve to 0.
     private func refreshApprovalBadge() async {
-        await approvals.load()
+        await approvals.load(
+            scope: sync.restDataScopeKey,
+            choresEnabled: sync.module(.chores),
+            rewardsEnabled: sync.rewardsOn
+        )
         await notifications.setBadge(approvalCount)
     }
 
@@ -183,8 +172,7 @@ struct AppRoot: View {
     }
 }
 
-/// Custom bottom bar — stock `TabView` can't do the raised center FAB the design
-/// calls for, so we draw our own and overlay the floating capture button.
+/// Custom bottom bar — stock `TabView` can't do the raised center FAB, so we draw our own.
 struct WaffledTabBar: View {
     @Binding var tab: Tab
     var familyBadge: Int = 0
@@ -201,7 +189,9 @@ struct WaffledTabBar: View {
             item(.family, "checklist", "Family", badge: familyBadge)
         }
         .padding(.horizontal, 8)
-        .padding(.top, 10)
+                // Shared with WF.tabBarHeight, so a screen's clearance and the bar's height are
+                // the same arithmetic rather than two numbers that agree by luck.
+        .padding(.top, WF.barTopPadding)
         .background(
             WF.card
                 .overlay(WF.hair.frame(height: 1), alignment: .top)
@@ -245,7 +235,9 @@ struct WaffledTabBar: View {
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(.white)
             }
-            .frame(width: 54, height: 54)
+                    // The tallest child in the bar — see WF.captureButtonSize. The offset lifts
+                    // it visually but not in layout.
+            .frame(width: WF.captureButtonSize, height: WF.captureButtonSize)
             .wfShadow3()
         }
         .buttonStyle(.plain)
@@ -254,10 +246,7 @@ struct WaffledTabBar: View {
     }
 }
 
-/// Hosts the flex tab's backfill module (Goals/Chores/Lists/Pantry) in its own
-/// navigation stack, reusing the shared `HubDestination` routing so drill-ins (a goal,
-/// a list, a recipe) push here and Back returns to the module root — the same wiring
-/// the Family hub uses.
+/// Hosts the flex tab's backfill module in its own stack, reusing `HubDestination` routing.
 private struct FlexModuleView: View {
     let slot: FlexSlot
     @Binding var path: [HubRoute]

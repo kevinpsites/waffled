@@ -38,6 +38,11 @@ enum FamilyNightFormat {
 @MainActor
 @Observable
 final class FamilyNightModel {
+    enum MutationOutcome: Equatable {
+        case refreshed
+        case savedButRefreshFailed
+    }
+
     typealias FetchFamilyNight = () async throws -> WaffledAPI.FamilyNightView
     typealias SaveAssignment = (_ date: String, _ partId: String, _ personId: String?) async throws -> Void
 
@@ -60,19 +65,34 @@ final class FamilyNightModel {
         self.saveAssignment = saveAssignment
     }
 
+    private func refresh() async throws {
+        view = try await fetchFamilyNight()
+    }
+
     func load() async {
-        if let latest = try? await fetchFamilyNight() {
-            view = latest
+        do {
+            try await refresh()
+        } catch {
+            // Keep the last confirmed snapshot during passive refresh failures.
         }
         loaded = true
     }
 
     /// Assign (or clear, `personId == nil`) a single agenda part for the upcoming
     /// gathering — a per-week override of the rotation. Reloads to reflect the write.
-    func assign(partId: String, personId: String?) async throws {
-        guard let date = view?.next.date else { return }
+    func assign(partId: String, personId: String?) async throws -> MutationOutcome {
+        guard let date = view?.next.date else { return .refreshed }
         try await saveAssignment(date, partId, personId)
-        await load()
+        do {
+            try await refresh()
+            loaded = true
+            return .refreshed
+        } catch {
+            // The assignment is already saved. Keep the last confirmed snapshot,
+            // but let the card explain that it may now be stale.
+            loaded = true
+            return .savedButRefreshFailed
+        }
     }
 }
 
@@ -86,6 +106,7 @@ struct FamilyNightCard: View {
     @Environment(SyncManager.self) private var sync
     @State private var model = FamilyNightModel()
     @State private var busy = false
+    @State private var alertTitle = "Family Night unchanged"
     @State private var errorMessage: String?
 
     var body: some View {
@@ -96,7 +117,7 @@ struct FamilyNightCard: View {
         // once per appearance, so this card sat on launch-time data through every
         // pull-to-refresh. See SyncManager.refreshRev.
         .task(id: sync.refreshRev) { await model.load() }
-        .alert("Family Night unchanged", isPresented: errorPresented) {
+        .alert(alertTitle, isPresented: errorPresented) {
             Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "The assignment could not be changed.")
@@ -206,8 +227,15 @@ struct FamilyNightCard: View {
         Task {
             defer { busy = false }
             do {
-                try await model.assign(partId: partId, personId: personId)
+                switch try await model.assign(partId: partId, personId: personId) {
+                case .refreshed:
+                    break
+                case .savedButRefreshFailed:
+                    alertTitle = "Assignment saved"
+                    errorMessage = "The assignment was saved, but Family Night couldn’t refresh. This screen may be out of date until it reloads."
+                }
             } catch {
+                alertTitle = "Family Night unchanged"
                 errorMessage = "Couldn’t change this assignment. Check your connection and try again."
             }
         }

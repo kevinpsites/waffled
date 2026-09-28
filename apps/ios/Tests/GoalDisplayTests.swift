@@ -22,10 +22,12 @@ private func goal(
     streakDays: Int = 0,
     targetBasis: String? = nil,
     people: Int = 0,
-    loggedTodayBy: [String]? = nil
+    loggedTodayBy: [String]? = nil,
+    unit: String? = nil,
+    weekTarget: WaffledAPI.Goal.WeekTarget? = nil
 ) -> WaffledAPI.Goal {
     WaffledAPI.Goal(id: "g", goalListId: nil, title: "G", emoji: nil, category: nil,
-                    goalType: goalType, unit: nil, habitPeriod: habitPeriod,
+                    goalType: goalType, unit: unit, habitPeriod: habitPeriod,
                     habitTargetPerPeriod: habitTargetPerPeriod, trackingMode: "shared_total",
                     participantMode: nil, targetBasis: targetBasis, deadline: nil, isFeatured: false,
                     isSpotlight: nil, target: target, totalProgress: totalProgress,
@@ -36,10 +38,35 @@ private func goal(
                     participants: (0..<people).map {
                         .init(personId: "p\($0)", name: "P\($0)", colorHex: nil,
                               avatarEmoji: nil, target: target, progress: 0)
-                    })
+                    },
+                    weekPlan: weekTarget)
 }
 
 @Suite struct GoalDisplayTests {
+
+    // MARK: a week's target, set in Weekly Planning
+
+    @Test func aTargetForThisWeekReadsAgainstWhatIsLogged() {
+        let g = goal(unit: "hours", weekTarget: .init(weekStart: "2026-09-13", target: 10, done: 3.5, current: true))
+        #expect(GoalDisplay.weekTargetLabel(g) == "This week: 3.5 of 10 hours")
+    }
+
+    @Test func aTargetForAWeekAheadNamesThatWeek() {
+        let g = goal(unit: "hours", weekTarget: .init(weekStart: "2026-09-21", target: 10, done: 0, current: false))
+        #expect(GoalDisplay.weekTargetLabel(g) == "Week of Sep 21: 10 hours")
+    }
+
+    /// The goal's own page words a plan the same way, one per week planned.
+    @Test func aWeekPlanReadsTheSameOnTheGoalsOwnPage() {
+        let current = WaffledAPI.Goal.WeekTarget(weekStart: "2026-09-13", target: 10, done: 3, current: true)
+        let ahead = WaffledAPI.Goal.WeekTarget(weekStart: "2026-09-20", target: 12, done: 0, current: false)
+        #expect(GoalDisplay.weekPlanAmount(current, unit: "hours") == "3 of 10 hours")
+        #expect(GoalDisplay.weekPlanLabel(ahead, unit: "hours") == "Week of Sep 20: 12 hours")
+    }
+
+    @Test func aGoalWithoutAWeekTargetHasNoLabel() {
+        #expect(GoalDisplay.weekTargetLabel(goal()) == nil)
+    }
 
     // MARK: habit — the reported bug
 
@@ -188,6 +215,32 @@ private func goal(
         // Only habits are once-a-day; a count goal can be logged all day long.
         let count = goal(goalType: "count", target: 20, loggedTodayBy: ["p0"])
         #expect(!GoalDisplay.doneToday(count, who: ["p0"]))
+    }
+
+    @Test func aHabitWithNoParticipantsLogsForTheFamilyAndIsBlockedOnceItHas() {
+        // No participants means the Log sheet picks nobody and the server writes a family row,
+        // so "who" is the family sentinel — without it the sheet never said "already submitted".
+        let g = goal(goalType: "habit", habitTargetPerPeriod: 5, people: 0, loggedTodayBy: ["__family__"])
+        #expect(GoalDisplay.logWho(g, picked: []) == ["__family__"])
+        #expect(GoalDisplay.doneToday(g, who: GoalDisplay.logWho(g, picked: [])))
+    }
+
+    @Test func aGoalWithParticipantsKeepsTheLoggerPicksIncludingNone() {
+        let g = goal(goalType: "habit", habitTargetPerPeriod: 5, people: 2, loggedTodayBy: ["p0"])
+        #expect(GoalDisplay.logWho(g, picked: []).isEmpty)
+        #expect(GoalDisplay.logWho(g, picked: ["p1"]) == ["p1"])
+    }
+
+    @Test func aFreshLoggedTodayOverridesTheListTheSheetWasOpenedWith() {
+        // The sheet is handed a goal from a list loaded earlier; today's log may be newer.
+        let stale = goal(goalType: "habit", habitTargetPerPeriod: 5, people: 1, loggedTodayBy: [])
+        #expect(!GoalDisplay.doneToday(stale, who: ["p0"]))
+        #expect(GoalDisplay.doneToday(stale, who: ["p0"], loggedTodayBy: ["p0"]))
+    }
+
+    @Test func theHabitConfirmSaysAlreadySubmittedOnceDoneToday() {
+        #expect(GoalDisplay.habitConfirmLabel(doneToday: true) == "Already submitted today ✓")
+        #expect(GoalDisplay.habitConfirmLabel(doneToday: false) == "Mark done for today")
     }
 
     @Test func anOlderResponseWithoutLoggedTodayByBlocksNothing() {

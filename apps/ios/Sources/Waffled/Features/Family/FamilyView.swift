@@ -1,8 +1,6 @@
 import SwiftUI
 
-/// Family — the 5th-tab hub from the handoff (`screens-ios-hub.js`): a people row
-/// plus a launcher grid for every overflow area. Static in Phase 0; the people row
-/// becomes the first PowerSync-backed surface in Phase 1.
+/// Family — the 5th-tab hub: a people row plus a launcher grid for every overflow area.
 struct FamilyView: View {
     @Environment(SyncManager.self) private var sync
     @State private var hub = FamilyHubModel()
@@ -14,6 +12,21 @@ struct FamilyView: View {
     @State private var showSync = false
     @State private var ranDemo = false
     private let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+
+    init(path: Binding<[HubRoute]>, approvals: ApprovalsModel, hub: FamilyHubModel? = nil) {
+        _path = path
+        self.approvals = approvals
+        _hub = State(initialValue: hub ?? FamilyHubModel())
+    }
+
+    private struct LoadKey: Hashable {
+        let scope: RestDataScopeKey
+        let modules: FamilyRestModules
+        let choresRevision: Int
+        let goalsRevision: Int
+        let rewardsRevision: Int
+        let listsRevision: Int
+    }
 
     /// Per-tile approval counts — only shown to those who can action that queue.
     private var choreApprovals: Int { sync.can("chore.approve") ? approvals.chores.count : 0 }
@@ -54,9 +67,17 @@ struct FamilyView: View {
                     .padding(.top, 8).padding(.bottom, 18)
 
                 SectionLabel(text: "Everything else").padding(.bottom, 11)
-                // Module-gated tiles drop out when a household turns that feature off
-                // (Settings → Modules). Photos + Settings are core and never gated.
+                RestStateNotice(state: hub.state, retry: { Task { await loadHub() } })
+                    .padding(.bottom, hub.state.isAuthoritative ? 0 : 11)
+                // Module-gated tiles drop out when a household turns that feature off.
+                // Photos + Settings are core and never gated.
                 LazyVGrid(columns: cols, spacing: 12) {
+                    // First, because it is the weekly ritual that FEEDS the rest of this
+                    // grid — the session hands out chores, fills the meal plan and books
+                    // the events the other tiles then show.
+                    if sync.module(.weeklyPlanning) {
+                        tile("🗓️", "Weekly Planning", "Plan the week ahead", FamilyColor.person2.tint, .weeklyPlanning)
+                    }
                     if sync.module(.chores) { tile("✅", "Chores", hub.choresSubtitle, FamilyColor.person3.tint, .chores, badge: choreApprovals) }
                     if sync.module(.goals) { tile("🎯", "Goals", hub.goalsSubtitle, WF.successT, .goals) }
                     if sync.rewardsOn { tile("⭐", "Rewards", hub.rewardsSubtitle, WF.warnT, .rewards, badge: rewardApprovals) }
@@ -72,14 +93,52 @@ struct FamilyView: View {
         }
         .background(WF.canvas)
         .toolbar(.hidden, for: .navigationBar)   // the screen draws its own "Family" header
-        .refreshable { await hub.load(); await approvals.load() }
-        .task { await hub.load() }
+        .refreshable {
+            await loadHub()
+            await approvals.load(
+                scope: sync.restDataScopeKey,
+                choresEnabled: sync.module(.chores),
+                rewardsEnabled: sync.rewardsOn
+            )
+        }
+        .task(id: loadKey) { await loadHub() }
         .sheet(isPresented: $showSync) { SyncStatusView() }
         .onAppear(perform: runDemoHooksIfSet)
     }
 
-    private static func route(for name: String) -> HubRoute? {
+    private var enabledRestModules: FamilyRestModules {
+        .init(
+            chores: sync.module(.chores),
+            goals: sync.module(.goals),
+            rewards: sync.rewardsOn,
+            lists: sync.module(.lists)
+        )
+    }
+
+    private var loadKey: LoadKey {
+        .init(
+            scope: sync.restDataScopeKey,
+            modules: enabledRestModules,
+            choresRevision: sync.choresRev,
+            goalsRevision: sync.goalsRev,
+            rewardsRevision: sync.rewardsRev,
+            listsRevision: sync.listsRev
+        )
+    }
+
+    private func loadHub() async {
+        let scope = sync.restDataScopeKey
+        await sync.loadIdentity()
+        guard !Task.isCancelled, scope == sync.restDataScopeKey else { return }
+        await hub.load(scope: scope, modules: enabledRestModules)
+    }
+
+    /// `WAFFLED_OPEN_HUB`'s names. INTERNAL, not private, so the mapping can be tested —
+    /// see FamilyHubRouteTests. A merge that takes this file from `main` will narrow it
+    /// back to `private` and break that test; this comment is why it stays widened.
+    static func route(for name: String) -> HubRoute? {
         switch name {
+        case "planning": return .weeklyPlanning
         case "chores": return .chores
         case "goals": return .goals
         case "rewards": return .rewards
@@ -88,6 +147,10 @@ struct FamilyView: View {
         case "photos": return .photos
         case "settings": return .settings
         case "display": return .settingsDisplay
+        // The Weekly Planning CONFIG panel, not a session — a nav-stack screen two taps
+        // deep, and the simulator has no tap API, so without a name here its controls
+        // cannot be looked at headlessly.
+        case "settingsPlanning": return .settingsWeeklyPlanning
         default: return nil
         }
     }
@@ -119,8 +182,8 @@ struct FamilyView: View {
         }
     }
 
-    // Live from the local SQLite mirror once synced; the static sample until then,
-    // so the design still reads pre-sync.
+    // Live from the local SQLite mirror once synced; the static sample until then, so
+    // the design still reads pre-sync.
     private var peopleRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {

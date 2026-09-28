@@ -80,6 +80,22 @@ describe('P2.6 admin-gated household creation', () => {
     expect((await call('POST', '/api/households', stranger, { name: 'Solo', timezone: 'UTC', person: { name: 'Solo' } })).statusCode).toBe(403)
   })
 
+  // THE CODE IS A CLIENT CONTRACT. A token whose household is missing cannot be repaired
+  // by refreshing — the web client signs out on this and only this, so it needs a stable
+  // discriminator. Matching the prose would break the moment somebody rewords it, and
+  // matching the bare 403 would sign people out for lacking a capability.
+  it('names the missing household with a code the clients can key on', async () => {
+    const stranger = mint('dev|nobody')
+    const res = await call('GET', '/api/persons', stranger)
+    expect(res.statusCode).toBe(403)
+    expect(json(res).error).toBe('NoHousehold')
+
+    // …and an ordinary permission denial stays distinguishable from it.
+    const denied = await call('POST', '/api/households', teenToken, { name: 'Nope', timezone: 'UTC', person: { name: 'T' } })
+    expect(denied.statusCode).toBe(403)
+    expect(json(denied).error).not.toBe('NoHousehold')
+  })
+
   it('refuses a non-admin member (403)', async () => {
     expect((await call('POST', '/api/households', teenToken, { name: 'Nope', timezone: 'UTC', person: { name: 'Teeny' } })).statusCode).toBe(403)
   })

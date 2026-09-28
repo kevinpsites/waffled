@@ -4,14 +4,7 @@ import SwiftUI
 /// that day. Navigable back/forth, clamped so you can't page past the current month.
 struct MonthHeatmapView: View {
     let ctx: GoalDataContext
-    var headerRight: AnyView?
     @State private var monthOffset = 0
-    // See WeekHeatmapView's identical fix: aspectRatio(1, .fit/.fill) can't reliably
-    // square a grid cell when nothing else pins its height, so measure the grid's
-    // actual width and set an explicit width==height frame instead.
-    @State private var gridWidth: CGFloat = 280
-    private static let gridSpacing: CGFloat = 6
-    private var cellSize: CGFloat { max(24, (gridWidth - Self.gridSpacing * 6) / 7) }
 
     private static let weekdayHeads = ["S", "M", "T", "W", "T", "F", "S"]
     private static let heatStops: [Double] = [0.12, 0.35, 0.6, 0.85, 1]
@@ -57,7 +50,6 @@ struct MonthHeatmapView: View {
                 Button { monthOffset = min(0, monthOffset + 1) } label: { Image(systemName: "chevron.right") }
                     .buttonStyle(.plain).foregroundStyle(canGoForward ? WF.ink2 : WF.ink3.opacity(0.4))
                     .disabled(!canGoForward)
-                headerRight
             }
 
             LazyVGrid(columns: Self.columns, spacing: 6) {
@@ -74,44 +66,42 @@ struct MonthHeatmapView: View {
                     let dark = intensity > GoalStats.heatDarkThreshold
                     let isToday = info.dateKey == ctx.stats.today
                     Button { ctx.onDayTap(info.dateKey) } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            // Today: a red circle around the day number, so you can see where
-                            // you are in the month at a glance (mirrors the week view).
-                            Text("\(info.day)").font(.system(size: 11.5, weight: .heavy))
-                                .foregroundStyle(isToday ? WF.danger : (info.future ? WF.ink3 : (dark ? .white : WF.ink2)))
-                                .frame(minWidth: isToday ? 16 : nil, minHeight: isToday ? 16 : nil)
-                                .overlay(isToday ? Circle().stroke(WF.danger, lineWidth: 1.5) : nil)
-                            if !info.future, info.total > 0 {
-                                Text(GoalViewFmt.num(info.total)).font(WF.serif(12, .semibold))
-                                    .foregroundStyle(dark ? .white : WF.ink)
-                            }
-                            Spacer(minLength: 0)
-                            if !info.perMember.isEmpty {
-                                HStack(spacing: 2) {
-                                    ForEach(Array(info.perMember.keys), id: \.self) { pid in
-                                        Circle().fill(dark ? Color.white.opacity(0.9) : (ctx.personMap[pid].flatMap { Color(hexString: $0.colorHex) } ?? WF.ink3))
-                                            .frame(width: 4, height: 4)
+                        // Squared off the column's own width, so the very first layout pass
+                        // already reports the grid's real height (see GoalChartLayoutTests).
+                        Color.clear
+                            .aspectRatio(1, contentMode: .fit)
+                            .overlay {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    // Today: a red circle around the day number (mirrors the week view).
+                                    Text("\(info.day)").font(.system(size: 11.5, weight: .heavy))
+                                        .foregroundStyle(isToday ? WF.danger : (info.future ? WF.ink3 : (dark ? .white : WF.ink2)))
+                                        .frame(minWidth: isToday ? 16 : nil, minHeight: isToday ? 16 : nil)
+                                        .overlay(isToday ? Circle().stroke(WF.danger, lineWidth: 1.5) : nil)
+                                    if !info.future, info.total > 0 {
+                                        Text(GoalViewFmt.num(info.total)).font(WF.serif(12, .semibold))
+                                            .foregroundStyle(dark ? .white : WF.ink)
+                                    }
+                                    Spacer(minLength: 0)
+                                    if !info.perMember.isEmpty {
+                                        HStack(spacing: 2) {
+                                            ForEach(Array(info.perMember.keys), id: \.self) { pid in
+                                                Circle().fill(dark ? Color.white.opacity(0.9) : (ctx.personMap[pid].flatMap { Color(hexString: $0.colorHex) } ?? WF.ink3))
+                                                    .frame(width: 4, height: 4)
+                                            }
+                                        }
                                     }
                                 }
+                                .padding(5)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                             }
-                        }
-                        .padding(5)
-                        .frame(width: cellSize, height: cellSize)
-                        .background(info.future ? Color.clear : (info.total > 0 ? Color(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255) : WF.panel))
-                        .overlay(info.future ? RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(WF.hair, style: StrokeStyle(lineWidth: 1, dash: [3, 3])) : nil)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .background(info.future ? Color.clear : (info.total > 0 ? Color(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255) : WF.panel))
+                            .overlay(info.future ? RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(WF.hair, style: StrokeStyle(lineWidth: 1, dash: [3, 3])) : nil)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .disabled(info.future)
                 }
             }
-            .background(
-                GeometryReader { geo in
-                    Color.clear
-                        .onAppear { gridWidth = geo.size.width }
-                        .onChange(of: geo.size.width) { _, newWidth in gridWidth = newWidth }
-                }
-            )
 
             HStack(spacing: 10) {
                 Text("Less").font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)

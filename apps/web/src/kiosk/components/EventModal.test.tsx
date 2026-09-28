@@ -189,6 +189,46 @@ describe('EventModal', () => {
     })
   })
 
+  it('retries recurrence hydration in place after a failed request', async () => {
+    const master = {
+      ...sampleEvent,
+      id: 'series-1',
+      rrule: 'FREQ=WEEKLY;BYDAY=MO',
+      recurrenceEndAt: null,
+    }
+    let hydrationAttempts = 0
+    globalThis.fetch = vi.fn(async (url: string) => {
+      const u = String(url)
+      if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      if (/\/api\/events\/series-1$/.test(u)) {
+        hydrationAttempts += 1
+        if (hydrationAttempts === 1) {
+          return { ok: false, status: 503, json: async () => ({ error: 'Unavailable' }) }
+        }
+        return { ok: true, json: async () => ({ event: master }) }
+      }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    const localOccurrence = {
+      ...sampleEvent,
+      id: 'occurrence-1',
+      startsAt: '2026-06-22T22:00:00Z',
+      seriesId: 'series-1',
+      occurrenceStart: '2026-06-22T22:00:00Z',
+    }
+    renderModal(<EventModal event={localOccurrence} onClose={vi.fn()} onSaved={vi.fn()} />)
+
+    const retry = await screen.findByRole('button', { name: 'Try again' })
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    fireEvent.click(retry)
+
+    await waitFor(() => expect(screen.getByDisplayValue('Weekly')).toBeTruthy())
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled()
+    expect(hydrationAttempts).toBe(2)
+  })
+
   it('requires a series scope when series-only fields changed', async () => {
     const patched: Array<Record<string, unknown>> = []
     mockEventApi(patched, [])

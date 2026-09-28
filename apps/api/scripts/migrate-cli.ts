@@ -8,12 +8,23 @@
 // `service_completed_successfully` dependency lets the api + powersync start only
 // after the schema — and the PowerSync publication — exist). Idempotent: already
 // applied migrations are skipped, so it's safe to run on every `compose up`.
+//
+// MIGRATE_LOCK_TIMEOUT (ms, or e.g. 30s / 2min; 0 waits forever) bounds each lock
+// wait — see src/migrate.ts.
 import { resolve } from 'node:path'
-import { runMigrations } from '../src/migrate'
+import { parseLockTimeout, runMigrations } from '../src/migrate'
 
 const databaseUrl = process.env.DATABASE_URL
 if (!databaseUrl) {
   console.error('migrate: DATABASE_URL is not set')
+  process.exit(1)
+}
+
+let lockTimeoutMs: number
+try {
+  lockTimeoutMs = parseLockTimeout(process.env.MIGRATE_LOCK_TIMEOUT)
+} catch (err) {
+  console.error(`migrate: ${(err as Error).message}`)
   process.exit(1)
 }
 
@@ -23,7 +34,10 @@ if (!databaseUrl) {
 // empty in CJS output, which is why we don't lean on the module's ESM default.)
 const migrationsDir = resolve(__dirname, '..', 'migrations')
 
-runMigrations(databaseUrl, migrationsDir)
+runMigrations(databaseUrl, migrationsDir, Infinity, undefined, {
+  lockTimeoutMs,
+  log: (message) => console.warn(`migrate: ${message}`),
+})
   .then(() => {
     console.log('migrate: schema up to date')
     process.exit(0)
