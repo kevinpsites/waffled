@@ -84,17 +84,24 @@ function checkSchedulers(): { status: Status } & Record<string, unknown> {
 }
 
 // Google calendar push backlog — a stuck push (push_failed) is worth surfacing.
-async function checkCalendar(): Promise<{ status: Status } & Record<string, unknown>> {
+// Scoped to one household when the caller is a household admin (the /api/health
+// route); the operator CLI passes nothing and still gets the instance-wide view.
+async function checkCalendar(householdId?: string): Promise<{ status: Status } & Record<string, unknown>> {
   try {
     const { rows } = await query<{ sync_state: string; count: string }>(
       `select sync_state, count(*)::int as count from events
-        where sync_state in ('pending_push','push_failed') group by sync_state`
+        where sync_state in ('pending_push','push_failed')
+          and ($1::uuid is null or household_id = $1)
+        group by sync_state`,
+      [householdId ?? null]
     )
     const pending = Number(rows.find((r) => r.sync_state === 'pending_push')?.count ?? 0)
     const failed = Number(rows.find((r) => r.sync_state === 'push_failed')?.count ?? 0)
     const { rows: stale } = await query<{ count: string }>(
       `select count(*)::int as count from calendars
-        where sync_token is not null and last_synced_at < now() - interval '1 hour'`
+        where sync_token is not null and last_synced_at < now() - interval '1 hour'
+          and ($1::uuid is null or household_id = $1)`,
+      [householdId ?? null]
     )
     const staleCalendars = Number(stale[0]?.count ?? 0)
     const status: Status = failed > 0 || staleCalendars > 0 ? 'degraded' : 'ok'
@@ -196,11 +203,14 @@ function aggregate(checks: HealthReport['checks']): Status {
   return 'ok'
 }
 
-export async function buildHealthReport(): Promise<HealthReport> {
+// `householdId` scopes the tenant-data checks to one household — the HTTP route
+// passes the caller's, so a household admin never sees another household's counts.
+// Omit it (the operator CLI) for the instance-wide report.
+export async function buildHealthReport(householdId?: string): Promise<HealthReport> {
   const [db, migrations, calendar, backup] = await Promise.all([
     checkDb(),
     checkMigrations(),
-    checkCalendar(),
+    checkCalendar(householdId),
     checkBackup(),
   ])
   const checks: HealthReport['checks'] = {
@@ -217,5 +227,5 @@ export async function buildHealthReport(): Promise<HealthReport> {
 export function registerHealthRoutes(api: Api): void {
   // Admin-gated: the report carries operational counts, not for non-admins. Always
   // HTTP 200 — the status lives in the body so the panel renders even when degraded.
-  api.get('/api/health', adminRoute(async () => buildHealthReport()))
+  api.get('/api/health', adminRoute(async (tenant) => buildHealthReport(tenant.householdId)))
 }

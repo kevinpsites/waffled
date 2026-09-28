@@ -28,7 +28,10 @@ of `1e0ae91f`.
   only reassign the whole series. The resolver must surface this (reassign a recurring event →
   series-scope only, stated in the confirm card).
 - **There is no `reward.redeem` capability** — redeem is plain `tenantRoute` (any member, incl. a
-  kid); the parent gate is the reward's `requires_approval` data flag, not a cap. Don't invent one.
+  kid) *for their own balance*; the parent gate is the reward's `requires_approval` data flag, not a
+  cap. Don't invent one. (Since the 2026-09 tenant-isolation pass, redeeming **on behalf of another
+  member** does require `reward.manage`, matching `/api/conversions/:id/apply` — enforced by the
+  route *and* by the capture path, which resolves the spoken name within the household first.)
 - **Chores mutate the per-date `chore_instances` row, never the template.** See §4.1.
 
 ---
@@ -232,7 +235,10 @@ service fn, enforcing the route's caps).
   resolve `args.personName`→id via the shared `findPersonByName` (default speaker; unknown name →
   friendly 400). `requires_approval` → pending redemption + "waiting for approval" message; else
   balance-guarded debit ("Redeemed … (−N stars)"; `{error}` → 409 with the route's own "not enough
-  stars" message). **No redeem capability** — any member. `reward.grant`/spot-award stays out of scope.
+  stars" message). **No redeem capability for your own balance** — any member. Redeeming for
+  *another* member mirrors the route's `reward.manage` check: `requestRedemption` deliberately
+  carries no authorization of its own, so the gate is applied in `applyMutation` before the call.
+  `reward.grant`/spot-award stays out of scope.
 - **Gate:** `rewardsEnabled` (chores module on AND `settings.chores.rewards`) → disabledReason
   "Rewards is turned off." (the sub-toggle nuance is not distinguished, same as the routes' gate).
 
@@ -263,7 +269,8 @@ exact match, token-overlap, tie → both returned, below-threshold → empty.
   `candidates:[]` **plus** a `disabledReason` the preview shows ("Chores is turned off"), so the client
   distinguishes "off" from "no match."
 - **Permissions:** `applyMutation` enforces the same cap the route does — `chore.manage` (reassign
-  other / delete template), `goal.manage` (attribute-other). Self-actions and redeem are open.
+  other / delete template), `goal.manage` (attribute-other), `reward.manage` (redeem for another
+  member). Self-actions are open.
 - **0/1/many fork thresholds:** ≥1 candidate over `HIGH` (~0.75) and clearly ahead of #2 → auto-single;
   any candidates over `LOW` (~0.4) → picker; none → not-found. Tune in the ranking util; unit-tested.
 - **Keyword matches count at half weight** (`KEYWORD_WEIGHT` in `candidate-match.ts`): a description

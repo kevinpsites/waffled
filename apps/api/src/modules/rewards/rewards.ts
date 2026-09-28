@@ -280,9 +280,9 @@ export async function decideRedemption(tenant: Tenant, id: string, approve: bool
       return { redemption: upd.rows[0] }
     }
 
-    // A pending reward requires a second person, even when an admin requested
-    // it on a child's behalf. Denial remains available to the requester.
-    if (red.requested_by?.toLowerCase() === tenant.personId.toLowerCase()) {
+    // Approval must come from someone other than the balance owner. A parent
+    // can both request and approve a child's reward; denial stays unrestricted.
+    if (red.person_id.toLowerCase() === tenant.personId.toLowerCase()) {
       await client.query('rollback')
       return { error: 'A different person must approve this request' }
     }
@@ -432,6 +432,10 @@ export function registerRewardRoutes(api: Api): void {
   api.post('/api/persons/:id/award', choresCapRoute('reward.grant', async (tenant, req: Request, res: Response) => {
     const personId = req.params.id ?? ''
     if (!UUID_RE.test(personId)) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
+    // The ledger row is stamped with the CALLER's household but the id from the URL —
+    // without this, an admin could credit (and so alter the Today board of) a person
+    // in someone else's household.
+    await assertPersonInHousehold(tenant.householdId, personId)
     const body = (req.body ?? {}) as { amount?: number; currency?: string; note?: string }
     const amount = Math.round(Number(body.amount))
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -448,6 +452,8 @@ export function registerRewardRoutes(api: Api): void {
     let where = `r.household_id=$1 and r.deleted_at is null`
     if (status) { params.push(status); where += ` and r.status=$${params.length}` }
     const { rows } = await query<RedemptionRow & { person_name: string | null; avatar_emoji: string | null; color_hex: string | null }>(
+      // Hide orphaned or foreign-person rows rather than exposing another
+      // household's profile through an inconsistent redemption.
       `select r.*, p.name as person_name, p.avatar_emoji, p.color_hex
          from reward_redemptions r
          join persons p on p.id = r.person_id and p.household_id = r.household_id
@@ -463,6 +469,7 @@ export function registerRewardRoutes(api: Api): void {
     const body = (req.body ?? {}) as { personId?: string }
     const personId = body.personId?.trim() || tenant.personId
     if (!UUID_RE.test(personId)) return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
+    // Shared with capture so both entry points enforce the same spending authority.
     const red = await requestRedemption(tenant, id, personId)
     if (red === null) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
     if ('error' in red) return res.status(409).json({ error: 'Conflict', message: red.error })

@@ -4,6 +4,7 @@
 // "Plan my week"). Every endpoint computes the same facts deterministically first,
 // so when the provider is heuristic / offline / errors we still return a real,
 // useful card instead of a blank one — the AI just rephrases the facts warmly.
+import { clockLabel } from '../../platform/clock'
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
 import { tenantRoute } from '../../platform/route-guards'
@@ -35,13 +36,6 @@ function partsInTz(at: Date, tz: string): { date: string; time: string; minutes:
     minutes: +hour * 60 + +m.minute,
     weekday: m.weekday,
   }
-}
-
-function clock(time: string): string {
-  const [h, mi] = time.split(':').map(Number)
-  const ap = h >= 12 ? 'PM' : 'AM'
-  const h12 = h % 12 === 0 ? 12 : h % 12
-  return `${h12}:${String(mi).padStart(2, '0')} ${ap}`
 }
 
 function durationMin(e: EventRow): number {
@@ -195,7 +189,7 @@ export async function eventInsight(
       event: {
         title: event.title,
         weekday: p.weekday,
-        startTime: event.all_day ? null : clock(p.time),
+        startTime: event.all_day ? null : clockLabel(p.time),
         allDay: event.all_day,
         durationMinutes: event.all_day ? null : durationMin(event),
         location: event.location ?? null,

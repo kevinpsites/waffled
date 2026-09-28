@@ -1,11 +1,9 @@
 import Foundation
 
-// A saved plate is a first-class citizen of the recipe library (decision 11): it sits
-// in the same grid as the recipes and the search box matches it. This file holds the
-// merge/filter/sort so the library view stays a view, and so the rules below can be
-// pinned by tests.
+// A saved plate is a first-class citizen of the recipe library: same grid, same search
+// box. The merge/filter/sort lives here so the library view stays a view and the rules
+// can be pinned by tests.
 
-/// One row in the unified library — a recipe or a saved plate.
 enum LibraryEntry: Identifiable, Hashable {
     case recipe(WaffledAPI.RecipeSummary)
     case meal(WaffledAPI.MealDTO)
@@ -23,15 +21,13 @@ enum LibraryEntry: Identifiable, Hashable {
         }
     }
     var isMeal: Bool { if case .meal = self { return true } else { return false } }
-    /// Hands-on + cooking. For a plate this is the sum across its dishes.
     var totalMinutes: Int? {
         switch self {
         case .recipe(let r): return r.totalTimeMinutes
         case .meal(let m): return m.totalMinutes
         }
     }
-    /// Cook history is recipe-only; a plate has none, which is why the history sorts
-    /// put plates last rather than floating them to the top on a tie.
+    /// Recipe-only; a plate has none, which is why the history sorts put plates last.
     var cookedCount: Int {
         if case .recipe(let r) = self { return r.cookedCount }
         return 0
@@ -42,13 +38,11 @@ enum LibraryEntry: Identifiable, Hashable {
     }
 }
 
-/// Recipes / plates / both. The **type** filter is the only thing that can select
-/// plates: they carry no cuisine, protein or dietary metadata, so a facet-shaped
-/// "Meals" filter would filter itself out.
+/// The **type** filter is the only thing that can select plates: they carry no cuisine,
+/// protein or dietary metadata, so a facet-shaped "Meals" filter would filter itself out.
 enum LibraryType: String, CaseIterable, Identifiable, Sendable {
     case all = "All", recipes = "Recipes", meals = "Meals"
     var id: String { rawValue }
-    /// The chip label — plates get the 🍽️ the rest of the app uses for a meal.
     var chip: String {
         switch self {
         case .all: return "All"
@@ -69,7 +63,6 @@ struct LibraryFilters {
     var dietary: Set<String> = []
     var sort: RecipeSort = .az
 
-    /// The recipe-metadata filters. Any of these on ⇒ no plate can match.
     var anyStructured: Bool {
         onlyFavorites || onlyNew || !cuisine.isEmpty || !protein.isEmpty || !dietary.isEmpty
     }
@@ -77,7 +70,6 @@ struct LibraryFilters {
 }
 
 enum LibraryFilter {
-    /// All the recipe text the search box matches against (mirrors the kiosk haystack).
     static func haystack(_ r: WaffledAPI.RecipeSummary) -> String {
         ([r.title, r.cuisine, r.protein, r.base, r.mealType, r.effort, r.cookMethod, r.collection]
             .compactMap { $0 }
@@ -85,14 +77,12 @@ enum LibraryFilter {
             .joined(separator: " ").lowercased()
     }
 
-    /// A plate matches on its own name **and on every dish title** — searching
-    /// "chicken" has to find "BBQ Sunday", whose name contains no such word.
+    /// A plate matches on its own name AND on every dish title.
     static func haystack(_ m: WaffledAPI.MealDTO) -> String {
         ([m.name] + m.recipes.compactMap(\.title)).joined(separator: " ").lowercased()
     }
 
-    /// Precomputed once per data load. Rebuilding these per keystroke is the search-
-    /// field jank trap the app has hit before.
+    /// Precomputed once per data load: rebuilding per keystroke janks the search field.
     static func haystacks(recipes: [WaffledAPI.RecipeSummary],
                           meals: [WaffledAPI.MealDTO]) -> [String: String] {
         var out: [String: String] = [:]
@@ -120,9 +110,8 @@ enum LibraryFilter {
             }
         }
 
-        // Plates carry no cuisine / protein / dietary / cook-history metadata, so any
-        // structured facet legitimately drops all of them. That is exactly why the
-        // control that *selects* plates is a type filter and not another facet.
+        // Plates carry no facet metadata, so any structured facet legitimately drops all
+        // of them — which is why the control that SELECTS plates is a type filter.
         if f.type != .recipes && !f.anyStructured {
             for m in meals {
                 if !q.isEmpty && !(haystacks[m.id] ?? "").contains(q) { continue }
@@ -141,4 +130,20 @@ enum LibraryFilter {
         case .recent: return (a.lastCookedAt ?? "") > (b.lastCookedAt ?? "")
         }
     }
+}
+
+///
+/// A plate is offered under the same rule that governs whether plate CARDS are shown:
+/// only to a caller that can take one back. A picker whose host has nowhere to put a plate
+/// must not offer to build one.
+enum LibraryNewOffer: Equatable, Sendable {
+    case recipeOnly
+    case recipeAndMeal
+
+    static func of(canPickMeal: Bool) -> LibraryNewOffer {
+        canPickMeal ? .recipeAndMeal : .recipeOnly
+    }
+
+    var offersRecipe: Bool { true }
+    var offersMeal: Bool { self == .recipeAndMeal }
 }

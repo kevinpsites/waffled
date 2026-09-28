@@ -1,7 +1,6 @@
 package backup
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -30,25 +29,30 @@ type Sidecar struct {
 	Collation string `json:"collation"`
 	SizeBytes int64  `json:"sizeBytes"`
 	TakenAt   string `json:"takenAt"`
+	// FromVersion and ToVersion are set on a pre-migrate snapshot only, and record the
+	// crossing it was taken for: the build that wrote the data, and the build about to
+	// change its schema. A routine backup leaves them empty — it marks no crossing, and
+	// its WaffledVersion above already says which build took it.
+	//
+	// They are in here as well as in the filename because a filename is prose: reading
+	// a crossing back out of one means splitting on dashes that also appear inside
+	// versions, and the whole reason this file exists is not having to do that.
+	FromVersion string `json:"fromVersion,omitempty"`
+	ToVersion   string `json:"toVersion,omitempty"`
 }
 
 // WriteSidecar records a dump's metadata beside it.
 func WriteSidecar(dumpPath string, s Sidecar) error {
-	raw, err := json.MarshalIndent(s, "", "  ")
-	if err != nil {
+	if err := atomicfile.WriteJSON(dumpPath+SidecarExt, s, 0o600); err != nil {
 		return fmt.Errorf("encode the backup metadata: %w", err)
 	}
-	return atomicfile.WriteFile(dumpPath+SidecarExt, append(raw, '\n'), 0o600)
+	return nil
 }
 
 // ReadSidecar reads a dump's metadata. Absence is a normal answer, not an error.
 func ReadSidecar(dumpPath string) (Sidecar, bool) {
-	raw, err := os.ReadFile(dumpPath + SidecarExt)
-	if err != nil {
-		return Sidecar{}, false
-	}
 	var s Sidecar
-	if err := json.Unmarshal(raw, &s); err != nil {
+	if err := atomicfile.ReadJSON(dumpPath+SidecarExt, &s); err != nil {
 		return Sidecar{}, false
 	}
 	return s, true
@@ -66,14 +70,11 @@ type failure struct {
 
 // RecordFailure notes that a backup failed, for `status` and `doctor` to surface.
 func RecordFailure(dir string, at time.Time, msg string) error {
-	raw, err := json.MarshalIndent(failure{At: at.UTC().Format(time.RFC3339), Error: msg}, "", "  ")
-	if err != nil {
-		return err
-	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	return atomicfile.WriteFile(filepath.Join(dir, failureFile), append(raw, '\n'), 0o600)
+	f := failure{At: at.UTC().Format(time.RFC3339), Error: msg}
+	return atomicfile.WriteJSON(filepath.Join(dir, failureFile), f, 0o600)
 }
 
 // ClearFailure forgets the last failure. A successful run calls it: leaving a week-old
@@ -86,16 +87,18 @@ func ClearFailure(dir string) error {
 	return nil
 }
 
-// Describe builds the `backups` block of `status --json`.
+// Describe builds the `backups` block of `status --json`. `scheduleAt` is the nightly
+// time the installed launchd agent names, empty when there is none to read.
 //
 // It reads the filesystem, never the database. "When did it last back up?" is asked
 // exactly when the stack is down — and `status` is the one command that must answer with
 // Postgres stopped. backup_runs remains the api-facing mirror of the same facts, for
 // System Health, which can only be reached when the api is up anyway.
-func Describe(dir string, scheduleInstalled bool) status.Backups {
+func Describe(dir string, scheduleInstalled bool, scheduleAt string) status.Backups {
 	out := status.Backups{
 		Dir:               dir,
 		ScheduleInstalled: scheduleInstalled,
+		ScheduleAt:        scheduleAt,
 	}
 	// Snapshots are deliberately not considered: a pre-migration rollback point is not a
 	// backup anyone should be told to rely on, and it would otherwise mask a nightly
@@ -117,11 +120,9 @@ func Describe(dir string, scheduleInstalled bool) status.Backups {
 			out.LastMigration = s.Migration
 		}
 	}
-	if raw, err := os.ReadFile(filepath.Join(dir, failureFile)); err == nil {
-		var f failure
-		if json.Unmarshal(raw, &f) == nil {
-			out.LastError, out.LastErrorAt = f.Error, f.At
-		}
+	var f failure
+	if atomicfile.ReadJSON(filepath.Join(dir, failureFile), &f) == nil {
+		out.LastError, out.LastErrorAt = f.Error, f.At
 	}
 	return out
 }

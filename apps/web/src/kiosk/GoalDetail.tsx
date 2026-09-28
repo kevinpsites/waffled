@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { AvatarStack, PersonAv } from './components/Avatar'
 import { useNavigate, useParams, useLocation } from 'react-router'
 import { LogModal } from './components/LogModal'
 import { EntryModal } from './components/EntryModal'
 import { EventModal } from './components/EventModal'
 import { ReviewList } from './components/GoalRecap'
-import { useGoalDetail, useHousehold, can, api, fmtGoalNum, type GoalMilestone, type GoalLogEntry } from '../lib/api'
+import { useGoalDetail, useHousehold, can, api, fmtGoalNum, type GoalMilestone, type GoalLogEntry, goalWeekPlanAmount, goalWeekPlanLabel } from '../lib/api'
 import { parseGoalDate } from '../lib/goalStats'
 import { useTopbarFull } from './topbar-slot'
 import { CATEGORIES } from './categories'
@@ -189,6 +190,9 @@ export function GoalDetail() {
     navigate('/goals')
   }
 
+  const currentPlan = goal.weekPlans?.find((t) => t.current) ?? null
+  const laterPlans = (goal.weekPlans ?? []).filter((t) => !t.current)
+
   return (
     <div className="goal-detail">
       {/* hero banner */}
@@ -212,9 +216,11 @@ export function GoalDetail() {
           <div className="detail-week">
             <div className="detail-week-l">THIS WEEK</div>
             <div className="detail-week-n">
-              {fmtNum(goal.thisWeek)}
-              {goal.unit ? ` ${goal.unit}` : ''}
+              {currentPlan ? goalWeekPlanAmount(currentPlan, goal.unit) : `${fmtNum(goal.thisWeek)}${goal.unit ? ` ${goal.unit}` : ''}`}
             </div>
+            {laterPlans.map((t) => (
+              <div key={t.weekStart} className="detail-week-next">{goalWeekPlanLabel(t, goal.unit)}</div>
+            ))}
           </div>
         </div>
       </div>
@@ -285,13 +291,9 @@ export function GoalDetail() {
               >
                 <div className="lwhen">{fmtDay(r.loggedAt)}</div>
                 {r.participants.length > 0 ? (
-                  <div className="avstack">
-                    {r.participants.map((p) => (
-                      <div key={p.personId ?? p.name} className="av sm" style={{ background: `${p.colorHex ?? '#A6A29B'}22` }}>{p.avatarEmoji ?? '🙂'}</div>
-                    ))}
-                  </div>
+                  <AvatarStack members={r.participants} />
                 ) : (
-                  <div className="av sm" style={{ background: '#A6A29B22' }}>🙂</div>
+                  <PersonAv person={{}} />
                 )}
                 <div className="lwhat">{r.note || 'Logged progress'}</div>
                 <div className="lamt">

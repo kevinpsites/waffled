@@ -1,3 +1,5 @@
+import { isNoAnswer, markUnanswered, reportNetworkFailure, reportStatus } from './reachability'
+
 // Shared fetch helpers for the api client. In dev, Vite proxies /api to the api
 // container; in the stack, Caddy does. Auth is a JWT session: a short-lived access
 // token + a rotating refresh token in localStorage (set by the login/setup flow).
@@ -155,13 +157,35 @@ export function clearSession(): void {
   window.dispatchEvent(new Event('waffled:auth-changed'))
 }
 
+// Every request doubles as a reachability sample (see ./reachability): the store
+// needs to hear the answers as well as the silences, and a rejected fetch is tagged
+// so a caller can tell "the server never answered" from "the server said no". A
+// caller's own abort is neither, so it reports nothing.
+export async function trackedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  try {
+    const res = await fetch(path, init)
+    reportStatus(res.status, res.headers?.get('content-type'))
+    return res
+  } catch (err) {
+    if (init.signal?.aborted) throw err
+    reportNetworkFailure()
+    throw markUnanswered(err)
+  }
+}
+
+// A proxy answering for an api that didn't gets the same "no answer" tag a rejected
+// fetch does — but only when the body isn't the api's own JSON (see isNoAnswer).
+export function tagIfGateway<E>(err: E, res: Response): E {
+  return isNoAnswer(res.status, res.headers?.get('content-type')) ? markUnanswered(err) : err
+}
+
 // Single in-flight refresh shared across concurrent 401s.
 let refreshing: Promise<boolean> | null = null
 function refreshSession(): Promise<boolean> {
   const rt = getRefreshToken()
   if (!rt) return Promise.resolve(false)
   if (!refreshing) {
-    refreshing = fetch('/api/auth/refresh', {
+    refreshing = trackedFetch('/api/auth/refresh', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ refreshToken: rt }),
@@ -192,19 +216,36 @@ function endLostSession(): void {
   else clearSession()
 }
 
+// A 403 that no session can ever satisfy: the household the token names is gone (a
+// restored database, a deleted household, a rebuilt stack), so refreshing only mints
+// another token for the same hole. Keyed on the server's `NoHousehold` code — never on
+// the bare status and never on the message, because an ordinary permission denial is a
+// 403 too and signing somebody out for lacking a capability would be worse than the
+// stuck session this ends.
+async function householdIsGone(res: Response): Promise<boolean> {
+  try {
+    const body = (await res.clone().json()) as { error?: unknown } | null
+    return body?.error === 'NoHousehold'
+  } catch {
+    return false // an unreadable body is not evidence of anything
+  }
+}
+
 // fetch with the bearer token + one transparent refresh-and-retry on 401.
 async function authFetch(path: string, init: RequestInit): Promise<Response> {
   const withAuth = (tok?: string): RequestInit => ({
     ...init,
     headers: { ...(init.headers as Record<string, string>), ...(tok ? { authorization: `Bearer ${tok}` } : {}) },
   })
-  let res = await fetch(path, withAuth(getAccessToken()))
+  let res = await trackedFetch(path, withAuth(getAccessToken()))
   if (res.status === 401 && getRefreshToken()) {
     if (await refreshSession()) {
-      res = await fetch(path, withAuth(getAccessToken()))
+      res = await trackedFetch(path, withAuth(getAccessToken()))
     } else {
       endLostSession() // refresh failed → picker (kiosk) or login
     }
+  } else if (res.status === 403 && (await householdIsGone(res))) {
+    endLostSession() // the household is gone → picker (kiosk) or login
   }
   return res
 }
@@ -216,7 +257,7 @@ function refreshDeviceToken(): Promise<boolean> {
   const secret = getDeviceSecret()
   if (!secret) return Promise.resolve(false)
   if (!refreshingDevice) {
-    refreshingDevice = fetch('/api/kiosk/device/token', {
+    refreshingDevice = trackedFetch('/api/kiosk/device/token', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ deviceSecret: secret }),
@@ -251,10 +292,10 @@ export async function deviceFetch(path: string, init: RequestInit): Promise<Resp
     await refreshDeviceToken()
     tok = getDeviceToken()
   }
-  let res = await fetch(path, withAuth(tok))
+  let res = await trackedFetch(path, withAuth(tok))
   if (res.status === 401) {
     if (await refreshDeviceToken()) {
-      res = await fetch(path, withAuth(getDeviceToken()))
+      res = await trackedFetch(path, withAuth(getDeviceToken()))
     } else {
       clearKioskDevice() // device revoked → back to login
     }
@@ -264,7 +305,7 @@ export async function deviceFetch(path: string, init: RequestInit): Promise<Resp
 
 export async function apiGet<T>(path: string): Promise<T> {
   const res = await authFetch(path, {})
-  if (!res.ok) throw new Error(`${path} -> ${res.status}`)
+  if (!res.ok) throw tagIfGateway(new Error(`${path} -> ${res.status}`), res)
   return res.json() as Promise<T>
 }
 
@@ -310,7 +351,7 @@ export async function apiSend<T>(method: string, path: string, body?: unknown, s
   })
   if (!res.ok) {
     const errBody = (await res.json().catch(() => ({}))) as Record<string, unknown>
-    throw new ApiSendError(method, path, res.status, errBody)
+    throw tagIfGateway(new ApiSendError(method, path, res.status, errBody), res)
   }
   if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
@@ -318,7 +359,7 @@ export async function apiSend<T>(method: string, path: string, body?: unknown, s
 
 export async function apiDelete(path: string): Promise<void> {
   const res = await authFetch(path, { method: 'DELETE' })
-  if (!res.ok) throw new Error(`DELETE ${path} -> ${res.status}`)
+  if (!res.ok) throw tagIfGateway(new Error(`DELETE ${path} -> ${res.status}`), res)
 }
 
 // Local YYYY-MM-DD (kiosk timezone), used to match "tonight" and window the week.

@@ -2,13 +2,10 @@ import Foundation
 import Testing
 @testable import Waffled
 
-// A saved plate is a first-class citizen of the recipe library (decision 11): it sits
-// in the same grid as the recipes, carries a type badge, and the search box matches it.
-//
-// The subtlety that has to be encoded rather than assumed: plates carry NO cuisine,
-// protein or dietary metadata, so every structured facet legitimately excludes them.
-// The filter that *selects* plates therefore has to be a **type** filter — a facet
-// would filter itself out.
+// A saved plate is a first-class citizen of the recipe library: same grid, a type badge, and the
+// search box matches it. The subtlety to encode rather than assume: plates carry NO cuisine,
+// protein or dietary metadata, so the filter that *selects* them has to be a **type** filter —
+// a facet would filter itself out.
 
 private func libRecipe(_ id: String, _ title: String, cuisine: String? = nil,
                        protein: String? = nil, dietary: [String]? = nil,
@@ -42,21 +39,18 @@ private func libRecipe(_ id: String, _ title: String, cuisine: String? = nil,
                               haystacks: LibraryFilter.haystacks(recipes: recipes, meals: meals))
     }
 
-    /// Unfiltered, plates and recipes share one list.
     @Test func mergesPlatesIntoTheRecipeLibrary() {
         let ids = entries(LibraryFilters()).map(\.id)
         #expect(Set(ids) == ["r1", "r2", "m1", "m2"])
     }
 
-    /// The type badge is what tells a plate from a recipe on the card.
     @Test func aPlateIsMarkedAsAMeal() {
         let list = entries(LibraryFilters())
         #expect(list.first { $0.id == "m1" }?.isMeal == true)
         #expect(list.first { $0.id == "r1" }?.isMeal == false)
     }
 
-    /// Searching a DISH's title finds the plate that contains it — "chicken" must
-    /// find "BBQ Sunday", whose own name contains no such word.
+    /// Searching a DISH's title finds the plate that contains it, whose own name has no such word.
     @Test func searchMatchesAPlateByOneOfItsDishes() {
         var f = LibraryFilters()
         f.query = "chicken"
@@ -69,7 +63,6 @@ private func libRecipe(_ id: String, _ title: String, cuisine: String? = nil,
         #expect(entries(f).map(\.id) == ["m1"])
     }
 
-    /// The type filter is the ONLY way to see just the plates.
     @Test func theMealsTypeFilterSelectsOnlyPlates() {
         var f = LibraryFilters()
         f.type = .meals
@@ -82,9 +75,8 @@ private func libRecipe(_ id: String, _ title: String, cuisine: String? = nil,
         #expect(Set(entries(f).map(\.id)) == ["r1", "r2"])
     }
 
-    /// A structured facet legitimately drops every plate — plates have no cuisine,
-    /// protein or dietary metadata to match against. This is why the selector had to
-    /// be a type filter and not a facet.
+    /// A structured facet legitimately drops every plate — which is why the selector had to be
+    /// a type filter and not a facet.
     @Test func aStructuredFacetExcludesEveryPlate() {
         var f = LibraryFilters()
         f.cuisine = ["mexican"]
@@ -96,22 +88,18 @@ private func libRecipe(_ id: String, _ title: String, cuisine: String? = nil,
         #expect(entries(g).isEmpty)
     }
 
-    /// A–Z sorts the merged list by title, not recipes-then-plates.
     @Test func sortsTheMergedListAlphabetically() {
         var f = LibraryFilters()
         f.sort = .az
         #expect(entries(f).map(\.title) == ["BBQ Sunday", "Miso Soup", "Taco Night", "Tacos"])
     }
 
-    /// Quickest reads the plate's own `totalMinutes` (the sum across its dishes).
     @Test func sortsPlatesByTheirTotalTime() {
         var f = LibraryFilters()
         f.sort = .quickest
         #expect(entries(f).map(\.id) == ["r2", "m2", "r1", "m1"])
     }
 
-    /// Cook history is recipe-only, so a "most cooked" sort must not float untracked
-    /// plates above recipes people actually cook.
     @Test func cookHistorySortsPlatesLast() {
         let cooked = [libRecipe("r1", "Tacos", cookedCount: 9)]
         var f = LibraryFilters()
@@ -120,5 +108,28 @@ private func libRecipe(_ id: String, _ title: String, cuisine: String? = nil,
                                          haystacks: LibraryFilter.haystacks(recipes: cooked, meals: meals))
         #expect(list.first?.id == "r1")
         #expect(list.dropFirst().allSatisfy { $0.isMeal })
+    }
+}
+
+// MARK: - what the library's ＋ offers
+
+/// The rule is the same one that governs whether PLATE CARDS are shown: offer a plate only to a
+/// caller that can take one back. A picker whose host has nowhere to put a plate must not offer
+/// to build one.
+@Suite struct LibraryNewOfferTests {
+
+    @Test func browsingOffersBoth() {
+        #expect(LibraryNewOffer.of(canPickMeal: true) == .recipeAndMeal)
+    }
+
+    @Test func aPickerThatCanTakeAPlateOffersToBuildOne() {
+        #expect(LibraryNewOffer.of(canPickMeal: true).offersMeal)
+    }
+
+    @Test func aPickerThatCannotTakeAPlateOffersOnlyARecipe() {
+        let offer = LibraryNewOffer.of(canPickMeal: false)
+        #expect(offer == .recipeOnly)
+        #expect(!offer.offersMeal)
+        #expect(offer.offersRecipe)
     }
 }

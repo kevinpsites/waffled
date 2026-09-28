@@ -11,6 +11,11 @@
 // bin/postgres/lib carries 17 relative links without which `postgres` dies at dyld
 // time, and PowerSync's node_modules is a 1,321-link pnpm farm. Following them would
 // both mis-hash and produce thousands of phantom entries.
+//
+// One rule is not set equality and could not be: every symlink must also resolve INSIDE
+// the bundle (escapesRoot). A link that escaped when the bundle was built is recorded
+// faithfully, so the manifest agrees with the disk and nothing else notices — but the
+// bundle is relocatable only because all of its links are relative and land inside it.
 package manifest
 
 import (
@@ -21,6 +26,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -247,6 +253,18 @@ func Verify(root string) (*Manifest, error) {
 		return nil, err
 	}
 
+	// Containment, checked before set equality because set equality cannot see it: a link
+	// that already pointed outside the tree when the bundle was built is recorded
+	// faithfully, so the manifest and the disk agree and every other rule passes. What
+	// makes the bundle relocatable is that all 1,338 of its links are relative and land
+	// inside it; one that escapes resolves to something real on the machine that built it
+	// and to something else — or nothing — on the machine that unpacks the app.
+	for _, rel := range sortedStringKeys(symlinks) {
+		if escapesRoot(rel, symlinks[rel]) {
+			problems = append(problems, fmt.Sprintf("symlink escapes the bundle: %s → %s", rel, symlinks[rel]))
+		}
+	}
+
 	for _, rel := range sortedFileKeys(m.Files) {
 		want := m.Files[rel]
 		got, ok := files[rel]
@@ -381,6 +399,25 @@ func refusal(root string, problems []string) error {
 	}
 	return fmt.Errorf("the runtime bundle at %s does not match its manifest (%d problem(s)) — "+
 		"refusing to start:\n  %s%s", root, len(problems), strings.Join(shown, "\n  "), suffix)
+}
+
+// escapesRoot reports whether the symlink at rel — a POSIX path relative to the bundle
+// root — would resolve outside the bundle when followed. The comparison is lexical and
+// happens entirely in relative space, never against an absolute root: a bundle can sit
+// under symlinks of its own (/var → /private/var on macOS, or an app in a symlinked
+// checkout), and resolving through those would compare two different spellings of the
+// same tree. A target that resolves to the root itself stays inside it.
+//
+// The twin rule lives in infra/native/bundle/manifest.mjs verify(), which is what
+// `build.sh verify` runs; the two must agree, and the manifest tests pin both edges
+// (root itself: allowed; absolute: never).
+func escapesRoot(rel, target string) bool {
+	t := filepath.ToSlash(target)
+	if path.IsAbs(t) {
+		return true
+	}
+	resolved := path.Join(path.Dir(rel), t)
+	return resolved == ".." || strings.HasPrefix(resolved, "../")
 }
 
 // Only the owner-exec bit is load-bearing: a copy keeps it, while umask may alter the rest.

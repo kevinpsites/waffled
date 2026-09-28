@@ -1,56 +1,57 @@
 import SwiftUI
 import UIKit
 
-/// The REAL on-screen keyboard overlap, tracked from UIKit's
-/// `keyboardWillChangeFrame` end-frames and converted into the app window's
-/// coordinate space (so Split View / Slide Over / Stage Manager windows measure
-/// against their own bounds, not the physical screen).
+/// The REAL on-screen keyboard overlap, from UIKit's `keyboardWillChangeFrame` end-frames,
+/// in the app window's coordinate space (so Split View / Stage Manager measure their own).
 ///
-/// Why it exists: on iPad in landscape, the keyboard safe-area inset SwiftUI's
-/// automatic avoidance applies is ~170pt SHORT of the docked keyboard's true height
-/// (the accessory + predictive rows go uncounted), so bottom-pinned chrome — the
-/// grocery list's "Add item" bar — landed under the keys and "disappeared" while
-/// typing. The kiosk lists page instead lifts its add bar by the measured shortfall:
-/// see `ListDetailView.kioskBody` (render-time `.offset` by `barShift`, plus a
-/// matching List content margin so the last rows stay scrollable). Any future
-/// bottom-pinned input on a kiosk surface can reuse this the same way.
+/// On iPad in landscape the keyboard safe-area inset SwiftUI applies is ~170pt SHORT of the
+/// docked keyboard's true height, so bottom-pinned chrome landed under the keys. Surfaces
+/// lift by the measured shortfall — see `ListDetailView.kioskBody`.
 @Observable @MainActor final class KeyboardState {
     static let shared = KeyboardState()
 
-    /// Points of the app window's height the docked keyboard currently covers
-    /// (0 = hidden or floating).
+    /// Points of the window's height the docked keyboard covers (0 = hidden or floating).
     private(set) var overlap: CGFloat = 0
-    /// The docked keyboard's top edge in the window's coordinate space — the same
-    /// space as SwiftUI's `.global` frames — or nil when it isn't covering anything.
+    /// The docked keyboard's top edge in window space — SwiftUI's `.global` space — or nil.
     private(set) var topInWindow: CGFloat? = nil
 
-    /// How much of `container` (the app window's bounds) the keyboard's end-frame
-    /// covers, measured from the keyboard's top edge. A frame narrower than the
-    /// container is the iPad floating mini keyboard (or a split half) hovering over
-    /// content — it doesn't dock, so it must not push the layout up. A docked
-    /// keyboard always spans at least the window's width (in Split View it converts
-    /// wider, since it spans the whole screen).
+    /// How much of `container` the end-frame covers. A frame narrower than the container is
+    /// the iPad floating mini keyboard: it doesn't dock, so it must not push the layout up.
     nonisolated static func overlap(container: CGRect, keyboard: CGRect) -> CGFloat {
         guard keyboard.width >= container.width else { return 0 }
         return max(0, container.maxY - keyboard.minY)
     }
 
-    /// How far a bottom-pinned bar whose (unshifted) bottom edge sits at
-    /// `columnBottom` must ride up to clear a keyboard whose top edge is at
-    /// `keyboardTop` — both in window coordinates. 0 when there's no keyboard, the
-    /// column hasn't been measured yet, or the system's own avoidance already put
-    /// the bar above the keys (the fix self-corrects wherever iPadOS gets it right).
+    /// Whether a docked keyboard should take the phone's tab bar off screen.
+    ///
+    /// The bar is 64pt of chrome you cannot reach while typing. `AppRoot` reads this to drop
+    /// it; a screen with its own pinned bar reads it to stop reserving `WF.fixedBarClearance`.
+    /// One place, or the two copies drift into a dead gap or a control under the keys.
+    nonisolated static func hidesBottomBar(overlap: CGFloat) -> Bool { overlap > 0 }
+
+    var hidesBottomBar: Bool { Self.hidesBottomBar(overlap: overlap) }
+
+    /// How far a bottom-pinned bar at `columnBottom` must ride up to clear a keyboard topped
+    /// at `keyboardTop`. 0 with no keyboard, no measurement, or where the system got it right.
     nonisolated static func barShift(columnBottom: CGFloat, keyboardTop: CGFloat?) -> CGFloat {
         guard let keyboardTop, columnBottom > 0 else { return 0 }
         return max(0, columnBottom - keyboardTop)
     }
 
     private init() {
-        // Headless verification: WAFFLED_FAKE_KB_TOP=<windowY> pretends a docked
-        // keyboard's top edge sits at that window-space Y, so landscape lift behavior
-        // can be screenshot without the Simulator's flaky programmatic focus.
+            // Headless verification: WAFFLED_FAKE_KB_TOP=<windowY> pretends a docked keyboard
+            // sits there, so landscape lift can be screenshot without the Simulator's flaky
+            // focus. It sets `overlap` too: with a REAL keyboard up you cannot tell "the tab
+            // bar hid" from "the tab bar is behind the keyboard".
         if let fake = AppConfig.env("WAFFLED_FAKE_KB_TOP").flatMap(Double.init) {
             topInWindow = CGFloat(fake)
+            let windowMaxY = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap(\.windows)
+                .first(where: \.isKeyWindow)?.bounds.maxY
+                // A positive fallback when the window isn't up yet: ANY positive value has to
+                // make the docked-ness true, or the hook pretends a keyboard that covers nothing.
+            overlap = max(1, (windowMaxY ?? CGFloat(fake) + 1) - CGFloat(fake))
         }
         let nc = NotificationCenter.default
         nc.addObserver(forName: UIResponder.keyboardWillChangeFrameNotification,
@@ -70,8 +71,8 @@ import UIKit
                   .flatMap(\.windows)
                   .first(where: \.isKeyWindow)
         else { return }
-        // The notification's frame is in screen coordinates; the app window may not
-        // cover the screen (Split View / Stage Manager), so convert before comparing.
+        // The notification's frame is in screen coordinates and the window may not cover the
+        // screen (Split View), so convert before comparing.
         let inWindow = window.coordinateSpace.convert(end, from: window.screen.coordinateSpace)
         let duration = note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
         let new = Self.overlap(container: window.bounds, keyboard: inWindow)

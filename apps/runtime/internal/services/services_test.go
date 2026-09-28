@@ -2,6 +2,7 @@ package services
 
 import (
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -50,7 +51,7 @@ func envMap(pairs []string) map[string]string {
 // NODE_ENV=development in someone's ~/.zshrc would silently win over ours.
 func TestChildEnvironmentIsBuiltFromScratch(t *testing.T) {
 	p := testPlan(t)
-	for _, spec := range []Spec{p.API(), p.PowerSync(), p.Caddy(), p.Migrate()} {
+	for _, spec := range []Spec{p.API(), p.PowerSync(), p.Caddy(), p.Migrate(), p.Admin(nil)} {
 		e := envMap(spec.Env)
 		if e["PATH"] != "/usr/bin:/bin" {
 			t.Errorf("%s: PATH = %q, want a minimal one", spec.Name, e["PATH"])
@@ -116,6 +117,82 @@ func TestAPIRunsTheBundledNodeInProductionOnLoopback(t *testing.T) {
 	// Provenance from the manifest, so System Health stops reporting sha "dev".
 	if e["GIT_SHA"] != "a506c352" || e["BUILD_TIME"] != "2026-09-04T23:48:42.438Z" {
 		t.Errorf("provenance not passed: GIT_SHA=%q BUILD_TIME=%q", e["GIT_SHA"], e["BUILD_TIME"])
+	}
+}
+
+// The settings a household is meant to tune reach the api — every one of them a key the
+// api reads, with the value config.env holds.
+func TestHouseholdSettingsReachTheAPI(t *testing.T) {
+	p := testPlan(t)
+	want := map[string]string{
+		"AI_TIMEOUT_MS":                "45000",
+		"AI_MAX_RETRIES":               "1",
+		"OIDC_NATIVE_REDIRECT_URI":     "waffled://auth/callback",
+		"RATE_LIMIT_SETUP_MAX":         "6",
+		"RATE_LIMIT_LOGIN_ACCOUNT_MAX": "11",
+		"RATE_LIMIT_LOGIN_IP_MAX":      "51",
+		"RATE_LIMIT_OIDC_START_MAX":    "31",
+		"RATE_LIMIT_OIDC_EXCHANGE_MAX": "21",
+		"RATE_LIMIT_REFRESH_MAX":       "61",
+		"RATE_LIMIT_KIOSK_PAIR_MAX":    "12",
+		"RATE_LIMIT_KIOSK_TOKEN_MAX":   "32",
+		"RATE_LIMIT_MEDIA_MAX":         "33",
+	}
+	for k, v := range want {
+		p.Env.Set(k, v)
+	}
+	got := envMap(p.API().Env)
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s = %q in the api's environment, want %q", k, got[k], v)
+		}
+	}
+}
+
+// Logging is the household's to choose, within what the api understands. A value it does
+// not know becomes the default here, so the environment says what is really in force.
+func TestTheAPILogsTheWayConfigEnvAsks(t *testing.T) {
+	for _, c := range []struct {
+		level, format         string
+		wantLevel, wantFormat string
+	}{
+		{"", "", "info", "json"},
+		{"debug", "pretty", "debug", "pretty"},
+		{"WARN", "json", "warn", "json"},
+		{"error", "", "error", "json"},
+		{"verbose", "text", "info", "json"},
+	} {
+		p := testPlan(t)
+		p.Env.Set("LOG_LEVEL", c.level)
+		p.Env.Set("LOG_FORMAT", c.format)
+		e := envMap(p.API().Env)
+		if e["LOG_LEVEL"] != c.wantLevel || e["LOG_FORMAT"] != c.wantFormat {
+			t.Errorf("config.env %q/%q gave the api LOG_LEVEL=%q LOG_FORMAT=%q, want %q/%q",
+				c.level, c.format, e["LOG_LEVEL"], e["LOG_FORMAT"], c.wantLevel, c.wantFormat)
+		}
+	}
+}
+
+// The allowlist is the boundary between a hand-edited config.env and the api's
+// environment, so what stays OUT is pinned as deliberately as what goes in. OTEL only
+// ever loads through the preload the bundle does not ship, the update notifier is off
+// so its repo is never read, and AUTH0_DOMAIN switches the api into a different auth mode.
+func TestKeysThatWouldDoNothingOrHarmStayOut(t *testing.T) {
+	p := testPlan(t)
+	for _, k := range []string{
+		"OTEL_SDK_DISABLED", "OTEL_EXPORTER_OTLP_ENDPOINT", "UPDATE_CHECK_REPO",
+		"AUTH0_DOMAIN", "NODE_OPTIONS", "SOMETHING_ELSE",
+	} {
+		p.Env.Set(k, "x")
+	}
+	got := envMap(p.API().Env)
+	for _, k := range []string{
+		"OTEL_SDK_DISABLED", "OTEL_EXPORTER_OTLP_ENDPOINT", "UPDATE_CHECK_REPO",
+		"AUTH0_DOMAIN", "NODE_OPTIONS", "SOMETHING_ELSE",
+	} {
+		if _, ok := got[k]; ok {
+			t.Errorf("%s reached the api's environment", k)
+		}
 	}
 }
 
@@ -210,6 +287,65 @@ func TestMigrateIsAOneShotWithTheDatabaseURL(t *testing.T) {
 	// bundle's own dist directory layout — never a copy that flattens it.
 	if !strings.HasSuffix(spec.Args[len(spec.Args)-1], filepath.Join("api", "dist", "migrate.js")) {
 		t.Errorf("migrate must run the bundled dist/migrate.js so ../migrations resolves: %v", spec.Args)
+	}
+}
+
+// `admin` is the break-glass CLI the Docker install runs with `docker exec waffled-api
+// node dist/admin.js`. Natively it is the same file, run by the bundled node with the
+// api's database environment — and the path is derived from migrate's, so a bundle that
+// moves api/dist says so in one place.
+func TestAdminRunsTheBundledAdminCLIWithTheAPIsDatabase(t *testing.T) {
+	p := testPlan(t)
+	spec := p.Admin([]string{"reset-password", "--email", "a@b"})
+
+	if spec.Path != filepath.Join(p.Bundle, "bin", "node") {
+		t.Errorf("admin must run the bundled node, got %q", spec.Path)
+	}
+	want := []string{
+		spec.Path, filepath.Join(p.Bundle, "api", "dist", "admin.js"),
+		"reset-password", "--email", "a@b",
+	}
+	if !reflect.DeepEqual(spec.Args, want) {
+		t.Errorf("admin argv = %q, want %q", spec.Args, want)
+	}
+	p.Env.Set("ACCESS_TOKEN_TTL_SECONDS", "900")
+	e := envMap(p.Admin(nil).Env)
+	if e["DATABASE_URL"] != p.Env.DatabaseURL(5434, "waffled") {
+		t.Errorf("DATABASE_URL = %q", e["DATABASE_URL"])
+	}
+	// The api's own settings reach it too: a session prune and a password reset are
+	// governed by the same token lifetimes the api runs with.
+	if e["ACCESS_TOKEN_TTL_SECONDS"] != "900" {
+		t.Errorf("ACCESS_TOKEN_TTL_SECONDS = %q, want the household's own 900", e["ACCESS_TOKEN_TTL_SECONDS"])
+	}
+	// setPersonLogin encrypts and signs with these; without them a reset writes a login
+	// nothing can verify.
+	for _, key := range []string{"LOCAL_JWT_SECRET", "TOKEN_ENCRYPTION_KEY"} {
+		if e[key] == "" {
+			t.Errorf("%s was not passed to admin", key)
+		}
+	}
+	if e["PATH"] != "/usr/bin:/bin" {
+		t.Errorf("PATH = %q, want a minimal one", e["PATH"])
+	}
+}
+
+// A pin, not a red-green test: the three node processes that open the database must carry
+// the same credentials, so a variable added to the api later cannot reach two of them and
+// leave `admin` connecting but unable to sign or decrypt.
+func TestEveryDatabaseServiceCarriesTheSameCredentials(t *testing.T) {
+	p := testPlan(t)
+	api := envMap(p.API().Env)
+	for name, spec := range map[string]Spec{"migrate": p.Migrate(), "admin": p.Admin(nil)} {
+		e := envMap(spec.Env)
+		for _, key := range []string{
+			"NODE_ENV", "DATABASE_URL", "LOCAL_JWT_SECRET",
+			"TOKEN_ENCRYPTION_KEY", "POWERSYNC_JWT_PRIVATE_KEY",
+		} {
+			if e[key] != api[key] {
+				t.Errorf("%s: %s = %q, want the api's %q", name, key, e[key], api[key])
+			}
+		}
 	}
 }
 

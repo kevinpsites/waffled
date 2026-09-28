@@ -6,6 +6,9 @@
 //	waffled-runtime status [--json]
 //	waffled-runtime logs [service] [-f] [-n N]
 //	waffled-runtime doctor [--json]
+//	waffled-runtime admin [--data DIR] <command> [args…]
+//	waffled-runtime uninstall [--delete-data] [--dry-run] [--json] [--yes]
+//	waffled-runtime move --to DIR [--dry-run] [--json]
 //	waffled-runtime version
 //
 // It is a CLI first, deliberately: everything the menu-bar app does, support can ask
@@ -22,13 +25,16 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/kevinpsites/waffled/apps/runtime/internal/datadir"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/schedule"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/services"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/supervisor"
+	"github.com/kevinpsites/waffled/apps/runtime/internal/uninstall"
 )
 
 // version is stamped at build time (-ldflags "-X main.version=..."); the bundle's own
@@ -41,10 +47,14 @@ Usage:
   waffled-runtime start [flags]     start the stack (detaches unless --foreground)
   waffled-runtime stop [flags]      stop the stack, in reverse order
   waffled-runtime status [flags]    what is running, on which ports
-  waffled-runtime logs [service]    show a service log (postgres, migrate, api, powersync, caddy, runtime)
+  waffled-runtime logs [service]    show a service log (postgres, migrate, api, powersync, caddy, bonjour, runtime)
   waffled-runtime backup [flags]    dump the database to the backups folder
   waffled-runtime restore FILE      replace the database with a dump (destructive)
   waffled-runtime doctor [flags]    diagnose a stack that will not start
+  waffled-runtime uninstall [flags] remove what the runtime put on this Mac (keeps your data)
+  waffled-runtime config set KEY=VALUE   write one setting into config.env
+  waffled-runtime admin <command>   break-glass operator commands (reset a password, grant admin…)
+  waffled-runtime move [flags]      move the data directory to another folder
   waffled-runtime version
 
 Common flags:
@@ -62,15 +72,41 @@ logs:
   -n N           lines to show (default 200)
 backup:
   --out FILE            write here instead of the backups folder (retention is then skipped)
-  --keep N              how many backups to keep (default 14)
-  --install-schedule    install a nightly 03:00 backup as a launchd agent
+  --keep N              how many backups to keep (default: what the nightly backup
+                        keeps, else 14); with --install-schedule, what it keeps
+  --install-schedule    install a nightly backup as a launchd agent
+  --at HH:MM            the time it runs, 24-hour local (default 03:00)
   --uninstall-schedule  remove it
 restore:
   --yes          skip the typed confirmation (required when there is no terminal)
+config set:
+  KEY=VALUE      the setting to write; the key is upper case and the value is never
+                 printed back. Creates the data directory and config.env if needed.
+admin:
+  <command>      forwarded to the bundled operator CLI, along with everything after it.
+                 --bundle/--data go BEFORE the command. "admin help" lists the commands.
+move:
+  --to DIR       the folder to move the data directory to; it must be empty, on this
+                 Mac, and not inside the folder being moved. Refuses while the server
+                 is running — stop it first.
+  --dry-run      print what would happen and change nothing
+  --json         machine-readable output
+uninstall:
+  --delete-data  also delete the data directory — the database, media, backups and the
+                 secrets in config.env, which cannot be recovered (default: keep it)
+  --dry-run      print the plan and change nothing
+  --json         machine-readable output (schema 1)
+  --yes          stop the server first if it is still running
 `
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
+		// A passthrough command's child has already said why, in its own words; this
+		// process only carries its exit code out to the shell.
+		var exit *exitCodeError
+		if errors.As(err, &exit) {
+			os.Exit(exit.code)
+		}
 		fmt.Fprintf(os.Stderr, "✗ %v\n", err)
 		os.Exit(1)
 	}
@@ -96,6 +132,14 @@ func run(args []string) error {
 		return cmdRestore(args[1:])
 	case "doctor":
 		return cmdDoctor(args[1:])
+	case "uninstall":
+		return cmdUninstall(args[1:])
+	case "config":
+		return cmdConfig(args[1:])
+	case "admin":
+		return cmdAdmin(args[1:])
+	case "move":
+		return cmdMove(args[1:])
 	case "version", "--version", "-v":
 		fmt.Printf("waffled-runtime %s\n", version)
 		return nil
@@ -128,9 +172,23 @@ func newSupervisor(c *commonFlags, log *supervisor.Logger) (*supervisor.Supervis
 	return supervisor.New(supervisor.Options{BundleDir: c.bundle, DataDir: c.data, Log: log})
 }
 
-// newInspector is newSupervisor for the read-only commands. They must still work when
-// something has taken one of our ports — that is precisely when someone runs them — so
-// a conflict becomes a reported fault rather than a refusal to start up at all.
+// newReader is for the commands that only ever look: `status`, `doctor`, `stop` and
+// `logs`. On a data directory that does not exist yet they must not become its first run
+// — the Mac app polls `status` before the setup window is even on screen, and a
+// construction that allocated and saved ports there would spend the household's first
+// allocation before anyone had chosen one.
+func newReader(c *commonFlags, log *supervisor.Logger) (*supervisor.Supervisor, error) {
+	return supervisor.New(supervisor.Options{
+		BundleDir: c.bundle, DataDir: c.data, Log: log,
+		TolerateConflicts: true, ReadOnly: true,
+	})
+}
+
+// newInspector is newSupervisor for the tolerant commands that DO write: `backup` and
+// `restore`. They must still work when something has taken one of our ports — that is
+// precisely when someone runs them — so a conflict becomes a reported fault rather than
+// a refusal to start up at all, and a backup taken before the first start still has to
+// bring a server up to take it.
 func newInspector(c *commonFlags, log *supervisor.Logger) (*supervisor.Supervisor, error) {
 	return supervisor.New(supervisor.Options{
 		BundleDir: c.bundle, DataDir: c.data, Log: log, TolerateConflicts: true,
@@ -181,7 +239,7 @@ func cmdStop(args []string) error {
 	// port, refusing to construct would leave `stop` unable to shut down the services
 	// that ARE still running — the command whose whole job is freeing ports, blocked by
 	// a port being occupied.
-	s, err := newInspector(common, supervisor.NewLogger(os.Stderr, false))
+	s, err := newReader(common, supervisor.NewLogger(os.Stderr, false))
 	if err != nil {
 		return err
 	}
@@ -198,7 +256,7 @@ func cmdStatus(args []string) error {
 		return err
 	}
 	// Status must not narrate; it is parsed.
-	s, err := newInspector(common, supervisor.NewLogger(os.Stderr, true))
+	s, err := newReader(common, supervisor.NewLogger(os.Stderr, true))
 	if err != nil {
 		return err
 	}
@@ -219,14 +277,32 @@ func cmdBackup(args []string) error {
 	fs := flag.NewFlagSet("backup", flag.ContinueOnError)
 	common := addCommon(fs)
 	out := fs.String("out", "", "write the dump here instead of the backups folder")
-	keep := fs.Int("keep", 0, "how many backups to keep (default 14)")
+	keep := fs.Int("keep", 0, "how many backups to keep (default: what the nightly backup keeps, else 14)")
 	install := fs.Bool("install-schedule", false, "install the nightly backup launchd agent")
 	uninstall := fs.Bool("uninstall-schedule", false, "remove the nightly backup launchd agent")
+	at := fs.String("at", "", "the nightly time to back up, HH:MM in 24-hour form (default 03:00)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *install && *uninstall {
 		return errors.New("--install-schedule and --uninstall-schedule are opposites; pick one")
+	}
+	// Both checks come before the supervisor is built: a mistyped time should be answered
+	// in the words of the time, not of a bundle this command had to verify to say so.
+	if *at != "" {
+		if !*install {
+			return errors.New("--at sets the nightly time, so it only means anything with --install-schedule")
+		}
+		if _, _, err := schedule.ParseAt(*at); err != nil {
+			return err
+		}
+	}
+	// Asked of the flag having been given, not of its value: the default is 0, and a
+	// `--keep 0` typed on purpose would otherwise quietly mean "the default".
+	keepGiven := false
+	fs.Visit(func(f *flag.Flag) { keepGiven = keepGiven || f.Name == "keep" })
+	if keepGiven && *keep < 1 {
+		return fmt.Errorf("--keep %d would keep no backups at all; it takes a count of at least 1", *keep)
 	}
 
 	// Tolerant, like status and doctor. Backing up needs Postgres and nothing else, so a
@@ -249,11 +325,24 @@ func cmdBackup(args []string) error {
 			fmt.Printf("Removed the nightly backup (%s)\n", agent.PlistPath())
 			return nil
 		}
+		// One Mac holds one nightly backup: the launchd label is global, so installing
+		// from a second data directory takes the schedule over. Said out loud rather than
+		// refused — the person running this command is the one asking for it.
+		if previous, err := agent.ScheduledDataDir(); err == nil && previous != agent.DataDir {
+			fmt.Printf("Note: this replaces the nightly backup of %s\n", previous)
+		}
+		chooseSchedule(agent, *at, *keep)
 		if err := agent.Install(); err != nil {
 			return err
 		}
-		fmt.Printf("Waffled will back up nightly at %02d:%02d → %s\n",
-			schedule.Hour, schedule.Minute, s.Plan().Layout.Backups)
+		scheduled, err := agent.ScheduledAt()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Waffled will back up nightly at %s → %s\n", scheduled, s.Plan().Layout.Backups)
+		if agent.Keep > 0 {
+			fmt.Printf("  keeping the last %d\n", agent.Keep)
+		}
 		fmt.Printf("  agent: %s\n", agent.PlistPath())
 		fmt.Printf("  log:   %s\n", s.Plan().Layout.LogPath("backup"))
 		return nil
@@ -269,14 +358,45 @@ func cmdBackup(args []string) error {
 	return nil
 }
 
+// chooseSchedule sets what an --install-schedule run asked for, and keeps whatever it did
+// not restate from the plist already installed. Omitting --at or --keep means "leave it
+// alone", not "put it back to the default": a household that chose 01:00 and 30 backups,
+// then re-ran this — following the docs, after an update, or from Settings changing only
+// one of the two — would otherwise have the other silently replaced.
+func chooseSchedule(agent *schedule.Agent, at string, keep int) {
+	agent.At, agent.Keep = at, keep
+	if at == "" {
+		if existing, err := agent.ScheduledAt(); err == nil && existing != "" {
+			agent.At = existing
+		}
+	}
+	// Only this household's own retention. The label is global, so the plist may be a
+	// schedule another data directory left behind, and its count is not ours to adopt.
+	if keep == 0 {
+		if dir, err := agent.ScheduledDataDir(); err == nil && filepath.Clean(dir) == filepath.Clean(agent.DataDir) {
+			if existing, err := agent.ScheduledKeep(); err == nil {
+				agent.Keep = existing
+			}
+		}
+	}
+}
+
 func cmdRestore(args []string) error {
 	fs := flag.NewFlagSet("restore", flag.ContinueOnError)
 	common := addCommon(fs)
 	yes := fs.Bool("yes", false, "skip the typed confirmation")
-	if err := fs.Parse(args); err != nil {
+	// Hoisted, like `config set` and `move`: Go's flag package stops at the first
+	// non-flag word, so `restore dump.sql --data DIR` parsed DIR into nothing and
+	// restored over whichever household the DEFAULT directory holds — destructively, and
+	// reporting success.
+	flags, positional := hoistFlags(args, commonValueFlags)
+	if err := fs.Parse(flags); err != nil {
 		return err
 	}
-	file := fs.Arg(0)
+	var file string
+	if len(positional) > 0 {
+		file = positional[0]
+	}
 	if file == "" {
 		return errors.New("usage: waffled-runtime restore FILE [--yes]")
 	}
@@ -330,7 +450,7 @@ func cmdDoctor(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	s, err := newInspector(common, supervisor.NewLogger(os.Stderr, true))
+	s, err := newReader(common, supervisor.NewLogger(os.Stderr, true))
 	if err != nil {
 		return err
 	}
@@ -351,21 +471,106 @@ func cmdDoctor(args []string) error {
 	return nil
 }
 
+// cmdUninstall removes what the runtime put on this machine. It is the machine-level
+// half of the Mac app's "Remove Waffled…"; the app's own half (login item, preferences,
+// Sparkle caches, the .app) is not this command's job — see the README.
+//
+// It does not build a Supervisor. Doing so would write to the directory it is about to
+// report on — the layout, config.env, runtime.json, bundle-verified.json — which would
+// make --dry-run a lie and a second run find a data directory it had just recreated.
+func cmdUninstall(args []string) error {
+	fs := flag.NewFlagSet("uninstall", flag.ContinueOnError)
+	common := addCommon(fs)
+	deleteData := fs.Bool("delete-data", false, "also delete the data directory")
+	dryRun := fs.Bool("dry-run", false, "print the plan and change nothing")
+	asJSON := fs.Bool("json", false, "machine-readable output")
+	yes := fs.Bool("yes", false, "stop the server first if it is running")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	root := common.data
+	if root == "" {
+		var err error
+		if root, err = datadir.DefaultRoot(); err != nil {
+			return err
+		}
+	}
+	if abs, err := filepath.Abs(root); err == nil {
+		root = abs
+	}
+	layout := datadir.At(root)
+
+	opts := uninstall.Options{
+		Layout:     layout,
+		Agent:      backupSchedule(common.bundle, layout),
+		DeleteData: *deleteData,
+		DryRun:     *dryRun,
+		Yes:        *yes,
+		// Narration goes to stderr so --json owns stdout.
+		Log: os.Stderr,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	report, runErr := uninstall.Run(ctx, opts)
+	// A refusal is raised before anything is attempted, so there is no outcome to print.
+	// Every other failure is partial by nature — some items removed, some not — and the
+	// report is the only way to tell those apart from "nothing happened".
+	if errors.Is(runErr, uninstall.ErrRefused) {
+		return runErr
+	}
+	if *asJSON {
+		doc, err := report.JSON()
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(doc))
+	} else {
+		fmt.Print(report.Text())
+	}
+	return runErr
+}
+
+// backupSchedule builds the nightly-backup agent for an uninstall. Only its label,
+// LaunchAgents directory and the data directory recorded in the installed plist matter
+// here, so a binary or bundle path that cannot be resolved — the app already dragged to
+// the Trash — is not a reason to stop; nil simply means "leave the schedule out of the
+// inventory".
+func backupSchedule(bundle string, layout datadir.Layout) uninstall.ScheduleAgent {
+	exe, err := os.Executable()
+	if err != nil {
+		exe = ""
+	}
+	agent, err := schedule.For(exe, bundle, layout.Root, layout.LogPath("backup"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "! could not locate ~/Library/LaunchAgents: %v\n", err)
+		return nil
+	}
+	return agent
+}
+
 func cmdLogs(args []string) error {
 	fs := flag.NewFlagSet("logs", flag.ContinueOnError)
 	common := addCommon(fs)
 	follow := fs.Bool("f", false, "follow the log")
 	lines := fs.Int("n", 200, "number of lines to show")
-	if err := fs.Parse(args); err != nil {
+	// `logs api --data DIR` has the same shape as `restore`: the service name is a
+	// positional, so everything after it was dropped and the wrong install was read.
+	flags, positional := hoistFlags(args, logsValueFlags)
+	if err := fs.Parse(flags); err != nil {
 		return err
 	}
-	s, err := newInspector(common, supervisor.NewLogger(io.Discard, true))
+	s, err := newReader(common, supervisor.NewLogger(io.Discard, true))
 	if err != nil {
 		return err
 	}
 	layout := s.Plan().Layout
 
-	name := fs.Arg(0)
+	var name string
+	if len(positional) > 0 {
+		name = positional[0]
+	}
 	if name == "" {
 		entries, err := os.ReadDir(layout.Logs)
 		if err != nil {
@@ -388,7 +593,7 @@ func cmdLogs(args []string) error {
 	path := layout.LogPath(name)
 	if _, err := os.Stat(path); err != nil {
 		return fmt.Errorf("no log for %q (try: %s, or runtime)", name,
-			strings.Join(append(services.Order, services.Migrate), ", "))
+			strings.Join(append(services.Order, services.Migrate, services.Bonjour), ", "))
 	}
 	return tailFile(path, *lines, *follow)
 }

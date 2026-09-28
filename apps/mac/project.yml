@@ -1,0 +1,128 @@
+# XcodeGen project definition — the source of truth for the Mac menu-bar app.
+# Edit this file (not the generated .xcodeproj), then run `xcodegen generate`.
+# See README.md. The generated Waffled.xcodeproj + Waffled-Info.plist are gitignored.
+
+name: Waffled
+
+options:
+  bundleIdPrefix: app.waffled
+  deploymentTarget:
+    macOS: "14.0"          # MenuBarExtra needs 13; @Observable needs 14
+  developmentLanguage: en
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    MARKETING_VERSION: "0.15.1"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    # Ad-hoc signing is the DEFAULT, not the release: it is what a dev build and CI want,
+    # and it needs no certificate on the machine. A release overrides these from the
+    # xcodebuild command line (Scripts/build-app.sh's signing seam, driven by
+    # WAFFLED_SIGN_IDENTITY) — CODE_SIGNING_REQUIRED included, because with signing merely
+    # optional Xcode skips a nested bundle it cannot sign without saying so, and
+    # Sparkle.framework's Autoupdate and Updater.app are exactly that.
+    #
+    # CODE_SIGNING_ALLOWED must stay YES (the default). Setting it to NO skips the
+    # CodeSign phase outright, which silently overrides the "-" identity: the binary
+    # still gets a linker-applied signature, but the BUNDLE gets no CodeResources seal
+    # and its identifier is the product name rather than the bundle id. SMAppService
+    # validates the bundle, so "Start at login" behaves differently on the two — which
+    # is exactly the kind of difference a dev build must not hide.
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGNING_REQUIRED: NO
+
+# Sparkle 2 — the updater (plan §7, Phase 3 item 6). Pinned to an exact version rather than
+# a range: this is the framework that replaces the app on a household's Mac, and the version
+# that ships is the version that was tested. XcodeGen only writes the package reference;
+# `xcodebuild` resolves it (a plain `xcodegen generate` never downloads anything).
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.9.6
+
+targets:
+  Waffled:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+    dependencies:
+      - package: Sparkle
+    info:
+      path: Waffled-Info.plist
+      properties:
+        CFBundleDisplayName: Waffled
+        # The catalog compiles the icon; this key is what tells Finder, the Login Items
+        # pane and Sparkle's dialogs which compiled set to draw. Both halves are load-
+        # bearing — ASSETCATALOG_COMPILER_APPICON_NAME alone leaves the app iconless.
+        CFBundleIconName: AppIcon
+        # Version keys MUST point at the build settings — XcodeGen otherwise writes a
+        # hardcoded "1.0"/"1" into the generated plist, so bumping MARKETING_VERSION
+        # (what `./waffled release` does) would silently do nothing. Same reason as iOS.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        # CFBundleVersion follows the marketing version rather than
+        # CURRENT_PROJECT_VERSION, which is a constant "1". Sparkle compares **this** key to
+        # decide whether an update is newer, so a constant here means no release is ever
+        # newer than any other and `Check for updates…` always says you are up to date.
+        CFBundleVersion: "$(MARKETING_VERSION)"
+        # Menu-bar only: no Dock icon, no app menu, no window on launch.
+        LSUIElement: true
+        # ── Sparkle ────────────────────────────────────────────────────────────────
+        # The trust anchor. An update is installed only if it is signed by the private
+        # half of this key, whatever URL described it — which is why WAFFLED_APPCAST_URL
+        # can be an ordinary test seam. The private half lives in the release manager's
+        # login Keychain and nowhere else: back it up (`generate_keys -x`), because losing
+        # it strands every installed copy on the version it has.
+        SUPublicEDKey: P5KntcLJnziFF2CNZTTupX+DpD3N/ty8kPTI/qTkurU=
+        # GitHub serves the latest release's assets at this stable path, so the feed never
+        # names a version. Scripts/release-mac.sh uploads appcast.xml beside the DMG.
+        SUFeedURL: https://github.com/kevinpsites/waffled/releases/latest/download/appcast.xml
+        # Checking is on from the first launch. Leaving it unset makes Sparkle ask
+        # permission in a window of its own on first run — which an LSUIElement app with no
+        # Dock icon and a first-run window of its own has nowhere sensible to put.
+        SUEnableAutomaticChecks: true
+        SUScheduledCheckInterval: 86400
+        # Ask before installing, always: the install stops the household's server for as
+        # long as the swap and the migrations take, and that is not a thing to do to a
+        # family's evening without a click.
+        SUAutomaticallyUpdate: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.waffled.mac
+        ENABLE_TESTABILITY: YES              # @testable import Waffled from the tests
+        # Sources/Assets.xcassets rides in on `sources: - path: Sources` above. Every slot
+        # is drawn from resources/waffled.png (the 1254px brand master) onto Apple's icon
+        # grid: an 824/1024 rounded square, centred, with the margin left for the shadow.
+        # The mark is full-bleed square, so without that it sat as a square tile next to
+        # every other app. The menu-bar glyph is unaffected: that stays drawn in
+        # Sources/WaffleIronIcon.swift.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Deliberately NO App Sandbox and no entitlements for the app: it spawns
+        # waffled-runtime, which runs Postgres against a real filesystem outside any
+        # container. Sandboxing it would break the one thing it does. The plists in
+        # Entitlements/ are a different thing — they belong to individual binaries inside
+        # the runtime bundle, applied by Scripts/release-mac.sh.
+    scheme:
+      testTargets:
+        - WaffledTests
+      gatherCoverageData: true
+
+  WaffledTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: Waffled
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.waffled.mac.tests
+        GENERATE_INFOPLIST_FILE: YES
+        # macOS bundles nest the executable under Contents/MacOS — the iOS form
+        # (Waffled.app/Waffled) builds fine and then fails to launch the host.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Waffled.app/Contents/MacOS/Waffled"
+        BUNDLE_LOADER: "$(TEST_HOST)"

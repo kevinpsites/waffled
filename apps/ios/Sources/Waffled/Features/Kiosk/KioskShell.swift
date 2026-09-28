@@ -12,12 +12,8 @@ struct KioskShell: View {
     @Environment(KioskMode.self) private var kiosk
     @State private var selection: KioskNav = KioskNav(rawValue: DemoHooks.kioskPage ?? "") ?? .today
 
-    /// Per-device list of user-pinned rail destinations (comma-joined `KioskNav`
-    /// rawValues) — see `KioskRail`. Editing it in Display & Kiosk re-renders the rail
-    /// and the More grid live via `@AppStorage`'s own invalidation.
     @AppStorage(KioskRail.storageKey) private var railItemsRaw = KioskRail.defaultRaw
 
-    // Shared models / per-page nav stacks for the reused feature views.
     @State private var recipes = RecipesModel()
     @State private var goalsPath: [HubRoute] = []
     @State private var rewardsPath: [HubRoute] = []
@@ -25,38 +21,25 @@ struct KioskShell: View {
     @State private var familyPath: [HubRoute] = []
     @State private var mealsPath: [MealsRoute] = []
 
-    // Global AI capture — reachable from every page via the rail (the iPad twin of the
-    // phone's always-present capture FAB). Today also has its own inline "Add anything"
-    // bar; both open this same sheet.
     @State private var showCapture = false
     @State private var dictateOnOpen = false
 
-    /// Bumped to pop a self-contained tab (Today/Calendar/Chores/Lists/Photos) back to its
-    /// root when its rail item is re-tapped — the bound-path tabs clear their path instead.
     @State private var navReset = 0
 
-    /// The signed-in person — drives the rail's "who's logged in" avatar.
     private var currentMember: SyncedMember? {
         sync.members.first { $0.id == sync.currentPersonId }
     }
 
-    /// Whether the shell should use the portrait (bottom-bar) layout, judged from the
-    /// FULL container size — safe-area insets added back — not the safe-area-inset
-    /// `geo.size`. The on-screen keyboard insets the *bottom safe area*, so the bare
-    /// `height > width` check collapsed by the keyboard height and a portrait iPad
-    /// "became landscape" the moment a field was focused. That branch switch rebuilt
-    /// the whole page (ConditionalContent), dropping focus and any half-typed text —
-    /// felt as "the keyboard hides what I'm typing" on the grocery list. Adding the
-    /// insets back means only a real rotation flips the layout.
+    /// Judged from the FULL container size — safe-area insets added back — never from
+    /// `geo.size`: the keyboard insets the bottom safe area, so a bare `height > width`
+    /// check flips a focused portrait iPad to "landscape", rebuilding the page and
+    /// dropping focus mid-typing.
     static func isPortrait(size: CGSize, safeArea: EdgeInsets) -> Bool {
         (size.height + safeArea.top + safeArea.bottom)
             > (size.width + safeArea.leading + safeArea.trailing)
     }
 
     var body: some View {
-        // Landscape (the usual wall/counter mount) keeps the side rail; portrait — for
-        // people who stand the iPad up vertically — moves the nav to a bottom bar like the
-        // iPhone, with the page filling the space above it. Switches live on rotation.
         GeometryReader { geo in
             let portrait = Self.isPortrait(size: geo.size, safeArea: geo.safeAreaInsets)
             Group {
@@ -83,19 +66,15 @@ struct KioskShell: View {
         }
     }
 
-    /// Whether a rail item's optional module is enabled (Today/Calendar/Family/Photos
-    /// are core and never gated). Mirrors the web rail filter — see `KioskRail`.
+    /// Today/Calendar/Family/Photos are core and never gated. Mirrors the web rail filter.
     private func moduleEnabled(_ nav: KioskNav) -> Bool {
         KioskRail.moduleEnabled(nav, sync: sync)
     }
 
-    /// The user-pinned rail destinations (between Today/Calendar and More/Settings),
-    /// module-filtered — see `KioskRail`.
     private var pinnedRailItems: [KioskNav] {
         KioskRail.pinned(raw: railItemsRaw, sync: sync)
     }
 
-    /// If the current selection points at a now-disabled module, fall back to Today.
     private func correctSelection() {
         if !moduleEnabled(selection) { selection = .today }
     }
@@ -105,8 +84,6 @@ struct KioskShell: View {
     private var rail: some View {
         VStack(spacing: 6) {
             Color.clear.frame(height: 12)   // top breathing room (logo removed)
-            // Today & Calendar are always pinned at the top, then the user's picks,
-            // then the "More" hub (holds everything choosable-but-unpinned).
             railItem(.today)
             railItem(.calendar)
             ForEach(pinnedRailItems) { railItem($0) }
@@ -123,8 +100,6 @@ struct KioskShell: View {
         .background(WF.panel.ignoresSafeArea())
     }
 
-    /// The always-present AI capture entry — a coral ✨ pill pinned in the rail so
-    /// "Add anything" is one tap away on every page (Today's inline bar opens the same sheet).
     private var captureRailButton: some View {
         Button { dictateOnOpen = false; showCapture = true } label: {
             VStack(spacing: 5) {
@@ -142,9 +117,8 @@ struct KioskShell: View {
         .padding(.bottom, 4)
     }
 
-    /// "Who's logged in" — the signed-in person's avatar at the bottom of the rail. On a
-    /// shared kiosk it's a button (with a swap badge) that returns to the profile picker so
-    /// the next person can tap in; on a normal single-login iPad it's just an indicator.
+    /// On a shared kiosk this is a button (with a swap badge) back to the profile picker;
+    /// on a single-login iPad it is only an indicator.
     @ViewBuilder
     private func currentUserChip(_ m: SyncedMember) -> some View {
         let firstName = m.name.split(separator: " ").first.map(String.init) ?? m.name
@@ -167,7 +141,6 @@ struct KioskShell: View {
         .padding(.vertical, 8)
 
         if kiosk.isShared {
-            // Tap the avatar → straight back to the picker (the swap badge signals it).
             Button { Task { await kiosk.returnToPicker(sync: sync) } } label: { chip }
                 .buttonStyle(.plain)
         } else {
@@ -175,8 +148,6 @@ struct KioskShell: View {
         }
     }
 
-    /// Rail tap: switch tabs, or — if the tab is already active — return it to its root
-    /// (pop the nav stack), so re-tapping the current tab is a quick "back to top".
     private func tapRail(_ item: KioskNav) {
         guard selection == item else { selection = item; return }
         switch item {
@@ -185,7 +156,8 @@ struct KioskShell: View {
         case .family:   familyPath = []
         case .settings: settingsPath = []
         case .meals:    mealsPath = []
-        case .today, .calendar, .tasks, .lists, .pantry, .rhythms, .photos, .more: navReset &+= 1
+        // Planning has no path of its own, so it resets via `navReset`.
+        case .today, .calendar, .tasks, .lists, .pantry, .rhythms, .photos, .planning, .more: navReset &+= 1
         }
     }
 
@@ -209,14 +181,10 @@ struct KioskShell: View {
 
     // MARK: bottom bar (portrait)
 
-    /// The same destinations as the rail, in the same order, laid out horizontally with the
-    /// capture button raised in the middle — so pins stay consistent whichever way you hold it.
     private var bottomBarItems: [KioskNav] {
         [.today, .calendar] + pinnedRailItems + [.more, .settings]
     }
 
-    /// One slot in the bottom bar — a nav destination, or the signed-in user (the rail's
-    /// "who's logged in" chip, which on a shared kiosk swaps back to the profile picker).
     private enum BarEntry: Identifiable {
         case nav(KioskNav)
         case user(SyncedMember)
@@ -248,8 +216,6 @@ struct KioskShell: View {
         }
     }
 
-    /// The bottom-bar twin of `currentUserChip` — a compact avatar; a tap returns to the
-    /// profile picker on a shared kiosk (with the swap badge), a plain indicator otherwise.
     @ViewBuilder private func bottomUserChip(_ m: SyncedMember) -> some View {
         let firstName = m.name.split(separator: " ").first.map(String.init) ?? m.name
         let chip = VStack(spacing: 3) {
@@ -291,7 +257,6 @@ struct KioskShell: View {
         .buttonStyle(.plain)
     }
 
-    /// The raised coral ✨ capture FAB — the bottom-bar twin of `captureRailButton`.
     private var captureBarButton: some View {
         Button { dictateOnOpen = false; showCapture = true } label: {
             Image(systemName: "sparkles").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
@@ -352,6 +317,11 @@ struct KioskShell: View {
                 RhythmsView()
             }
             .id(navReset)
+        case .planning:
+            NavigationStack {
+                PlanningShellView()
+            }
+            .id(navReset)
         case .photos:
             NavigationStack {
                 PhotosView()
@@ -365,11 +335,13 @@ struct KioskShell: View {
     }
 }
 
-/// The rail items, in web order (`apps/web/src/kiosk/nav.ts`). Today/Calendar are
-/// always pinned at the top and More/Settings at the bottom; the middle is
-/// user-customizable per device — see `KioskRail`.
+/// The rail items, in web order (`apps/web/src/kiosk/nav.ts`). Today/Calendar pinned at
+/// the top, More/Settings at the bottom, the middle user-customizable per device.
 enum KioskNav: String, CaseIterable, Identifiable {
     case today, calendar, tasks, rewards, goals, family, meals, lists, pantry, rhythms, photos, more, settings
+    // The full ten-step session on the display. (Family Night deliberately has NO rail
+    // page — it is only a Today card.)
+    case planning
     var id: String { rawValue }
 
     var label: String {
@@ -384,6 +356,7 @@ enum KioskNav: String, CaseIterable, Identifiable {
         case .lists: return "Lists"
         case .pantry: return "Pantry"
         case .rhythms: return "Rhythms"
+        case .planning: return "Planning"
         case .photos: return "Photos"
         case .more: return "More"
         case .settings: return "Settings"
@@ -402,6 +375,7 @@ enum KioskNav: String, CaseIterable, Identifiable {
         case .lists: return "list.bullet"
         case .pantry: return "shippingbox.fill"
         case .rhythms: return "arrow.triangle.2.circlepath"
+        case .planning: return "calendar.badge.clock"
         case .photos: return "photo"
         case .more: return "square.grid.2x2"
         case .settings: return "gearshape.fill"
@@ -410,8 +384,8 @@ enum KioskNav: String, CaseIterable, Identifiable {
 }
 
 private extension View {
-    /// Hosts the shared `HubRoute` destination for the inner hub views (Goals, Lists,
-    /// Settings) so their pushes resolve when shown standalone in the rail's detail.
+    /// Hosts the shared `HubRoute` destination so the inner hub views' pushes resolve when
+    /// shown standalone in the rail's detail.
     func hubDestination(_ path: Binding<[HubRoute]>, _ recipes: RecipesModel) -> some View {
         navigationDestination(for: HubRoute.self) { route in
             HubDestination(route: route, path: path, recipes: recipes)
