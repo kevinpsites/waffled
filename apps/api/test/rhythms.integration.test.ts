@@ -55,6 +55,10 @@ async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
   }
 }
 
+// The household's own date, not the runner's: period maths is done in its timezone.
+const householdToday = (): Promise<string> =>
+  withClient(async (c) => (await c.query(`select (now() at time zone 'America/Chicago')::date::text as d`)).rows[0].d)
+
 beforeAll(async () => {
   pg = await new PostgreSqlContainer('postgres:16').start()
   url = pg.getConnectionUri()
@@ -1937,8 +1941,6 @@ describe('a booking window narrower than the period', () => {
 
 describe('the period a scheduling rhythm is asking about', () => {
   // The register tiles to the household's real today, so these anchor relative to it.
-  const householdToday = (): Promise<string> =>
-    withClient(async (c) => (await c.query(`select (now() at time zone 'America/Chicago')::date::text as d`)).rows[0].d)
   const plus = (date: string, n: number) =>
     new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
 
@@ -1986,8 +1988,17 @@ describe('a which-day hint on a rhythm booked by hand', () => {
   }
   const patchRule = (id: string, rrule: string | null) => call('PATCH', `/api/rhythms/${id}`, kevin, { rrule })
 
+  // Anchored a month out, not in the past: a suggestion that has already gone by is nulled
+  // out, so a current-month period would make this pass or fail on the date it happens to
+  // run — green until that month's third Saturday, red for the rest of the month.
+  const firstOfNextMonth = async () => {
+    const d = new Date(`${(await householdToday()).slice(0, 7)}-01T00:00:00Z`)
+    d.setUTCMonth(d.getUTCMonth() + 1)
+    return d.toISOString().slice(0, 10)
+  }
+
   it('keeps the hint without booking anything, and suggests that day for the period', async () => {
-    const res = await create({ title: 'Family outing by hand', startsOn: '2026-01-01', rrule: 'FREQ=MONTHLY;BYDAY=3SA' })
+    const res = await create({ title: 'Family outing by hand', startsOn: await firstOfNextMonth(), rrule: 'FREQ=MONTHLY;BYDAY=3SA' })
     expect(res.statusCode).toBe(201)
     const id = idOf(res)
     const row = await rowOf(id)
