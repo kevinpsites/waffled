@@ -38,6 +38,7 @@ function call(method: string, path: string, token?: string, body?: unknown) {
 }
 
 const kevin = mint('dev|kevin')
+const reviewer = mint('dev|independent-reviewer')
 let householdId = ''
 let kevinId = ''
 let foreignPersonId = ''
@@ -51,6 +52,23 @@ async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
   } finally {
     await client.end()
   }
+}
+
+// Main's composite FKs now reject these historical rows. Bypass only while
+// seeding the isolated fixture, then exercise normal read/decision connections.
+async function withLegacyRows<T>(fn: (c: Client) => Promise<T>): Promise<T> {
+  return withClient(async (c) => {
+    await c.query('begin')
+    try {
+      await c.query('set local session_replication_role = replica')
+      const result = await fn(c)
+      await c.query('commit')
+      return result
+    } catch (error) {
+      await c.query('rollback')
+      throw error
+    }
+  })
 }
 
 beforeAll(async () => {
@@ -76,6 +94,7 @@ beforeAll(async () => {
       [householdId, kevinId]
     )
   )
+  await addMember('Independent adult', 'adult', false, 'dev|independent-reviewer')
   foreignPersonId = await withClient(async (c) => {
     const household = await c.query<{ id: string }>(
       `insert into households (name, timezone) values ('Other rewards','UTC') returning id`
@@ -146,16 +165,21 @@ async function createApprovedRedemption(title: string, cost = 1, personId = kevi
 // visibly waiting for it. This makes the concurrency assertions deterministic:
 // without the production lock, the barrier times out instead of occasionally
 // passing because one request happened to finish before the other started.
-async function waitForLockWaiters(observer: Client, expected: number, patterns: string[]): Promise<void> {
+async function waitForLockWaiters(observer: Client, blockerPid: number, expected: number, patterns: string[]): Promise<void> {
   const deadline = Date.now() + 5_000
   while (true) {
     const { rows } = await observer.query<{ count: string }>(
-      `select count(*)::text as count from pg_stat_activity
-        where datname=current_database()
+      `with recursive blocked(pid) as (
+           select pid from pg_stat_activity where $2 = any(pg_blocking_pids(pid))
+           union
+           select a.pid from pg_stat_activity a join blocked b on b.pid = any(pg_blocking_pids(a.pid))
+         )
+         select count(*)::text as count from pg_stat_activity
+        where pid in (select pid from blocked) and datname=current_database()
           and pid <> pg_backend_pid()
           and wait_event_type='Lock'
           and query ilike all($1::text[])`,
-      [patterns]
+      [patterns, blockerPid]
     )
     if (Number(rows[0]?.count ?? 0) >= expected) return
     if (Date.now() >= deadline) throw new Error('concurrent ledger operations did not reach the expected database lock')
@@ -172,7 +196,8 @@ async function runBehindLedgerLock<T>(personId: string, start: () => Promise<T>[
   const pending = start()
   let barrierError: unknown
   try {
-    await waitForLockWaiters(observer, pending.length, ['%select id from persons%', '%for%update%'])
+    const { rows } = await blocker.query<{ pid: number }>('select pg_backend_pid() as pid')
+    await waitForLockWaiters(observer, rows[0].pid, pending.length, ['%select id from persons%', '%for%update%'])
   } catch (err) {
     barrierError = err
   } finally {
@@ -200,7 +225,8 @@ async function runBehindCorrectionKeyLock<T>(idempotencyKey: string, start: () =
   const pending = start()
   let barrierError: unknown
   try {
-    await waitForLockWaiters(observer, pending.length, ['%pg_advisory_xact_lock%'])
+    const { rows } = await blocker.query<{ pid: number }>('select pg_backend_pid() as pid')
+    await waitForLockWaiters(observer, rows[0].pid, pending.length, ['%pg_advisory_xact_lock%'])
   } catch (err) {
     barrierError = err
   } finally {
@@ -224,7 +250,8 @@ async function runBehindLedgerEntryLock<T>(entryId: string, start: () => Promise
   const pending = start()
   let barrierError: unknown
   try {
-    await waitForLockWaiters(observer, pending.length, ['%from ledger_entries%', '%for update%'])
+    const { rows } = await blocker.query<{ pid: number }>('select pg_backend_pid() as pid')
+    await waitForLockWaiters(observer, rows[0].pid, pending.length, ['%from ledger_entries%', '%for update%'])
   } catch (err) {
     barrierError = err
   } finally {
@@ -245,7 +272,8 @@ async function runAfterConcurrentCurrencyDisable<T>(currencyId: string, start: (
   const pending = start()
   let barrierError: unknown
   try {
-    await waitForLockWaiters(observer, 1, ['%from currencies%', '%for share%'])
+    const { rows } = await blocker.query<{ pid: number }>('select pg_backend_pid() as pid')
+    await waitForLockWaiters(observer, rows[0].pid, 1, ['%from currencies%', '%for share%'])
   } catch (err) {
     barrierError = err
   } finally {
@@ -255,6 +283,14 @@ async function runAfterConcurrentCurrencyDisable<T>(currencyId: string, start: (
   const result = await pending
   if (barrierError) throw barrierError
   return result
+}
+
+async function withTeenPermissions(permissions: Record<string, boolean>, run: () => Promise<void>) {
+  const previous = await withClient(async (c) => (await c.query('select settings from households where id=$1', [householdId])).rows[0].settings)
+  await withClient((c) => c.query("update households set settings=jsonb_set(settings,'{permissions}',$2::jsonb) where id=$1", [householdId, JSON.stringify({ teen: permissions })]))
+  try { await run() } finally {
+    await withClient((c) => c.query('update households set settings=$2 where id=$1', [householdId, previous]))
+  }
 }
 
 describe('rewards api', () => {
@@ -287,7 +323,7 @@ describe('rewards api', () => {
     const pending = JSON.parse((await call('GET', '/api/redemptions?status=pending', kevin)).body).redemptions
     expect(pending.some((r: { id: string }) => r.id === redemptionId)).toBe(true)
 
-    const ok = await call('POST', `/api/redemptions/${redemptionId}/approve`, kevin)
+    const ok = await call('POST', `/api/redemptions/${redemptionId}/approve`, reviewer)
     expect(ok.statusCode).toBe(200)
     expect(JSON.parse(ok.body).redemption.status).toBe('approved')
 
@@ -300,7 +336,7 @@ describe('rewards api', () => {
     // costs 5, balance is now 3
     const red = await call('POST', `/api/rewards/${rewardId}/redeem`, kevin, { personId: kevinId })
     const id = JSON.parse(red.body).redemption.id
-    const res = await call('POST', `/api/redemptions/${id}/approve`, kevin)
+    const res = await call('POST', `/api/redemptions/${id}/approve`, reviewer)
     expect(res.statusCode).toBe(409)
     // still 3 — nothing debited
     const me = JSON.parse((await call('GET', '/api/balances', kevin)).body).people.find((p: { personId: string }) => p.personId === kevinId)
@@ -315,8 +351,8 @@ describe('rewards api', () => {
     await grantStars(kevinId, 5)
     const red = await call('POST', `/api/rewards/${rewardId}/redeem`, kevin, { personId: kevinId })
     const id = JSON.parse(red.body).redemption.id
-    expect((await call('POST', `/api/redemptions/${id}/approve`, kevin)).statusCode).toBe(200)
-    expect((await call('POST', `/api/redemptions/${id}/approve`, kevin)).statusCode).toBe(409)
+    expect((await call('POST', `/api/redemptions/${id}/approve`, reviewer)).statusCode).toBe(200)
+    expect((await call('POST', `/api/redemptions/${id}/approve`, reviewer)).statusCode).toBe(409)
   })
 
   it('soft-deletes a reward', async () => {
@@ -388,7 +424,7 @@ describe('reward approval — per-reward flag + household default', () => {
       cost: 1,
       requiresApproval: true,
     })).body).reward
-    const redemptionId = await withClient(async (c) => {
+    const redemptionId = await withLegacyRows(async (c) => {
       const { rows } = await c.query<{ id: string }>(
         `insert into reward_redemptions
            (household_id, reward_id, person_id, title, cost, currency, status, requested_by)
@@ -416,7 +452,7 @@ describe('reward approval — per-reward flag + household default', () => {
 
     const listed = JSON.parse((await call('GET', '/api/redemptions?status=pending', kevin)).body).redemptions
     expect(listed.some((r: { id: string }) => r.id === redemption.id)).toBe(true)
-    expect((await call('POST', `/api/redemptions/${redemption.id}/approve`, kevin)).statusCode).toBe(404)
+    expect((await call('POST', `/api/redemptions/${redemption.id}/approve`, reviewer)).statusCode).toBe(404)
     const denied = await call('POST', `/api/redemptions/${redemption.id}/deny`, kevin)
     expect(denied.statusCode).toBe(200)
     expect(JSON.parse(denied.body).redemption.status).toBe('denied')
@@ -428,7 +464,7 @@ describe('reward approval — per-reward flag + household default', () => {
       cost: 1,
       requiresApproval: true,
     })).body).reward
-    const redemptionId = await withClient(async (c) => {
+    const redemptionId = await withLegacyRows(async (c) => {
       // Model data that could have been written before the request boundary was
       // enforced. The forged active-household balance makes the old approval
       // path exploitable instead of merely returning "not enough stars".
@@ -446,7 +482,7 @@ describe('reward approval — per-reward flag + household default', () => {
       return rows[0].id
     })
 
-    expect((await call('POST', `/api/redemptions/${redemptionId}/approve`, kevin)).statusCode).toBe(404)
+    expect((await call('POST', `/api/redemptions/${redemptionId}/approve`, reviewer)).statusCode).toBe(404)
     expect((await call('POST', `/api/redemptions/${redemptionId}/deny`, kevin)).statusCode).toBe(404)
     const stored = await withClient(async (c) => {
       const redemption = await c.query<{ status: string }>(
@@ -484,7 +520,7 @@ describe('reward approval — per-reward flag + household default', () => {
     )).body).redemption
     expect((await call('PATCH', `/api/currencies/${currency.id}`, kevin, { spendable: false })).statusCode).toBe(200)
 
-    expect((await call('POST', `/api/redemptions/${redemption.id}/approve`, kevin)).statusCode).toBe(409)
+    expect((await call('POST', `/api/redemptions/${redemption.id}/approve`, reviewer)).statusCode).toBe(409)
     const stored = await withClient(async (c) => {
       const row = await c.query<{ status: string }>(`select status from reward_redemptions where id=$1`, [redemption.id])
       const debit = await c.query(`select 1 from ledger_entries where ref_id=$1 and reason='reward_redeemed'`, [redemption.id])
@@ -640,7 +676,7 @@ describe('reward redemption concurrency', () => {
     )).body).redemption
 
     const result = await runAfterConcurrentCurrencyDisable(currency.id, () =>
-      call('POST', `/api/redemptions/${redemption.id}/approve`, kevin)
+      call('POST', `/api/redemptions/${redemption.id}/approve`, reviewer)
     )
 
     expect(result.statusCode).toBe(409)
@@ -687,8 +723,8 @@ describe('reward redemption concurrency', () => {
     const second = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId })).body).redemption
 
     const results = await runBehindLedgerLock(personId, () => [
-      call('POST', `/api/redemptions/${first.id}/approve`, kevin),
-      call('POST', `/api/redemptions/${second.id}/approve`, kevin),
+      call('POST', `/api/redemptions/${first.id}/approve`, reviewer),
+      call('POST', `/api/redemptions/${second.id}/approve`, reviewer),
     ])
 
     expect(results.map((result) => result.statusCode).sort()).toEqual([200, 409])
@@ -736,6 +772,103 @@ describe('reward redemption concurrency', () => {
 })
 
 describe('append-only reward corrections and reversals', () => {
+  it('prevents a correction-only teen from inflating a +1 award to int32 max', async () => {
+    const personId = await addMember('Correction only', 'teen', false, 'dev|correction-only')
+    const token = mint('dev|correction-only')
+    await withClient(c => c.query(`update households set settings = jsonb_set(settings, '{permissions}', $2::jsonb) where id=$1`,
+      [householdId, JSON.stringify({ teen: { 'reward.correct': true, 'reward.grant': false } })]))
+    try {
+      const award = JSON.parse((await call('POST', `/api/persons/${personId}/award`, kevin, { amount: 1 })).body)
+      expect((await call('POST', `/api/persons/${personId}/award`, token, { amount: 1 })).statusCode).toBe(403)
+      const response = await call('POST', `/api/ledger-entries/${award.id}/correct`, token, {
+        reason: 'Inflate the award', replacementAmount: 2147483647, idempotencyKey: randomUUID(),
+      })
+      expect(response.statusCode).toBe(400)
+      expect(response.body).toContain('magnitude')
+      expect(await starsOf(personId)).toBe(1)
+      expect((await call('POST', `/api/ledger-entries/${award.id}/correct`, token, {
+        reason: 'Remove the mistaken award', idempotencyKey: randomUUID(),
+      })).statusCode).toBe(201)
+      expect(await starsOf(personId)).toBe(0)
+    } finally {
+      await withClient(c => c.query(`update households set settings = settings - 'permissions' where id=$1`, [householdId]))
+    }
+  })
+
+  it.each([
+    { replacement: 11, message: 'magnitude' },
+    { replacement: 10, message: 'differ' },
+    { replacement: -10, message: 'direction' },
+  ])('rejects a nearby invalid replacement $replacement without any writes', async ({ replacement, message }) => {
+    const personId = await addMember(`Correction boundary ${replacement}`, 'kid', false, `dev|boundary-${replacement}`)
+    const award = JSON.parse((await call('POST', `/api/persons/${personId}/award`, kevin, { amount: 10 })).body)
+    const result = await call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, {
+      reason: 'Check correction boundary', replacementAmount: replacement, idempotencyKey: randomUUID(),
+    })
+    expect(result.statusCode).toBe(400)
+    expect(result.body).toContain(message)
+    expect(await starsOf(personId)).toBe(10)
+    const entries = await withClient(c => c.query('select id from ledger_entries where reverses_entry_id=$1 or correction_of_id=$1', [award.id]))
+    expect(entries.rowCount).toBe(0)
+  })
+
+  it('rejects a reversal of a spent award atomically, then allows it after a refund', async () => {
+    const personId = await addMember('Spent award', 'kid', false, 'dev|spent-award')
+    const award = JSON.parse((await call('POST', `/api/persons/${personId}/award`, kevin, { amount: 50 })).body)
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Spent award reward', cost: 50, requiresApproval: false })).body).reward
+    const redemption = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId })).body).redemption
+    const body = { reason: 'Mistaken award already spent', idempotencyKey: randomUUID() }
+    const response = await call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, body)
+    expect(response.statusCode).toBe(409)
+    expect(JSON.parse(response.body).message).toMatch(/not enough balance.*correction/i)
+    expect(await starsOf(personId)).toBe(0)
+    const rows = await withClient(c => c.query('select id from ledger_entries where reverses_entry_id=$1', [award.id]))
+    expect(rows.rowCount).toBe(0)
+    expect((await call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, { reason: 'Return the spent reward', idempotencyKey: randomUUID() })).statusCode).toBe(200)
+    expect((await call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, body)).statusCode).toBe(201)
+    expect(await starsOf(personId)).toBe(0)
+  })
+
+  it('corrects an archived subject and then corrects the replacement', async () => {
+    const personId = await addMember('Archived award', 'kid', false, 'dev|archived-award')
+    const award = JSON.parse((await call('POST', `/api/persons/${personId}/award`, kevin, { amount: 10 })).body)
+    await withClient(c => c.query('update persons set deleted_at=now() where id=$1', [personId]))
+    const response = await call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, {
+      reason: 'Correct archived award', replacementAmount: 6, idempotencyKey: randomUUID(),
+    })
+    expect(response.statusCode).toBe(201)
+    const replacementId = JSON.parse(response.body).correction.replacementId
+    const next = await call('POST', `/api/ledger-entries/${replacementId}/correct`, kevin, {
+      reason: 'Correct replacement again', replacementAmount: 3, idempotencyKey: randomUUID(),
+    })
+    expect(next.statusCode).toBe(201)
+    expect(JSON.parse(next.body).correction.balance).toBe(3)
+  })
+
+  it.each(['chore_completed', 'reward_redeemed'])('routes %s corrections back to their owning workflow', async reason => {
+    const id = await withClient(async c => (await c.query(`insert into ledger_entries
+      (household_id, person_id, currency, amount, reason) values ($1,$2,'stars',1,$3) returning id`, [householdId, kevinId, reason])).rows[0].id)
+    const response = await call('POST', `/api/ledger-entries/${id}/correct`, kevin, { reason: 'Use correct workflow', idempotencyKey: randomUUID() })
+    expect(response.statusCode).toBe(409)
+    expect(response.body).toContain(reason === 'reward_redeemed' ? 'refund action' : 'original feature')
+  })
+
+  it('enforces correction links and replay uniqueness even when bypassing the application', async () => {
+    const award = JSON.parse((await call('POST', `/api/persons/${kevinId}/award`, kevin, { amount: 10 })).body)
+    const key = randomUUID()
+    const insert = (id: string, reverses: string | null, requestKey: string | null) => withClient(c => c.query(`insert into ledger_entries
+      (id, household_id, person_id, currency, amount, reason, reverses_entry_id, idempotency_key)
+      values ($1,$2,$3,'stars',-10,'ledger_reversal',$4,$5)`, [id, householdId, kevinId, reverses, requestKey]))
+    const self = randomUUID()
+    await expect(insert(self, self, null)).rejects.toMatchObject({ code: '23514' })
+    const foreign = await withClient(async c => (await c.query(`insert into ledger_entries
+      (household_id, person_id, currency, amount, reason) select household_id,id,$2,10,'spot_award' from persons where id=$1 returning id`, [foreignPersonId, foreignCurrencyKey])).rows[0].id)
+    await expect(insert(randomUUID(), foreign, null)).rejects.toMatchObject({ code: '23503' })
+    await insert(randomUUID(), award.id, key)
+    await expect(insert(randomUUID(), award.id, randomUUID())).rejects.toMatchObject({ code: '23505' })
+    await expect(insert(randomUUID(), null, key)).rejects.toMatchObject({ code: '23505' })
+  })
+
   it('reverses an award and writes a corrected replacement without editing the original', async () => {
     const before = await starsOf(kevinId)
     const award = await call('POST', `/api/persons/${kevinId}/award`, kevin, {
@@ -1326,12 +1459,13 @@ describe('append-only reward corrections and reversals', () => {
          values ($1,$2,$3,current_date) returning id`,
         [foreignHouseholdId, chore.rows[0].id, foreignPersonId]
       )
-      await c.query(
+      // This malformed cross-household link is now rejected at the DB boundary.
+      await expect(c.query(
         `insert into ledger_entries
            (household_id, person_id, currency, amount, reason, reverses_entry_id, created_by)
          values ($1,$2,'stars',-7,'ledger_reversal',$3,$2)`,
         [foreignHouseholdId, foreignPersonId, localTarget]
-      )
+      )).rejects.toMatchObject({ code: '23503' })
       const deletedReversal = await c.query<{ id: string }>(
         `insert into ledger_entries
            (household_id, person_id, currency, amount, reason, reverses_entry_id, created_by, deleted_at)
@@ -1483,7 +1617,7 @@ describe('reward capability gating (non-admin members)', () => {
     expect((await call('POST', '/api/rewards', adultToken, { title: 'Adult reward', cost: 1 })).statusCode).toBe(201)
   })
 
-  it('a member may redeem for self but needs reward.manage to redeem for someone else', async () => {
+  it('a member may redeem for self but needs reward.approve to redeem for someone else', async () => {
     const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
       title: 'Actor-scoped reward',
       cost: 1,
@@ -1638,5 +1772,258 @@ describe('spot-award stars', () => {
       `update households set settings = coalesce(settings,'{}'::jsonb) || jsonb_build_object('chores', jsonb_build_object('rewards', true)) where id=$1`,
       [householdId]
     ))
+  })
+})
+
+describe('review: ledger authority and independent approval', () => {
+  it.each([true, false])('requires approval rights, not catalog rights, for another balance (pending=%s)', async (requiresApproval) => {
+    const sub = `dev|authority-${requiresApproval}`
+    await addMember('Catalog teen', 'teen', false, sub)
+    const subject = await addMember('Sibling', 'kid', false, `${sub}-sibling`)
+    await grantStars(subject, 10)
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Authority test', cost: 1, requiresApproval })).body).reward
+    await withTeenPermissions({ 'reward.manage': true, 'reward.approve': false }, async () => {
+      expect((await call('POST', `/api/rewards/${reward.id}/redeem`, mint(sub), { personId: subject })).statusCode).toBe(403)
+      expect(await starsOf(subject)).toBe(10)
+      const writes = await withClient((c) => c.query('select id from reward_redemptions where reward_id=$1', [reward.id]))
+      expect(writes.rowCount).toBe(0)
+    })
+    await withTeenPermissions({ 'reward.manage': false, 'reward.approve': true }, async () => {
+      expect((await call('POST', `/api/rewards/${reward.id}/redeem`, mint(sub), { personId: subject })).statusCode).toBe(201)
+    })
+  })
+
+  it.each(['teen-self', 'admin-self'])('requires a different approver for %s, without partial writes', async (scenario) => {
+    const requesterId = scenario === 'teen-self' ? await addMember('Approver teen', 'teen', false, 'dev|self-approver') : kevinId
+    const requester = scenario === 'teen-self' ? mint('dev|self-approver') : kevin
+    const subject = requesterId
+    const otherSub = `dev|second-approver-${scenario}`
+    await addMember('Second adult', 'adult', false, otherSub)
+    await grantStars(subject, 10)
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: scenario, cost: 2, requiresApproval: true })).body).reward
+    await withTeenPermissions({ 'reward.approve': true }, async () => {
+      const redemption = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, requester, { personId: subject.toUpperCase() })).body).redemption
+      const before = await starsOf(subject)
+      const denied = await call('POST', `/api/redemptions/${redemption.id}/approve`, requester)
+      expect(denied.statusCode).toBe(409)
+      expect(JSON.parse(denied.body).message).toMatch(/different person/i)
+      const stored = await withClient((c) => c.query('select status, ledger_id, decided_by from reward_redemptions where id=$1', [redemption.id]))
+      expect(stored.rows[0]).toEqual({ status: 'pending', ledger_id: null, decided_by: null })
+      expect(await starsOf(subject)).toBe(before)
+      expect((await call('POST', `/api/redemptions/${redemption.id}/approve`, mint(otherSub))).statusCode).toBe(200)
+      expect(await starsOf(subject)).toBe(before - 2)
+    })
+  })
+
+  it('lets a parent approve a reward they requested for a child', async () => {
+    const subject = await addMember('Child subject', 'kid', false, 'dev|child-subject')
+    await grantStars(subject, 10)
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Parent on behalf', cost: 2, requiresApproval: true })).body).reward
+    const redemption = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId: subject })).body).redemption
+    const approved = await call('POST', `/api/redemptions/${redemption.id}/approve`, kevin)
+    expect(approved.statusCode).toBe(200)
+    expect(JSON.parse(approved.body).redemption).toMatchObject({ status: 'approved', personId: subject })
+    const stored = await withClient((c) => c.query('select requested_by,decided_by from reward_redemptions where id=$1', [redemption.id]))
+    expect(stored.rows[0]).toEqual({ requested_by: kevinId, decided_by: kevinId })
+    expect(await starsOf(subject)).toBe(8)
+  })
+
+  it('blocks the reward subject from approving even when someone else requested it', async () => {
+    const subject = await addMember('Subject approver', 'teen', false, 'dev|subject-approver')
+    await grantStars(subject, 10)
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Requested by parent', cost: 2, requiresApproval: true })).body).reward
+    const redemption = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId: subject })).body).redemption
+    await withTeenPermissions({ 'reward.approve': true }, async () => {
+      const denied = await call('POST', `/api/redemptions/${redemption.id}/approve`, mint('dev|subject-approver'))
+      expect(denied.statusCode).toBe(409)
+      const stored = await withClient((c) => c.query('select status, ledger_id, decided_by from reward_redemptions where id=$1', [redemption.id]))
+      expect(stored.rows[0]).toEqual({ status: 'pending', ledger_id: null, decided_by: null })
+      expect(await starsOf(subject)).toBe(10)
+    })
+  })
+
+  it('lets the only adult in a household request and approve a child reward', async () => {
+    const family = await withClient(async (c) => {
+      const h = (await c.query("insert into households (name, timezone) values ('Single adult','UTC') returning id")).rows[0].id
+      const adult = (await c.query("insert into persons (household_id,name,member_type,is_admin) values ($1,'Parent','adult',true) returning id", [h])).rows[0].id
+      const child = (await c.query("insert into persons (household_id,name,member_type) values ($1,'Child','kid') returning id", [h])).rows[0].id
+      await c.query("insert into identities (household_id,person_id,provider,auth0_user_id,email_verified) values ($1,$2,'password','dev|single-adult',true)", [h, adult])
+      await c.query("insert into currencies (household_id,key,label,spendable,is_default) values ($1,'stars','Stars',true,true)", [h])
+      await c.query("insert into ledger_entries (household_id,person_id,currency,amount,reason,created_by) values ($1,$2,'stars',10,'spot_award',$3)", [h, child, adult])
+      expect((await c.query("select id from persons where household_id=$1 and member_type='adult' and deleted_at is null", [h])).rowCount).toBe(1)
+      return { h, adult, child }
+    })
+    const parent = mint('dev|single-adult')
+    const rewardResponse = await call('POST', '/api/rewards', parent, { title: 'Movie night', cost: 2, requiresApproval: true })
+    expect(rewardResponse.statusCode).toBe(201)
+    const reward = JSON.parse(rewardResponse.body).reward
+    const requested = await call('POST', `/api/rewards/${reward.id}/redeem`, parent, { personId: family.child })
+    expect(requested.statusCode).toBe(201)
+    const redemption = JSON.parse(requested.body).redemption
+    expect((await call('POST', `/api/redemptions/${redemption.id}/approve`, parent)).statusCode).toBe(200)
+    const debits = await withClient((c) => c.query('select amount,created_by from ledger_entries where household_id=$1 and person_id=$2 and amount<0', [family.h, family.child]))
+    expect(debits.rows).toEqual([{ amount: -2, created_by: family.adult }])
+  })
+
+  it('capture returns a 403 when a catalog-only teen names another person', async () => {
+    await addMember('Capture catalog teen', 'teen', false, 'dev|capture-catalog')
+    await addMember('Capture sibling', 'kid', false, 'dev|capture-sibling')
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Capture gate', cost: 1, requiresApproval: false })).body).reward
+    await withTeenPermissions({ 'reward.manage': true, 'reward.approve': false }, async () => {
+      const result = await call('POST', '/api/capture/commit', mint('dev|capture-catalog'), { verb: 'redeem', targetKind: 'reward', targetId: reward.id, args: { personName: 'Capture sibling' } })
+      expect(result.statusCode).toBe(403)
+      expect(JSON.parse(result.body).message).toMatch(/permission/i)
+    })
+  })
+
+  it('rejects PATCH to a local earn-only currency', async () => {
+    const currency = JSON.parse((await call('POST', '/api/currencies', kevin, { label: 'Earn only review', spendable: false })).body).currency
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Keep spendable', cost: 1 })).body).reward
+    expect((await call('PATCH', `/api/rewards/${reward.id}`, kevin, { currency: currency.key })).statusCode).toBe(404)
+    const stored = await withClient((c) => c.query('select currency from rewards where id=$1', [reward.id]))
+    expect(stored.rows[0].currency).toBe('stars')
+  })
+
+  it('conversion accepts an uppercase self UUID and uses approval rights for another person', async () => {
+    const subject = await addMember('Conversion teen', 'teen', false, 'dev|conversion-teen')
+    const sibling = await addMember('Conversion sibling', 'kid', false, 'dev|conversion-sibling')
+    await grantStars(subject, 10); await grantStars(sibling, 10)
+    const currency = JSON.parse((await call('POST', '/api/currencies', kevin, { label: 'Conversion coins', spendable: true })).body).currency
+    const conversion = JSON.parse((await call('POST', '/api/conversions', kevin, { fromCurrency: 'stars', toCurrency: currency.key, fromAmount: 1, toAmount: 1 })).body).conversion
+    const token = mint('dev|conversion-teen')
+    expect((await call('POST', `/api/conversions/${conversion.id}/apply`, token, { personId: subject.toUpperCase() })).statusCode).toBe(200)
+    await withTeenPermissions({ 'reward.manage': true, 'reward.approve': false }, async () => {
+      expect((await call('POST', `/api/conversions/${conversion.id}/apply`, token, { personId: sibling })).statusCode).toBe(403)
+    })
+    await withTeenPermissions({ 'reward.manage': false, 'reward.approve': true }, async () => {
+      expect((await call('POST', `/api/conversions/${conversion.id}/apply`, token, { personId: sibling })).statusCode).toBe(200)
+    })
+  })
+})
+
+describe('review: chore clawbacks and currency locks', () => {
+  async function earnedChore(suffix: string) {
+    const personId = await addMember(`Clawback ${suffix}`, 'kid', false, `dev|clawback-${suffix}`)
+    const instanceId = await withClient(async (c) => {
+      const chore = await c.query(`insert into chores (household_id,title,person_id,reward_amount,reward_currency) values ($1,'Earn ten',$2,10,'stars') returning id`, [householdId, personId])
+      const inst = await c.query(`insert into chore_instances (household_id,chore_id,person_id,due_on,status,awarded,completed_at,reward_amount,reward_currency) values ($1,$2,$3,current_date,'done',true,now(),10,'stars') returning id`, [householdId, chore.rows[0].id, personId])
+      return inst.rows[0].id as string
+    })
+    await grantStars(personId, 10)
+    return { personId, instanceId }
+  }
+
+  it('serializes chore undo against redeem so only one debit can consume the balance', async () => {
+    const { personId, instanceId } = await earnedChore('race')
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Clawback race', cost: 10, requiresApproval: false })).body).reward
+    const results = await runBehindLedgerLock(personId, () => [
+      call('POST', `/api/chore-instances/${instanceId}/uncomplete`, kevin),
+      call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId }),
+    ])
+    expect(results.filter((r) => r.statusCode < 300)).toHaveLength(1)
+    expect(results.filter((r) => r.statusCode === 409)).toHaveLength(1)
+    expect(await starsOf(personId)).toBe(0)
+    const debits = await withClient((c) => c.query('select id from ledger_entries where person_id=$1 and amount<0', [personId]))
+    expect(debits.rowCount).toBe(1)
+  })
+
+  it.each([10, 0])('can safely undo an archived member’s chore with balance %s', async (balance) => {
+    const { personId, instanceId } = await earnedChore(`archived-${balance}`)
+    await withClient(async (c) => {
+      if (balance === 0) await c.query("insert into ledger_entries (household_id,person_id,currency,amount,reason,created_by) values ($1,$2,'stars',-10,'reward_redeemed',$3)", [householdId, personId, kevinId])
+      await c.query('update persons set deleted_at=now() where id=$1', [personId])
+    })
+    const result = await call('POST', `/api/chore-instances/${instanceId}/uncomplete`, kevin)
+    expect(result.statusCode).toBe(balance === 10 ? 200 : 409)
+    const stored = await withClient((c) => c.query('select status,awarded from chore_instances where id=$1', [instanceId]))
+    expect(stored.rows[0]).toEqual({ status: balance === 10 ? 'pending' : 'done', awarded: balance !== 10 })
+    const ledger = await withClient((c) => c.query('select sum(amount)::int as balance from ledger_entries where household_id=$1 and person_id=$2', [householdId, personId]))
+    expect(ledger.rows[0].balance).toBe(0)
+  })
+
+  it.each(['create', 'update'])('locks currencies in key order before %s promotes a default', async (operation) => {
+    const originalDefault = await withClient(async (c) => (await c.query('select id from currencies where household_id=$1 and is_default=true and deleted_at is null', [householdId])).rows[0].id)
+    const late = JSON.parse((await call('POST', '/api/currencies', kevin, { label: `ZZ order ${operation}` })).body).currency
+    const early = JSON.parse((await call('POST', '/api/currencies', kevin, { label: `AA order ${operation}` })).body).currency
+    const blocker = new Client({ connectionString: url })
+    const observer = new Client({ connectionString: url })
+    await Promise.all([blocker.connect(), observer.connect()])
+    await blocker.query('begin')
+    await blocker.query('select id from currencies where id=$1 for update', [early.id])
+    const pending = operation === 'update'
+      ? call('PATCH', `/api/currencies/${late.id}`, kevin, { isDefault: true })
+      : call('POST', '/api/currencies', kevin, { label: 'New ordered default', isDefault: true })
+    let laterRowAvailable = false
+    let barrierError: unknown
+    try {
+      const pid = (await blocker.query('select pg_backend_pid() as pid')).rows[0].pid
+      await waitForLockWaiters(observer, pid, 1, ['%currencies%'])
+      try {
+        await observer.query('select id from currencies where id=$1 for update nowait', [late.id])
+        laterRowAvailable = true
+      } catch (error) {
+        if ((error as { code?: string }).code !== '55P03') throw error
+      }
+    } catch (error) { barrierError = error } finally {
+      await blocker.query('commit')
+      await Promise.all([blocker.end(), observer.end()])
+    }
+    const result = await pending
+    await call('PATCH', `/api/currencies/${originalDefault}`, kevin, { isDefault: true })
+    if (barrierError) throw barrierError
+    expect(result.statusCode).toBe(operation === 'update' ? 200 : 201)
+    expect(laterRowAvailable).toBe(true)
+  })
+
+  it('refuses undo after spending, preserving completion and proof atomically', async () => {
+    const { personId, instanceId } = await earnedChore('spent')
+    await withClient((c) => c.query("update chore_instances set proof_storage_key='review-proof.jpg',proof_content_type='image/jpeg',had_proof=true where id=$1", [instanceId]))
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Spent chore', cost: 10, requiresApproval: false })).body).reward
+    expect((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId })).statusCode).toBe(201)
+    const result = await call('POST', `/api/chore-instances/${instanceId}/uncomplete`, kevin)
+    expect(result.statusCode).toBe(409)
+    expect(JSON.parse(result.body).message).toMatch(/not enough.*undo/i)
+    const stored = await withClient((c) => c.query('select status,awarded,proof_storage_key,had_proof from chore_instances where id=$1', [instanceId]))
+    expect(stored.rows[0]).toEqual({ status: 'done', awarded: true, proof_storage_key: 'review-proof.jpg', had_proof: true })
+    expect(await starsOf(personId)).toBe(0)
+    const rows = await withClient((c) => c.query("select id from ledger_entries where person_id=$1 and reason='chore_uncompleted'", [personId]))
+    expect(rows.rowCount).toBe(0)
+  })
+
+  it('serializes two decisions on the same redemption row (one 200, one 409)', async () => {
+    const personId = await addMember('Same redemption', 'kid', false, 'dev|same-redemption')
+    await grantStars(personId, 10)
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'One decision', cost: 2, requiresApproval: true })).body).reward
+    const red = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId })).body).redemption
+    const blocker = new Client({ connectionString: url })
+    const observer = new Client({ connectionString: url })
+    await Promise.all([blocker.connect(), observer.connect()])
+    await blocker.query('begin')
+    await blocker.query('select id from reward_redemptions where id=$1 for update', [red.id])
+    const pending = [call('POST', `/api/redemptions/${red.id}/approve`, reviewer), call('POST', `/api/redemptions/${red.id}/approve`, reviewer)]
+    let barrierError: unknown
+    try {
+      const { rows } = await blocker.query<{ pid: number }>('select pg_backend_pid() as pid')
+      await waitForLockWaiters(observer, rows[0].pid, 2, ['%from reward_redemptions%', '%for update%'])
+    } catch (error) { barrierError = error } finally {
+      await blocker.query('commit')
+      await Promise.all([blocker.end(), observer.end()])
+    }
+    const results = await Promise.all(pending)
+    if (barrierError) throw barrierError
+    expect(results.map((r) => r.statusCode).sort()).toEqual([200, 409])
+    expect(await starsOf(personId)).toBe(8)
+  })
+
+  it.each(['from', 'to'])('requires spendability only for the debit side after concurrent %s changes', async (side) => {
+    const personId = await addMember(`Conversion disable ${side}`, 'kid', false, `dev|disable-${side}`)
+    const from = JSON.parse((await call('POST', '/api/currencies', kevin, { label: `From ${side}`, spendable: true })).body).currency
+    const to = JSON.parse((await call('POST', '/api/currencies', kevin, { label: `To ${side}`, spendable: true })).body).currency
+    await call('POST', `/api/persons/${personId}/award`, kevin, { currency: from.key, amount: 10 })
+    const conv = JSON.parse((await call('POST', '/api/conversions', kevin, { fromCurrency: from.key, toCurrency: to.key, fromAmount: 1, toAmount: 1 })).body).conversion
+    const result = await runAfterConcurrentCurrencyDisable(side === 'from' ? from.id : to.id, () => call('POST', `/api/conversions/${conv.id}/apply`, kevin, { personId }))
+    expect(result.statusCode).toBe(side === 'from' ? 409 : 200)
+    const entries = await withClient((c) => c.query("select id from ledger_entries where person_id=$1 and reason='conversion'", [personId]))
+    expect(entries.rowCount).toBe(side === 'from' ? 0 : 2)
   })
 })

@@ -348,8 +348,9 @@ final class SyncManager {
         modulesRev += 1
     }
 
-    /// Whether the signed-in person holds a capability — mirrors the web `can()`: admins
-    /// implicitly have everything. "chore.manage"/"chore.approve"/"reward.manage"/"reward.approve".
+    /// Whether the signed-in person holds a capability — mirrors the web `can()`:
+    /// admins implicitly have everything; otherwise it must be in their granted set.
+    /// Server-defined household capabilities such as chore, reward, and goal management.
     func can(_ capability: String) -> Bool {
         guard let p = currentPerson else { return false }
         return p.isAdmin || p.capabilities.contains(capability)

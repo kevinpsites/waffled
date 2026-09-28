@@ -17,7 +17,7 @@ const overview: PersonOverview = {
   currencies: [{ id: 'currency-1', key: 'stars', label: 'Stars', symbol: '⭐', color: '#f2b01e', isDefault: true, spendable: true, sortOrder: 0 }],
   balances: [{ currency: 'stars', balance: 5 }], goals: [], categoryBalance: [],
   insight: { lean: [], light: [], suggestions: [], text: 'A balanced week.' },
-  recentLedger: [], redemptions: [redemption], rewardShop: [], savingToward: null,
+  recentLedger: [], redemptions: [redemption], rewardShop: [], savingToward: null, planningFocus: null,
   streak: { days: 0, week: [] },
 }
 

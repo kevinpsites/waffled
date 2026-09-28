@@ -44,8 +44,8 @@ the defaults, no migration to add more).
 | --- | --- |
 | `chore.manage` | Create chores for *others*, edit/delete chores |
 | `chore.approve` | Approve/reject completed chores |
-| `reward.manage` | Manage the rewards catalog, currencies, conversions; redeem or convert *for others* |
-| `reward.approve` | Approve/deny redemptions |
+| `reward.manage` | Manage the rewards catalog, currencies, conversions |
+| `reward.approve` | Approve/deny redemptions; redeem or convert balances for another person |
 | `reward.grant` | Give a person an ad-hoc spot award |
 | `reward.correct` | Reverse/replace settled reward activity or refund a redemption |
 | `goal.manage` | Log progress *for others*, edit/delete shared or others' goals, manage goal lists |
@@ -61,7 +61,14 @@ allowed for adult, caregiver, teen, and kid members:
 
 - **Chores** — complete/claim any chore; create a chore for *yourself* or *up-for-grabs*
   (assigning it to someone else needs `chore.manage`).
-- **Rewards** — redeem a reward for yourself; convert your own balance; cancel a pending redemption you requested.
+- **Rewards** — request a reward for yourself; convert your own balance. A pending
+  redemption needs someone other than the balance owner with `reward.approve` to approve it.
+  A parent can both request and approve a child’s reward, including when they are the
+  only adult. Nobody, including an admin, may approve a pending reward for their own
+  balance. Denial remains available to anyone with approval rights. Catalog managers
+  can still change a reward’s approval policy for future requests; this is not an
+  immutable separation-of-duties control.
+  A requester may cancel their own pending request.
 - **Goals** — log progress *for yourself* (or a family/shared log); create a *personal* goal
   (one with no other participants); tick a checklist step (it's self-attributed); create a
   goal list. Logging attributed to **another person**, or editing/deleting a goal that isn't

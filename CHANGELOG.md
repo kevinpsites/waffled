@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requester or a reward approver before any balance is spent.
   Refunds preserve the original approval attribution and reject mismatched or
   corrupted redemption-to-ledger links, including during idempotent replay.
+  Scoped API clients can correct ledger entries with `rewards:write` when their
+  owner also has `reward.correct`.
 
 - **Caregiver and read-only guest household roles.** Admins can now invite or edit
   temporary helpers with an optional access-expiration date. Caregivers receive the
@@ -40,19 +42,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Guests can read Weekly Planning without changing shared lists.** Opening the Meals
   step shows an empty grocery count when no list exists, without creating one.
 
+- **Reward corrections stay within the original award.** Replacements only reduce its magnitude, corrections require enough available balance to cover the change, and archived members’ history remains correctable.
+
 - Permission saves from older clients now preserve newer capability choices they
   do not know how to send, preventing unrelated settings changes from silently
   resetting who can correct reward history.
 
-- **Simultaneous reward spending cannot overdraw a balance.** Reward redemptions and
-  currency conversions now share a household-member balance lock, so overlapping
-  requests are applied one at a time and recheck the latest balance before spending.
+- **Reward spending and chore undo share one balance check.** Redemptions, currency
+  conversions and chore reward reversals lock the family member’s balance and recheck
+  it before debiting. Undo is refused when the balance cannot cover the reversal,
+  keeping the completed chore and its proof intact. Archived members’ chore rewards can
+  still be reversed when funded. Conversions may credit an active earn-only currency,
+  and currency-default changes acquire locks in the same order as conversions.
 
-- **Reward activity stays inside your family.** Redeeming or granting a reward now
-  rejects people and currencies from another household, and a family member can only
-  redeem for someone else when their role can manage rewards. Pending redemptions also
-  stop safely if their currency is later disabled, while earn-only currencies still work
-  for spot awards.
+- **Reward activity stays inside your family.** People and currencies are checked against
+  the household, and redeeming or converting another person’s balance requires reward-approval
+  rights. A pending reward must be approved by someone other than its balance owner; a parent
+  can request and approve a child’s reward, including in a single-adult household. Web and
+  iOS spending controls use the same permission. Disabled currencies cannot fund new
+  redemptions; earn-only currencies still accept spot awards.
 
 - Web and iOS retain the last server-verified built-in role across a cold offline
   restart, so known members can keep working; session, profile, household, server,

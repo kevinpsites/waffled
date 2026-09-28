@@ -31,6 +31,37 @@ describe('LedgerCorrectionModal', () => {
     expect(calls[0].body.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/)
   })
 
+  it('rejects a replacement larger than the original', async () => {
+    const calls: Array<{ url: string; body: Record<string, unknown> }> = []
+    mockApi(calls)
+    render(<LedgerCorrectionModal target={{ kind: 'entry', entry }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Replace amount' }))
+    fireEvent.change(screen.getByLabelText(/Correct amount/), { target: { value: '11' } })
+    fireEvent.change(screen.getByLabelText(/Reason/), { target: { value: 'Too large' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply correction' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/smaller positive/)
+    expect(calls).toHaveLength(0)
+  })
+
+  it('keeps the retry key for the same payload and rotates it after an edit', async () => {
+    const calls: Record<string, unknown>[] = []
+    globalThis.fetch = vi.fn(async (_url, init) => {
+      calls.push(JSON.parse(String(init?.body)))
+      throw new Error('Lost response')
+    }) as typeof fetch
+    render(<LedgerCorrectionModal target={{ kind: 'entry', entry }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText(/Reason/), { target: { value: 'Original reason' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply correction' }))
+    await screen.findByRole('alert')
+    fireEvent.click(screen.getByRole('button', { name: 'Apply correction' }))
+    await screen.findByRole('alert')
+    expect(calls[1].idempotencyKey).toBe(calls[0].idempotencyKey)
+    fireEvent.change(screen.getByLabelText(/Reason/), { target: { value: 'Updated reason' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply correction' }))
+    await screen.findByRole('alert')
+    expect(calls[2].idempotencyKey).not.toBe(calls[0].idempotencyKey)
+  })
+
   it('uses the dedicated refund endpoint for a settled redemption', async () => {
     const calls: Array<{ url: string; body: Record<string, unknown> }> = []
     mockApi(calls)
@@ -57,7 +88,7 @@ describe('LedgerCorrectionModal', () => {
     fireEvent.change(screen.getByLabelText(/Reason/), { target: { value: 'Outside supported range' } })
     fireEvent.click(screen.getByRole('button', { name: 'Apply correction' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/2,147,483,647/)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/smaller positive whole-number/)
     expect(calls).toHaveLength(0)
   })
 

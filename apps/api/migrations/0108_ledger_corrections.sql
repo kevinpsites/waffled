@@ -4,11 +4,20 @@
 -- who corrected what and why.
 
 alter table ledger_entries
-  add column reverses_entry_id uuid references ledger_entries(id),
-  add column correction_of_id uuid references ledger_entries(id),
+  add column reverses_entry_id uuid,
+  add column correction_of_id uuid,
   add column correction_group_id uuid,
   add column correction_reason text,
   add column idempotency_key text;
+
+alter table ledger_entries
+  add constraint uq_ledger_household_entry unique (household_id, id),
+  add constraint ck_ledger_reversal_not_self check (reverses_entry_id <> id),
+  add constraint ck_ledger_correction_not_self check (correction_of_id <> id),
+  add constraint fk_ledger_reversal_household foreign key (household_id, reverses_entry_id)
+    references ledger_entries (household_id, id),
+  add constraint fk_ledger_correction_household foreign key (household_id, correction_of_id)
+    references ledger_entries (household_id, id);
 
 create unique index uq_ledger_entry_reversal
   on ledger_entries (household_id, reverses_entry_id)
@@ -30,6 +39,11 @@ drop index if exists uq_ledger_correction_idempotency;
 drop index if exists uq_ledger_entry_reversal;
 
 alter table ledger_entries
+  drop constraint if exists fk_ledger_reversal_household,
+  drop constraint if exists fk_ledger_correction_household,
+  drop constraint if exists ck_ledger_reversal_not_self,
+  drop constraint if exists ck_ledger_correction_not_self,
+  drop constraint if exists uq_ledger_household_entry,
   drop column if exists idempotency_key,
   drop column if exists correction_reason,
   drop column if exists correction_group_id,

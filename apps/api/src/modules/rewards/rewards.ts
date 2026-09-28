@@ -8,10 +8,10 @@ import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { rewardsRoutes, moduleRoutes, tenantRoute as unrestrictedTenantRoute } from '../../platform/route-guards'
 import { assertPersonInHousehold, HouseholdReferenceError } from '../../platform/household-refs'
-import { lockLedgerSubject } from '../../platform/ledger-lock'
+import { requireCapability } from '../../platform/permissions'
+import { lockLedgerSubject, lockSpendableCurrencies } from '../../platform/ledger-lock'
 import { registerRewardCaptureTarget } from './rewards-capture'
 import { listCurrencies, getDefaultCurrencyKey, presentCurrency } from '../currencies/currencies'
-import { requireCapability, assertSelfOrCapability } from '../../platform/permissions'
 
 type Api = ReturnType<typeof createAPI>
 // Rewards is the spend half of the chores economy: these routes require the chores
@@ -22,7 +22,7 @@ const { tenantRoute, capRoute } = rewardsRoutes()
 // rewards-shop gate above.
 const { capRoute: choresCapRoute } = moduleRoutes('chores')
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const CORRECTABLE_LEDGER_REASONS = new Set(['spot_award', 'ledger_correction'])
+export const CORRECTABLE_LEDGER_REASONS = new Set(['spot_award', 'ledger_correction'])
 const PG_INT_MIN = -2_147_483_648
 const PG_INT_MAX = 2_147_483_647
 
@@ -116,6 +116,9 @@ function validateCorrection(originalAmount: number, replacementAmount: number | 
   if (replacementAmount === undefined) return
   if (!isPostgresInteger(replacementAmount)) {
     throw new LedgerCorrectionError('replacementAmount must fit a 32-bit signed integer')
+  }
+  if (Math.abs(replacementAmount) > Math.abs(originalAmount)) {
+    throw new LedgerCorrectionError('replacementAmount cannot increase the original magnitude')
   }
   if (replacementAmount === originalAmount) {
     throw new LedgerCorrectionError('replacementAmount must differ from the original amount')
@@ -251,7 +254,17 @@ async function correctLockedLedgerEntry(
   )
   if (already.rowCount) throw new LedgerCorrectionError('this ledger entry has already been corrected', 409)
 
-  await lockLedgerSubject(client, tenant.householdId, original.person_id)
+  // Historical corrections remain possible after a person is archived. Ordinary
+  // earning/spending paths retain the active-person requirement on the same lock.
+  await lockLedgerSubject(client, tenant.householdId, original.person_id, { includeArchived: true })
+  const current = await client.query<{ balance: string }>(
+    `select coalesce(sum(amount),0) as balance from ledger_entries
+      where household_id=$1 and person_id=$2 and currency=$3 and deleted_at is null`,
+    [tenant.householdId, original.person_id, original.currency]
+  )
+  if (Number(current.rows[0].balance) + reversalAmount + (replacementAmount ?? 0) < 0) {
+    throw new LedgerCorrectionError('Not enough balance for this correction. Restore the balance used by rewards, conversions or chore undo, then retry.', 409)
+  }
   const group = await client.query<{ id: string }>(`select gen_random_uuid() as id`)
   const groupId = group.rows[0].id
   const reversal = await client.query<{ id: string }>(
@@ -369,6 +382,8 @@ export async function cancelRedemption(tenant: Tenant, id: string): Promise<Rede
     if (redemption.status !== 'pending') {
       throw new LedgerCorrectionError('only a pending redemption can be canceled', 409)
     }
+    // Deliberately requester-owned: a parent’s request for a child can be canceled
+    // by that parent or an approver, not by the subject merely named on it.
     if (redemption.requested_by !== tenant.personId) await requireCapability(tenant, 'reward.approve', client)
     const updated = await client.query<RedemptionRow>(
       `update reward_redemptions
@@ -491,16 +506,6 @@ async function assertCurrencyInHousehold(householdId: string, currency: string, 
   }
 }
 
-async function lockSpendableCurrency(client: PoolClient, householdId: string, currency: string): Promise<boolean> {
-  const { rowCount } = await client.query(
-    `select 1 from currencies
-      where household_id=$1 and key=$2 and spendable=true and deleted_at is null
-      for share`,
-    [householdId, currency]
-  )
-  return !!rowCount
-}
-
 export async function balanceFor(householdId: string, personId: string, currency = 'stars'): Promise<number> {
   const { rows } = await query<{ balance: string | null }>(
     `select coalesce(sum(amount),0) as balance from ledger_entries
@@ -597,7 +602,8 @@ export async function requestRedemption(tenant: Tenant, rewardId: string, person
   // directly), so prove the redemption subject belongs to the active household
   // before either the pending or auto-approved path can persist a relationship.
   await assertPersonInHousehold(tenant.householdId, personId)
-  if (personId.toLowerCase() !== tenant.personId.toLowerCase()) await requireCapability(tenant, 'reward.manage')
+  // Catalog editing does not authorize spending another member's balance.
+  if (personId.toLowerCase() !== tenant.personId.toLowerCase()) await requireCapability(tenant, 'reward.approve')
   await assertCurrencyInHousehold(tenant.householdId, reward.currency, true)
 
   // This reward needs a parent → a pending request for the approval queue.
@@ -618,7 +624,7 @@ export async function requestRedemption(tenant: Tenant, rewardId: string, person
   try {
     await client.query('begin')
     await lockLedgerSubject(client, tenant.householdId, personId)
-    if (!(await lockSpendableCurrency(client, tenant.householdId, reward.currency))) {
+    if (!(await lockSpendableCurrencies(client, tenant.householdId, [reward.currency]))) {
       await client.query('rollback')
       return { error: 'reward currency is no longer available' }
     }
@@ -685,6 +691,13 @@ export async function decideRedemption(tenant: Tenant, id: string, approve: bool
       return { redemption: upd.rows[0] }
     }
 
+    // Approval must come from someone other than the balance owner. A parent
+    // can both request and approve a child's reward; denial stays unrestricted.
+    if (red.person_id.toLowerCase() === tenant.personId.toLowerCase()) {
+      await client.query('rollback')
+      return { error: 'A different person must approve this request' }
+    }
+
     // Keep local history visible and dismissible after a person is archived,
     // but never create a new debit for an inactive person.
     if (red.person_deleted_at) { await client.query('rollback'); return null }
@@ -694,7 +707,7 @@ export async function decideRedemption(tenant: Tenant, id: string, approve: bool
     // A pending request can outlive a catalog change. Re-check at decision time
     // and hold the catalog row through commit, so disabling/deleting a currency
     // cannot race a new debit.
-    if (!(await lockSpendableCurrency(client, tenant.householdId, red.currency))) {
+    if (!(await lockSpendableCurrencies(client, tenant.householdId, [red.currency]))) {
       await client.query('rollback')
       return { error: 'reward currency is no longer available' }
     }
@@ -876,11 +889,11 @@ export function registerRewardRoutes(api: Api): void {
     let where = `r.household_id=$1 and r.deleted_at is null`
     if (status) { params.push(status); where += ` and r.status=$${params.length}` }
     const { rows } = await query<RedemptionRow & { person_name: string | null; avatar_emoji: string | null; color_hex: string | null }>(
-      // The persons join carries the household predicate so a row that somehow
-      // holds a foreign person_id resolves to nulls, never a stranger's profile.
+      // Hide orphaned or foreign-person rows rather than exposing another
+      // household's profile through an inconsistent redemption.
       `select r.*, p.name as person_name, p.avatar_emoji, p.color_hex
          from reward_redemptions r
-         left join persons p on p.id = r.person_id and p.household_id = r.household_id
+         join persons p on p.id = r.person_id and p.household_id = r.household_id
         where ${where} order by r.created_at desc limit 100`,
       params
     )
@@ -893,10 +906,7 @@ export function registerRewardRoutes(api: Api): void {
     const body = (req.body ?? {}) as { personId?: string }
     const personId = body.personId?.trim() || tenant.personId
     if (!UUID_RE.test(personId)) return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
-    await assertPersonInHousehold(tenant.householdId, personId)
-    // Spending your own balance is yours to decide; spending someone else's is a
-    // parent action — the same rule POST /api/conversions/:id/apply enforces.
-    await assertSelfOrCapability(tenant, tenant.personId, personId, 'reward.manage')
+    // Shared with capture so both entry points enforce the same spending authority.
     const red = await requestRedemption(tenant, id, personId)
     if (red === null) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
     if ('error' in red) return res.status(409).json({ error: 'Conflict', message: red.error })

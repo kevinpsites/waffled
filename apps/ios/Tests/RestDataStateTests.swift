@@ -333,7 +333,8 @@ private let fixtureRestScope = RestDataScopeKey(
             id: "redemption-1", rewardId: "reward-1", personId: "person-1",
             personName: "Maya", personAvatar: nil, personColor: nil,
             title: "Movie night", emoji: "🎬", cost: 5, currency: "stars",
-            status: "pending", decidedAt: nil, createdAt: "2026-09-03T12:00:00Z"
+            status: "pending", requestedBy: nil, ledgerId: nil, refundLedgerId: nil,
+            decidedAt: nil, createdAt: "2026-09-03T12:00:00Z"
         )
         let chore = try! JSONDecoder().decode(
             WaffledAPI.ChoreInstanceDTO.self,
@@ -578,7 +579,8 @@ private let fixtureRestScope = RestDataScopeKey(
             id: "tenant-a-redemption", rewardId: "reward-1", personId: "person-a",
             personName: "Alex", personAvatar: nil, personColor: nil,
             title: "Movie night", emoji: "🎬", cost: 5, currency: "stars",
-            status: "pending", decidedAt: nil, createdAt: "2026-09-03T12:00:00Z"
+            status: "pending", requestedBy: nil, ledgerId: nil, refundLedgerId: nil,
+            decidedAt: nil, createdAt: "2026-09-03T12:00:00Z"
         )
         let redemptions = RestResponse<[WaffledAPI.RewardRedemption]>(.success([redemption]))
         let chores = RestResponse<[WaffledAPI.ChoreInstanceDTO]>(.success([]))
@@ -609,7 +611,8 @@ private let fixtureRestScope = RestDataScopeKey(
             id: "tenant-a-redemption", rewardId: "reward-1", personId: "person-a",
             personName: "Alex", personAvatar: nil, personColor: nil,
             title: "Movie night", emoji: "🎬", cost: 5, currency: "stars",
-            status: "pending", decidedAt: nil, createdAt: "2026-09-03T12:00:00Z"
+            status: "pending", requestedBy: nil, ledgerId: nil, refundLedgerId: nil,
+            decidedAt: nil, createdAt: "2026-09-03T12:00:00Z"
         )
         let model = ApprovalsModel(
             fetchRedemptions: {

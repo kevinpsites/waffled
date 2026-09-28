@@ -316,8 +316,8 @@ struct PersonView: View {
 
     /// Redeem the pinned saving-toward reward directly (only shown when affordable).
     /// Spending your own balance is yours to decide; spending someone else's needs
-    /// reward.manage — the same rule the server enforces and the reward shop shows.
-    private var maySpend: Bool { sync.can("reward.manage") || personId == sync.currentPersonId }
+    /// reward.approve — the same rule the server enforces and the reward shop shows.
+    private var maySpend: Bool { sync.can("reward.approve") || personId.lowercased() == sync.currentPersonId?.lowercased() }
 
     private func redeemSaving() {
         guard let s = model.overview?.savingToward else { return }

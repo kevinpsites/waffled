@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client } from 'pg'
+import { DateTime } from 'luxon'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 
@@ -228,11 +229,15 @@ describe('calendar → goal recap', () => {
 
   it('habit confirm respects once-a-day (two events, one log)', async () => {
     const goalId = await makeGoal({ title: 'Habit', goalType: 'habit', unit: null, habitPeriod: 'day', habitTargetPerPeriod: 1, trackingMode: 'each_tracks' })
-    const e1 = await linkedEvent(goalId, 30, [kevinId], 26)
-    const e2 = await linkedEvent(goalId, 30, [kevinId], 25) // same day, later
+    // Relative 25/26-hour offsets straddle midnight when this runs after 1 AM.
+    const yesterdayNoon = DateTime.now().setZone('America/Chicago').minus({ days: 1 }).startOf('day').plus({ hours: 12 })
+    const hoursAgo = (Date.now() - yesterdayNoon.toMillis()) / 3600_000
+    const e1 = await linkedEvent(goalId, 30, [kevinId], hoursAgo)
+    const e2 = await linkedEvent(goalId, 30, [kevinId], hoursAgo - 1)
     const items = await recap(goalId)
     expect(items.length).toBe(2)
     expect(items.every((i) => i.suggestedAmount === 1)).toBe(true)
+    expect(new Set(items.map((i) => i.occurrenceDate)).size).toBe(1)
 
     const statuses: string[] = []
     for (const it of items) {

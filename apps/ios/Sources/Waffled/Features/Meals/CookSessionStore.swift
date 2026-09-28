@@ -41,8 +41,8 @@ final class CookSessionStore {
     private let api = WaffledAPI()
     private var principalGeneration: UInt64 = 0
 
-    init(notificationManager: NotificationManager? = nil) {
-        alarm = TimerAlarm(notificationManager: notificationManager)
+    init(notificationManager: NotificationManager? = nil, alarm: TimerAlarm? = nil) {
+        self.alarm = alarm ?? TimerAlarm(notificationManager: notificationManager)
     }
 
     /// A live session ⇒ present Cook Mode. Bound to the root `.fullScreenCover`.
