@@ -71,7 +71,8 @@ invites may also include a final access date in the household timezone; those pr
 stay off the kiosk picker by default. The selected day remains available in full, including
 when daylight-saving time changes. Changing the household timezone keeps the selected
 date and recalculates its midnight cutoff. Once temporary access expires, existing sessions
-stop working and the membership no longer appears in the household switcher. A fresh invite restores the
+stop working and the membership no longer appears in the household switcher. PowerSync
+credentials expire no later than that same cutoff. A fresh invite restores the
 same membership and its history instead of creating a duplicate person. If an account has
 no active memberships, signing in with its password automatically accepts its first valid
 pending invite so it can return to a household.

@@ -1,7 +1,7 @@
 // PowerSync auth: our api serves a JWKS and mints short-lived RS256 tokens that
 // carry the caller's real household_id (resolved from the DB). PowerSync validates
 // those tokens against the JWKS; sync rules scope buckets by the household_id claim.
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { createPublicKey } from 'node:crypto'
 import jwt from 'jsonwebtoken'
@@ -101,8 +101,9 @@ describe('powersync auth', () => {
   it('mints a PowerSync token for a provisioned member, verifiable against the JWKS', async () => {
     const res = await call('GET', '/api/powersync/token', kevin)
     expect(res.statusCode).toBe(200)
-    const { token } = JSON.parse(res.body)
+    const { token, expiresIn } = JSON.parse(res.body)
     expect(typeof token).toBe('string')
+    expect(expiresIn).toBe(300)
 
     const jwks = JSON.parse((await call('GET', '/api/auth/keys')).body)
     const publicKey = createPublicKey({ key: jwks.keys[0], format: 'jwk' })
@@ -114,6 +115,45 @@ describe('powersync auth', () => {
 
     expect(decoded.sub).toBe('dev|kevin')
     expect(decoded.household_id).toBe(kevinHouseholdId)
+    expect(decoded.exp! - decoded.iat!).toBe(300)
+  })
+
+  it.each(['caregiver', 'guest'])('caps a %s sync token at the membership deadline', async (role) => {
+    const { query } = await import('../src/platform/db')
+    const person = await query<{ id: string; access_expires_at: Date }>(
+      `insert into persons (household_id, name, member_type, access_ends_on)
+       values ($1, 'Temporary viewer', $2, current_date + 1) returning id, access_expires_at`,
+      [kevinHouseholdId, role]
+    )
+    const sub = `dev|sync-expiring-${role}`
+    await query(
+      `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified)
+       values ($1, $2, 'password', $3, true)`,
+      [kevinHouseholdId, person.rows[0].id, sub]
+    )
+    const deadline = person.rows[0].access_expires_at.getTime()
+    const now = vi.spyOn(Date, 'now').mockReturnValue(deadline - 60_000)
+    try {
+      const res = await call('GET', '/api/powersync/token', mint(sub))
+      expect(res.statusCode).toBe(200)
+      const { token, expiresIn } = JSON.parse(res.body)
+      const payload = jwt.decode(token) as jwt.JwtPayload
+      expect(payload.exp).toBe(deadline / 1000)
+      expect(expiresIn).toBe(60)
+
+      const jwks = JSON.parse((await call('GET', '/api/auth/keys')).body)
+      const publicKey = createPublicKey({ key: jwks.keys[0], format: 'jwk' })
+      expect(() => jwt.verify(token, publicKey, {
+        algorithms: ['RS256'], audience: 'powersync', issuer: 'waffled', clockTimestamp: deadline / 1000,
+      })).toThrow(/jwt expired/)
+
+      now.mockReturnValue(deadline)
+      const ended = await call('GET', '/api/powersync/token', mint(sub))
+      expect(ended.statusCode).toBe(401)
+      expect(JSON.parse(ended.body).error).toBe('membership_inactive')
+    } finally {
+      now.mockRestore()
+    }
   })
 
   it('refuses a PowerSync token for an unprovisioned caller (403)', async () => {

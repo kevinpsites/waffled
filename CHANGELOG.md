@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Temporary access also bounds offline-sync credentials.** PowerSync tokens expire no
+  later than the caregiver or guest membership deadline.
+
 - **Guests can read Weekly Planning without changing shared lists.** Opening the Meals
   step shows an empty grocery count when no list exists, without creating one.
 
