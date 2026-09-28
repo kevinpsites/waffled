@@ -10,12 +10,14 @@ import SwiftUI
 struct KioskCodeEntrySheet: View {
     @Environment(KioskMode.self) private var kiosk
     @Environment(SyncManager.self) private var sync
+    @Environment(Session.self) private var session
     @Environment(\.dismiss) private var dismiss
 
     @State private var code = ""
     @State private var label = ""
     @State private var error: String?
     @State private var busy = false
+    @State private var confirmDiscard = false
     @FocusState private var focus: Field?
     private enum Field { case code, label }
 
@@ -34,7 +36,10 @@ struct KioskCodeEntrySheet: View {
                     WaffledPrimaryCTA(
                         label: busy ? "Setting up…" : "Set up this iPad",
                         tint: WF.primary, isDisabled: !canSubmit,
-                        action: { Task { await submit() } }
+                        action: {
+                            if sync.pendingUploads > 0 { confirmDiscard = true }
+                            else { Task { await submit() } }
+                        }
                     )
                     Text("Ask an adult to open Waffled → Settings → Display & Kiosk → “Pair a kiosk” to get a code. It’s one-time and expires in about 10 minutes.")
                         .font(.system(size: 12.5)).foregroundStyle(WF.ink3)
@@ -47,6 +52,14 @@ struct KioskCodeEntrySheet: View {
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
         .onAppear { focus = .code }
+        .confirmationDialog("Discard unsynced changes?", isPresented: $confirmDiscard, titleVisibility: .visible) {
+            Button("Discard changes and set up kiosk", role: .destructive) {
+                Task { await submit(discardAuthorized: true) }
+            }
+            Button("Wait for sync", role: .cancel) {}
+        } message: {
+            Text("This device has \(sync.pendingUploads) change\(sync.pendingUploads == 1 ? "" : "s") that haven’t reached the server. Setting up the kiosk now permanently discards them.")
+        }
     }
 
     private var header: some View {
@@ -86,12 +99,15 @@ struct KioskCodeEntrySheet: View {
         }
     }
 
-    private func submit() async {
+    private func submit(discardAuthorized: Bool = false) async {
         guard canSubmit else { return }
         busy = true; error = nil
         let name = label.trimmingCharacters(in: .whitespaces)
         error = await kiosk.enableViaCode(code.trimmingCharacters(in: .whitespaces),
-                                          label: name.isEmpty ? nil : name, sync: sync)
+                                          label: name.isEmpty ? nil : name,
+                                          sync: sync,
+                                          session: session,
+                                          policy: discardAuthorized ? .discardAuthorized : .requireNoPendingUploads)
         busy = false
         if error == nil { dismiss() }   // gate flips to the picker
     }

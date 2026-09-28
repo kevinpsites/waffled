@@ -107,6 +107,21 @@ enum AppConfig {
     }
 }
 
+/// One-time boundary for installs upgraded from versions that did not clear the shared
+/// PowerSync file between principals. It is marked only after a real successful purge.
+enum PrincipalIsolationMigration {
+    private static let versionKey = "waffled.principalIsolationVersion"
+    private static let currentVersion = 1
+
+    static var isComplete: Bool {
+        UserDefaults.standard.integer(forKey: versionKey) >= currentVersion
+    }
+
+    static func markComplete() {
+        UserDefaults.standard.set(currentVersion, forKey: versionKey)
+    }
+}
+
 /// Launch-env switches so demos and verification can be driven headlessly from `simctl`
 /// (via `SIMCTL_CHILD_*`). Most of these exist only because the simulator has NO tap API,
 /// so anything behind a tap is otherwise unreachable. No effect unless set.

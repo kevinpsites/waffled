@@ -168,9 +168,9 @@ struct KioskProfilePickerView: View {
         } catch let WaffledAPI.APIError.http(code, _) where code == 401 {
             // The device's own credential was rejected — an admin unpaired this kiosk.
             // Forget the pairing and fall back to login rather than a dead picker.
-            kiosk.handleDeviceRevoked()
+            kiosk.handleDeviceRevoked(session: session)
         } catch is KioskDeviceAuth.NotPaired {
-            kiosk.handleDeviceRevoked()
+            kiosk.handleDeviceRevoked(session: session)
         } catch {
             if !silent { loadError = "Couldn’t load profiles. Check the connection." }
         }
@@ -323,6 +323,7 @@ struct KioskPinPad: View {
 struct KioskPickerEscapeSheet: View {
     @Environment(KioskMode.self) private var kiosk
     @Environment(SyncManager.self) private var sync
+    @Environment(Session.self) private var session
     @Environment(\.dismiss) private var dismiss
 
     /// Re-load the picker after the server address changes (mints a fresh device token
@@ -358,7 +359,7 @@ struct KioskPickerEscapeSheet: View {
                 // Local-only: forget the device pairing and return to sign-in. We can't
                 // revoke server-side here (nobody is signed in on the picker); an admin can
                 // remove the leftover device entry from Settings → Display & Kiosk later.
-                kiosk.handleDeviceRevoked()
+                kiosk.handleDeviceRevoked(session: session)
                 dismiss()
             }
             Button("Cancel", role: .cancel) {}

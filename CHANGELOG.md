@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Signing out on iPhone and iPad now removes the previous person’s offline data.**
+  Ordinary sign-out, household changes, and shared-iPad profile changes clear the local
+  sync mirror, reminders, and active Cook Mode before another person can sign in. Late
+  recipe loads cannot reopen the previous session. Upgraded devices
+  verify that cleanup before showing either login or the kiosk picker. Manual switches
+  warn before discarding offline edits; an automatic screensaver return waits for them
+  to upload behind a private lock screen instead of silently deleting them.
+
 ## [0.15.1] - 2026-09-15
 
 ### Added

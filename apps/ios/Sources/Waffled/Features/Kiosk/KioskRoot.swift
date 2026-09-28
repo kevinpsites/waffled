@@ -10,11 +10,15 @@ import SwiftUI
 struct KioskRoot: View {
     @Environment(SyncManager.self) private var sync
     @Environment(Session.self) private var session
+    @Environment(KioskMode.self) private var kiosk
     /// Flips true if we're still on the boot cover after a grace period — turns the
     /// branded "loading" nest into an escapable error state. Without this, a session
     /// that can't authenticate (stale/revoked token) leaves the iPad stuck on the cover
     /// forever with no way back to login.
     @State private var bootStalled = false
+    @State private var pendingSignOutCount = 0
+    @State private var confirmDiscardSignOut = false
+    @State private var signOutError: String?
 
     var body: some View {
         KioskShell()
@@ -30,9 +34,7 @@ struct KioskRoot: View {
                         detail: sync.lastError,
                         onRetry: { bootStalled = false; Task { await sync.start() } },
                         onSignOut: {
-                            Task {
-                                await session.signOut(sync: sync)
-                            }
+                            Task { await signOut() }
                         }
                     )
                     .transition(.opacity)
@@ -49,11 +51,53 @@ struct KioskRoot: View {
                 try? await Task.sleep(for: .seconds(8))
                 if !Task.isCancelled, booting { bootStalled = true }
             }
+            .confirmationDialog(
+                "Discard unsynced changes and sign out?",
+                isPresented: $confirmDiscardSignOut,
+                titleVisibility: .visible
+            ) {
+                Button("Discard changes and sign out", role: .destructive) {
+                    Task { await signOut(discardAuthorized: true) }
+                }
+                Button("Wait for sync", role: .cancel) {}
+            } message: {
+                Text("This device has \(pendingSignOutCount) change\(pendingSignOutCount == 1 ? "" : "s") that haven’t reached the server.")
+            }
+            .alert(
+                "Couldn’t sign out",
+                isPresented: Binding(
+                    get: { signOutError != nil },
+                    set: { if !$0 { signOutError = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) { signOutError = nil }
+            } message: {
+                Text(signOutError ?? "Try again.")
+            }
     }
 
     private var booting: Bool {
         if DemoHooks.skipBootCover { return false }
         return sync.members.isEmpty && (sync.status == .idle || sync.status == .connecting)
+    }
+
+    private func signOut(discardAuthorized: Bool = false) async {
+        signOutError = nil
+        let result = await session.signOut(
+            sync: sync,
+            policy: discardAuthorized ? .discardAuthorized : .requireNoPendingUploads
+        )
+        switch result {
+        case .completed:
+            kiosk.completeProfileSignOut()
+        case let .pendingUploads(count):
+            pendingSignOutCount = count
+            confirmDiscardSignOut = true
+        case .purgeFailed:
+            signOutError = sync.lastError ?? "Couldn’t safely clear this account’s local data."
+        case .transitionInProgress:
+            signOutError = "Another account change is still finishing. Try again."
+        }
     }
 }
 

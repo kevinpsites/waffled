@@ -845,7 +845,10 @@ private let fixtureRestScope = RestDataScopeKey(
     @Test func changedServerClearsLocalDataAndRotatesScopeBeforeRestart() async {
         let stop = DeferredRestValue<Bool>()
         let recorder = ConnectionTransitionRecorder()
-        let sync = SyncManager(testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop))
+        let sync = SyncManager(
+            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop),
+            principalStateCleanup: {}
+        )
         let original = sync.restDataScopeKey
         let update = Task { await sync.updateConnection(apiBaseURL: "https://new-server.example") }
         await stop.waitUntilStarted()
@@ -860,7 +863,10 @@ private let fixtureRestScope = RestDataScopeKey(
     @Test func failedServerTeardownDoesNotAdoptConfigurationOrRotateScope() async {
         let stop = DeferredRestValue<Bool>()
         let recorder = ConnectionTransitionRecorder()
-        let sync = SyncManager(testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop))
+        let sync = SyncManager(
+            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop),
+            principalStateCleanup: {}
+        )
         let original = sync.restDataScopeKey
         let update = Task { await sync.updateConnection(apiBaseURL: "https://new-server.example") }
         await stop.waitUntilStarted()
@@ -873,21 +879,25 @@ private let fixtureRestScope = RestDataScopeKey(
     @Test func explicitSignOutClearsLocalDataAndRotatesScope() async {
         let stop = DeferredRestValue<Bool>()
         let recorder = ConnectionTransitionRecorder()
-        let sync = SyncManager(testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop))
+        let sync = SyncManager(
+            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop),
+            principalStateCleanup: {}
+        )
         let original = sync.restDataScopeKey
-        let signOut = Task { await sync.signOut(clearLocal: true) }
+        let signOut = Task { await sync.signOut(policy: .securityCritical) }
         await stop.waitUntilStarted()
         #expect(recorder.events == ["stop:true"])
         #expect(sync.restDataScopeKey != original)
         await stop.succeed(true)
-        #expect(await signOut.value)
+        #expect(await signOut.value == .completed)
     }
 
     @Test func signOutPreemptsUpdateBeforeConfigurationOrRestart() async {
         let firstStop = DeferredRestValue<Bool>()
         let recorder = ConnectionTransitionRecorder()
         let sync = SyncManager(
-            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: firstStop)
+            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: firstStop),
+            principalStateCleanup: {}
         )
         let oldScope = sync.restDataScopeKey
 
@@ -896,7 +906,7 @@ private let fixtureRestScope = RestDataScopeKey(
         }
         await firstStop.waitUntilStarted()
 
-        let signOut = Task { await sync.signOut() }
+        let signOut = Task { await sync.signOut(policy: .securityCritical) }
         await waitForScopeRotation(sync, from: oldScope)
         #expect(recorder.events == ["stop:false"])
         await firstStop.succeed(true)
@@ -904,56 +914,62 @@ private let fixtureRestScope = RestDataScopeKey(
         let updateResult = await update.value
         let signOutResult = await signOut.value
         #expect(updateResult == .transitionInProgress)
-        #expect(signOutResult)
-        #expect(recorder.events == ["stop:false", "stop:false"])
+        #expect(signOutResult == .completed)
+        #expect(recorder.events == ["stop:false", "stop:true"])
     }
 
     @Test func signOutPreemptsReauthenticationBeforeCredentialAdoptionOrRestart() async {
         let firstStop = DeferredRestValue<Bool>()
         let recorder = ConnectionTransitionRecorder()
         let sync = SyncManager(
-            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: firstStop)
+            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: firstStop),
+            principalStateCleanup: {}
         )
         let oldScope = sync.restDataScopeKey
 
         let reauthentication = Task {
-            await sync.reauthenticate(expectedScope: oldScope) {
-                recorder.record("adopt-credentials")
-            }
+            await sync.reauthenticate(
+                expectedScope: oldScope,
+                policy: .securityCritical,
+                adoptCredentials: { recorder.record("adopt-credentials") }
+            )
         }
         await firstStop.waitUntilStarted()
 
-        let signOut = Task { await sync.signOut() }
+        let signOut = Task { await sync.signOut(policy: .securityCritical) }
         await waitForScopeRotation(sync, from: oldScope)
-        #expect(recorder.events == ["stop:false"])
+        #expect(recorder.events == ["stop:true"])
         await firstStop.succeed(true)
 
         let reauthenticationResult = await reauthentication.value
         let signOutResult = await signOut.value
-        #expect(!reauthenticationResult)
-        #expect(signOutResult)
-        #expect(recorder.events == ["stop:false", "stop:false"])
+        #expect(reauthenticationResult == .transitionInProgress)
+        #expect(signOutResult == .completed)
+        #expect(recorder.events == ["stop:true", "stop:true"])
     }
 
     @Test func completedSignOutRejectsALateResponseBoundToItsOldScope() async {
         let firstStop = DeferredRestValue<Bool>()
         let recorder = ConnectionTransitionRecorder()
         let sync = SyncManager(
-            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: firstStop)
+            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: firstStop),
+            principalStateCleanup: {}
         )
         let oldScope = sync.restDataScopeKey
 
-        let signOut = Task { await sync.signOut() }
+        let signOut = Task { await sync.signOut(policy: .securityCritical) }
         await firstStop.waitUntilStarted()
         await firstStop.succeed(true)
-        #expect(await signOut.value)
+        #expect(await signOut.value == .completed)
 
-        let didReauthenticate = await sync.reauthenticate(expectedScope: oldScope) {
-            recorder.record("adopt-credentials")
-        }
+        let didReauthenticate = await sync.reauthenticate(
+            expectedScope: oldScope,
+            policy: .securityCritical,
+            adoptCredentials: { recorder.record("adopt-credentials") }
+        )
 
-        #expect(!didReauthenticate)
-        #expect(recorder.events == ["stop:false"])
+        #expect(didReauthenticate == .transitionInProgress)
+        #expect(recorder.events == ["stop:true"])
     }
 }
 

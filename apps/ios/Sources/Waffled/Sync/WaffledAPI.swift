@@ -50,6 +50,24 @@ enum JSONValue: Codable, Equatable, Sendable {
 /// Tiny HTTP client for the two endpoints the sync layer needs. Stateless — reads
 /// `AppConfig` at call time so a token edit takes effect on the next request.
 struct WaffledAPI: Sendable {
+    private let transport: @Sendable (URLRequest) async throws -> (Data, URLResponse)
+    private let credentials: TokenRefreshCredentials
+    private let expire: @Sendable (AuthTokens.RefreshLease) async -> Void
+
+    init(
+        transport: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse) = {
+            try await URLSession.shared.data(for: $0)
+        },
+        credentials: TokenRefreshCredentials = .live,
+        expire: @escaping @Sendable (AuthTokens.RefreshLease) async -> Void = {
+            await TokenRefresher.postExpiration($0)
+        }
+    ) {
+        self.transport = transport
+        self.credentials = credentials
+        self.expire = expire
+    }
+
     struct TokenResponse: Decodable {
         let token: String
         let powerSyncUrl: String?
@@ -4288,15 +4306,19 @@ struct WaffledAPI: Sendable {
     /// `TokenRefresher`) recovers silently; if the refresh token is dead, the original 401
     /// is returned and `.waffledAuthExpired` sends the user to login.
     private func perform(_ req: URLRequest) async throws -> (Data, URLResponse) {
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let candidate = await credentials.currentLease()
+        let lease = req.value(forHTTPHeaderField: "Authorization") == "Bearer \(AppConfig.bearerToken)"
+            ? candidate : nil
+        let (data, resp) = try await transport(req)
         let code = (resp as? HTTPURLResponse)?.statusCode
         // The household this token names is GONE (a restored database, a deleted
         // household). Refreshing would mint another token for the same hole, so end the
         // session the way a dead refresh token does. Never on a bare 403: a permission
         // denial is the app working.
         if code == 403, Self.errorCode(data) == "NoHousehold" {
-            AuthTokens.clear()
-            await MainActor.run { NotificationCenter.default.post(name: .waffledAuthExpired, object: nil) }
+            // Keep credentials installed until the principal coordinator has purged
+            // local data. A response from an older account cannot expire its successor.
+            if let lease, await credentials.isCurrent(lease) { await expire(lease) }
             return (data, resp)
         }
         guard code == 401,
@@ -4306,7 +4328,7 @@ struct WaffledAPI: Sendable {
         }
         var retry = req
         authorize(&retry)   // swap in the freshly-minted access token
-        return try await URLSession.shared.data(for: retry)
+        return try await transport(retry)
     }
 
     private func check(_ resp: URLResponse, _ data: Data) throws {

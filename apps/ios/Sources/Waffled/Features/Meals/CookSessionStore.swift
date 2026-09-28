@@ -36,9 +36,15 @@ final class CookSessionStore {
     /// second; `dishTimers(_:)` slices it when a single dish is what's wanted.
     var timers: [CookTimer] = []
     /// The in-app chime + local-notification scheduler. One instance for the session.
-    let alarm = TimerAlarm()
+    let alarm: TimerAlarm
 
-    private let api = WaffledAPI()
+    private let api: WaffledAPI
+    private var generation: UInt64 = 0
+
+    init(api: WaffledAPI = WaffledAPI(), alarm: TimerAlarm? = nil) {
+        self.api = api
+        self.alarm = alarm ?? TimerAlarm()
+    }
 
     /// A live session ⇒ present Cook Mode. Bound to the root `.fullScreenCover`.
     var isActive: Bool { session != nil }
@@ -101,14 +107,19 @@ final class CookSessionStore {
     /// progress kept); a dish whose recipe won't load is skipped by `CookSession.plate`.
     func startPlate(_ meal: WaffledAPI.MealDTO) async {
         if session?.plateId == meal.id { return }
-        guard let s = CookSession.plate(meal, methods: await methods(for: meal)) else { return }
+        let generation = self.generation
+        let methods = await methods(for: meal)
+        guard generation == self.generation,
+              let s = CookSession.plate(meal, methods: methods) else { return }
         start(s)
     }
 
     /// Same, given only the plate's id (a plate card, or a tapped timer notification).
     func startPlate(mealId: String) async {
         if session?.plateId == mealId { return }
-        guard let meal = try? await api.meal(id: mealId) else { return }
+        let generation = self.generation
+        guard let meal = try? await api.meal(id: mealId),
+              generation == self.generation else { return }
         await startPlate(meal)
     }
 
@@ -209,15 +220,19 @@ final class CookSessionStore {
             session?.jump(toDish: link.dishId, step: link.stepIndex)
             return
         }
+        let generation = self.generation
         Task {
+            guard generation == self.generation else { return }
             if let plateId = link.plateId {
                 await startPlate(mealId: plateId)
+                guard generation == self.generation else { return }
                 if session?.contains(link.dishId) == true {
                     session?.jump(toDish: link.dishId, step: link.stepIndex)
                     return
                 }
             }
-            guard let d = try? await api.recipeDetail(id: link.dishId) else { return }
+            guard let d = try? await api.recipeDetail(id: link.dishId),
+                  generation == self.generation else { return }
             start(id: link.dishId, title: d.recipe.title, steps: d.steps, ingredients: d.ingredients)
             session?.jump(toDish: link.dishId, step: link.stepIndex)
         }
@@ -226,6 +241,8 @@ final class CookSessionStore {
     /// Leave Cook Mode (the ✕). An explicit user action, so every dish's pending timer
     /// notifications are cancelled here (the background/teardown path never calls this).
     func end() {
+        generation &+= 1
+        pendingPantryReconcile = nil
         cancelTimers()
         alarm.stop()
         session = nil
@@ -245,9 +262,13 @@ final class CookSessionStore {
         guard let dish = session?.activeDish else { end(); return }
         let id = dish.id, title = dish.title
         end()   // close Cook Mode straight away
+        let generation = self.generation
         Task {
+            guard generation == self.generation else { return }
             _ = try? await api.markRecipeCooked(id: id)
-            if let matches = try? await api.pantryForRecipe(recipeId: id), !matches.isEmpty {
+            guard generation == self.generation else { return }
+            if let matches = try? await api.pantryForRecipe(recipeId: id),
+               generation == self.generation, !matches.isEmpty {
                 pendingPantryReconcile = PantryReconcile(id: id, title: title, matches: matches)
             }
         }

@@ -252,12 +252,17 @@ struct CookTimerLinkTests {
 
 // MARK: the store — the bit that used to kill the timers
 
+@MainActor
+func makeSilentTimerAlarm() -> TimerAlarm {
+    TimerAlarm(notifications: .init(schedule: { _ in }, cancel: { _ in }))
+}
+
 @Suite("CookSessionStore — switching dishes is not starting a session")
 @MainActor
 struct CookSessionStoreTests {
 
     private func plateStore() -> CookSessionStore {
-        let store = CookSessionStore()
+        let store = CookSessionStore(alarm: makeSilentTimerAlarm())
         store.start(plateSession([dish("main", "BBQ Chicken", role: "main"),
                                   dish("side", "Potato Salad", role: "side")]))
         return store
@@ -320,7 +325,7 @@ struct CookSessionStoreTests {
 
     @Test("re-tapping the recipe already cooking keeps its timers and its step")
     func restartingTheSameRecipeIsANoOp() {
-        let store = CookSessionStore()
+        let store = CookSessionStore(alarm: makeSilentTimerAlarm())
         store.start(id: "r1", title: "Tacos", steps: [step(1, "a"), step(2, "b"), step(3, "c")],
                     ingredients: [])
         store.index = 2
@@ -335,7 +340,7 @@ struct CookSessionStoreTests {
 
     @Test("a lone recipe's timers don't carry a dish name")
     func soloTimersAreUnqualified() {
-        let store = CookSessionStore()
+        let store = CookSessionStore(alarm: makeSilentTimerAlarm())
         store.start(id: "r1", title: "Tacos", steps: [step(1, "a")], ingredients: [])
         let t = try! #require(store.startTimer(secs: 60, stepIndex: 0, stepNumber: 1))
         #expect(t.dishTitle == nil)

@@ -29,6 +29,7 @@ struct DisplayKioskSettingsView: View {
     @State private var showCodeSheet = false
     @State private var confirmPromote = false
     @State private var confirmUnpair = false
+    @State private var confirmProfileSwitch = false
     @State private var deviceBusy = false
     @State private var deviceError: String?
     // Household kiosk-device roster (moved here from the Households screen): the paired
@@ -108,16 +109,24 @@ struct DisplayKioskSettingsView: View {
             PairKioskSheet { await loadDevices() }
         }
         .confirmationDialog("Turn this iPad into a shared kiosk?", isPresented: $confirmPromote, titleVisibility: .visible) {
-            Button("Turn on shared kiosk") { Task { await promote() } }
+            Button("Turn on shared kiosk") { Task { await promote(discardAuthorized: true) } }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("You’ll be signed out and the household picks a profile from a picker. You can switch back anytime.")
+            Text("You’ll be signed out and the household picks a profile from a picker. Any changes still waiting to sync will be permanently discarded.")
         }
         .confirmationDialog("Stop sharing this iPad?", isPresented: $confirmUnpair, titleVisibility: .visible) {
-            Button("Stop sharing", role: .destructive) { Task { await kiosk.unpair(sync: sync, session: session) } }
+            Button("Stop sharing", role: .destructive) { Task { await unpair() } }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This iPad returns to a single sign-in. You’ll need to sign in again.")
+            Text("This iPad returns to a single sign-in. You’ll need to sign in again, and any changes still waiting to sync will be permanently discarded.")
+        }
+        .confirmationDialog("Discard unsynced changes and switch profile?", isPresented: $confirmProfileSwitch, titleVisibility: .visible) {
+            Button("Discard changes and switch", role: .destructive) {
+                Task { await switchProfile(discardAuthorized: true) }
+            }
+            Button("Wait for sync", role: .cancel) {}
+        } message: {
+            Text("This device has \(sync.pendingUploads) change\(sync.pendingUploads == 1 ? "" : "s") that haven’t reached the server.")
         }
         .fullScreenCover(isPresented: $showPreview) {
             ScreensaverView(
@@ -153,7 +162,10 @@ struct DisplayKioskSettingsView: View {
                 if kiosk.isShared {
                     rowLabel("This iPad is a shared kiosk", deviceSubtitle)
                     HStack(spacing: 10) {
-                        pillButton("Switch profile", tint: WF.primary) { Task { await kiosk.returnToPicker(sync: sync) } }
+                        pillButton("Switch profile", tint: WF.primary) {
+                            if sync.pendingUploads > 0 { confirmProfileSwitch = true }
+                            else { Task { await switchProfile() } }
+                        }
                         pillButton("Stop sharing", tint: WF.ink2, faint: true) { confirmUnpair = true }
                     }
                 } else {
@@ -167,9 +179,9 @@ struct DisplayKioskSettingsView: View {
                             .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink2)
                     }
                     .buttonStyle(.plain)
-                    if let deviceError {
-                        Text(deviceError).font(.system(size: 13, weight: .medium)).foregroundStyle(WF.primary)
-                    }
+                }
+                if let deviceError {
+                    Text(deviceError).font(.system(size: 13, weight: .medium)).foregroundStyle(WF.primary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -195,10 +207,49 @@ struct DisplayKioskSettingsView: View {
         .buttonStyle(.plain)
     }
 
-    private func promote() async {
+    private func promote(discardAuthorized: Bool) async {
         deviceBusy = true; deviceError = nil
-        deviceError = await kiosk.enableViaPromote(label: nil, sync: sync)
+        deviceError = await kiosk.enableViaPromote(
+            label: nil,
+            sync: sync,
+            session: session,
+            policy: discardAuthorized ? .discardAuthorized : .requireNoPendingUploads
+        )
         deviceBusy = false
+    }
+
+    private func switchProfile(discardAuthorized: Bool = false) async {
+        deviceError = nil
+        let result = await kiosk.returnToPicker(
+            sync: sync,
+            session: session,
+            policy: discardAuthorized ? .discardAuthorized : .requireNoPendingUploads
+        )
+        switch result {
+        case .completed:
+            break
+        case let .pendingUploads(count):
+            if count > 0 { confirmProfileSwitch = true }
+        case .purgeFailed:
+            deviceError = sync.lastError ?? "Couldn’t safely clear this profile’s local data."
+        case .transitionInProgress:
+            deviceError = "Another account change is still finishing. Try again."
+        }
+    }
+
+    private func unpair() async {
+        deviceError = nil
+        let result = await kiosk.unpair(sync: sync, session: session, policy: .discardAuthorized)
+        switch result {
+        case .completed:
+            break
+        case let .pendingUploads(count):
+            deviceError = "Wait for \(count) unsynced change\(count == 1 ? "" : "s"), then try again."
+        case .purgeFailed:
+            deviceError = sync.lastError ?? "Couldn’t safely clear this profile’s local data."
+        case .transitionInProgress:
+            deviceError = "Another account change is still finishing. Try again."
+        }
     }
 
     // MARK: nav-rail picker (iPad only)
