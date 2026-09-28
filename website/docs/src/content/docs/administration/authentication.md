@@ -49,6 +49,16 @@ Configure in **Settings → Login & security** (admin only):
    [Reverse proxy & TLS](/install/reverse-proxy/).
 6. Toggle **Single sign-on** on and **Save**.
 
+### Safe returns after sign-in
+
+Web sign-in returns only to the Waffled origin, and native sign-in uses the registered
+`waffled://auth/callback` destination. Set `PUBLIC_BASE_URL` to the exact address people use
+(scheme, hostname and port) behind a reverse proxy; other return origins are rejected.
+
+A cancelled or failed sign-in consumes its one-time state and shows a Waffled message rather
+than provider-supplied error text. Start sign-in again to retry. Result pages and handoff
+redirects are marked non-cacheable and do not send a referrer.
+
 ### Force SSO (optional)
 
 Once SSO works, you can **disable password login** to require it. This is guarded so you can't

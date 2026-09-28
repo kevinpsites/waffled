@@ -92,6 +92,17 @@ app, or on iPhone/iPad, whichever is to hand:
 The button only appears once the server has Microsoft credentials — a household set up for
 Google alone sees just the Google button, and vice versa.
 
+## Safe returns after connecting
+
+Calendar connections return only to the same Waffled web origin or the native
+`waffled://calendar-connected` callback. Behind a reverse proxy, set `PUBLIC_BASE_URL` to the
+exact web address people use (scheme, hostname and port). A different return origin, embedded
+credentials or a URL fragment is rejected before opening the consent page.
+
+If you cancel consent or the connection link expires, start a new connection from Settings.
+Each link is single-use, including unsuccessful attempts. Waffled shows a controlled message
+and marks the result non-cacheable; provider error details stay on the provider's own pages.
+
 ## Troubleshooting
 
 Microsoft's sign-in errors carry an `AADSTS` code on the error page:

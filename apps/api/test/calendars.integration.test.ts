@@ -27,7 +27,7 @@ function mint(sub: string): string {
   return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
 }
 
-interface RunResult { statusCode: number; body: string }
+interface RunResult { statusCode: number; headers: Record<string, string>; body: string }
 function call(method: string, path: string, token?: string, body?: unknown) {
   const headers: Record<string, string> = {}
   if (token) headers.authorization = `Bearer ${token}`
@@ -45,6 +45,9 @@ function call(method: string, path: string, token?: string, body?: unknown) {
 }
 
 const kevin = mint('dev|kevin')
+
+const header = (result: RunResult, name: string) =>
+  result.headers[name] ?? result.headers[name.toLowerCase()] ?? result.headers[name.toUpperCase()]
 
 // A tiny Google stand-in: token exchange, userinfo, and the calendar list.
 function startStub(): Promise<number> {
@@ -90,6 +93,7 @@ beforeAll(async () => {
   process.env.GOOGLE_CLIENT_ID = 'client-abc'
   process.env.GOOGLE_CLIENT_SECRET = 'secret-xyz'
   process.env.GOOGLE_CALENDAR_REDIRECT_URI = 'http://localhost:8080/auth/google/calendar/callback'
+  process.env.PUBLIC_BASE_URL = 'http://localhost:8080'
   process.env.GOOGLE_TOKEN_URL = `http://127.0.0.1:${port}/token`
   process.env.GOOGLE_USERINFO_URL = `http://127.0.0.1:${port}/userinfo`
   process.env.GOOGLE_CALENDAR_API_BASE = `http://127.0.0.1:${port}`
@@ -161,10 +165,75 @@ describe('connect flow', () => {
     expect(stateFrom(url)).toBeTruthy()
   })
 
+  it.each([
+    'https://attacker.example/after-connect',
+    '//attacker.example/after-connect',
+    'javascript:alert(1)',
+    'data:text/html,hello',
+    'https://user:secret@localhost:8080/settings',
+    'http://localhost:8080/settings#javascript:alert(1)',
+    'not a callback',
+  ])('rejects an untrusted redirect destination: %s', async (redirectTo) => {
+    const res = await call('POST', '/api/calendar/google/connect', kevin, { redirectTo })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('accepts same-origin web and exact native callback destinations', async () => {
+    const web = await call('POST', '/api/calendar/google/connect', kevin, {
+      redirectTo: 'http://localhost:8080/settings?section=calendars',
+    })
+    expect(web.statusCode).toBe(200)
+
+    const native = await call('POST', '/api/calendar/google/connect', kevin, {
+      redirectTo: 'waffled://calendar-connected',
+    })
+    expect(native.statusCode).toBe(200)
+  })
+
   it('rejects a callback with an unknown/expired state', async () => {
     const res = await call('GET', '/auth/google/calendar/callback?code=abc&state=bogus')
     expect(res.statusCode).toBe(400)
     expect(res.body.toLowerCase()).toContain('expired')
+  })
+
+  it('validates state before handling provider errors and returns a locked-down result page', async () => {
+    const payload = '<img src=x onerror=alert(1)>'
+    const unknown = await call(
+      'GET',
+      `/auth/google/calendar/callback?error=${encodeURIComponent(payload)}&state=bogus`
+    )
+    expect(unknown.statusCode).toBe(400)
+    expect(unknown.body.toLowerCase()).toContain('expired')
+    expect(unknown.body).not.toContain(payload)
+
+    const state = stateFrom(JSON.parse((await call('POST', '/api/calendar/google/connect', kevin, {})).body).url)
+    const denied = await call(
+      'GET',
+      `/auth/google/calendar/callback?error=${encodeURIComponent(payload)}&state=${state}`
+    )
+    expect(denied.statusCode).toBe(400)
+    expect(denied.body).toContain('Connection cancelled')
+    expect(denied.body).not.toContain(payload)
+    expect(header(denied, 'Content-Security-Policy')).toContain("default-src 'none'")
+    expect(header(denied, 'Cache-Control')).toBe('no-store')
+  })
+
+  it('redirects successful callbacks only to stored, allowed destinations', async () => {
+    const webConnect = await call('POST', '/api/calendar/google/connect', kevin, {
+      redirectTo: 'http://localhost:8080/settings?section=calendars',
+    })
+    const webState = stateFrom(JSON.parse(webConnect.body).url)
+    const webCallback = await call('GET', `/auth/google/calendar/callback?code=web-code&state=${webState}`)
+    expect(webCallback.statusCode).toBe(302)
+    expect(header(webCallback, 'Location')).toBe('http://localhost:8080/settings?section=calendars')
+
+    const nativeConnect = await call('POST', '/api/calendar/google/connect', kevin, {
+      redirectTo: 'waffled://calendar-connected',
+    })
+    const nativeState = stateFrom(JSON.parse(nativeConnect.body).url)
+    const nativeCallback = await call('GET', `/auth/google/calendar/callback?code=native-code&state=${nativeState}`)
+    expect(nativeCallback.statusCode).toBe(302)
+    expect(header(nativeCallback, 'Location')).toBe('waffled://calendar-connected')
   })
 
   it('completes the round-trip: callback stores the account + imports calendars', async () => {

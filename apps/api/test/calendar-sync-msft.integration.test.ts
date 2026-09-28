@@ -36,7 +36,7 @@ function mint(sub: string): string {
   return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
 }
 
-interface RunResult { statusCode: number; body: string }
+interface RunResult { statusCode: number; headers: Record<string, string>; body: string }
 function call(method: string, path: string, token?: string, body?: unknown) {
   const headers: Record<string, string> = {}
   if (token) headers.authorization = `Bearer ${token}`
@@ -54,6 +54,9 @@ function call(method: string, path: string, token?: string, body?: unknown) {
 }
 
 const kevin = mint('dev|kevin')
+
+const header = (result: RunResult, name: string) =>
+  result.headers[name] ?? result.headers[name.toLowerCase()] ?? result.headers[name.toUpperCase()]
 
 const msStandup = {
   id: 'evt-a', subject: 'Standup', bodyPreview: 'daily', isAllDay: false, isCancelled: false,
@@ -264,6 +267,21 @@ describe('outlook connect', () => {
   it('a Google state cannot be replayed against the Microsoft callback', async () => {
     const cb = await call('GET', `/auth/microsoft/calendar/callback?code=code-2&state=not-a-real-state`)
     expect(cb.statusCode).toBe(400)
+  })
+
+  it('consumes a valid Microsoft state before returning a locked-down provider-error page', async () => {
+    const conn = await call('POST', '/api/calendar/microsoft/connect', kevin, {})
+    const state = stateFrom(JSON.parse(conn.body).url)
+    const denied = await call('GET', `/auth/microsoft/calendar/callback?error=access_denied&state=${state}`)
+
+    expect(denied.statusCode).toBe(400)
+    expect(denied.body).toContain('Microsoft Calendar access was not granted')
+    expect(header(denied, 'Content-Security-Policy')).toContain("default-src 'none'")
+    expect(header(denied, 'Cache-Control')).toBe('no-store')
+
+    const replay = await call('GET', `/auth/microsoft/calendar/callback?error=access_denied&state=${state}`)
+    expect(replay.statusCode).toBe(400)
+    expect(replay.body.toLowerCase()).toContain('expired')
   })
 })
 

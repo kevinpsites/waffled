@@ -269,17 +269,75 @@ describe('OIDC login', () => {
     })).statusCode).toBe(400)
   })
 
-  it('escapes identity-provider errors rendered in the browser result page', async () => {
+  it('consumes state and replaces identity-provider errors in a locked-down browser result page', async () => {
+    const start = await call('GET', '/api/auth/oidc/start', {
+      query: { redirect: 'http://localhost:8080/' },
+    })
+    expect(start.statusCode).toBe(302)
+    const state = new URL(loc(start)).searchParams.get('state')!
+
     const result = await call('GET', '/api/auth/oidc/callback', {
       query: {
+        state,
         error: 'access_denied',
         error_description: '<img src=x onerror=alert(1)>',
       },
     })
     expect(result.statusCode).toBe(400)
     expect(result.body).not.toContain('<img src=x')
-    expect(result.body).toContain('&lt;img src=x onerror=alert(1)&gt;')
+    expect(result.body).not.toContain('onerror=alert(1)')
+    expect(result.body).toContain('Your identity provider did not complete sign-in. Please try again.')
+    expect(
+      result.headers['Content-Security-Policy'] ?? result.headers['content-security-policy']
+    ).toContain("default-src 'none'")
+    expect(result.headers['Cache-Control'] ?? result.headers['cache-control']).toBe('no-store')
+
+    const replay = await call('GET', '/api/auth/oidc/callback', {
+      query: { state, error: 'access_denied' },
+    })
+    expect(replay.statusCode).toBe(400)
+    expect(replay.body).toContain('This sign-in link expired')
   })
+
+  it('returns a controlled native provider error without caching or leaking the callback URL', async () => {
+    const start = await call('GET', '/api/auth/oidc/start', {
+      query: { redirect: 'waffled://auth/callback' },
+    })
+    const state = new URL(loc(start)).searchParams.get('state')!
+    const result = await call('GET', '/api/auth/oidc/callback', {
+      query: { state, error: 'access_denied', error_description: 'Provider-controlled secret' },
+    })
+    expect(result.statusCode).toBe(302)
+    const destination = new URL(loc(result))
+    expect(destination.searchParams.get('error')).toBe('provider_error')
+    expect(destination.searchParams.get('error_description')).toBe(
+      'Your identity provider did not complete sign-in. Please try again.'
+    )
+    expect(loc(result)).not.toContain('Provider-controlled')
+    expect(result.headers['Cache-Control'] ?? result.headers['cache-control']).toBe('no-store')
+    expect(result.headers['Referrer-Policy'] ?? result.headers['referrer-policy']).toBe('no-referrer')
+    expect(result.headers['X-Content-Type-Options'] ?? result.headers['x-content-type-options']).toBe('nosniff')
+    expect(result.headers['Content-Security-Policy'] ?? result.headers['content-security-policy']).toContain("default-src 'none'")
+
+    const replay = await call('GET', '/api/auth/oidc/callback', {
+      query: { state, error: 'access_denied' },
+    })
+    expect(replay.statusCode).toBe(400)
+    expect(replay.body).toContain('This sign-in link expired')
+  })
+
+  it.each(['http://localhost:8080/', 'waffled://auth/callback'])(
+    'protects a successful handoff redirect to %s from caches and referrers', async (redirect) => {
+      stubUser = { sub: 'idp-sub-1', email: 'kevin@example.com', email_verified: true }
+      const result = await ssoLogin(redirect)
+      expect(result.statusCode).toBe(302)
+      expect(new URL(loc(result)).searchParams.get('code')).toBeTruthy()
+      expect(result.headers['Cache-Control'] ?? result.headers['cache-control']).toBe('no-store')
+      expect(result.headers['Referrer-Policy'] ?? result.headers['referrer-policy']).toBe('no-referrer')
+      expect(result.headers['X-Content-Type-Options'] ?? result.headers['x-content-type-options']).toBe('nosniff')
+      expect(result.headers['Content-Security-Policy'] ?? result.headers['content-security-policy']).toContain("default-src 'none'")
+    }
+  )
 
   it('revalidates redirect destinations persisted before an upgrade', async () => {
     stubUser = { sub: 'idp-sub-1', email: 'kevin@example.com', email_verified: true }
