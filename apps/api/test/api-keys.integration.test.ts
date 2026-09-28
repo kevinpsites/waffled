@@ -16,7 +16,6 @@ function mint(sub: string): string {
   return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
 }
 
-// Bearer (session) call.
 function call(method: string, path: string, token?: string, body?: unknown) {
   const headers: Record<string, string> = {}
   if (token) headers.authorization = `Bearer ${token}`
@@ -27,7 +26,6 @@ function call(method: string, path: string, token?: string, body?: unknown) {
   ) as Promise<{ statusCode: number; body: string }>
 }
 
-// API-key call (x-api-key header).
 function keyCall(method: string, path: string, key: string, body?: unknown) {
   const headers: Record<string, string> = { 'x-api-key': key }
   if (body !== undefined) headers['content-type'] = 'application/json'
@@ -125,14 +123,11 @@ describe('api-key authentication + scope gate', () => {
 
   it('allows reads within scope, denies reads outside it', async () => {
     expect((await keyCall('GET', '/api/lists', readKey)).statusCode).toBe(200)
-    // readKey holds no chores scope → 403
     expect((await keyCall('GET', '/api/chores/today', readKey)).statusCode).toBe(403)
   })
 
   it('requires :write for mutations', async () => {
-    // readKey has lists:read only → POST denied
     expect((await keyCall('POST', '/api/lists', readKey, { name: 'Camping' })).statusCode).toBe(403)
-    // writeKey has lists:write → allowed (201)
     expect((await keyCall('POST', '/api/lists', writeKey, { name: 'Camping' })).statusCode).toBe(201)
   })
 
@@ -160,11 +155,9 @@ describe('api-key authentication + scope gate', () => {
   })
 })
 
-// Hyphenated sibling routes (/api/chore-instances, /api/chore-proofs, /api/goal-lists,
-// /api/pantry-staples) belong to a resource that IS in the scope catalog, but
-// `pathMatches` needs a `/` boundary — so until their prefixes were listed explicitly
-// each one 403'd "not available to API keys" no matter which scopes the key held.
-// Assert on the MESSAGE, not just the status: a bare 403 passes both before and after.
+// Hyphenated sibling routes (/api/chore-instances, /api/goal-lists, …) belong to a resource
+// that IS in the catalog, but `pathMatches` needs a `/` boundary, so each 403'd until its
+// prefix was listed. Assert on the MESSAGE: a bare 403 passes either way.
 describe('hyphenated sibling routes are reachable with the right scope', () => {
   const BOGUS = '00000000-0000-4000-8000-000000000000'
   let listsRead = ''
@@ -190,18 +183,15 @@ describe('hyphenated sibling routes are reachable with the right scope', () => {
   it('/api/pantry-staples answers to the lists scope (not pantry)', async () => {
     expect((await keyCall('GET', '/api/pantry-staples', listsRead)).statusCode).toBe(200)
 
-    // A key for another resource is refused for a MISSING SCOPE, not as unexposed.
     const wrong = await keyCall('GET', '/api/pantry-staples', goalsRead)
     expect(wrong.statusCode).toBe(403)
     expect(msg(wrong)).toMatch(/missing the required scope: lists:read/)
 
-    // :read can't write; :write can.
     const denied = await keyCall('POST', '/api/pantry-staples', listsRead, { name: 'Olive oil' })
     expect(denied.statusCode).toBe(403)
     expect(msg(denied)).toMatch(/missing the required scope: lists:write/)
     expect((await keyCall('POST', '/api/pantry-staples', listsWrite, { name: 'Olive oil' })).statusCode).toBe(201)
 
-    // Reaches the handler (the route's own 404), rather than the scope gate's 403.
     expect((await keyCall('DELETE', `/api/pantry-staples/${BOGUS}`, listsWrite)).statusCode).toBe(404)
   })
 
@@ -222,13 +212,11 @@ describe('hyphenated sibling routes are reachable with the right scope', () => {
     expect(denied.statusCode).toBe(403)
     expect(msg(denied)).toMatch(/missing the required scope: chores:write/)
 
-    // Past the gate and into the handler → the route's own 404 for an unknown id.
     expect((await keyCall('POST', `/api/chore-instances/${BOGUS}/complete`, choresWrite)).statusCode).toBe(404)
   })
 
   it('/api/chore-proofs answers to the chores scope (admin-owned key)', async () => {
-    // adminRoute is satisfiable by a key: apiKeyTenant carries the owner person's
-    // is_admin, and the owner here is the household admin.
+    // adminRoute is satisfiable by a key: apiKeyTenant carries the owner person's is_admin.
     expect((await keyCall('GET', '/api/chore-proofs', choresRead)).statusCode).toBe(200)
 
     const denied = await keyCall('DELETE', '/api/chore-proofs', choresRead)
@@ -238,10 +226,9 @@ describe('hyphenated sibling routes are reachable with the right scope', () => {
   })
 })
 
-// Currency conversions are half of the currencies surface (10 ⭐ → 1 💵) and sit in
-// the same file as /api/currencies, but only /api/currencies was ever given to the
-// `rewards` resource — so a key could manage the denominations and not the rates
-// between them. A headless client needs both.
+// Currency conversions are half of the currencies surface and sit in the same file, but only
+// /api/currencies was given to the `rewards` resource — so a key could manage the
+// denominations and not the rates between them.
 describe('currency conversions and ledger corrections answer to the rewards scope', () => {
   const BOGUS = '00000000-0000-4000-8000-000000000000'
   let rewardsRead = ''
@@ -256,7 +243,6 @@ describe('currency conversions and ledger corrections answer to the rewards scop
     rewardsRead = await mintKey('rewards-r', ['rewards:read'])
     rewardsWrite = await mintKey('rewards-w', ['rewards:write'])
     otherKey = await mintKey('photos-r', ['photos:read'])
-    // A conversion needs two currencies; the household seeds only the default Stars.
     await call('POST', '/api/currencies', kevin, { label: 'Bucks', symbol: '💵' })
   })
 
@@ -271,6 +257,25 @@ describe('currency conversions and ledger corrections answer to the rewards scop
     const missing = await keyCall('POST', path, rewardsWrite, body)
     expect(missing.statusCode).toBe(404)
     expect(msg(missing)).toMatch(/ledger entry not found/i)
+  })
+
+  it('does not let rewards:write bypass the owner correction capability', async () => {
+    const { query } = await import('../src/platform/db')
+    const { rows: [owner] } = await query<{ is_admin: boolean; member_type: string }>(
+      'select is_admin, member_type from persons where id=$1', [ownerId]
+    )
+    try {
+      await query("update persons set is_admin=false, member_type='teen' where id=$1", [ownerId])
+      const denied = await keyCall('POST', `/api/ledger-entries/${BOGUS}/correct`, rewardsWrite, {
+        reason: 'Capability coverage', idempotencyKey: '22222222-2222-4222-8222-222222222222',
+      })
+      expect(denied.statusCode).toBe(403)
+      expect(msg(denied)).toMatch(/do not have permission/i)
+      expect(msg(denied)).not.toMatch(/scope/i)
+    } finally {
+      await query('update persons set is_admin=$2, member_type=$3 where id=$1',
+        [ownerId, owner.is_admin, owner.member_type])
+    }
   })
 
   it('reads with rewards:read and writes only with rewards:write', async () => {
@@ -290,48 +295,67 @@ describe('currency conversions and ledger corrections answer to the rewards scop
     expect(created.statusCode).toBe(201)
     expect(JSON.parse(created.body).conversion).toMatchObject({ fromCurrency: 'stars', toCurrency: 'bucks' })
 
-    // Reaches the handler (the route's own 404), rather than the scope gate's 403.
     expect((await keyCall('DELETE', `/api/conversions/${BOGUS}`, rewardsWrite)).statusCode).toBe(404)
   })
 })
 
 // ── the catalog covers every live route, or the route says why not ──────────────
-// The bug above was silent because nothing tied API_SCOPES to the actual route
-// table. This walks lambda-api's own table (app.routes() → [method, path, …]), so
-// it can't drift from what's registered, and fails on any route that is neither
-// scope-matched nor listed below as deliberately unreachable by a key.
+// The bug above was silent because nothing tied API_SCOPES to the route table. This walks
+// lambda-api's own table, so it can't drift, and fails on any route that is neither
+// scope-matched nor named in a deny bucket.
 //
-// Adding a route family? Either give its prefix to a resource in API_SCOPES, or add
-// it here with the reason it must stay session/device-only.
-//
-// `pending` marks an entry that is NOT a deliberate exclusion — it is parked, waiting
-// on other work. It changes nothing about how the entry is checked (both tests below
-// treat it exactly like any other); it only makes the "this is now stale, delete it"
-// failure say which branch of work landed.
-type NotKeyReachable = { why: string; prefixes: string[]; pending?: string }
+// The buckets ship in src/modules/api-keys/api-keys.ts and the gate consults them, so these
+// tests check the shipped lists rather than a copy that could drift from them. Imported
+// lazily like every other src module here — the beforeAll above sets DATABASE_URL and
+// clears AUTH0_DOMAIN before anything under src/ loads.
+type DenyLists = typeof import('../src/modules/api-keys/api-keys')
+let NEVER_KEY_REACHABLE: DenyLists['NEVER_KEY_REACHABLE'] = []
+let UNSCOPED_YET: DenyLists['UNSCOPED_YET'] = []
+let NOT_KEY_REACHABLE: DenyLists['NOT_KEY_REACHABLE'] = []
 
-const NOT_KEY_REACHABLE: NotKeyReachable[] = [
-  { why: 'public liveness probe', prefixes: ['/healthz'] },
-  { why: 'echoes the token sub — tells a key nothing it does not already know', prefixes: ['/api/me'] },
-  { why: 'login, OIDC, invites and self-service account are session-only', prefixes: ['/api/auth', '/auth', '/api/account', '/api/households'] },
-  { why: 'a key can never mint or manage keys', prefixes: ['/api/api-keys'] },
-  { why: 'kiosk and Waffled-Bite pairing run on their own device tokens', prefixes: ['/api/kiosk', '/api/waffled-bites'] },
-  { why: 'the capability grid is an admin session surface', prefixes: ['/api/permissions'] },
-  { why: 'offline sync is the first-party clients own transport', prefixes: ['/api/powersync'] },
-  { why: 'LLM capture and the blob upload sink are first-party client surfaces', prefixes: ['/api/capture', '/api/media'] },
-  { why: 'integrations surface — documented as always 403 for a key', prefixes: ['/api/countdowns', '/api/family-night', '/api/goal-calendar', '/api/calendar'] },
-  { why: 'per-viewer UI layout, not household data', prefixes: ['/api/today-layout'] },
-  { why: 'operator surfaces (deep health report, update channel)', prefixes: ['/api/health', '/api/updates'] },
-  // Parked, not deliberate: /api/list-items is the same boundary bug (it is a lists
-  // route that /api/lists cannot match), and PR #180 already adds its prefix to the
-  // `lists` resource. Listed here only so this guard is green without duplicating
-  // that change. No TODO needed: the moment #180 gives it a scope, the staleness test
-  // below goes red and names this entry.
-  { why: 'PENDING — fixed by PR #180, which gives this prefix to `lists`', prefixes: ['/api/list-items'], pending: 'PR #180' },
-  // Left alone on purpose: exposing rhythms means a whole new scope resource, not
-  // another prefix, so it is being scoped as its own piece of work.
-  { why: 'GAP? rhythms would need a whole new scope resource, not another prefix', prefixes: ['/api/rhythms'] },
-]
+beforeAll(async () => {
+  const m = await import('../src/modules/api-keys/api-keys')
+  NEVER_KEY_REACHABLE = m.NEVER_KEY_REACHABLE
+  UNSCOPED_YET = m.UNSCOPED_YET
+  NOT_KEY_REACHABLE = m.NOT_KEY_REACHABLE
+})
+
+// A denied path answers 403 whether it was DECLARED denied or merely absent, so a test that
+// just hits one and sees 403 passes for the wrong reason. The discriminator: the answer must
+// not depend on API_SCOPES. Give a denied prefix a real scope and hold that scope — the key
+// still gets the same 403, with the same AuthError name and message, because the deny list is
+// checked first and is authoritative.
+describe('the deny list, not mere absence, refuses a denied path', () => {
+  const DENIED_PATH = '/api/permissions' // a live GET route, and a NEVER_KEY_REACHABLE prefix
+  let familyRead = ''
+
+  beforeAll(async () => {
+    familyRead = JSON.parse(
+      (await call('POST', '/api/api-keys', kevin, { name: 'deny-probe', scopes: ['family:read'] })).body
+    ).key as string
+  })
+
+  it('refuses the path even when API_SCOPES would grant it', async () => {
+    expect(NEVER_KEY_REACHABLE.some((e) => e.prefixes.includes(DENIED_PATH))).toBe(true)
+
+    const { API_SCOPES } = await import('../src/modules/api-keys/api-keys')
+    const family = API_SCOPES.find((s) => s.resource === 'family')
+    if (!family) throw new Error('the family resource went missing from API_SCOPES')
+    const restore = [...family.prefixes]
+    family.prefixes = [...restore, DENIED_PATH] // family:read would now cover it
+    try {
+      const res = await keyCall('GET', DENIED_PATH, familyRead)
+      // Byte-identical to the absence 403: never leak WHY a path is excluded to a key holder.
+      expect(res.statusCode).toBe(403)
+      expect(JSON.parse(res.body)).toEqual({
+        error: 'AuthError',
+        message: 'This endpoint is not available to API keys',
+      })
+    } finally {
+      family.prefixes = restore
+    }
+  })
+})
 
 describe('scope catalog covers the route table', () => {
   it('leaves no live route both unscoped and unlisted', async () => {
@@ -347,13 +371,9 @@ describe('scope catalog covers the route table', () => {
     expect(orphans).toEqual([])
   })
 
-  // The test above passes a route that has EITHER a scope OR an allowlist entry, so it
-  // cannot notice an entry that has outlived its reason: give an allowlisted path a
-  // real scope and the route drops out via `scopeForRequest` while its entry sits here
-  // forever, still claiming a key is kept out of something a key can now reach. That
-  // rot turns the allowlist from a record of deliberate exclusions into a list of
-  // possibly-false claims, so assert the other direction too — every entry must still
-  // describe something genuinely outside the catalog.
+  // The test above passes a route with EITHER a scope OR an allowlist entry, so it cannot
+  // notice an entry that has outlived its reason — one that gains a real scope drops out
+  // while its entry sits here claiming a key is kept out. So assert the other direction too.
   it('has no stale allowlist entry — every listed prefix is still unscoped', async () => {
     const { scopeForRequest } = await import('../src/modules/api-keys/api-keys')
     const routes = (app.routes() as string[][]).map(([method, path]) => [method, path] as const)
@@ -363,15 +383,24 @@ describe('scope catalog covers the route table', () => {
       entry.prefixes
         .filter((prefix) => routes.some(([method, path]) => under(prefix, path) && scopeForRequest(method, path)))
         .map((prefix) =>
-          entry.pending
-            ? `${prefix}: ${entry.pending} has landed and given this a scope — DELETE its entry (and the comment above it) from NOT_KEY_REACHABLE`
-            : `${prefix}: now covered by API_SCOPES, so it is no longer excluded from anything — DELETE its entry from NOT_KEY_REACHABLE`
+          'tracked' in entry
+            ? `${prefix}: the work tracked at "${entry.tracked}" has landed and given this a scope — DELETE its entry (and the comment above it) from UNSCOPED_YET`
+            : `${prefix}: now covered by API_SCOPES, so it is no longer excluded from anything — DELETE its entry from NEVER_KEY_REACHABLE`
         )
     )
 
-    // Assert on the joined text, not the array: vitest collapses a long string inside
-    // an array to "expected [ Array(1) ]", which would hide the very instruction this
-    // test exists to give. As a string it prints in full.
+    // Assert on the joined text: vitest collapses a long string inside an array to
+    // "expected [ Array(1) ]", hiding the instruction this test exists to give.
     expect(stale.join('\n')).toBe('')
+  })
+
+  // A debt entry that doesn't say where the work lives is indistinguishable from a decision.
+  it('every unscoped-yet entry names where its work is tracked', () => {
+    const followable = /#\d+|docs\/[\w./-]+/
+    const untracked = UNSCOPED_YET.filter((e) => !followable.test(e.tracked)).map(
+      (e) =>
+        `${e.prefixes.join(', ')}: tracked=${JSON.stringify(e.tracked)} — name a PR/issue (#123) or a docs/ path, or move it to NEVER_KEY_REACHABLE if it is really a decision`
+    )
+    expect(untracked.join('\n')).toBe('')
   })
 })

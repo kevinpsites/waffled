@@ -18,7 +18,7 @@ degrades gracefully to an on-device heuristic when no provider is set or you're 
 | **None** | — | Capture still works via a deterministic on-device heuristic. |
 
 You can set **more than one** — the active provider and model are chosen **per household** in
-**Settings → AI & capture**.
+**Settings → AI & Capture**.
 
 ## Set it up
 
@@ -40,7 +40,14 @@ You can set **more than one** — the active provider and model are chosen **per
    OLLAMA_MODEL=llama3.1
    ```
 
-2. In the app, open **Settings → AI & capture** and pick the **provider** and **model** for your
+   **On Waffled for Mac**, use the app's **Settings…** instead: the key (or Ollama's address,
+   or an OpenAI-compatible server's address) goes in the **AI settings** row on the **Basic**
+   tab, and the models, timeout and retries under **Advanced → AI model and limits**. Then
+   restart Waffled when it asks. Choosing another provider there later adds it alongside the
+   first; **Not now** removes every saved key. See
+   [Changing settings later](/install/mac/#changing-settings-later).
+
+2. In the app, open **Settings → AI & Capture** and pick the **provider** and **model** for your
    household.
 
 That's it — the capture bar, meal/recipe AI, and calendar heads-ups now use it.
@@ -51,6 +58,8 @@ Point `OLLAMA_HOST` at an Ollama instance on your network:
 
 - **Docker Desktop (Mac/Windows):** `OLLAMA_HOST=http://host.docker.internal:11434`.
 - **Bare Linux:** use the Docker bridge address, e.g. `OLLAMA_HOST=http://172.17.0.1:11434`.
+- **Waffled for Mac, Ollama on the same Mac:** `http://localhost:11434` — the address the
+  **AI settings** row already suggests. No Docker in between, so `localhost` is right.
 
 Ollama models are **cold** until first use — Waffled warms the model on demand (hosted providers
 are always warm), so the first parse after a while may take a beat.

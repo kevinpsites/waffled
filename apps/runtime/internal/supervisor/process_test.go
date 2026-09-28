@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -393,4 +394,135 @@ func waitTight(t *testing.T, limit time.Duration, cond func() bool, msg string) 
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatalf("%s (waited %s)", msg, limit)
+}
+
+// A child that dies the instant it is spawned must not be restarted forever, and whoever
+// owns it has to be told why. The Bonjour advertiser is the case: its state is read by a
+// DIFFERENT process, which can only ever see what the supervisor wrote down, so an
+// unbounded flap showed up as "not advertised, no error" — undiagnosable.
+func TestAChildThatKeepsDyingAtOnceIsGivenUpOn(t *testing.T) {
+	r := newTestRunner(t)
+	r.backoff = func(int) time.Duration { return 10 * time.Millisecond }
+	marker := filepath.Join(t.TempDir(), "runs")
+
+	c, err := r.start(shell("doomed", `echo run >> `+marker+`; exit 4`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.stop(2 * time.Second) })
+
+	var mu sync.Mutex
+	var reasons []string
+	var gaveUp bool
+	c.maxQuickFailures = 3
+	c.report = func(reason string, up bool) {
+		mu.Lock()
+		defer mu.Unlock()
+		reasons = append(reasons, reason)
+		gaveUp = gaveUp || up
+	}
+	c.superviseRestarts()
+
+	waitFor(t, 15*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return gaveUp
+	}, "a child dying on every spawn was restarted without limit")
+
+	// maxQuickFailures is a budget of DEATHS, not of retries: the constant reads "how
+	// many immediate deaths in a row the advertiser gets before supervision stops
+	// restarting it", so three deaths is three spawns — the original and two restarts,
+	// with the third death being the one that gives up. Counting a fourth spawn here
+	// would mean the cap promised in the constant's name lets one more through than it
+	// says, which is exactly the off-by-one this asserts against.
+	runs := func() int {
+		body, _ := os.ReadFile(marker)
+		return strings.Count(string(body), "run")
+	}
+	settled := runs()
+	if settled != 3 {
+		t.Errorf("%d spawns, want 3 (the original and 2 restarts — the 3rd death gives up)", settled)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if again := runs(); again != settled {
+		t.Errorf("still restarting after giving up: %d spawns", again)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(reasons) == 0 || !strings.Contains(reasons[len(reasons)-1], "status 4") {
+		t.Errorf("the exit was not reported to the owner: %q", reasons)
+	}
+	if c.lastError() == "" {
+		t.Error("giving up must leave a reason behind for `status`")
+	}
+}
+
+// A child stopped on purpose has not failed. Reporting one would write a bogus error into
+// bonjour.json a moment before the re-advertisement that asked for the stop comes up.
+func TestADeliberateStopIsNotReportedAsAFailure(t *testing.T) {
+	r := newTestRunner(t)
+	c, err := r.start(shell("polite", `trap 'exit 0' TERM; while true; do sleep 0.1; done`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	reported := 0
+	c.report = func(string, bool) {
+		mu.Lock()
+		reported++
+		mu.Unlock()
+	}
+	c.superviseRestarts()
+	waitFor(t, 3*time.Second, c.running, "child never started")
+
+	if err := c.stop(3 * time.Second); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if reported != 0 {
+		t.Errorf("a deliberate stop was reported as a failure %d times", reported)
+	}
+}
+
+// A child that comes back and STAYS must clear the reason it last failed with: `status`
+// reads "advertised" as "running AND no recorded error", so a stale one would report
+// nothing on the network while dns-sd was publishing happily.
+func TestAChildBackFromACrashClearsItsReason(t *testing.T) {
+	r := newTestRunner(t)
+	r.backoff = func(int) time.Duration { return 10 * time.Millisecond }
+	stay := filepath.Join(t.TempDir(), "stay")
+	c, err := r.start(shell("recovering", `test -e `+stay+` || exit 5; exec sleep 30`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.stop(2 * time.Second) })
+
+	var mu sync.Mutex
+	var last string
+	var reports int
+	c.report = func(reason string, _ bool) {
+		mu.Lock()
+		last, reports = reason, reports+1
+		mu.Unlock()
+	}
+	c.superviseRestarts()
+
+	waitFor(t, 10*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return reports >= 1 && last != ""
+	}, "the crash was never reported")
+
+	// Now let the next generation live.
+	if err := os.WriteFile(stay, []byte("yes\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, 10*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return last == ""
+	}, "a child running again never had its failure cleared")
 }

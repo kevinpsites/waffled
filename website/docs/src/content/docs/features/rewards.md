@@ -39,7 +39,7 @@ Rewards is a **sub-toggle of chores** (`settings.chores.rewards`, default **on**
 ## Notes
 
 - 🏺 **"Rewards jar"** is the saving-toward jar/bar progress UI, **not** a separate object — it's just how a pinned reward renders.
-- 🔒 **Capability-gated where it has stakes** — `reward.manage` (catalog, currencies, conversions), `reward.approve` (decisions and redeeming/converting for another person), `reward.grant` (spot-awards), and `reward.correct` (settled ledger corrections/refunds). Anyone may **redeem for themselves**, convert their own balance, and cancel a pending request they made. Pending requests need a different person to approve them, including admin requests and requests made on behalf of a child. See [Permissions](/concepts/permissions/).
+- 🔒 **Capability-gated where it has stakes** — `reward.manage` (catalog, currencies, conversions), `reward.approve` (decisions and redeeming/converting for another person), `reward.grant` (spot-awards), and `reward.correct` (settled ledger corrections/refunds). Anyone may **redeem for themselves** , convert their own balance, and cancel a pending request they made. Pending rewards require approval from someone other than the balance owner, including for an admin’s own balance. A parent may request and approve a child’s reward, even in a single-adult household. Catalog managers can change approval settings for future requests. See [Permissions](/concepts/permissions/).
 - 📒 **Corrections remain append-only** — the original amount is never edited or hidden. A linked reversal restores it, an optional replacement records the corrected amount, and retries use an idempotency key so they cannot apply twice.
 - 🚧 **Milestone reward payouts** are deferred — the design is done, but auto-paying a [Goals](/features/goals/) milestone into the ledger hasn't shipped yet.
 
@@ -68,4 +68,7 @@ by the household/person join and requires operator repair.
 Redemptions, conversions and chore undo serialize against the same person’s balance.
 Undoing a completed chore removes its earned reward only when that balance can cover
 it; otherwise restore the spent balance first. The chore and its proof remain intact
-on refusal. Conversions require both currencies to remain active and spendable.
+on refusal. Archived members’ completed chores can also be undone when their balance covers
+the reversal. Conversions require both currencies to remain active in the household;
+only the currency being spent must be spendable. An earn-only currency may receive
+the credit.

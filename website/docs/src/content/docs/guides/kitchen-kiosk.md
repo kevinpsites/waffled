@@ -25,6 +25,11 @@ loads but everything shows **"Offline."** `./waffled setup` writes the right
 address for you. For hostnames and HTTPS, see
 [Reverse proxy & TLS](/install/reverse-proxy/).
 
+> **On Waffled for Mac?** Skip this step — there is no `./waffled setup`. The app picked the
+> address during its first run: it is on the **Ready** screen (with a QR code) and in the
+> menu's **Server address**, which copies it when clicked. Use that in step 2 instead of
+> `<your-host>:8080`. See [Mac install → Ready](/install/mac/#4-ready).
+
 ## 2. Open the app on the tablet
 
 On the tablet's browser, open:

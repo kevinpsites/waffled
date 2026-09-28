@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client } from 'pg'
+import { DateTime } from 'luxon'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 
@@ -213,11 +214,15 @@ describe('calendar → goal recap', () => {
 
   it('habit confirm respects once-a-day (two events, one log)', async () => {
     const goalId = await makeGoal({ title: 'Habit', goalType: 'habit', unit: null, habitPeriod: 'day', habitTargetPerPeriod: 1, trackingMode: 'each_tracks' })
-    const e1 = await linkedEvent(goalId, 30, [kevinId], 26)
-    const e2 = await linkedEvent(goalId, 30, [kevinId], 25) // same day, later
+    // Relative 25/26-hour offsets straddle midnight when this runs after 1 AM.
+    const yesterdayNoon = DateTime.now().setZone('America/Chicago').minus({ days: 1 }).startOf('day').plus({ hours: 12 })
+    const hoursAgo = (Date.now() - yesterdayNoon.toMillis()) / 3600_000
+    const e1 = await linkedEvent(goalId, 30, [kevinId], hoursAgo)
+    const e2 = await linkedEvent(goalId, 30, [kevinId], hoursAgo - 1)
     const items = await recap(goalId)
     expect(items.length).toBe(2)
     expect(items.every((i) => i.suggestedAmount === 1)).toBe(true)
+    expect(new Set(items.map((i) => i.occurrenceDate)).size).toBe(1)
 
     const statuses: string[] = []
     for (const it of items) {
@@ -460,6 +465,69 @@ describe('calendar → goal suggestions (Phase B)', () => {
     await makeGoal({ title: 'Reading hours', category: 'intellectual' })
     const eventId = await untaggedEvent('Library trip', [kevinId, kellyId])
     expect((await suggestions()).find((s) => s.eventId === eventId)).toBeFalsy()
+  })
+
+  it("never suggests Waffled's own meal reminders (a thaw reminder is not an activity)", async () => {
+    const goalId = await makeGoal({ title: 'Cook 30 dinners', category: 'family' })
+    const plain = await untaggedEvent('Cooking class dinner', [kevinId])
+    const thaw = await untaggedEvent('🧊 Thaw for Dinner · Cooking chicken', [kevinId], 23)
+    await withClient((cl) => cl.query(`update events set origin = 'meal_prep' where id = $1`, [thaw]))
+
+    const items = await suggestions()
+    expect(items.find((s) => s.eventId === plain)?.goalId).toBe(goalId)
+    expect(items.find((s) => s.eventId === thaw)).toBeFalsy()
+  })
+
+  it('ignoring a word for a goal stops every event with it being suggested for that goal', async () => {
+    const hikeGoal = await makeGoal({ title: 'Hike 20 trails', category: 'physical' })
+    const guitarGoal = await makeGoal({ title: 'Learn guitar songs', category: 'creative' })
+    const first = await untaggedEvent('Thaw trail mix hike', [kevinId])
+
+    const offered = (await suggestions()).find((s) => s.eventId === first)
+    expect(offered?.goalId).toBe(hikeGoal)
+    expect(offered?.ignoreWords).toEqual(['thaw', 'trail', 'mix', 'hike'])
+
+    const r = await call('POST', '/api/goal-calendar/suggestions/ignore', kevin, { eventId: first, goalId: hikeGoal, words: ['Thaw'] })
+    expect(r.statusCode).toBe(200)
+
+    const later = await untaggedEvent('Thawing hike snacks', [kevinId], 20)
+    const plain = await untaggedEvent('Hike Saturday', [kevinId], 21)
+    const otherGoal = await untaggedEvent('Thaw guitar strings', [kevinId], 22)
+    const items = await suggestions()
+    expect(items.find((s) => s.eventId === first)).toBeFalsy()
+    expect(items.find((s) => s.eventId === later)).toBeFalsy()
+    expect(items.find((s) => s.eventId === plain)?.goalId).toBe(hikeGoal)
+    expect(items.find((s) => s.eventId === otherGoal)?.goalId).toBe(guitarGoal)
+
+    // The event editor's live preview honours it too.
+    const one = await call('POST', '/api/goal-calendar/suggest-one', kevin, { title: 'Thaw hike', participantIds: [kevinId] })
+    expect(JSON.parse(one.body).suggestion).toBeNull()
+
+    const list = JSON.parse((await call('GET', '/api/goal-calendar/ignores', kevin)).body).groups
+    expect(list).toEqual([{ goalId: hikeGoal, goalTitle: 'Hike 20 trails', goalEmoji: null, words: ['thaw'] }])
+
+    const rm = await call('POST', '/api/goal-calendar/ignores/remove', kevin, { goalId: hikeGoal, word: 'thaw' })
+    expect(rm.statusCode).toBe(200)
+    expect((await suggestions()).find((s) => s.eventId === later)?.goalId).toBe(hikeGoal)
+    expect(JSON.parse((await call('GET', '/api/goal-calendar/ignores', kevin)).body).groups).toEqual([])
+  })
+
+  it('rejects an ignore with no usable words or for a goal outside the household', async () => {
+    const goalId = await makeGoal({ title: 'Paint 10 pictures', category: 'creative' })
+    const eventId = await untaggedEvent('Painting night', [kevinId])
+    const empty = await call('POST', '/api/goal-calendar/suggestions/ignore', kevin, { eventId, goalId, words: ['the', '42'] })
+    expect(empty.statusCode).toBe(400)
+    const missing = await call('POST', '/api/goal-calendar/suggestions/ignore', kevin, { eventId, goalId })
+    expect(missing.statusCode).toBe(400)
+    const foreignGoal = await withClient(async (cl) => {
+      const h = await cl.query<{ id: string }>(`select household_id as id from persons where id = $1`, [foreignPersonId])
+      return (await cl.query<{ id: string }>(
+        `insert into goals (household_id, title, goal_type, tracking_mode) values ($1, 'Theirs', 'total', 'shared_total') returning id`,
+        [h.rows[0].id]
+      )).rows[0].id
+    })
+    const foreign = await call('POST', '/api/goal-calendar/suggestions/ignore', kevin, { eventId, goalId: foreignGoal, words: ['painting'] })
+    expect(foreign.statusCode).toBe(404)
   })
 })
 

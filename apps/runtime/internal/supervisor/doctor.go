@@ -2,14 +2,15 @@ package supervisor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/kevinpsites/waffled/apps/runtime/internal/backup"
+	"github.com/kevinpsites/waffled/apps/runtime/internal/datadir"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/ports"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/schedule"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/services"
@@ -29,6 +30,12 @@ const (
 	CheckFail = "fail"
 )
 
+// CheckBundleManifest names the check that reports the bundle's manifest verification.
+// `doctor --json` emits these names, and apps/mac/Scripts/build-app.sh selects this one
+// out of the array to gate assembling the app — so the string is a contract with a
+// script, not a label. Change it here and change it there.
+const CheckBundleManifest = "bundle manifest"
+
 // minFreeDisk is roughly what a household needs before disk space becomes the problem:
 // the bundle is already on disk, so this is headroom for the database, media and dumps.
 const minFreeDisk = 5 << 30 // 5 GiB
@@ -43,7 +50,7 @@ func (s *Supervisor) Doctor(ctx context.Context) []Check {
 
 	// The bundle was already verified in New(), or we would not be here.
 	if m := s.manifest; m != nil {
-		add("bundle manifest", CheckOK, "%d files + %d symlinks verified — %s",
+		add(CheckBundleManifest, CheckOK, "%d files + %d symlinks verified — %s",
 			m.FileCount, m.SymlinkCount, m.VersionSummary())
 	}
 
@@ -76,7 +83,8 @@ func (s *Supervisor) Doctor(ctx context.Context) []Check {
 	}
 
 	// Backups: the one check whose answer someone only ever wants once it is too late.
-	b := backup.Describe(s.plan.Layout.Backups, s.scheduleInstalled())
+	scheduleInstalled, scheduleAt, _ := s.scheduleFacts()
+	b := backup.Describe(s.plan.Layout.Backups, scheduleInstalled, scheduleAt)
 	switch {
 	case b.LastError != "":
 		add("backups", CheckFail, "the last backup failed (%s): %s", b.LastErrorAt, b.LastError)
@@ -109,7 +117,9 @@ func (s *Supervisor) Doctor(ctx context.Context) []Check {
 			"no nightly backup is scheduled — install one with `waffled-runtime backup --install-schedule`")
 	default:
 		if loaded, err := s.scheduleLoaded(); loaded {
-			add("backup schedule", CheckOK, "a nightly backup is installed and loaded (%s)", schedule.Label)
+			// The time comes from the plist launchd is holding, so "it is scheduled" and
+			// "it runs then" are one answer rather than two that can drift.
+			add("backup schedule", CheckOK, "%s", scheduleOKDetail(b.ScheduleAt))
 		} else {
 			add("backup schedule", CheckWarn,
 				"%s is installed but launchd does not have the job loaded, so no backup will run — "+
@@ -143,17 +153,48 @@ func (s *Supervisor) Doctor(ctx context.Context) []Check {
 		}
 	}
 
+	// Discovery: `status` can only report what this Mac asked for, so this is the one
+	// place that asks the network whether the advertisement actually answers.
+	checks = append(checks, s.bonjourCheck(ctx))
+
 	if !s.postgresInitialized() {
 		add("postgres", CheckWarn, "no database cluster yet — it is created on the first start")
 		return checks
 	}
 
+	// Everything from here needs a reachable Postgres, so ONE postmaster is brought up to
+	// serve all of it — started the way `backup` does when the stack is down, and put back
+	// afterwards.
+	//
+	// That is not an optimisation. A bundle too old for the schema is refused by `start`,
+	// so by the time anyone runs `doctor` to ask why, nothing is running — and the checks
+	// below the old "postgres is up" gate were then skipped in exactly the case `doctor`
+	// exists for, while the schema check above it paid for a start and stop of its own.
+	// The command someone runs BECAUSE their server will not start answered fewer
+	// questions than the one they run when it is fine.
+	//
+	// The pid is read FIRST: after ensurePostgres, "is postgres running?" would be
+	// answered by the postmaster this function just started.
 	pid, running := s.postgresPid()
-	if !running {
-		add("postgres", CheckWarn, "not running")
+	stop, err := s.ensurePostgres(ctx)
+	if err != nil {
+		// Nothing below can be asked, and each would otherwise fail separately with its
+		// own version of the same news.
+		add("postgres", CheckFail, "could not start postgres to run the database checks: %v", err)
 		return checks
 	}
-	add("postgres", CheckOK, "running (pid %d) on 127.0.0.1:%d", pid, s.plan.Ports.Postgres)
+	defer stop()
+
+	if running {
+		add("postgres", CheckOK, "running (pid %d) on 127.0.0.1:%d", pid, s.plan.Ports.Postgres)
+	} else {
+		// Not a fault on its own — `doctor` is most useful on a stopped install — but the
+		// distinction has to survive, or the checks below would read as a running server.
+		add("postgres", CheckWarn, "not running; started temporarily so the checks below could run")
+	}
+
+	// Whether this build may serve this data at all.
+	checks = append(checks, s.schemaCheck(ctx))
 
 	if _, err := s.runOneShot(ctx, s.plan.PgIsReady(), 10*time.Second); err != nil {
 		add("postgres connection", CheckFail, "pg_isready failed: %v", err)
@@ -186,6 +227,51 @@ func (s *Supervisor) Doctor(ctx context.Context) []Check {
 	return checks
 }
 
+// schemaCheck reports the database's migration level against this build's, and fails on
+// the state `start` refuses: a schema holding migrations this bundle does not ship.
+//
+// It brings Postgres up if it has to and puts it back, so the answer is the same whether
+// the server is running or not. Everything it reports is what `start` would have found.
+//
+// Doctor already holds a postmaster by the time it calls this, which makes the
+// ensurePostgres below a no-op — it returns early when one is running. The call stays
+// because it is what makes this check answerable on its own terms rather than only as
+// something Doctor sets up for; nesting it costs a pid read.
+func (s *Supervisor) schemaCheck(ctx context.Context) Check {
+	check := func(status, format string, args ...any) Check {
+		return Check{Name: "database schema", Status: status, Detail: fmt.Sprintf(format, args...)}
+	}
+	stop, err := s.ensurePostgres(ctx)
+	if err != nil {
+		return check(CheckWarn, "could not start postgres to compare the database with this build: %v", err)
+	}
+	defer stop()
+
+	if err := s.checkNotDowngraded(ctx); err != nil {
+		var d *backup.Downgrade
+		if errors.As(err, &d) {
+			return check(CheckFail, "%v", err)
+		}
+		return check(CheckWarn, "could not compare the database with this build: %v", err)
+	}
+
+	applied, err := s.appliedMigrations(ctx, s.plan.Env.PostgresDB())
+	if err != nil {
+		return check(CheckWarn, "could not read the applied migrations: %v", err)
+	}
+	bundled, err := s.bundleMigrations()
+	if err != nil {
+		return check(CheckWarn, "%v", err)
+	}
+	pending := backup.Pending(bundled, applied)
+	if len(pending) > 0 {
+		// Not a fault: the next start applies them, taking a snapshot on the way in.
+		return check(CheckOK, "at %s; this build ships up to %s — %d migration(s) will be applied on "+
+			"the next start, after a rollback snapshot", backup.Level(applied), backup.Level(bundled), len(pending))
+	}
+	return check(CheckOK, "at %s, level with this build", backup.Level(bundled))
+}
+
 // DoctorText renders the checks for a terminal and reports whether anything failed.
 func DoctorText(checks []Check) (string, bool) {
 	var b strings.Builder
@@ -214,10 +300,4 @@ func writableCheck(dir string) error {
 	return os.Remove(probe)
 }
 
-func freeDiskBytes(path string) (uint64, error) {
-	var st syscall.Statfs_t
-	if err := syscall.Statfs(path, &st); err != nil {
-		return 0, err
-	}
-	return st.Bavail * uint64(st.Bsize), nil
-}
+func freeDiskBytes(path string) (uint64, error) { return datadir.FreeBytes(path) }

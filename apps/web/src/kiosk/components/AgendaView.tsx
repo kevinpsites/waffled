@@ -3,8 +3,10 @@ import { usePersons, useHousehold, eventsApi, type AgendaEvent } from '../../lib
 import { useEventColor } from '../../lib/event-color'
 import { Icon } from '../icons'
 import { RhythmMark } from './RhythmMark'
+import { DayPicker } from './DayPicker'
+import { eventDayKeys } from './month-spans'
 import {
-  MONTHS, ymd, addDays, startOfWeek, monthGridStart, dowFrom, localDate, fmtTime, eventPeople,
+  ymd, addDays, startOfWeek, fmtTime, eventPeople,
 } from './cal-utils'
 
 // A day's worth of upcoming events, with a friendly header.
@@ -48,68 +50,21 @@ export function AgendaRow({ event, past = false, color: colorProp, onClick }: { 
 // Small month grid in the sidebar with per-day event dots; clicking a day jumps
 // the calendar to that week.
 function MiniMonth({ events, tz, colorOf, onPickDate, firstDay }: { events: AgendaEvent[]; tz: string; colorOf: (e: AgendaEvent) => string; onPickDate: (d: Date) => void; firstDay: number }) {
-  const today = new Date()
-  const [view, setView] = useState({ year: today.getFullYear(), month: today.getMonth() })
-  const todayKey = ymd(today)
-
-  const cells = useMemo(
-    () => Array.from({ length: 42 }, (_, i) => addDays(monthGridStart(view.year, view.month, firstDay), i)),
-    [view, firstDay]
-  )
-
   const dots = useMemo(() => {
     const map: Record<string, Set<string>> = {}
     for (const e of events) {
-      const k = localDate(e.startsAt, tz)
-      ;(map[k] ??= new Set()).add(colorOf(e))
+      for (const k of eventDayKeys(e, tz)) (map[k] ??= new Set()).add(colorOf(e))
     }
     return map
   }, [events, tz, colorOf])
 
-  function shift(delta: number) {
-    setView((v) => {
-      const m = v.month + delta
-      return { year: v.year + Math.floor(m / 12), month: ((m % 12) + 12) % 12 }
-    })
-  }
-
   return (
-    <div className="card ag-mini">
-      <div className="ag-mini-head">
-        <div className="wf-serif" style={{ fontSize: 19, fontWeight: 600 }}>{MONTHS[view.month]}</div>
-        <div className="ag-mini-nav">
-          <button type="button" aria-label="Previous month" onClick={() => shift(-1)}><Icon name="cl" /></button>
-          <button type="button" aria-label="Next month" onClick={() => shift(1)}><Icon name="cr" /></button>
-        </div>
-      </div>
-      <div className="ag-mini-dow">
-        {dowFrom(['S', 'M', 'T', 'W', 'T', 'F', 'S'], firstDay).map((d, i) => <div key={i}>{d}</div>)}
-      </div>
-      <div className="ag-mini-grid">
-        {cells.map((d) => {
-          const key = ymd(d)
-          const dim = d.getMonth() !== view.month
-          const colors = dots[key]
-          return (
-            <button
-              type="button"
-              key={key}
-              className={`ag-mini-cell ${dim ? 'dim' : ''} ${key === todayKey ? 'today' : ''}`}
-              onClick={() => onPickDate(d)}
-            >
-              <span className="ag-mini-n">{d.getDate()}</span>
-              {colors && (
-                <span className="ag-mini-dots">
-                  {[...colors].slice(0, 3).map((c, i) => (
-                    <span key={i} className="ag-mini-dot" style={{ background: c }} />
-                  ))}
-                </span>
-              )}
-            </button>
-          )
-        })}
-      </div>
-    </div>
+    <DayPicker
+      className="card ag-mini"
+      firstDay={firstDay}
+      dotsFor={(key) => (dots[key] ? [...dots[key]] : undefined)}
+      onPick={(key) => onPickDate(new Date(`${key}T00:00:00`))}
+    />
   )
 }
 
@@ -171,13 +126,14 @@ export function AgendaView({
   const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate())
   const todayKey = ymd(today)
 
-  // Group upcoming (today onward) events by local day, in chronological order.
+  // Group upcoming (today onward) events by local day, in chronological order. A multi-day
+  // all-day event is listed under each day it covers, so a trip already under way still shows.
   const groups = useMemo(() => {
     const map: Record<string, AgendaEvent[]> = {}
     for (const e of events) {
-      const k = localDate(e.startsAt, tz)
-      if (k < todayKey) continue
-      ;(map[k] ??= []).push(e)
+      for (const k of eventDayKeys(e, tz)) {
+        if (k >= todayKey) (map[k] ??= []).push(e)
+      }
     }
     const keys = Object.keys(map).sort()
     for (const k of keys) {
@@ -198,8 +154,7 @@ export function AgendaView({
     const weEnd = ymd(addDays(ws, 6))
     const counts = new Map<string, number>()
     for (const e of events) {
-      const k = localDate(e.startsAt, tz)
-      if (k < weStart || k > weEnd) continue
+      if (!eventDayKeys(e, tz).some((k) => k >= weStart && k <= weEnd)) continue
       for (const p of eventPeople(e)) if (p.id !== '_') counts.set(p.id, (counts.get(p.id) ?? 0) + 1)
     }
     const rows = persons
@@ -226,7 +181,7 @@ export function AgendaView({
               <span className="wf-serif">{dayLabel(g.date, todayMid)}</span>
               <span className="muted">{g.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
               {/* Add on this specific day — parity with tapping a day elsewhere. */}
-              <button type="button" className="ag-group-add" title={`Add an event on ${g.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`} aria-label="Add an event on this day" onClick={() => onCreate(g.key)}>＋</button>
+              <button type="button" className="ag-group-add" title={`Add an event on ${g.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`} aria-label="Add an event on this day" onClick={() => onCreate(g.key)}><Icon name="plus" /></button>
             </div>
             {g.events.map((e) => (
               <AgendaRow key={e.id} event={e} past={isPastEvent(e, today)} color={colorOf(e)} onClick={() => onOpenEvent(e)} />

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  bin/node — V8 cannot reserve its code range under the hardened runtime without this, and
+  the failure is total: `Fatal process out of memory: Failed to reserve virtual memory for
+  CodeRange` before a single line of JavaScript runs. It is the api's and PowerSync's
+  interpreter, so no entitlement here is no server.
+
+  Measured, not assumed: with the whole bundle signed and no entitlements anywhere, node was
+  the only binary that died. Postgres, Caddy and waffled-runtime need none.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+</dict>
+</plist>

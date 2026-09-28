@@ -67,6 +67,8 @@
 
 /* edit-amount popover (anchored under the stepper) */
 .pantry-amtpop-scrim { position: fixed; inset: 0; z-index: 40; }
+/* Below the outage strip (z 300): leave it the top of the screen. */
+.server-unreachable .pantry-amtpop-scrim { top: var(--unreachable-h, 56px); }
 .pantry-amtpop {
   position: absolute; top: calc(100% + 10px); right: 0; z-index: 41; width: 320px;
   background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-lg);

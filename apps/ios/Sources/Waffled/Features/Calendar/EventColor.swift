@@ -84,12 +84,10 @@ struct EventPalette: Sendable, Equatable {
 
 /// The readable-ink rule for **solid** chips, ported 1:1 from the web's `solidChipInk`
 /// (`apps/web/src/lib/event-color.ts`). A solid chip fills with the event's color, so the
-/// text can't be a fixed white: white clears WCAG AA (4.5:1) on only one of the eight
-/// preset member colors — gold sits at 2.2:1 and teal at 2.5:1, illegible from across a
-/// kitchen. Black or white always works though: wherever white falls short the fill is
-/// light enough that black clears it (the crossover is at luminance ≈0.179, where both
-/// give 4.58:1). So each chip takes the winning ink **for the fill it actually gets**,
-/// which differs by theme — dark mixes the fill toward black first.
+/// text can't be a fixed white: gold and teal are too light for it. Each chip picks black
+/// or white by APCA contrast **on the fill it actually gets**, which differs by theme —
+/// dark mixes the fill toward black first. WCAG 2's ratio narrowly chose black on purple
+/// and blue, which reads worse; the rationale lives beside the web function.
 ///
 /// Kept as pure hex→hex functions (rather than folded into the `UIColor` math) so the
 /// tests can assert the web function's exact output for every swatch; a drift on either
@@ -124,7 +122,21 @@ enum EventChipInk {
     }
 
     private static func inkFor(_ background: String) -> String {
-        contrastRatio(background, white) >= contrastRatio(background, black) ? white : black
+        apcaContrast(text: white, background: background) >= apcaContrast(text: black, background: background) ? white : black
+    }
+
+    /// APCA lightness contrast (|Lc|, 0 to ~106) of `text` on `background`, both `#RRGGBB`;
+    /// 0 for malformed input.
+    static func apcaContrast(text: String, background: String) -> Double {
+        guard let t = components(text), let b = components(background) else { return 0 }
+        func y(_ rgb: [Double]) -> Double {
+            let c = rgb.map { pow($0 / 255, 2.4) }
+            let v = 0.2126729 * c[0] + 0.7151522 * c[1] + 0.0721750 * c[2]
+            return v > 0.022 ? v : v + pow(0.022 - v, 1.414)
+        }
+        let yt = y(t), yb = y(b)
+        let sapc = yb > yt ? (pow(yb, 0.56) - pow(yt, 0.57)) * 1.14 : (pow(yb, 0.65) - pow(yt, 0.62)) * 1.14
+        return abs(sapc) < 0.1 ? 0 : (abs(sapc) - 0.027) * 100
     }
 
     /// WCAG relative luminance of 0–255 components.

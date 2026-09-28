@@ -25,6 +25,7 @@ import {
   presentChore,
   presentInstance,
   UPDATABLE_CHORE,
+  PATCHABLE_CHORE_FIELDS,
   ProofRequiredError,
   listStoredProofs,
   deleteStoredProof,
@@ -44,6 +45,16 @@ type Api = ReturnType<typeof createAPI>
 const { tenantRoute, adminRoute, capRoute } = moduleRoutes('chores')
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/
+// Shape is not existence, and `Date` throws on the unparseable ones — `toISOString()` on an
+// Invalid Date raises, which would turn this guard into the 500 it exists to prevent. So:
+// shape, then parseability, then a round trip (JS rolls Feb 31 to Mar 3).
+const isCalendarDate = (v: string): boolean => {
+  if (!DATE_ONLY_RE.test(v)) return false
+  const d = new Date(`${v}T00:00:00Z`)
+  if (Number.isNaN(d.getTime())) return false
+  return d.toISOString().slice(0, 10) === v
+}
 const CHORE_SCOPES = new Set<ChoreEditScope>(['this', 'following', 'all'])
 
 function editTarget(body: Record<string, unknown>, res: Response): { scope: ChoreEditScope; instanceId?: string } | null {
@@ -61,8 +72,7 @@ function editTarget(body: Record<string, unknown>, res: Response): { scope: Chor
 }
 
 export function registerChoreRoutes(api: Api): void {
-  // Household chore settings — the photo-proof retention window and the rewards
-  // sub-toggle (rewards is the spend half of the chores economy, not its own module).
+  // Household chore settings — the photo-proof retention window and the rewards sub-toggle.
   api.get('/api/chores/settings', tenantRoute(async (tenant) => ({
     proofTtlDays: await getProofTtlDays(tenant.householdId),
     rewards: await getChoreRewardsEnabled(tenant.householdId),
@@ -70,7 +80,6 @@ export function registerChoreRoutes(api: Api): void {
 
   api.put('/api/chores/settings', adminRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as { proofTtlDays?: unknown; rewards?: unknown }
-    // Both fields optional; accept either (or both) in one call.
     if (body.proofTtlDays !== undefined && (typeof body.proofTtlDays !== 'number' || !Number.isFinite(body.proofTtlDays) || body.proofTtlDays < 0)) {
       return res.status(400).json({ error: 'BadRequest', message: 'proofTtlDays must be a non-negative number' })
     }
@@ -86,7 +95,7 @@ export function registerChoreRoutes(api: Api): void {
   }))
 
   // Stored proof photos — the review/manage surface (admins). A separate path from
-  // /api/chores/:id so the collection DELETE (clear-all) can't be read as :id.
+  // /api/chores/:id so the collection DELETE can't be read as :id.
   api.get('/api/chore-proofs', adminRoute(async (tenant) => ({
     proofs: await listStoredProofs(tenant.householdId),
   })))
@@ -103,8 +112,8 @@ export function registerChoreRoutes(api: Api): void {
     cleared: await clearStoredProofs(tenant.householdId),
   })))
 
-  // Create a chore. Carving the family up takes 'chore.manage', but anyone can add
-  // a chore that's up-for-grabs (no assignee) or one for themselves — no gate there.
+  // Create a chore. Carving the family up takes 'chore.manage', but anyone can add a chore
+  // that's up-for-grabs or one for themselves — no gate there.
   api.post('/api/chores', tenantRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as Partial<CreateChoreInput>
     if (!body.title || !body.title.trim()) {
@@ -141,7 +150,15 @@ export function registerChoreRoutes(api: Api): void {
       }
       await assertPersonInHousehold(tenant.householdId, patch.personId)
     }
-    if (!Object.keys(UPDATABLE_CHORE).some((field) => field in patch)) {
+    // A REAL DATE, not just the shape: `2026-02-31` matches the regex and then fails in
+    // Postgres, so a typo answered 500 where this should answer 400.
+    if (patch.dueOn != null && patch.dueOn !== '') {
+      if (typeof patch.dueOn !== 'string' || !isCalendarDate(patch.dueOn)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'dueOn must be a real YYYY-MM-DD date' })
+      }
+      patch.dueOn = patch.dueOn.trim()
+    }
+    if (!PATCHABLE_CHORE_FIELDS.some((field) => field in patch)) {
       return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields provided' })
     }
     try {
@@ -198,9 +215,8 @@ export function registerChoreRoutes(api: Api): void {
     return { date, instances }
   }))
 
-  // All chore completions awaiting a parent's OK, across dates — for the mobile
-  // approvals queue (the date-scoped lists above miss ones from earlier days).
-  // Read-only; approval/rejection still goes through the :id endpoints below.
+  // All chore completions awaiting a parent's OK, across dates — the date-scoped lists above
+  // miss ones from earlier days. Read-only; approval goes through the :id endpoints below.
   api.get('/api/chore-instances/awaiting', tenantRoute(async (tenant) => ({
     instances: await listAwaitingInstances(tenant.householdId),
   })))
@@ -267,9 +283,8 @@ export function registerChoreRoutes(api: Api): void {
       if (!UUID_RE.test(personId)) return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
       await assertPersonInHousehold(tenant.householdId, personId)
     }
-    // Assigning a chore to ANOTHER person needs chore.manage. Releasing it to
-    // up-for-grabs (null) or taking it yourself stays open — that's just
-    // claiming, which any member may do.
+    // Assigning a chore to ANOTHER person needs chore.manage. Releasing it to up-for-grabs
+    // (null) or taking it yourself stays open — that's just claiming.
     if (personId !== null && personId !== tenant.personId) {
       await requireCapability(tenant, 'chore.manage')
     }

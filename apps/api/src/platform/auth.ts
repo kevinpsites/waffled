@@ -26,6 +26,19 @@ export class AuthError extends Error {
   }
 }
 
+/// The caller is authenticated but their household is not there — never onboarded, or
+/// deleted, or the database was restored under a token that outlived it. Separate from a
+/// plain `AuthError` because the two 403s call for opposite handling: a permission denial
+/// is the app working, while this one means the session can never succeed and the client
+/// should sign out. `name` is what the error handler renders as the response's `error`
+/// field, so clients key on the code rather than on the prose.
+export class NoHouseholdError extends AuthError {
+  constructor(message = 'No household for this account; create one first') {
+    super(message, 403)
+    this.name = 'NoHousehold'
+  }
+}
+
 // Built on first use, only in auth0 mode — local mode never opens the JWKS client.
 let jwksClient: JwksClient | null = null
 function auth0KeyResolver(): GetPublicKeyOrSecret {

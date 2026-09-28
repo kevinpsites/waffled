@@ -57,9 +57,13 @@ These actions are allowed for yourself regardless of role:
 - **Chores** — complete/claim any chore; create a chore for *yourself* or *up-for-grabs*
   (assigning it to someone else needs `chore.manage`).
 - **Rewards** — request a reward for yourself; convert your own balance. A pending
-  redemption still needs a different person with `reward.approve` to approve it.
-  This second-person rule also applies to administrators and requests made on a
-  child’s behalf. The requester can still deny the request if they have approval rights. A requester may cancel their own pending request.
+  redemption needs someone other than the balance owner with `reward.approve` to approve it.
+  A parent can both request and approve a child’s reward, including when they are the
+  only adult. Nobody, including an admin, may approve a pending reward for their own
+  balance. Denial remains available to anyone with approval rights. Catalog managers
+  can still change a reward’s approval policy for future requests; this is not an
+  immutable separation-of-duties control.
+  A requester may cancel their own pending request.
 - **Goals** — log progress *for yourself* (or a family/shared log); create a *personal* goal
   (one with no other participants); tick a checklist step (it's self-attributed); create a
   goal list. Logging attributed to **another person**, or editing/deleting a goal that isn't

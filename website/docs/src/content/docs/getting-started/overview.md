@@ -18,9 +18,10 @@ everything a family coordinates day to day:
 - 🖼️ **Photos & memories** with an ambient screensaver
 - ✨ An **AI "Add anything" capture bar** that routes natural language to the right place
 
-You run it yourself — `git clone` + `docker compose up` — with **zero external
-dependencies** required. Everything optional (AI providers, Google Calendar, SSO, push)
-is opt-in via configuration.
+You run it yourself, with **zero external dependencies** required: on a Mac with Apple
+silicon, [download Waffled for Mac](/install/mac/) and open it — no Docker, no Terminal;
+anywhere else, `git clone` + `./waffled up` brings up the [Docker install](/install/docker/).
+Everything optional (AI providers, Google Calendar, SSO, push) is opt-in via configuration.
 
 ## The three surfaces
 
@@ -38,8 +39,10 @@ experiences are the matrix's "iPhone" and "iPad" columns.
 
 - **One household, one source of truth.** A Postgres database is authoritative. Every
   request is scoped to a household via a JWT (`sub → identity → person → household`).
-- **Self-hosted, portable.** A small Docker Compose stack: Postgres · PowerSync · api
-  (lambda-api / TypeScript) · Caddy. Build from source or pull multi-arch images from GHCR.
+- **Self-hosted, portable.** One server — Postgres · PowerSync · api (lambda-api /
+  TypeScript) · Caddy — run two ways: as a small Docker Compose stack (build from source or
+  pull multi-arch images from GHCR), or natively by the [Mac app](/install/mac/), which
+  carries all four inside one download. Same api, same migrations, same web app.
 - **Offline-first where it matters.** PowerSync mirrors data to local SQLite so the iOS
   app and the kiosk's calendar keep working through network blips and reconnect cleanly.
 - **Pluggable AI.** The "Add anything" bar and the meal/recipe/calendar AI features run
@@ -54,7 +57,8 @@ experiences are the matrix's "iPhone" and "iPad" columns.
 
 ## Where to go next
 
-- New to running it? → [Quick start](/getting-started/quick-start/)
+- On a Mac? → [Mac install](/install/mac/)
+- Anywhere else? → [Quick start](/getting-started/quick-start/)
 - Want the full capability list? → [Feature matrix](/reference/features/)
 - Curious how it grows? → [Extensibility & modules](/concepts/extensibility/)
 - Tracking progress? → the [roadmap status](https://github.com/kevinpsites/waffled/blob/main/docs/product/roadmap.md)

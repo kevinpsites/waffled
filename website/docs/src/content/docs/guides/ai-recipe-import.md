@@ -36,7 +36,7 @@ that support speech input, the **🎤 Dictate** button lets you talk instead of 
 
 ## Which AI provider you need
 
-Recipe AI uses the same provider you pick in **Settings → AI & capture**:
+Recipe AI uses the same provider you pick in **Settings → AI & Capture**:
 
 - **Describe it** works with **any** provider (Claude, OpenAI-compatible, or a local
   Ollama model).
