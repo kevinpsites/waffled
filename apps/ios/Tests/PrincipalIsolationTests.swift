@@ -1,4 +1,6 @@
+import Foundation
 import Testing
+import UserNotifications
 @testable import Waffled
 
 @MainActor
@@ -552,4 +554,166 @@ struct PrincipalIsolationTests {
         #expect(snapshot.0 == "new-access")
         #expect(snapshot.1 == "new-refresh")
     }
+    @Test func missingHouseholdRequestsCoordinatedExpirationForItsLease() async {
+        let vault = RefreshCredentialVault(access: "access", refresh: "refresh", generation: 1)
+        let expirations = ExpirationRecorder()
+        let api = WaffledAPI(
+            transport: { request in
+                (Data(#"{"error":"NoHousehold"}"#.utf8),
+                 HTTPURLResponse(url: request.url!, statusCode: 403, httpVersion: nil, headerFields: nil)!)
+            },
+            credentials: .init(
+                currentLease: { await vault.currentLease() },
+                saveIfCurrent: { await vault.saveIfCurrent($0, access: $1, refresh: $2) },
+                isCurrent: { await vault.isCurrent($0) }
+            ),
+            expire: { await expirations.record($0) }
+        )
+
+        _ = try? await api.currentPerson()
+
+        #expect(await expirations.count() == 1)
+        #expect(await vault.snapshot().1 == "refresh")
+    }
+
+    @Test func endingCookModeClearsPreviousPantryReconciliation() {
+        let cook = CookSessionStore(alarm: makeSilentTimerAlarm())
+        cook.pendingPantryReconcile = .init(id: "old-recipe", title: "Private recipe", matches: [])
+
+        cook.end()
+
+        #expect(cook.pendingPantryReconcile == nil)
+        #expect(!cook.isActive)
+    }
+
+    @Test func principalCleanupClearsPendingCookDeepLink() async {
+        let notifications = NotificationManager(principalNotificationsCleanup: {})
+        notifications.pendingCookTimer = .init(dishId: "old-recipe", stepIndex: 0, plateId: nil)
+
+        await notifications.clearPrincipalState()
+
+        #expect(notifications.pendingCookTimer == nil)
+    }
+
+    @Test func lateMissingHouseholdCannotExpireReplacementCredentials() async {
+        let vault = RefreshCredentialVault(access: "old-access", refresh: "old-refresh", generation: 1)
+        let response = PrincipalDeferred<Data>()
+        let expirations = ExpirationRecorder()
+        let api = WaffledAPI(
+            transport: { request in
+                (await response.wait(),
+                 HTTPURLResponse(url: request.url!, statusCode: 403, httpVersion: nil, headerFields: nil)!)
+            },
+            credentials: .init(
+                currentLease: { await vault.currentLease() },
+                saveIfCurrent: { await vault.saveIfCurrent($0, access: $1, refresh: $2) },
+                isCurrent: { await vault.isCurrent($0) }
+            ),
+            expire: { await expirations.record($0) }
+        )
+        let request = Task { _ = try? await api.currentPerson() }
+        await response.waitUntilStarted()
+        await vault.replace(access: "new-access", refresh: "new-refresh", generation: 2)
+        await response.resume(Data(#"{"error":"NoHousehold"}"#.utf8))
+        await request.value
+
+        #expect(await expirations.count() == 0)
+        #expect(await vault.snapshot().1 == "new-refresh")
+    }
+
+    @Test func latePlateLoadCannotReopenCookModeAfterPrincipalExit() async {
+        let response = PrincipalDeferred<Data>()
+        let api = WaffledAPI(transport: { request in
+            (await response.wait(),
+             HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        })
+        let cook = CookSessionStore(api: api, alarm: makeSilentTimerAlarm())
+        let plate = WaffledAPI.MealDTO.placeholder(
+            id: "private-plate", name: "Private dinner",
+            dishes: [(recipeId: "private-recipe", title: "Private recipe", emoji: nil, role: "main")]
+        )
+        let start = Task { await cook.startPlate(plate) }
+        await response.waitUntilStarted()
+
+        cook.end()
+        await response.resume(Data(#"{"recipe":{"id":"private-recipe","title":"Private recipe","isFavorite":false,"cookedCount":0},"ingredients":[],"steps":[{"stepNumber":1,"instruction":"Cook","ingredients":[]}]}"#.utf8))
+        await start.value
+
+        #expect(!cook.isActive)
+        #expect(cook.dishes.isEmpty)
+    }
+
+    @Test func lateReminderReconcileCannotSchedulePreviousPrincipalEvents() async {
+        let suite = "principal-reminders-\(UUID().uuidString)"
+        let preferences = UserDefaults(suiteName: suite)!
+        defer { preferences.removePersistentDomain(forName: suite) }
+        preferences.set(true, forKey: "waffled.notif.enabled")
+        let pending = PrincipalDeferred<Set<String>>()
+        let recorder = PrincipalTransitionRecorder()
+        let notifications = NotificationManager(
+            preferences: preferences,
+            authorization: .authorized,
+            delivery: .init(
+                pendingIdentifiers: { await pending.wait() },
+                schedule: { recorder.record($0.identifier) },
+                remove: { _ in }
+            ),
+            principalNotificationsCleanup: {}
+        )
+        let event = SyncedEvent(
+            id: "private-event", title: "Private appointment", startsAtRaw: nil,
+            startsAt: Date().addingTimeInterval(3600), allDay: false,
+            personId: "old-person", colorHex: nil, emoji: nil
+        )
+        let reconcile = Task {
+            await notifications.reconcile(events: [event], tz: .current,
+                                          myPersonId: "old-person", names: [:])
+        }
+        await pending.waitUntilStarted()
+
+        await notifications.clearPrincipalState()
+        await pending.resume([])
+        await reconcile.value
+
+        #expect(recorder.events.isEmpty)
+    }
+
+    @Test func notificationAddedDuringPrincipalCleanupIsRemovedAfterItCompletes() async {
+        let suite = "principal-reminder-add-\(UUID().uuidString)"
+        let preferences = UserDefaults(suiteName: suite)!
+        defer { preferences.removePersistentDomain(forName: suite) }
+        preferences.set(true, forKey: "waffled.notif.enabled")
+        let adding = PrincipalDeferred<Void>()
+        var scheduled: Set<String> = []
+        let notifications = NotificationManager(
+            preferences: preferences,
+            authorization: .authorized,
+            delivery: .init(
+                pendingIdentifiers: { [] },
+                schedule: {
+                    await adding.wait()
+                    scheduled.insert($0.identifier)
+                },
+                remove: { scheduled.subtract($0) }
+            ),
+            principalNotificationsCleanup: { scheduled.removeAll() }
+        )
+        let event = SyncedEvent(
+            id: "private-event", title: "Private appointment", startsAtRaw: nil,
+            startsAt: Date().addingTimeInterval(3600), allDay: false,
+            personId: "old-person", colorHex: nil, emoji: nil
+        )
+        let reconcile = Task {
+            await notifications.reconcile(events: [event], tz: .current,
+                                          myPersonId: "old-person", names: [:])
+        }
+        await adding.waitUntilStarted()
+
+        await notifications.clearPrincipalState()
+        await adding.resume(())
+        await reconcile.value
+
+        #expect(scheduled.isEmpty)
+    }
+
 }

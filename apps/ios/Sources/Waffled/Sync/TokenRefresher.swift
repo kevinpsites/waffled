@@ -103,7 +103,7 @@ actor TokenRefresher {
         return .refreshed(access: pair.accessToken, refresh: pair.refreshToken)
     }
 
-    private static func postExpiration(_ lease: AuthTokens.RefreshLease) async {
+    static func postExpiration(_ lease: AuthTokens.RefreshLease) async {
         // Check again on the main actor immediately before posting. A login/claim that
         // won the race after the HTTP response invalidates this old notification.
         await MainActor.run {

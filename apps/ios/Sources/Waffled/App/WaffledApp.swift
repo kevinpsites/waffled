@@ -14,7 +14,7 @@ struct WaffledApp: App {
     @State private var theme = ThemeStore()
     /// The active Cook Mode session, hoisted app-level so Cook Mode + its running timers
     /// survive the app backgrounding (and a tapped timer notification can re-open it).
-    @State private var cook = CookSessionStore()
+    @State private var cook: CookSessionStore
     /// Cold-launch splash (bouncing logo on cream). Shown once per launch, then faded.
     @State private var showSplash = true
     /// Nothing principal-selectable renders until the legacy/unauthenticated database
@@ -25,8 +25,11 @@ struct WaffledApp: App {
 
     init() {
         let notifications = NotificationManager()
+        let cook = CookSessionStore()
+        _cook = State(initialValue: cook)
         _notifications = State(initialValue: notifications)
         _sync = State(initialValue: SyncManager(principalStateCleanup: {
+            cook.end()
             await notifications.clearPrincipalState()
         }))
     }

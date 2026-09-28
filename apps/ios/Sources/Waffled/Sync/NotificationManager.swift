@@ -2,6 +2,25 @@ import Foundation
 import Observation
 import UserNotifications
 
+struct NotificationDelivery: Sendable {
+    let pendingIdentifiers: @MainActor @Sendable () async -> Set<String>
+    let schedule: @MainActor @Sendable (UNNotificationRequest) async throws -> Void
+    let remove: @MainActor @Sendable ([String]) -> Void
+
+    static let live = NotificationDelivery(
+        pendingIdentifiers: {
+            let requests = await UNUserNotificationCenter.current().pendingNotificationRequests()
+            return Set(requests.map(\.identifier).filter { $0.hasPrefix(NotificationManager.idPrefix) })
+        },
+        schedule: { try await UNUserNotificationCenter.current().add($0) },
+        remove: {
+            let center = UNUserNotificationCenter.current()
+            center.removePendingNotificationRequests(withIdentifiers: $0)
+            center.removeDeliveredNotifications(withIdentifiers: $0)
+        }
+    )
+}
+
 /// Local event reminders (roadmap 6.7-ios). Schedules on-device notifications from
 /// the synced `events` mirror — no server, no APNs, no Apple key — so reminders fire
 /// even when the app is closed and offline.
@@ -43,7 +62,10 @@ final class NotificationManager {
 
     private let center = UNUserNotificationCenter.current()
     private let delegate = NotifDelegate()
-    private let d = UserDefaults.standard
+    private let d: UserDefaults
+    private let delivery: NotificationDelivery
+    private let principalNotificationsCleanup: @MainActor () async -> Void
+    private var principalGeneration: UInt64 = 0
 
     private enum K {
         static let enabled = "waffled.notif.enabled"
@@ -63,7 +85,20 @@ final class NotificationManager {
     /// Headroom under the iOS 64-pending cap.
     private static let maxScheduled = 58
 
-    init() {
+    init(
+        preferences: UserDefaults = .standard,
+        authorization: UNAuthorizationStatus = .notDetermined,
+        delivery: NotificationDelivery = .live,
+        principalNotificationsCleanup: @escaping @MainActor () async -> Void = {
+        let center = UNUserNotificationCenter.current()
+        center.removeAllPendingNotificationRequests()
+        center.removeAllDeliveredNotifications()
+        try? await center.setBadgeCount(0)
+    }) {
+        self.d = preferences
+        self.authorization = authorization
+        self.delivery = delivery
+        self.principalNotificationsCleanup = principalNotificationsCleanup
         enabled = d.bool(forKey: K.enabled)                       // default off
         leadMinutes = d.object(forKey: K.lead) as? Int ?? 15      // 15 min before
         allDayHour = d.object(forKey: K.allDayHour) as? Int ?? 8  // 8:00 AM
@@ -114,6 +149,7 @@ final class NotificationManager {
     private func changed() { Task { await apply() } }
 
     private func apply() async {
+        let generation = principalGeneration
         // Off or not allowed → tear our reminders down and stop.
         guard enabled, authorization == .authorized || authorization == .provisional else {
             await clearEventReminders()
@@ -140,15 +176,22 @@ final class NotificationManager {
         // Reconcile against the reminders we currently own.
         let desiredIds = Set(keep.map(\.id))
         let existing = await ourPendingIds()
+        guard generation == principalGeneration else { return }
         let stale = existing.subtracting(desiredIds)
-        if !stale.isEmpty { center.removePendingNotificationRequests(withIdentifiers: Array(stale)) }
+        if !stale.isEmpty { delivery.remove(Array(stale)) }
         for p in keep {
             // A one-shot time-interval trigger fires at the right absolute instant;
             // re-adding with the same id replaces, keeping reconcile idempotent.
             let interval = max(1, p.fire.timeIntervalSinceNow)
             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
             let req = UNNotificationRequest(identifier: p.id, content: p.content, trigger: trigger)
-            try? await center.add(req)
+            try? await delivery.schedule(req)
+            // A scheduled add may finish after cleanup removed the old requests.
+            // Remove that late result before allowing any further old-principal work.
+            guard generation == principalGeneration else {
+                delivery.remove([p.id])
+                return
+            }
         }
     }
 
@@ -169,13 +212,15 @@ final class NotificationManager {
     /// prevents a preference toggle from re-scheduling the previous person's events
     /// before the next principal's first reconcile.
     func clearPrincipalState() async {
+        principalGeneration &+= 1
         lastEvents = []
         lastTz = .current
         lastMyPersonId = nil
         lastNames = [:]
         pendingEventId = nil
+        pendingCookTimer = nil
         droppedToCap = 0
-        await Self.clearEventRemindersForPrincipalExit(center: center)
+        await principalNotificationsCleanup()
     }
 
     /// Principal transitions use this directly from SyncManager so reminder cleanup is
@@ -242,8 +287,7 @@ final class NotificationManager {
     }
 
     private func ourPendingIds() async -> Set<String> {
-        let reqs = await center.pendingNotificationRequests()
-        return Set(reqs.map(\.identifier).filter { $0.hasPrefix(Self.idPrefix) })
+        await delivery.pendingIdentifiers()
     }
 }
 

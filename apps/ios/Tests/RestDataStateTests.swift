@@ -845,7 +845,10 @@ private let fixtureRestScope = RestDataScopeKey(
     @Test func changedServerClearsLocalDataAndRotatesScopeBeforeRestart() async {
         let stop = DeferredRestValue<Bool>()
         let recorder = ConnectionTransitionRecorder()
-        let sync = SyncManager(testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop))
+        let sync = SyncManager(
+            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop),
+            principalStateCleanup: {}
+        )
         let original = sync.restDataScopeKey
         let update = Task { await sync.updateConnection(apiBaseURL: "https://new-server.example") }
         await stop.waitUntilStarted()
@@ -860,7 +863,10 @@ private let fixtureRestScope = RestDataScopeKey(
     @Test func failedServerTeardownDoesNotAdoptConfigurationOrRotateScope() async {
         let stop = DeferredRestValue<Bool>()
         let recorder = ConnectionTransitionRecorder()
-        let sync = SyncManager(testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop))
+        let sync = SyncManager(
+            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop),
+            principalStateCleanup: {}
+        )
         let original = sync.restDataScopeKey
         let update = Task { await sync.updateConnection(apiBaseURL: "https://new-server.example") }
         await stop.waitUntilStarted()
@@ -873,21 +879,25 @@ private let fixtureRestScope = RestDataScopeKey(
     @Test func explicitSignOutClearsLocalDataAndRotatesScope() async {
         let stop = DeferredRestValue<Bool>()
         let recorder = ConnectionTransitionRecorder()
-        let sync = SyncManager(testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop))
+        let sync = SyncManager(
+            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop),
+            principalStateCleanup: {}
+        )
         let original = sync.restDataScopeKey
-        let signOut = Task { await sync.signOut(clearLocal: true) }
+        let signOut = Task { await sync.signOut(policy: .securityCritical) }
         await stop.waitUntilStarted()
         #expect(recorder.events == ["stop:true"])
         #expect(sync.restDataScopeKey != original)
         await stop.succeed(true)
-        #expect(await signOut.value)
+        #expect(await signOut.value == .completed)
     }
 
     @Test func signOutPreemptsUpdateBeforeConfigurationOrRestart() async {
         let firstStop = DeferredRestValue<Bool>()
         let recorder = ConnectionTransitionRecorder()
         let sync = SyncManager(
-            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: firstStop)
+            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: firstStop),
+            principalStateCleanup: {}
         )
         let oldScope = sync.restDataScopeKey
 
@@ -912,7 +922,8 @@ private let fixtureRestScope = RestDataScopeKey(
         let firstStop = DeferredRestValue<Bool>()
         let recorder = ConnectionTransitionRecorder()
         let sync = SyncManager(
-            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: firstStop)
+            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: firstStop),
+            principalStateCleanup: {}
         )
         let oldScope = sync.restDataScopeKey
 
@@ -941,7 +952,8 @@ private let fixtureRestScope = RestDataScopeKey(
         let firstStop = DeferredRestValue<Bool>()
         let recorder = ConnectionTransitionRecorder()
         let sync = SyncManager(
-            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: firstStop)
+            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: firstStop),
+            principalStateCleanup: {}
         )
         let oldScope = sync.restDataScopeKey
 

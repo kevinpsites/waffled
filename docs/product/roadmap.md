@@ -17,6 +17,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Done ✅
 
+- **Private native account transitions** — iPhone sign-out, household changes, and shared
+  iPad profile switching clear the local calendar mirror, reminders, and Cook Mode state
+  before opening another account. Pending offline edits require an explicit discard on
+  manual switches; automatic idle return waits behind a private screen. Upgraded installs
+  verify the same boundary before showing login or the profile picker.
+
 - **iPhone calendar: Month → Week → Day** — the phone Calendar tab rebuilt from the design
   handoff: a full-height month grid with ISO week numbers and up to four titles a day, a
   horizontal week card rail (tap an event to edit it), and a pushed Day timeline with overlap
