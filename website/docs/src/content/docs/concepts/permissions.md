@@ -44,11 +44,12 @@ the defaults, no migration to add more).
 | --- | --- |
 | `chore.manage` | Create chores for *others*, edit/delete chores |
 | `chore.approve` | Approve/reject completed chores |
-| `reward.manage` | Manage the rewards catalog, currencies, conversions |
+| `reward.manage` | Manage the rewards catalog, currencies, conversions; redeem or convert *for others* |
 | `reward.approve` | Approve/deny redemptions |
 | `reward.grant` | Give a person an ad-hoc spot award |
 | `reward.correct` | Reverse/replace settled reward activity or refund a redemption |
 | `goal.manage` | Log progress *for others*, edit/delete shared or others' goals, manage goal lists |
+| `planning.manage` | Choose which household lists Weekly Planning asks about; adults have it by default |
 
 Clients never "show, then 403". `/api/household` returns the caller's resolved
 `capabilities`, and the UI renders capable affordances only.
@@ -65,6 +66,13 @@ allowed for adult, caregiver, teen, and kid members:
   (one with no other participants); tick a checklist step (it's self-attributed); create a
   goal list. Logging attributed to **another person**, or editing/deleting a goal that isn't
   your own sole-participant goal, needs `goal.manage`.
+
+### Guest account maintenance
+
+Guests can update their own login email or password, accept an invitation, and switch
+households. Their shared profile name/avatar and all household content remain read-only.
+Client write controls and offline edits are blocked; older queued guest uploads are
+acknowledged without changing shared data so they cannot block the sync queue.
 
 ## How attribution works
 

@@ -19,7 +19,7 @@ Add people in **Settings → Family & People**. Each person has:
 | Avatar | Photo or initials |
 | Color | Their accent color (chips, calendar, attribution) |
 | `member_type` | **adult / caregiver / guest / teen / kid** — carries authorization (see below) |
-| Access expires | Optional for caregivers and guests; access ends automatically at that time |
+| Access ends | Optional final date for caregivers and guests; access lasts through that date in the household timezone and ends at the next midnight |
 | Birthday | Optional; feeds calendar countdowns |
 
 A person can exist as a **profile without a login** — this is the normal setup for
@@ -67,10 +67,14 @@ To bring in a new member who'll have their own login:
 
 This is also how email-only / SSO members get access — the invite gates who is
 allowed to sign in via OIDC. An invite can assign any role. Caregiver and guest
-invites may also include an expiration date; those profiles stay off the kiosk picker
-by default. Once temporary access expires, existing sessions stop working and the
-membership no longer appears in the household switcher. A fresh invite restores the
-same membership and its history instead of creating a duplicate person.
+invites may also include a final access date in the household timezone; those profiles
+stay off the kiosk picker by default. The selected day remains available in full, including
+when daylight-saving time changes. Changing the household timezone keeps the selected
+date and recalculates its midnight cutoff. Once temporary access expires, existing sessions
+stop working and the membership no longer appears in the household switcher. A fresh invite restores the
+same membership and its history instead of creating a duplicate person. If an account has
+no active memberships, signing in with its password automatically accepts its first valid
+pending invite so it can return to a household.
 
 ## Multiple households
 
@@ -88,6 +92,17 @@ If no one can sign in as an admin, you don't need a login — run these on the h
 ./waffled admin list-members       # see who exists
 ./waffled admin prune-sessions     # invalidate active sessions
 ```
+
+On [Waffled for Mac](/install/mac/) the same commands are `waffled-runtime admin`:
+
+```bash
+R=/Applications/Waffled.app/Contents/Resources/runtime/bin/waffled-runtime
+$R admin reset-password --email you@example.com
+$R admin help                      # the full command list
+```
+
+Waffled doesn't have to be running — if it's stopped, the database is started for the
+command and shut down again afterwards.
 
 Full walkthrough in [Troubleshooting → Locked out](/operations/troubleshooting/).
 

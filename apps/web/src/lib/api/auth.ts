@@ -8,6 +8,8 @@ import {
   currentIdentityScope,
   setSession,
   setSessionFrom,
+  tagIfGateway,
+  trackedFetch,
 } from './client'
 
 export interface AuthStatus {
@@ -74,10 +76,10 @@ export interface SetupInput {
 }
 
 async function post(path: string, body: unknown): Promise<SessionResponse> {
-  const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+  const res = await trackedFetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { message?: string }
-    throw new Error(err.message || `Request failed (${res.status})`)
+    throw tagIfGateway(new Error(err.message || `Request failed (${res.status})`), res)
   }
   return res.json() as Promise<SessionResponse>
 }

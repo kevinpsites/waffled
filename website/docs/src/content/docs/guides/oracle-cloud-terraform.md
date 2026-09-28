@@ -211,6 +211,12 @@ sudo ./waffled logs caddy                      # TLS / ACME progress
 - **"Server is down" from Cloudflare** — your DNS records are *Proxied* (orange cloud). Set them to
   **DNS only** (grey cloud) so Caddy can issue and serve certificates directly. See the callout in
   Step 5.
+- **HTTPS stopped answering right after an upgrade** (port 443 *refused*, while port 80 still
+  redirects to https) — Caddy was recreated without the override, so it lost its 443 mapping.
+  Older releases drop the override mid-upgrade whenever `./waffled` updates itself, and the copy
+  doing that is the one already on the box, so the upgrade *onto* the fixed release can still hit it.
+  Bring it back with `sudo ./waffled --override infra/compose/docker-compose.oci.yml up` (not `restart`,
+  which keeps the old port mappings) and confirm with `sudo docker port waffled-caddy`.
 - **SSH `Permission denied (publickey)`** — you connected fine (port 22 is open), but `ssh` didn't
   offer the right key. Point it at your private key: `ssh -i ~/.ssh/waffled ubuntu@<public_ip>`, and
   make sure `cat ~/.ssh/waffled.pub` matches the `ssh_public_key` in your `terraform.tfvars`.

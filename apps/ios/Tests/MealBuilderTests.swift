@@ -2,15 +2,9 @@ import Foundation
 import Testing
 @testable import Waffled
 
-// The Meal Builder composes a **plate** — a named, multi-recipe meal ("BBQ Sunday" =
-// BBQ Chicken (main) + Potato Salad + Coleslaw (sides) + Peach Cobbler (dessert)).
-//
-// Everything the builder screen derives lives in `PlateRoles`, `OnHandClaim` and
-// `MealBuilderModel` so it can be tested without a server or a view body. The cases
-// below pin the three rules that make a builder *look* finished while being broken:
-// an empty role group that disappears (leaving no way to add a main), a ＋ that
-// forgets which role it belongs to, and a pantry-off plate that invents an on-hand
-// claim it cannot make.
+// The Meal Builder composes a **plate** — a named, multi-recipe meal. These pin the three
+// rules that make a builder look finished while broken: a vanishing empty role group, a ＋
+// that forgets its role, and a pantry-off plate that invents an on-hand claim.
 
 // MARK: fixtures
 
@@ -42,7 +36,6 @@ func plateFixture(_ id: String = "plate-1", name: String = "BBQ Sunday", serving
 // MARK: role grouping
 
 @Suite struct PlateRoleGroupingTests {
-    /// Three scaffold groups in plate order — Main, Sides, Dessert.
     @Test func scaffoldsThreeRolesInPlateOrder() {
         #expect(PlateRoles.ordered.map(\.key) == ["main", "side", "dessert"])
         #expect(PlateRoles.ordered.map(\.label) == ["Main", "Sides", "Dessert"])
@@ -60,9 +53,8 @@ func plateFixture(_ id: String = "plate-1", name: String = "BBQ Sunday", serving
         #expect(PlateRoles.dishes(dishes, in: PlateRoles.dessert).map(\.recipeId) == ["d"])
     }
 
-    /// `role` is free text, not an enum (decision 3), so a role the builder doesn't
-    /// scaffold ('bread') must still land somewhere. Sides is the catch-all — the
-    /// alternative is a dish that is on the plate but rendered nowhere.
+    /// `role` is free text, not an enum, so an unscaffolded role must still land
+    /// somewhere; Sides is the catch-all, or the dish renders nowhere.
     @Test func anUnknownRoleFallsIntoSides() {
         let dishes = [plateDish("x", "Garlic Bread", role: "bread", sortOrder: 0)]
         #expect(PlateRoles.dishes(dishes, in: PlateRoles.side).map(\.recipeId) == ["x"])
@@ -84,19 +76,16 @@ func plateFixture(_ id: String = "plate-1", name: String = "BBQ Sunday", serving
 // MARK: the pantry-off render decision
 
 @Suite struct OnHandClaimTests {
-    /// Pantry ON, nothing left to buy → the one case that may claim "all on hand".
     @Test func pantryOnAndNothingToBuyClaimsAllOnHand() {
         #expect(OnHandClaim.of(onHand: .init(have: 5, total: 5), toBuy: 0) == .allOnHand)
     }
 
-    /// Pantry OFF and nothing to buy → say NOTHING. `onHand == nil` means "we can't
-    /// say", so neither "✓ all on hand" nor a "0 of N" badge is honest here. This is
-    /// the branch that gets missed.
+    /// Pantry OFF and nothing to buy → say NOTHING: `onHand == nil` means "we can't say",
+    /// so neither "✓ all on hand" nor "0 of N" is honest. The branch that gets missed.
     @Test func pantryOffAndNothingToBuySaysNothing() {
         #expect(OnHandClaim.of(onHand: nil, toBuy: 0) == .nothingToSay)
     }
 
-    /// "N to buy" is not pantry-derived, so it works either way.
     @Test func toBuyWorksWithOrWithoutThePantry() {
         #expect(OnHandClaim.of(onHand: nil, toBuy: 6) == .toBuy(6))
         #expect(OnHandClaim.of(onHand: .init(have: 3, total: 5), toBuy: 2) == .toBuy(2))
@@ -129,11 +118,8 @@ private final class FakePlateServer: @unchecked Sendable {
     var updates: [(name: String?, servings: Int?, isSaved: Bool?)] = []
     var addedToList = 0
     var scheduled: [(date: String, mealType: String)] = []
-    /// Every plate-wide reorder the model wrote.
     var reordered: [[String]] = []
-    /// Fail every write (the offline/rollback path).
     var failing = false
-    /// Held open so a test can drive two writes that are genuinely in flight at once.
     var gate: (@Sendable () async -> Void)?
 
     private(set) var meal = plateFixture(dishes: [])
@@ -188,7 +174,6 @@ private final class FakePlateServer: @unchecked Sendable {
             reorder: { [self] _, ids in
                 if failing { throw FakeError.offline }
                 reordered.append(ids)
-                // sort_order becomes the position in the list, as the server does
                 let byId = Dictionary(uniqueKeysWithValues: meal.recipes.map { ($0.recipeId, $0) })
                 meal = plateFixture(meal.id, name: meal.name, servings: meal.servings,
                                     isSaved: meal.isSaved,
@@ -216,7 +201,6 @@ private final class FakePlateServer: @unchecked Sendable {
 
 @MainActor
 @Suite struct MealBuilderModelTests {
-    /// The plate is created lazily: opening the builder must not POST an empty meal.
     @Test func opensWithoutCreatingAPlate() {
         let server = FakePlateServer()
         _ = MealBuilderModel(api: server.api())
@@ -227,7 +211,6 @@ private final class FakePlateServer: @unchecked Sendable {
     /// id; the create must be shared, not raced.
     @Test func renameThenAddCreatesThePlateOnlyOnce() async {
         let server = FakePlateServer()
-        // Hold the create open so both writes are genuinely in flight together.
         let opened = Gate()
         server.gate = { await opened.wait() }
         let m = MealBuilderModel(api: server.api())
@@ -243,21 +226,15 @@ private final class FakePlateServer: @unchecked Sendable {
         #expect(server.added.count == 1)
     }
 
-    /// A SERVES tap while the lazy create is still in flight must not vanish.
-    ///
-    /// `ensureId` captures the servings it creates with *before* the tap, so the new
-    /// number was neither sent nor folded in — and nothing re-syncs it, so the bar read
-    /// 6 while the server held 4 for the rest of the session, including through
-    /// Schedule and Add-to-list.
+    /// A SERVES tap while the lazy create is still in flight must not vanish (nothing
+    /// re-syncs the number afterwards).
     @Test func servingsTappedDuringTheCreateStillReachTheServer() async {
         let server = FakePlateServer()
         let arrived = Gate()
         let opened = Gate()
-        // Two gates, not one: `arrived` reports that the create has actually reached the
-        // server, `opened` releases it. Starting both with `async let` and hoping the add
-        // wins made this a scheduling race — when the bump ran first there was no create
-        // in flight to fold it into, so no PATCH was sent and the test failed. Rare when
-        // the machine is idle, regular once the release checks saturate it.
+        // Two gates, not one: `arrived` reports the create has reached the server,
+        // `opened` releases it. Ordering them with `async let` alone is a scheduling race
+        // — with the bump first there is no create in flight to fold it into.
         server.gate = { await arrived.open(); await opened.wait() }
         let m = MealBuilderModel(api: server.api())
 
@@ -270,7 +247,6 @@ private final class FakePlateServer: @unchecked Sendable {
 
         #expect(server.creates == 1)
         #expect(m.servings == 6)
-        // the PATCH that carries the new number
         #expect(server.updates.contains { $0.servings == 6 })
     }
 
@@ -286,8 +262,6 @@ private final class FakePlateServer: @unchecked Sendable {
         #expect(server.creates == 1)   // and the create carries it
     }
 
-    /// Naming nothing still gives the plate a name — the placeholder invites a name
-    /// rather than making you clear "New meal" first.
     @Test func anUnnamedPlateIsCreatedWithTheDefaultName() async {
         let server = FakePlateServer()
         let m = MealBuilderModel(api: server.api())
@@ -295,10 +269,8 @@ private final class FakePlateServer: @unchecked Sendable {
         #expect(server.createdNames == [MealBuilderModel.newName])
     }
 
-    /// The ＋ carries the role of the group it sits in. Filing everything under Sides
-    /// is exactly the defect the web shipped ("I can't drag it to Main" was really
-    /// "＋ ignores where I am"), and an explicit role also avoids the bare re-add that
-    /// wipes a dish's role, cook and position.
+    /// The ＋ carries the role of the group it sits in; an explicit role also avoids the
+    /// bare re-add that wipes a dish's role, cook and position.
     @Test func addingFromARoleSlotFilesTheDishUnderThatRole() async {
         let server = FakePlateServer()
         let m = MealBuilderModel(api: server.api())
@@ -318,9 +290,8 @@ private final class FakePlateServer: @unchecked Sendable {
         #expect(server.added.isEmpty)
     }
 
-    /// "Nobody" must clear the cook explicitly — the server distinguishes an absent
-    /// cook (leave it alone) from an explicit null, so `.unchanged` would silently
-    /// make un-assigning impossible.
+    /// The server distinguishes an absent cook (leave it alone) from an explicit null, so
+    /// `.unchanged` would make un-assigning impossible.
     @Test func pickingNobodyClearsTheCook() async {
         let server = FakePlateServer()
         let m = MealBuilderModel(api: server.api())
@@ -330,8 +301,6 @@ private final class FakePlateServer: @unchecked Sendable {
         #expect(server.patched.map(\.cook) == [.person("kevin"), .clear])
     }
 
-    /// Tapping the stepper is not a reason to create a plate — the new servings ride
-    /// along on the lazy create instead.
     @Test func steppingServingsOnAFreshPlateDoesNotCreateIt() async {
         let server = FakePlateServer()
         let m = MealBuilderModel(api: server.api())
@@ -342,9 +311,6 @@ private final class FakePlateServer: @unchecked Sendable {
         #expect(m.meal?.servings == 6)
     }
 
-    /// A failed write rolls the optimistic paint back and says so — a rename or a
-    /// library toggle that stayed on screen after the server rejected it is how the
-    /// web's silent-failure bug happened.
     @Test func aFailedToggleRollsBackAndReportsIt() async {
         let server = FakePlateServer()
         let m = MealBuilderModel(api: server.api())
@@ -355,9 +321,8 @@ private final class FakePlateServer: @unchecked Sendable {
         #expect(m.message != nil)
     }
 
-    /// A rename that never reached the server must not come back as if it had. The
-    /// rollback restores the field, but the "last confirmed name" has to stay
-    /// unconfirmed too — otherwise the next blur repaints the rejected name from it.
+    /// The rollback restores the field, but the "last confirmed name" must stay
+    /// unconfirmed too, or the next blur repaints the rejected name from it.
     @Test func aFailedRenameOnAFreshPlateDoesNotResurrectTheName() async {
         let server = FakePlateServer()
         server.failing = true
@@ -366,15 +331,12 @@ private final class FakePlateServer: @unchecked Sendable {
         await m.commitRename()
         #expect(server.creates == 0)
         #expect(m.name.isEmpty)
-        // A second blur on the now-empty field restores the last CONFIRMED name —
-        // and nothing was ever confirmed.
         await m.commitRename()
         #expect(m.name.isEmpty)
     }
 
-    /// Two writes in flight, each answering with the whole plate: the older reply must
-    /// not repaint over the newer one (it would resurrect a removed dish, and it does
-    /// not self-heal).
+    /// Two writes in flight, each answering with the whole plate: an older reply
+    /// repainting over a newer one resurrects a removed dish and does not self-heal.
     @Test func aStaleReplyDoesNotRepaintOverANewerOne() async {
         let server = FakePlateServer()
         let m = MealBuilderModel(api: server.api())
@@ -384,7 +346,6 @@ private final class FakePlateServer: @unchecked Sendable {
         #expect(m.meal?.name != "stale")
     }
 
-    /// Adding the plate to the grocery list reports how many rows it actually added.
     @Test func addingToTheListReportsWhatItAdded() async {
         let server = FakePlateServer()
         let m = MealBuilderModel(api: server.api())
@@ -395,12 +356,8 @@ private final class FakePlateServer: @unchecked Sendable {
     }
 }
 
-/// `gate.wait()` with a deadline, returning false if it never opened in time.
-///
-/// Swift Testing has no default per-test timeout, and the release checks run the iOS
-/// suite alone in their first phase — so an unbounded wait on a gate that never opens
-/// does not fail a test, it stalls the entire release. A regression where the code under
-/// test never reaches the gated call should surface as a failed expectation, not a hang.
+/// `gate.wait()` with a deadline. Swift Testing has no default per-test timeout, so an
+/// unbounded wait on a gate that never opens stalls the whole release instead of failing.
 /// On timeout the gate is opened so the waiting task can finish rather than leak.
 private func gateOpened(_ gate: Gate, within seconds: Double = 5) async -> Bool {
     await withTaskGroup(of: Bool.self) { group in
@@ -432,5 +389,69 @@ private actor Gate {
         opened = true
         for w in waiters { w.resume() }
         waiters = []
+    }
+}
+
+// MARK: - a plate built from inside a picker
+
+/// A plate built inside the recipe picker. Two load-bearing rules:
+///
+///  1. it must be SAVED by the time it reaches the slot — `POST /api/meals/:id/schedule`
+///     copies a saved plate and schedules an unsaved one directly, so an unsaved plate
+///     means editing it later rewrites the night it was planned on;
+///  2. a plate nobody used must not reach the library — it is created one-off and only
+///     becomes saved at the moment it is used, so an abandoned build cannot leak.
+@Suite struct PlateUsedFromAPickerTests {
+
+    @MainActor @Test func usingAPlateSavesItSoSchedulingWillCopyIt() async {
+        let server = FakePlateServer()
+        let m = MealBuilderModel(api: server.api())
+        await m.addRecipe("chicken", role: PlateRoles.main)
+        #expect(!m.isSaved)
+
+        let ready = await m.saveForUse()
+
+        #expect(ready)
+        #expect(m.isSaved)
+        #expect(server.updates.count == 1)
+        #expect(server.updates[0].isSaved == true)
+        #expect(server.updates[0].name == nil)
+        #expect(server.updates[0].servings == nil)
+    }
+
+    @MainActor @Test func aPlateAlreadyInTheLibraryIsHandedOverWithNoWriteAtAll() async {
+        let server = FakePlateServer()
+        let m = MealBuilderModel(api: server.api(), existing: plateFixture(isSaved: true,
+                                                                          dishes: [plateDish("chicken", "Chicken", role: "main")]))
+        let ready = await m.saveForUse()
+
+        #expect(ready)
+        #expect(server.updates.isEmpty)
+    }
+
+    @MainActor @Test func anEmptyPlateCannotBeUsed() async {
+        let server = FakePlateServer()
+        let m = MealBuilderModel(api: server.api())
+
+        let ready = await m.saveForUse()
+
+        #expect(!ready)
+        #expect(server.creates == 0)
+        #expect(m.message != nil)
+    }
+
+    /// A failed save must not report a usable plate, or the caller schedules an unsaved
+    /// one and the copy-on-schedule guarantee is gone.
+    @MainActor @Test func aFailedSaveReportsFailureRatherThanHandingThePlateOver() async {
+        let server = FakePlateServer()
+        let m = MealBuilderModel(api: server.api())
+        await m.addRecipe("chicken", role: PlateRoles.main)
+        server.failing = true
+
+        let ready = await m.saveForUse()
+
+        #expect(!ready)
+        #expect(!m.isSaved)
+        #expect(m.message != nil)
     }
 }

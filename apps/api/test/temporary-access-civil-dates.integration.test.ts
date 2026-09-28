@@ -8,7 +8,7 @@ import { PostgreSqlContainer } from './helpers/pg'
 import { runMigrations } from '../src/migrate'
 
 const migrationsDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
-const MIGRATION = '0103_temporary_access_civil_dates'
+const MIGRATION = '0110_temporary_access_civil_dates'
 
 function migrationsBefore(name: string): number {
   const files = readdirSync(migrationsDir).filter((file) => file.endsWith('.sql')).sort()
@@ -17,7 +17,7 @@ function migrationsBefore(name: string): number {
   return index
 }
 
-describe('0103 temporary-access civil dates', () => {
+describe('0110 temporary-access civil dates', () => {
   it('fails preflight clearly and leaves the schema untouched for a legacy invalid timezone', async () => {
     const pg = await new PostgreSqlContainer('postgres:16').start()
     const client = new Client({ connectionString: pg.getConnectionUri() })
@@ -51,7 +51,7 @@ describe('0103 temporary-access civil dates', () => {
     }
   }, 120_000)
 
-  it('upgrades 0102 exact instants to canonical household-local dates', async () => {
+  it('upgrades 0109 exact instants to canonical household-local dates', async () => {
     const pg = await new PostgreSqlContainer('postgres:16').start()
     const client = new Client({ connectionString: pg.getConnectionUri() })
     try {
@@ -288,7 +288,7 @@ describe('0103 temporary-access civil dates', () => {
         [householdId]
       )
 
-      // Model the pre-0103 acceptance order: invite first, then person. The migration
+      // Model the pre-0110 acceptance order: invite first, then person. The migration
       // must wait for this invite without already holding the person table.
       await blocker.query('begin')
       await blocker.query(`select id from household_invites where id = $1 for update`, [invite.rows[0].id])
@@ -377,7 +377,7 @@ describe('0103 temporary-access civil dates', () => {
     }
   }, 120_000)
 
-  it('rolls back the civil-date layer while preserving the 0102 expiry contract', async () => {
+  it('rolls back the civil-date layer while preserving the 0109 expiry contract', async () => {
     const pg = await new PostgreSqlContainer('postgres:16').start()
     const client = new Client({ connectionString: pg.getConnectionUri() })
     try {

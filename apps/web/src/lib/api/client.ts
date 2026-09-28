@@ -1,3 +1,5 @@
+import { isNoAnswer, markUnanswered, reportNetworkFailure, reportStatus } from './reachability'
+
 // Shared fetch helpers for the api client. In dev, Vite proxies /api to the api
 // container; in the stack, Caddy does. Auth is a JWT session: a short-lived access
 // token + a rotating refresh token in localStorage (set by the login/setup flow).
@@ -1130,6 +1132,28 @@ export class PrincipalTransitionError extends Error {
   }
 }
 
+// Every request doubles as a reachability sample (see ./reachability): the store
+// needs to hear the answers as well as the silences, and a rejected fetch is tagged
+// so a caller can tell "the server never answered" from "the server said no". A
+// caller's own abort is neither, so it reports nothing.
+export async function trackedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  try {
+    const res = await fetch(path, init)
+    reportStatus(res.status, res.headers?.get('content-type'))
+    return res
+  } catch (err) {
+    if (init.signal?.aborted) throw err
+    reportNetworkFailure()
+    throw markUnanswered(err)
+  }
+}
+
+// A proxy answering for an api that didn't gets the same "no answer" tag a rejected
+// fetch does — but only when the body isn't the api's own JSON (see isNoAnswer).
+export function tagIfGateway<E>(err: E, res: Response): E {
+  return isNoAnswer(res.status, res.headers?.get('content-type')) ? markUnanswered(err) : err
+}
+
 async function changePrincipal(
   policy: PrincipalTransitionPolicy,
   replacement: 'new-principal' | 'signed-out',
@@ -1350,7 +1374,7 @@ function refreshSession(
 
       let res: Response
       try {
-        res = await fetch('/api/auth/refresh', {
+        res = await trackedFetch('/api/auth/refresh', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ refreshToken: lockedRt }),
@@ -1500,6 +1524,21 @@ function armViewerAccessExpiry(identityScope: string | null): void {
   }, Math.min(remaining, MAX_EXPIRY_TIMER_MS))
 }
 
+// A 403 that no session can ever satisfy: the household the token names is gone (a
+// restored database, a deleted household, a rebuilt stack), so refreshing only mints
+// another token for the same hole. Keyed on the server's `NoHousehold` code — never on
+// the bare status and never on the message, because an ordinary permission denial is a
+// 403 too and signing somebody out for lacking a capability would be worse than the
+// stuck session this ends.
+async function householdIsGone(res: Response): Promise<boolean> {
+  try {
+    const body = (await res.clone().json()) as { error?: unknown } | null
+    return body?.error === 'NoHousehold'
+  } catch {
+    return false // an unreadable body is not evidence of anything
+  }
+}
+
 // fetch with the bearer token + one transparent refresh-and-retry on 401.
 async function authFetch(
   path: string,
@@ -1530,7 +1569,7 @@ async function authFetch(
   if (currentIdentityScope() !== identityScope) {
     throw new Error(`Principal changed before ${path} could be sent`)
   }
-  let res = await fetch(path, withAuth(initialSession.accessToken))
+  let res = await trackedFetch(path, withAuth(initialSession.accessToken))
   if (res.status === 401 && await responseErrorCode(res) === 'membership_inactive') {
     // This is an authoritative membership revocation/expiry, not an expired
     // access token. Do not refresh or replay the original request.
@@ -1548,7 +1587,7 @@ async function authFetch(
       const retrySession = authSessionSnapshot()
       if (retrySession.identityScope !== identityScope) return res
       refreshToken = retrySession.refreshToken
-      res = await fetch(path, withAuth(retrySession.accessToken))
+      res = await trackedFetch(path, withAuth(retrySession.accessToken))
       // Membership can be revoked between rotating the token and replaying the
       // original request. Treat that retry as equally authoritative.
       if (res.status === 401 && await responseErrorCode(res) === 'membership_inactive' &&
@@ -1561,6 +1600,9 @@ async function authFetch(
       // that callback unwind before terminal cleanup takes the exclusive lease.
       scheduleEndLostSession(identityScope, refreshToken)
     }
+  }
+  if (res.status === 403 && await householdIsGone(res) && currentIdentityScope() === identityScope) {
+    scheduleEndLostSession(identityScope, refreshToken)
   }
   if (currentIdentityScope() !== identityScope) {
     throw new Error(`Principal changed while ${path} was in flight`)
@@ -1585,7 +1627,7 @@ function refreshDeviceToken(lease: KioskDeviceLease | null = currentKioskDeviceL
     return refreshingDevice.promise
   }
   let attempt: Promise<boolean>
-  attempt = fetch('/api/kiosk/device/token', {
+  attempt = trackedFetch('/api/kiosk/device/token', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ deviceSecret: lease.deviceSecret }),
@@ -1632,11 +1674,11 @@ async function deviceFetchWithLease(path: string, init: RequestInit): Promise<{
     if (!isCurrentKioskDeviceLease(lease)) throw new Error('The kiosk device changed during the request.')
     tok = getDeviceToken(lease)
   }
-  let res = await fetch(path, withAuth(tok))
+  let res = await trackedFetch(path, withAuth(tok))
   if (!isCurrentKioskDeviceLease(lease)) throw new Error('The kiosk device changed during the request.')
   if (res.status === 401) {
     if (await refreshDeviceToken(lease) && isCurrentKioskDeviceLease(lease)) {
-      res = await fetch(path, withAuth(getDeviceToken(lease)))
+      res = await trackedFetch(path, withAuth(getDeviceToken(lease)))
       if (!isCurrentKioskDeviceLease(lease)) throw new Error('The kiosk device changed during the request.')
     } else if (isCurrentKioskDeviceLease(lease)) {
       await clearKioskDevice(lease) // device revoked → back to login
@@ -1666,7 +1708,7 @@ export async function deviceFetchJson<T>(path: string, init: RequestInit): Promi
 export async function apiGet<T>(path: string): Promise<T> {
   const identityScope = currentIdentityScope()
   const res = await authFetch(path, {}, { identityScope })
-  if (!res.ok) throw new Error(`${path} -> ${res.status}`)
+  if (!res.ok) throw tagIfGateway(new Error(`${path} -> ${res.status}`), res)
   const body = (await res.json()) as T
   if (currentIdentityScope() !== identityScope) {
     throw new Error(`Principal changed while reading ${path}`)
@@ -1676,7 +1718,7 @@ export async function apiGet<T>(path: string): Promise<T> {
 
 async function apiGetForIdentity<T>(identityScope: string | null, path: string): Promise<T> {
   const res = await authFetch(path, {}, { identityScope })
-  if (!res.ok) throw new Error(`${path} -> ${res.status}`)
+  if (!res.ok) throw tagIfGateway(new Error(`${path} -> ${res.status}`), res)
   const body = (await res.json()) as T
   if (currentIdentityScope() !== identityScope) {
     throw new Error(`Principal changed while reading ${path}`)
@@ -1777,8 +1819,9 @@ export async function apiSend<T>(method: string, path: string, body?: unknown, s
     if (currentIdentityScope() !== identityScope) {
       throw new Error(`Principal changed while reading ${path}`)
     }
-    throw new ApiSendError(method, path, res.status, errBody)
+    throw tagIfGateway(new ApiSendError(method, path, res.status, errBody), res)
   }
+  if (res.status === 204) return undefined as T
   const responseBody = (await res.json()) as T
   if (currentIdentityScope() !== identityScope) {
     throw new Error(`Principal changed while reading ${path}`)
@@ -1805,8 +1848,9 @@ export async function apiSendForIdentity<T>(
     if (currentIdentityScope() !== identityScope) {
       throw new Error(`Principal changed while reading ${path}`)
     }
-    throw new ApiSendError(method, path, res.status, errBody)
+    throw tagIfGateway(new ApiSendError(method, path, res.status, errBody), res)
   }
+  if (res.status === 204) return undefined as T
   const responseBody = (await res.json()) as T
   if (currentIdentityScope() !== identityScope) {
     throw new Error(`Principal changed while reading ${path}`)
@@ -1821,7 +1865,7 @@ export async function apiDelete(path: string): Promise<void> {
   if (currentIdentityScope() !== identityScope) {
     throw new Error(`Principal changed while ${path} was in flight`)
   }
-  if (!res.ok) throw new Error(`DELETE ${path} -> ${res.status}`)
+  if (!res.ok) throw tagIfGateway(new Error(`DELETE ${path} -> ${res.status}`), res)
 }
 
 export async function apiDeleteForIdentity(
@@ -1833,7 +1877,7 @@ export async function apiDeleteForIdentity(
   if (currentIdentityScope() !== identityScope) {
     throw new Error(`Principal changed while ${path} was in flight`)
   }
-  if (!res.ok) throw new Error(`DELETE ${path} -> ${res.status}`)
+  if (!res.ok) throw tagIfGateway(new Error(`DELETE ${path} -> ${res.status}`), res)
 }
 
 // Local YYYY-MM-DD (kiosk timezone), used to match "tonight" and window the week.

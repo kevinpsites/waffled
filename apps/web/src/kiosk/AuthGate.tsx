@@ -1,12 +1,15 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { acknowledgeCurrentIdentityScopeAfterGate, authApi, currentIdentityScope, getAccessToken, isKioskMode, type AuthStatus, type SetupInput } from '../lib/api'
+import { SERVER_PROBE_EVENT, SERVER_REACHABLE_EVENT, ensureProbing, isUnansweredError } from '../lib/api/reachability'
+import { UNREACHABLE_HEADLINE } from './components/ServerUnreachableBanner'
+import { useOnline } from '../lib/pwa'
 import { ProfilePicker } from './ProfilePicker'
 import { PairDevice } from './PairDevice'
 import { principalTransitionInProgress, waitForPrincipalTransition } from '../lib/powersync/principal-transition'
 import '../styles/auth.css'
 
-type Phase = 'loading' | 'transitioning' | 'transition-error' | 'authed' | 'login' | 'setup' | 'picker'
+type Phase = 'loading' | 'transitioning' | 'transition-error' | 'authed' | 'login' | 'setup' | 'picker' | 'unreachable'
 
 // Gates the whole kiosk: shows the first-run Setup wizard, the Login screen, or the
 // app — driven by whether a session exists and whether the instance is initialized.
@@ -82,8 +85,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
       const s = await authApi.status()
       if (!commitPhase(s.initialized ? 'login' : 'setup')) return
       setStatus(s)
-    } catch {
-      commitPhase('login')
+    } catch (err) {
+      commitPhase(isUnansweredError(err) ? 'unreachable' : 'login')
     }
   }, [navigate])
 
@@ -106,6 +109,17 @@ export function AuthGate({ children }: { children: ReactNode }) {
     }
     setPendingIdentityAcknowledgement(null)
   }, [pendingIdentityAcknowledgement, phase])
+
+  // Stable, so the unreachable screen's own recheck isn't torn down every render.
+  const backToLoading = useCallback(() => setPhase('loading'), [])
+
+  // A probe that gets through re-runs the resolve that failed.
+  useEffect(() => {
+    if (phase !== 'unreachable') return
+    const back = () => setPhase('loading')
+    window.addEventListener(SERVER_REACHABLE_EVENT, back)
+    return () => window.removeEventListener(SERVER_REACHABLE_EVENT, back)
+  }, [phase])
 
   // Login/setup/logout (and a failed refresh) all fire this; re-resolve.
   useLayoutEffect(() => {
@@ -176,12 +190,18 @@ export function AuthGate({ children }: { children: ReactNode }) {
       </AuthShell>
     )
   }
+  if (phase === 'unreachable') return <UnreachableScreen onAnswered={backToLoading} />
   return (
     <div className="auth-screen">
       <div className="auth-loading">Loading…</div>
     </div>
   )
 }
+
+// What a form says when its submit went unanswered: the raw error is the proxy's
+// ("Request failed (502)"), and it blames the credentials for the server's absence.
+const SUBMIT_UNREACHABLE = 'Can’t reach the Waffled server right now — try again in a moment.'
+const submitError = (err: unknown) => (isUnansweredError(err) ? SUBMIT_UNREACHABLE : (err as Error).message)
 
 function AuthShell({ title, sub, children }: { title: string; sub: string; children: ReactNode }) {
   return (
@@ -194,6 +214,38 @@ function AuthShell({ title, sub, children }: { title: string; sub: string; child
       </div>
     </div>
   )
+}
+
+// The screen that would otherwise be a dead login form. Deliberately just the title
+// and a line: the banner above it carries the Retry and the how-to-start-it hint, and
+// the recheck below is this screen's retry.
+function UnreachableScreen({ onAnswered }: { onAnswered: () => void }) {
+  const deviceOnline = useOnline()
+
+  // Keep the store probing and take the first probe that gets through. The recovery
+  // event alone would strand this screen: a first failed status call is inside the
+  // grace window, so the store never "gave up" and never recovers. A cadence of our
+  // own would instead override the store's backoff, hammering a stopped server.
+  useEffect(() => {
+    if (!deviceOnline) return
+    ensureProbing()
+    const onProbe = (e: Event) => {
+      if ((e as CustomEvent<{ answered: boolean }>).detail?.answered) onAnswered()
+    }
+    window.addEventListener(SERVER_PROBE_EVENT, onProbe)
+    return () => window.removeEventListener(SERVER_PROBE_EVENT, onProbe)
+  }, [deviceOnline, onAnswered])
+
+  // A device with no link fails every request too, and no amount of starting the
+  // server would help — so say the true thing instead.
+  if (!deviceOnline) {
+    return (
+      <AuthShell title="Your device is offline" sub="Reconnect to Wi-Fi and Waffled will pick up where it left off.">
+        {null}
+      </AuthShell>
+    )
+  }
+  return <AuthShell title={UNREACHABLE_HEADLINE} sub="It may be stopped or asleep. Retrying…">{null}</AuthShell>
 }
 
 function LoginScreen({ status, oidcError }: { status: AuthStatus | null; oidcError: string | null }) {
@@ -223,7 +275,7 @@ function LoginScreen({ status, oidcError }: { status: AuthStatus | null; oidcErr
       await authApi.login(email.trim(), password)
       // setSession fires 'waffled:auth-changed' → gate flips to the app.
     } catch (err) {
-      setError((err as Error).message)
+      setError(submitError(err))
       setBusy(false)
     }
   }
@@ -329,7 +381,7 @@ function SetupWizard() {
       // The post-setup "Getting started" onboarding is armed server-side at provision
       // time (households.settings.onboarding), so there's nothing to flip here.
     } catch (err) {
-      setError((err as Error).message)
+      setError(submitError(err))
       setBusy(false)
     }
   }

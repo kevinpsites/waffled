@@ -13,7 +13,7 @@ const redemption = {
 
 const overview: PersonOverview = {
   person: { id: 'subject', name: 'Lottie', avatarEmoji: '🦊', colorHex: '#E0794B', age: 7, memberType: 'kid' },
-  activeGoals: 0, topStreak: 0, stars: 5,
+  activeGoals: 0, topStreak: 0, stars: 5, planningFocus: null,
   currencies: [{ id: 'currency-1', key: 'stars', label: 'Stars', symbol: '⭐', color: '#f2b01e', isDefault: true, spendable: true, sortOrder: 0 }],
   balances: [{ currency: 'stars', balance: 5 }], goals: [], categoryBalance: [],
   insight: { lean: [], light: [], suggestions: [], text: 'A balanced week.' },

@@ -4,7 +4,7 @@
 import type { QueryResultRow } from 'pg'
 import type { Request } from 'lambda-api'
 import { getPool, query } from '../../platform/db'
-import { AuthError, MembershipInactiveError, type Principal } from '../../platform/auth'
+import { AuthError, MembershipInactiveError, NoHouseholdError, type Principal } from '../../platform/auth'
 import { config } from '../../platform/config'
 import { normalizeHouseholdTimezone } from '../../platform/access-expiry'
 import { seedDefaultRecipe } from '../meals/seed-default-recipe'
@@ -194,7 +194,7 @@ export async function requireTenant(req: Request): Promise<Tenant> {
   const tenant = await resolveRequestTenant(req)
   if (!tenant) {
     if (await resolveRequestInactiveMembership(req)) throw new MembershipInactiveError()
-    throw new AuthError('No household for this account; create one first', 403)
+    throw new NoHouseholdError()
   }
   return tenant
 }

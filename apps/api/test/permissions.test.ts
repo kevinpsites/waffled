@@ -28,6 +28,7 @@ describe('DEFAULT_PERMISSIONS', () => {
       'reward.grant': false,
       'reward.correct': false,
       'goal.manage': false,
+      'planning.manage': false,
     })
   })
 
@@ -40,12 +41,17 @@ describe('DEFAULT_PERMISSIONS', () => {
       'reward.grant',
       'reward.correct',
       'goal.manage',
+      // Not "run the weekly planning session" — anybody may do that. See lib/api/permissions.ts.
+      'planning.manage',
     ])
     expect(DEFAULT_PERMISSIONS.adult['goal.manage']).toBe(true)
     expect(DEFAULT_PERMISSIONS.caregiver['reward.correct']).toBe(false)
     expect(DEFAULT_PERMISSIONS.guest['reward.correct']).toBe(false)
     expect(DEFAULT_PERMISSIONS.teen['goal.manage']).toBe(false)
     expect(DEFAULT_PERMISSIONS.kid['goal.manage']).toBe(false)
+    expect(DEFAULT_PERMISSIONS.adult['planning.manage']).toBe(true)
+    expect(DEFAULT_PERMISSIONS.teen['planning.manage']).toBe(false)
+    expect(DEFAULT_PERMISSIONS.kid['planning.manage']).toBe(false)
   })
 })
 
@@ -59,7 +65,6 @@ describe('getPermissions', () => {
   it('deep-merges an override cell, leaving everything else at the default', () => {
     const merged = getPermissions({ permissions: { teen: { 'chore.approve': true } } })
     expect(merged.teen['chore.approve']).toBe(true)
-    // siblings untouched
     expect(merged.teen['chore.manage']).toBe(false)
     expect(merged.teen['reward.manage']).toBe(false)
     expect(merged.adult).toEqual(DEFAULT_PERMISSIONS.adult)

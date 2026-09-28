@@ -157,15 +157,17 @@ enum EventTime {
         DateFmt.string(date, "h:mm a", tz)
     }
 
-    // Ordered most-specific-first; each carries its own offset so the parsed Date
-    // is absolute. POSIX locale so patterns are stable regardless of device locale.
+    // Each carries its own offset so the parsed Date is absolute. POSIX locale so patterns are
+    // stable regardless of device locale. Postgres text first: server-replicated rows are nearly
+    // every event, and the 'T' patterns can never match them, so trying those first only wastes
+    // two failed parses per timestamp.
     private static let formatters: [DateFormatter] = {
         let patterns = [
-            "yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX",  // 2026-06-16T17:49:00.000Z / +00:00
-            "yyyy-MM-dd'T'HH:mm:ssXXXXX",      // 2026-06-16T17:49:00Z / +00:00
             "yyyy-MM-dd HH:mm:ss.SSSSSSX",     // postgres micros: 2026-06-16 17:49:00.123456+00
             "yyyy-MM-dd HH:mm:ss.SSSX",        // 2026-06-16 17:49:00.123+00
             "yyyy-MM-dd HH:mm:ssX",            // 2026-06-16 17:49:00+00
+            "yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX",  // 2026-06-16T17:49:00.000Z / +00:00
+            "yyyy-MM-dd'T'HH:mm:ssXXXXX",      // 2026-06-16T17:49:00Z / +00:00
             "yyyy-MM-dd'T'HH:mm:ss",           // naive (assume UTC)
         ]
         return patterns.map { p in
@@ -186,6 +188,44 @@ enum Agenda {
         if let d = e.startsAt { return EventTime.dayKey(d, tz) }
         if let raw = e.startsAtRaw, raw.count >= 10 { return String(raw.prefix(10)) }
         return ""
+    }
+
+    /// Longest span an all-day event is spread across, so a corrupt end can't build a huge index.
+    static let maxSpanDays = 366
+
+    /// Every household-local day an event covers. All-day events run from their start day up to,
+    /// not including, their end day — Google's all-day end is exclusive, and the editor writes the
+    /// same shape. Timed events stay on their start day.
+    static func dayKeys(_ e: SyncedEvent, _ tz: TimeZone) -> [String] {
+        let start = dayKey(e, tz)
+        guard !start.isEmpty else { return [] }
+        guard let endKey = exclusiveEndKey(e, tz), var day = DateFmt.date(start, "yyyy-MM-dd", tz) else { return [start] }
+        let cal = Cal.gregorian(tz)
+        var keys = [start]
+        while keys.count < maxSpanDays, let next = cal.date(byAdding: .day, value: 1, to: day) {
+            let key = EventTime.dayKey(next, tz)
+            if key >= endKey { break }
+            keys.append(key)
+            day = next
+        }
+        return keys
+    }
+
+    /// Day keys are `yyyy-MM-dd`, so string order is date order — no need to build the span.
+    static func covers(_ e: SyncedEvent, day: String, tz: TimeZone) -> Bool {
+        let start = dayKey(e, tz)
+        guard !start.isEmpty else { return false }
+        guard let end = exclusiveEndKey(e, tz) else { return day == start }
+        return start <= day && day < end
+    }
+
+    /// The exclusive end day of an all-day event with an end after its start day; nil otherwise.
+    /// Internal, not private: the month grid's span layout compares against it instead of
+    /// building the day list.
+    static func exclusiveEndKey(_ e: SyncedEvent, _ tz: TimeZone) -> String? {
+        guard e.allDay, let end = e.endsAt else { return nil }
+        let key = EventTime.dayKey(end, tz)
+        return key > dayKey(e, tz) ? key : nil
     }
 
     /// Today's key in `tz`.
@@ -211,8 +251,11 @@ enum Agenda {
     /// Mirrors the web's `isPastEvent`. Used to subtly fade already-done events.
     static func isPast(_ e: SyncedEvent, _ tz: TimeZone, now: Date = Date()) -> Bool {
         if e.allDay {
-            let key = dayKey(e, tz)
-            return !key.isEmpty && key < todayKey(tz, now: now)
+            let start = dayKey(e, tz)
+            guard !start.isEmpty else { return false }
+            let today = todayKey(tz, now: now)
+            if let end = exclusiveEndKey(e, tz) { return end <= today }
+            return start < today
         }
         return (e.endsAt ?? e.startsAt ?? .distantFuture) < now
     }
@@ -225,7 +268,7 @@ enum Agenda {
 
     /// Events on a single day (YYYY-MM-DD), ordered.
     static func forDay(_ events: [SyncedEvent], day: String, tz: TimeZone) -> [SyncedEvent] {
-        events.filter { dayKey($0, tz) == day }.sorted(by: before)
+        events.filter { covers($0, day: day, tz: tz) }.sorted(by: before)
     }
 
     /// All events grouped by their household-local day key, each day's items ordered
@@ -235,11 +278,26 @@ enum Agenda {
     static func byDay(_ events: [SyncedEvent], _ tz: TimeZone) -> [String: [SyncedEvent]] {
         var grouped: [String: [SyncedEvent]] = [:]
         for e in events {
-            let key = dayKey(e, tz)
-            guard !key.isEmpty else { continue }
-            grouped[key, default: []].append(e)
+            for key in dayKeys(e, tz) { grouped[key, default: []].append(e) }
         }
         return grouped.mapValues { $0.sorted(by: before) }
+    }
+
+    /// The person's own event, or one they're joined to.
+    static func involves(_ e: SyncedEvent, person: String) -> Bool {
+        e.personId == person || e.participantIds.contains(person)
+    }
+
+    /// The day index narrowed to one person's own and joined events; days left empty are dropped.
+    /// nil is the index unchanged.
+    static func filtered(byDay: [String: [SyncedEvent]], person: String?) -> [String: [SyncedEvent]] {
+        guard let person else { return byDay }
+        var out: [String: [SyncedEvent]] = [:]
+        for (day, items) in byDay {
+            let kept = items.filter { involves($0, person: person) }
+            if !kept.isEmpty { out[day] = kept }
+        }
+        return out
     }
 
     /// `upcoming` over a prebuilt `byDay` index: days ≥ `from` ascending, items in the

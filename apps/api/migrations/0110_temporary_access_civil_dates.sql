@@ -1,12 +1,12 @@
 -- Up Migration
--- `access_expires_at` was introduced in 0102 as an exact instant. Preserve that
+-- `access_expires_at` was introduced in 0109 as an exact instant. Preserve that
 -- enforcement column, but make the household-local final day the canonical
 -- policy value so changing a household timezone does not change the chosen day.
 
 -- Take every deployment lock up front, in the same direction as runtime work:
 -- household -> invite -> person. Besides keeping timezone writes out of the
 -- backfill window, taking the invite table before persons avoids deadlocking an
--- in-flight pre-0103 accept transaction that already holds its invite row and is
+-- in-flight pre-0110 accept transaction that already holds its invite row and is
 -- about to look up/lock the membership row.
 lock table households in share mode;
 lock table household_invites in access exclusive mode;

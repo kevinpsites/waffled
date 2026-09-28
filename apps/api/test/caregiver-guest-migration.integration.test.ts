@@ -7,7 +7,7 @@ import { PostgreSqlContainer } from './helpers/pg'
 import { runMigrations } from '../src/migrate'
 
 const migrationsDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
-const MIGRATION = '0102_caregiver_guest_roles'
+const MIGRATION = '0109_caregiver_guest_roles'
 
 function migrationsBefore(name: string): number {
   const files = readdirSync(migrationsDir).filter((file) => file.endsWith('.sql')).sort()
@@ -16,7 +16,7 @@ function migrationsBefore(name: string): number {
   return index
 }
 
-describe('0102 caregiver and guest roles', () => {
+describe('0109 caregiver and guest roles', () => {
   it('normalizes known legacy admin-role violations before adding role checks', async () => {
     const pg = await new PostgreSqlContainer('postgres:16').start()
     const client = new Client({ connectionString: pg.getConnectionUri() })

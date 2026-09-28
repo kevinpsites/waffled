@@ -22,6 +22,7 @@ import {
   getAccessToken,
   isCurrentKioskDeviceLease,
   setSession,
+  trackedFetch,
 } from './client'
 import {
   originWideLockingAvailable,
@@ -104,7 +105,7 @@ export const kioskApi = {
       if (!deviceGenerationIsCurrent(expectedDevice)) {
         throw new Error('The kiosk device changed while pairing.')
       }
-      const res = await fetch('/api/kiosk/pair', {
+      const res = await trackedFetch('/api/kiosk/pair', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ code: code.trim() }),

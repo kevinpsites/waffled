@@ -89,6 +89,9 @@ struct SettingsView: View {
                     if sync.module(.familyNight) {
                         row("🏡", "Family Night", "Agenda, day & time") { path.append(.settingsFamilyNight) }
                     }
+                    if sync.module(.weeklyPlanning) {
+                        row("🗓️", "Weekly Planning", "Session day, time & steps") { path.append(.settingsWeeklyPlanning) }
+                    }
                     row("🧩", "Modules", "Optional features on/off") { path.append(.settingsModules) }
                     row("🖥️", "Display & Kiosk", "Screensaver & idle") { path.append(.settingsDisplay) }
                 }

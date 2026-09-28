@@ -1100,6 +1100,8 @@ button.goal-listhead-link:hover {
   backdrop-filter: blur(2px); display: flex; justify-content: flex-end;
   animation: review-fade 0.16s ease;
 }
+/* Under the outage strip (z 300), so the drawer's own header would be behind it. */
+.server-unreachable .review-scrim { top: var(--unreachable-h, 56px); }
 .review-drawer {
   width: min(660px, 100vw); height: 100%; background: var(--bg);
   box-shadow: -18px 0 60px rgba(0, 0, 0, 0.22); display: flex; flex-direction: column;
@@ -1214,6 +1216,12 @@ button.goal-listhead-link:hover {
 .recap-didnt:hover { color: var(--ink); }
 .recap-didnt:disabled { opacity: 0.5; cursor: default; }
 
+/* "Ignore…" picker under a suggestion row: pick title words to stop suggesting for the goal. */
+.recap-ignore { display: flex; flex-direction: column; gap: 10px; padding: 0 0 15px 58px; }
+.recap-ignore-t { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.recap-ignore-words { display: flex; flex-wrap: wrap; gap: 6px; }
+.recap-ignore-act { display: flex; gap: 8px; justify-content: flex-end; }
+
 .recap-empty { display: flex; align-items: center; gap: 14px; padding: 22px 24px; font-size: 15px; font-weight: 600; color: var(--ink-2); }
 .recap-empty-emo { font-size: 28px; }
 
@@ -1235,3 +1243,8 @@ button.goal-listhead-link:hover {
   .recap-act { order: 4; width: auto; flex-direction: row; align-items: center; gap: 10px; margin-left: auto; }
   .recap-didnt { padding: 6px 4px; }
 }
+
+/* A week's target from Weekly Planning, under a goal's own line. */
+.goal-week { margin-top: 3px; font-weight: 700; color: var(--ink-2); }
+.hero-week { margin-top: 6px; font-size: 13px; font-weight: 700; color: rgba(255, 255, 255, 0.92); }
+.detail-week-next { margin-top: 4px; font-size: 12.5px; font-weight: 700; color: rgba(255, 255, 255, 0.88); }
