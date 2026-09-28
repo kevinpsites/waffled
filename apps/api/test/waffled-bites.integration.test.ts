@@ -176,11 +176,11 @@ describe('waffled-bites device pairing + parent control panel', () => {
     }
 
     try {
-      // The device and person foreign keys are independent, so enforce their
-      // tenant binding in every credential path even if a row is ever corrupted.
-      await query(`update waffled_bite_devices set household_id = $1 where id = $2`, [foreign.rows[0].id, deviceId])
-      await expectCredentialsRejected()
-      await query(`update waffled_bite_devices set household_id = $1 where id = $2`, [original.rows[0].household_id, deviceId])
+      // Composite household foreign keys reject a corrupt device binding before
+      // either credential path can observe it.
+      await expect(query(
+        `update waffled_bite_devices set household_id = $1 where id = $2`, [foreign.rows[0].id, deviceId]
+      )).rejects.toMatchObject({ code: '23503' })
 
       await query(`update persons set member_type = 'caregiver' where id = $1`, [kid])
       await expectCredentialsRejected()
