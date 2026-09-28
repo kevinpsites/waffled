@@ -4,6 +4,7 @@ const person = {
   id: 'person-1',
   name: 'Alex',
   memberType: 'adult',
+  accessExpiresAt: null,
   isAdmin: true,
   avatarEmoji: 'A',
   colorHex: '#4f7f73',
@@ -151,10 +152,12 @@ test('guest access stays read-only in the rendered application', async ({ page }
   await expect(page.getByText('Guest access · Read-only. Ask a household admin if you need to make changes.')).toBeVisible()
   await expect(page.locator('.capture-trigger')).toHaveCount(0)
   await page.getByRole('link', { name: 'Settings', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
+  const signOut = page.locator('button.set-signout')
+  await expect(signOut).toBeVisible()
   await expect(page.getByText('Family & People', { exact: true })).toHaveCount(0)
   await page.screenshot({ path: 'test-results/guest-read-only-settings.png', fullPage: true })
-  await page.getByRole('button', { name: 'Sign out' }).click()
-  await page.getByRole('button', { name: 'Tap again to sign out' }).click()
+  await signOut.click()
+  await expect(signOut).toContainText('Tap again to sign out')
+  await signOut.click()
   await expect(page.getByText('Welcome back')).toBeVisible()
 })
