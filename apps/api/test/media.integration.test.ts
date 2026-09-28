@@ -139,7 +139,8 @@ describe('parent reads renew uploaded media', () => {
     const created = await call('POST', `/api/${resource}`, kevin, { name: 'Uploaded pantry photo', title: 'Uploaded recipe photo', storageKey: image.key })
     expect(created.statusCode).toBe(201)
     const entity = JSON.parse(created.body)[resource === 'pantry' ? 'item' : 'recipe']
-    expect(entity.imageUrl).toBe(image.url)
+    expect(new URL(entity.imageUrl, 'http://media.test').pathname).toBe(`/media/${image.key}`)
+    expect((await authorized(entity.imageUrl)).statusCode).toBe(200)
     const now = Date.now()
     const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 601_000)
     try {
