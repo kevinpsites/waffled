@@ -21,6 +21,8 @@ struct PhotosView: View {
     @State private var newAlbumName = ""
     @State private var busy = false
 
+    init(model: PhotosModel? = nil) { _model = State(initialValue: model ?? PhotosModel()) }
+
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
 
     /// The photos currently on the wall — all, or just the chosen album. Drives both

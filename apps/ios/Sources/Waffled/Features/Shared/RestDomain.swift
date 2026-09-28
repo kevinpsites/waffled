@@ -33,6 +33,7 @@ enum RestState: Equatable, Sendable {
     case queued(pending: Int, updatedAt: Date?)
     case conflict(message: String, updatedAt: Date?)
     case error(message: String)
+    case signInRequired(updatedAt: Date?)
 
     var loaded: Bool {
         if case .loading = self { return false }
@@ -51,24 +52,19 @@ enum RestState: Equatable, Sendable {
     var updatedAt: Date? {
         switch self {
         case let .empty(date), let .ready(date), let .stale(date, _): return date
-        case let .offline(date), let .queued(_, date), let .conflict(_, date): return date
+        case let .offline(date), let .queued(_, date), let .conflict(_, date), let .signInRequired(date): return date
         case .loading, .error: return nil
         }
     }
 
-    /// Fold independently-loaded REST domains into one screen state. A partial
-    /// failure is stale—not empty—when at least one sibling returned fresh data.
+    /// Read failures outrank queued writes and conflicts. Failed domains never borrow
+    /// sibling timestamps: unknown age stays unknown; dated failures use the oldest.
     static func combined(_ states: [RestState]) -> RestState {
         guard !states.isEmpty else { return .loading }
         let latest = states.compactMap(\.updatedAt).max()
 
-        if let conflict = states.first(where: { if case .conflict = $0 { true } else { false } }),
-           case let .conflict(message, date) = conflict {
-            return .conflict(message: message, updatedAt: date ?? latest)
-        }
-        if let queued = states.first(where: { if case .queued = $0 { true } else { false } }),
-           case let .queued(pending, date) = queued {
-            return .queued(pending: pending, updatedAt: date ?? latest)
+        if let auth = states.first(where: { if case .signInRequired = $0 { true } else { false } }) {
+            return auth
         }
         if states.contains(where: { if case .offline = $0 { true } else { false } }) {
             var failedDates: [Date] = []
@@ -91,6 +87,11 @@ enum RestState: Equatable, Sendable {
             // unknown failure age dominates; otherwise report the oldest saved value.
             return .offline(updatedAt: hasUnknownFailureDate ? nil : failedDates.min())
         }
+        // A failed first load has no saved timestamp, even beside fresh/stale data.
+        // Keep confirmed sibling values in their domains, but do not date this error.
+        if let error = states.first(where: { if case .error = $0 { true } else { false } }) {
+            return error
+        }
         let staleValues = states.compactMap { state -> (date: Date, message: String)? in
             guard case let .stale(date, message) = state else { return nil }
             return (date, message)
@@ -105,13 +106,16 @@ enum RestState: Equatable, Sendable {
             // Multiple stale domains conservatively report the oldest saved value.
             return .stale(updatedAt: oldestStale.date, message: message)
         }
+        if let conflict = states.first(where: { if case .conflict = $0 { true } else { false } }),
+           case let .conflict(message, date) = conflict {
+            return .conflict(message: message, updatedAt: date)
+        }
+        if let queued = states.first(where: { if case .queued = $0 { true } else { false } }),
+           case let .queued(pending, date) = queued {
+            return .queued(pending: pending, updatedAt: date)
+        }
         if states.contains(where: { if case .loading = $0 { true } else { false } }) {
             return .loading
-        }
-        if let error = states.first(where: { if case .error = $0 { true } else { false } }),
-           case let .error(message) = error {
-            if let latest { return .stale(updatedAt: latest, message: "Some data couldn’t be refreshed.") }
-            return .error(message: message)
         }
         let date = latest ?? Date()
         return states.contains(where: { if case .ready = $0 { true } else { false } })
@@ -141,10 +145,15 @@ enum RestFetch {
 }
 
 private enum RestFailureKind {
+    case signInRequired
     case offline
     case other
 
     init(_ error: Error) {
+        if case WaffledAPI.APIError.http(401, _) = error {
+            self = .signInRequired
+            return
+        }
         let ns = error as NSError
         guard ns.domain == NSURLErrorDomain else {
             self = .other
@@ -239,6 +248,8 @@ final class RestDomain<Value: Sendable> {
 
     private func fail(_ error: Error, at date: Date) {
         switch RestFailureKind(error) {
+        case .signInRequired:
+            state = .signInRequired(updatedAt: state.updatedAt)
         case .offline:
             state = .offline(updatedAt: state.updatedAt)
         case .other:
@@ -250,7 +261,7 @@ final class RestDomain<Value: Sendable> {
         if let updatedAt = state.updatedAt {
             state = .stale(updatedAt: updatedAt, message: message)
         } else {
-            state = .error(message: "Couldn’t load this data. Try again.")
+            state = .error(message: message)
         }
     }
 }
@@ -261,18 +272,39 @@ final class RestDomain<Value: Sendable> {
 struct RestStateNotice: View {
     let state: RestState
     var retry: (() -> Void)?
+    var compact = false
 
     var body: some View {
         if let notice {
-            HStack(spacing: 10) {
-                Image(systemName: notice.icon).font(.system(size: 14, weight: .bold))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(notice.title).font(.system(size: 13, weight: .bold))
-                    Text(notice.message).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+            Group {
+                if compact {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label(notice.title, systemImage: notice.icon)
+                            .font(.system(size: 13, weight: .bold))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityLabel(notice.title)
+                        Text(notice.message).font(.system(size: 12))
+                            .fixedSize(horizontal: false, vertical: true)
+                        retryButton(notice)
+                    }
+                } else {
+                    HStack(spacing: 10) {
+                        Image(systemName: notice.icon).font(.system(size: 14, weight: .bold))
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(notice.title).font(.system(size: 13, weight: .bold))
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(notice.message).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 8)
+                        retryButton(notice)
+                    }
                 }
-                Spacer(minLength: 8)
-                if notice.canRetry, let retry {
-                    Button("Retry", action: retry).font(.system(size: 12, weight: .bold))
+            }
+            .accessibilityElement(children: .combine)
+            .onChange(of: state) { _, _ in
+                if UIAccessibility.isVoiceOverRunning {
+                    UIAccessibility.post(notification: .announcement, argument: "\(notice.title). \(notice.message)")
                 }
             }
             .foregroundStyle(notice.tint)
@@ -282,6 +314,13 @@ struct RestStateNotice: View {
             .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
                 .strokeBorder(notice.tint.opacity(0.22), lineWidth: 1))
+        }
+    }
+
+    @ViewBuilder private func retryButton(_ notice: Notice) -> some View {
+        if notice.canRetry, let retry {
+            Button("Retry", action: retry).font(.system(size: 12, weight: .bold))
+                .fixedSize()
         }
     }
 
@@ -300,9 +339,9 @@ struct RestStateNotice: View {
                          message: "\(message) Last updated \(Self.time(updatedAt)).",
                          tint: WF.warn, canRetry: true)
         case let .offline(updatedAt):
-            return .init(icon: "wifi.slash", title: "Offline",
+            return .init(icon: "wifi.slash", title: "Can’t reach Waffled",
                          message: updatedAt.map { "Showing data saved at \(Self.time($0))." }
-                            ?? "Connect to load this information.",
+                            ?? "Check your connection and that your household server is available.",
                          tint: WF.ink2, canRetry: true)
         case let .queued(pending, _):
             return .init(icon: "arrow.triangle.2.circlepath", title: "Saved on this device",
@@ -311,6 +350,10 @@ struct RestStateNotice: View {
         case let .conflict(message, _):
             return .init(icon: "arrow.triangle.branch", title: "Needs review",
                          message: message, tint: WF.primary, canRetry: true)
+        case .signInRequired:
+            return .init(icon: "person.crop.circle.badge.exclamationmark", title: "Sign in again",
+                         message: "Your session expired. Sign out in Settings, then sign in again.",
+                         tint: WF.primaryD, canRetry: false)
         case let .error(message):
             return .init(icon: "exclamationmark.triangle", title: "Couldn’t load",
                          message: message, tint: WF.primaryD, canRetry: true)

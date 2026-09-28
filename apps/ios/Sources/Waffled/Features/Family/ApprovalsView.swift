@@ -37,6 +37,12 @@ final class ApprovalsModel {
 
     var total: Int { redemptions.count + chores.count }
     var isEmpty: Bool { total == 0 }
+    // A missing count must leave a visible route to the approval queue.
+    var showsEntryPoint: Bool { !isEmpty || !state.isAuthoritative }
+    var entryTitle: String {
+        if !state.isAuthoritative { return "Check approvals" }
+        return total == 1 ? "1 to approve" : "\(total) to approve"
+    }
 
     func load(
         scope: RestDataScopeKey,
@@ -79,8 +85,14 @@ struct ApprovalsBanner: View {
     @Environment(SyncManager.self) private var sync
 
     var body: some View {
-        if sync.canApprove && !model.isEmpty {
-            NavigationLink(value: HubRoute.approvals) { card }.buttonStyle(.plain)
+        if sync.canApprove && model.showsEntryPoint {
+            VStack(spacing: 8) {
+                NavigationLink(value: HubRoute.approvals) { card }.buttonStyle(.plain)
+                RestStateNotice(state: model.state, retry: {
+                    Task { await model.load(scope: sync.restDataScopeKey,
+                                            choresEnabled: sync.module(.chores), rewardsEnabled: sync.rewardsOn) }
+                })
+            }
         }
     }
 
@@ -91,7 +103,7 @@ struct ApprovalsBanner: View {
                 .background(WF.gold)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
-                Text(model.total == 1 ? "1 to approve" : "\(model.total) to approve")
+                Text(model.entryTitle)
                     .font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
                 Text(preview).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
             }
@@ -108,7 +120,7 @@ struct ApprovalsBanner: View {
         let red = model.redemptions.map { "\($0.personName ?? "Someone")’s \($0.title)" }
         let ch = model.chores.map { "\($0.personName ?? "Someone")’s \($0.choreTitle)" }
         let preview = (red + ch).prefix(3).joined(separator: " · ")
-        return preview.isEmpty ? "Tap to review reward purchases & chores" : preview
+        return preview.isEmpty ? "Review purchases & chores" : preview
     }
 }
 
@@ -118,6 +130,8 @@ struct ApprovalsView: View {
     @Environment(SyncManager.self) private var sync
     @State private var model = ApprovalsModel()
     @State private var reviewing: WaffledAPI.ChoreInstanceDTO?   // open proof review sheet
+
+    init(model: ApprovalsModel? = nil) { _model = State(initialValue: model ?? ApprovalsModel()) }
 
     var body: some View {
         GeometryReader { geo in

@@ -1,6 +1,6 @@
 // Unit test for the server-side keyword/concept matcher (no DB).
 import { describe, it, expect } from 'vitest'
-import { keywordMatch, tokensOf } from '../src/modules/goals/goal-match'
+import { ignoreWordsOf, keywordMatch, tokensOf } from '../src/modules/goals/goal-match'
 
 const reading = { id: 'g-read', title: 'Reading hours' }
 const outside = { id: 'g-out', title: '1,000 Hours Outside' }
@@ -29,5 +29,15 @@ describe('keywordMatch (server)', () => {
 describe('tokensOf', () => {
   it('drops stopwords/units/numbers and stems (crude stem: grass→gras, both sides)', () => {
     expect(tokensOf('Mowing the grass for 2 hours').sort()).toEqual(['gras', 'mow'])
+  })
+})
+
+describe('ignoreWordsOf', () => {
+  it('offers the words a person can pick to ignore, readable (unstemmed), deduped, in title order', () => {
+    expect(ignoreWordsOf('🧊 Thaw for Dinner · Garlic Chicken')).toEqual(['thaw', 'dinner', 'garlic', 'chicken'])
+    expect(ignoreWordsOf('Mowing the grass for 2 hours, mowing again')).toEqual(['mowing', 'grass', 'again'])
+  })
+  it('is empty for a title with nothing matchable', () => {
+    expect(ignoreWordsOf('A 5k at 9')).toEqual([])
   })
 })

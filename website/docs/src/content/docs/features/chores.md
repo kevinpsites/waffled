@@ -13,10 +13,12 @@ Chores are the assignable Tasks board: recurring or one-off jobs that award star
 - 🔁 **Carry-over** — an unfinished one-off rolls forward with an **overdue·since** badge; per-chore rollover toggle, default **on**.
 - 🙋 **Up-for-grabs** — leave a chore unassigned and anyone can **claim** it; drag between columns to reassign.
 - 🧒 **Family rings on Today** plus a full Tasks board (on iPad it's a wrapping Kanban).
+- 📱 **Your own chores on the iPhone's Today** — the chores card opens on the person signed in, with a tick beside each chore. Tap the card's title to switch to anyone else in the family, or back to the family summary; the phone remembers the pick. A chore that needs a photo opens the Tasks board to take it.
 - ✅ **Complete → award** — daily instances flip done and pay out the chore's currency/amount.
 - 🔥 **Streaks** — N consecutive days, shown right on the chore.
 - ✔️ **Parent approval** — flag a chore `requires_approval` and completion goes *awaiting* → approve/reject (gated by `chore.approve`).
 - 📸 **Photo proof** — per-chore **"Requires a photo"**; snap or pick on complete, review thumbnail → large → **Approve / Not yet**; proof auto-deletes after N days.
+- ✏️ **Recurring edit scopes** — change or remove just one pending chore, this-and-future chores, or the entire active series. Completed and awaiting-approval occurrences remain immutable history.
 
 ## Where it works
 
@@ -41,5 +43,6 @@ Optional module `chores`, default **on** — toggle it in **Settings → Modules
 ## Notes
 
 - 🔒 **Capability-gated where it has stakes** — `chore.manage` (create for others, edit/delete) and `chore.approve` (approve/reject). Anyone may add a chore **for themselves** or **up-for-grabs**, and anyone may complete or claim. See [Permissions](/concepts/permissions/) for the full capability model.
+- 🕰️ **Finished work stays historical** — edits and deletes never rewrite completed or awaiting-approval rows. When you open one of those rows, **This and future chores** uses it only as the boundary and starts changing with future pending work; **This chore only** is available only for a pending occurrence.
 - 📶 **REST-only, not offline** — chores don't ride PowerSync; they're kept fresh by the in-app refresh bus, so they need a live connection.
 - 🗑️ **Proof photos are throwaway** — they're verification, not memories, and are meant to be deleted after review.

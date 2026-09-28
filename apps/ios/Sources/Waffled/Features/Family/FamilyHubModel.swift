@@ -150,10 +150,11 @@ final class FamilyHubModel {
         case .loading: return "Loading…"
         case .empty, .ready: return value
         case .stale: return value.isEmpty ? "May be out of date" : "May be out of date · \(value)"
-        case .offline: return state.updatedAt == nil ? "Offline" : "Offline · \(value)"
+        case .offline: return state.updatedAt == nil ? "Unavailable" : "Saved · \(value)"
         case let .queued(pending, _): return "\(pending) change\(pending == 1 ? "" : "s") queued"
         case .conflict: return "Needs review"
         case .error: return "Couldn’t load"
+        case .signInRequired: return "Sign in again"
         }
     }
 }

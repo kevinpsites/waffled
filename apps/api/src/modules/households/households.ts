@@ -4,7 +4,7 @@
 import type { QueryResultRow } from 'pg'
 import type { Request } from 'lambda-api'
 import { getPool, query } from '../../platform/db'
-import { AuthError, type Principal } from '../../platform/auth'
+import { AuthError, type Principal, NoHouseholdError } from '../../platform/auth'
 import { config } from '../../platform/config'
 import { seedDefaultRecipe } from '../meals/seed-default-recipe'
 
@@ -86,7 +86,7 @@ export async function requireTenant(req: Request): Promise<Tenant> {
   const fromKey = (req as Request & { apiKeyTenant?: Tenant }).apiKeyTenant
   if (fromKey) return fromKey
   const tenant = await resolveTenant(req.principal!)
-  if (!tenant) throw new AuthError('No household for this account; create one first', 403)
+  if (!tenant) throw new NoHouseholdError()
   return tenant
 }
 

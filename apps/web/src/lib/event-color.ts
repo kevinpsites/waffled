@@ -1,32 +1,29 @@
-// Event → color resolution, family-aware. An event whose people cover the whole
-// household renders in the household's *family* color (Settings → Family &
-// People → Family color, stored in settings.display.familyColorHex) instead of
-// whichever member happened to own it — so the calendar reads at a glance:
-// everyone / some of us / one person / unassigned.
+// Event → color resolution, family-aware: an event whose people cover the whole household
+// renders in the household's *family* color (settings.display.familyColorHex) instead of
+// whichever member owned it.
 import { useMemo, useSyncExternalStore, type CSSProperties } from 'react'
 import { personsApi, HOUSEHOLD_CHANGED, type Household, type Person } from './api/persons'
-import type { AgendaEvent } from './api/events'
 
-/** The grey used across every view for events with no assignee. */
 export const UNASSIGNED_COLOR = '#6B6B70'
 /** Default whole-family color — deliberately not one of the member swatches. */
 export const DEFAULT_FAMILY_COLOR = '#F97316'
 
 const HEX = /^#[0-9a-fA-F]{6}$/
 
-type ColorableEvent = Pick<AgendaEvent, 'personId' | 'personColor' | 'participants'>
+export interface ColorableEvent {
+  personId: string | null
+  personColor: string | null
+  /** Only the ids are read, so a caller holding ids alone can use the same resolver. */
+  participants?: { id: string }[] | null
+}
 
-/** The household's whole-family event color (settings.display.familyColorHex). */
 export function familyColorHex(household: Household | null | undefined): string {
   const v = (household?.settings as { display?: { familyColorHex?: unknown } } | undefined)?.display?.familyColorHex
   return typeof v === 'string' && HEX.test(v) ? v : DEFAULT_FAMILY_COLOR
 }
 
-/**
- * A "family event" = its people (participants + the owner) cover every household
- * member. One-person households never qualify — there's no whole-vs-part
- * distinction to draw.
- */
+/** Its people (participants + owner) cover every member. One-person households never
+ *  qualify — there is no whole-vs-part distinction to draw. */
 export function isFamilyEvent(e: Pick<ColorableEvent, 'personId' | 'participants'>, memberIds: string[]): boolean {
   if (memberIds.length < 2) return false
   const ids = new Set((e.participants ?? []).map((p) => p.id))
@@ -47,12 +44,11 @@ export function eventColor(
 
 /* ── chip painting ────────────────────────────────────────────────────────────
    Solid chips fill with the event's color, so the *foreground* can't be a fixed
-   white: white clears WCAG AA (4.5:1) on only one of the eight preset member
-   colors — gold sits at 2.2:1 and teal at 2.5:1, illegible on a kitchen wall.
-   Black or white always works, though: for any color, if white is short of AA
-   the fill is light enough that black clears it (the crossover is at luminance
-   ≈0.179, where both give 4.58:1). So each chip carries the winning ink for its
-   own fill, in both themes, and the stylesheet just consumes it.            */
+   white: gold and teal are too light for it. Each chip picks black or white by
+   APCA contrast on the fill it actually gets, in both themes. WCAG 2's ratio
+   narrowly chose black on purple and blue, which reads worse; APCA keeps black
+   only where white genuinely fails, and the winner is always at least Lc 54
+   (the black/white crossover), so the stylesheet just consumes it.            */
 
 /** Dark mode mixes the fill toward black; keep in step with styles/waffled.css. */
 export const SOLID_DARK_MIX = 0.82
@@ -92,21 +88,33 @@ export function solidChipBackground(color: string, theme: 'light' | 'dark'): str
   return toHex(rgb.map((c) => c * SOLID_DARK_MIX) as [number, number, number])
 }
 
-/** Black or white — whichever reads better on that fill. Always ≥4.58:1. */
-function inkFor(background: string): string {
-  return contrastRatio(background, '#FFFFFF') >= contrastRatio(background, '#000000') ? '#FFFFFF' : '#000000'
+/** APCA lightness contrast (|Lc|, 0 to ~106) of text on a background, both #RRGGBB; 0 if malformed. */
+export function apcaContrast(text: string, background: string): number {
+  const t = parseHex(text)
+  const b = parseHex(background)
+  if (!t || !b) return 0
+  const y = (rgb: [number, number, number]) => {
+    const [r, g, bl] = rgb.map((c) => (c / 255) ** 2.4)
+    const v = 0.2126729 * r + 0.7151522 * g + 0.072175 * bl
+    return v > 0.022 ? v : v + (0.022 - v) ** 1.414
+  }
+  const yt = y(t)
+  const yb = y(b)
+  const sapc = yb > yt ? (yb ** 0.56 - yt ** 0.57) * 1.14 : (yb ** 0.65 - yt ** 0.62) * 1.14
+  return Math.abs(sapc) < 0.1 ? 0 : (Math.abs(sapc) - 0.027) * 100
 }
 
-/** The readable ink for a solid chip of this color, in each theme. */
+/** Black or white — whichever reads better on that fill, by APCA. */
+function inkFor(background: string): string {
+  return apcaContrast('#FFFFFF', background) >= apcaContrast('#000000', background) ? '#FFFFFF' : '#000000'
+}
+
 export function solidChipInk(color: string): { light: string; dark: string } {
   return { light: inkFor(solidChipBackground(color, 'light')), dark: inkFor(solidChipBackground(color, 'dark')) }
 }
 
-/**
- * The inline custom properties every event chip carries: its color plus the ink
- * that stays legible on it. Spread into a chip's `style` — the stylesheet reads
- * `--ev` for the fill/wash and `--ev-on` / `--ev-on-dark` for solid text.
- */
+/** Spread into a chip's `style`: the stylesheet reads `--ev` for the fill/wash and
+ *  `--ev-on` / `--ev-on-dark` for solid text. */
 export function evVars(color: string): CSSProperties {
   if (!parseHex(color)) return { '--ev': color } as CSSProperties
   const ink = solidChipInk(color)
@@ -162,7 +170,6 @@ function subscribe(onChange: () => void): () => void {
   }
 }
 
-/** The shared members + household behind every event chip on screen. */
 export function useEventColorSource(): EventColorSource {
   return useSyncExternalStore(
     subscribe,
@@ -171,11 +178,8 @@ export function useEventColorSource(): EventColorSource {
   )
 }
 
-/**
- * Hook form for the calendar views: `const colorOf = useEventColor()`.
- * `fallback` is the unassigned grey (the agenda surfaces use a lighter one).
- * Falls back to the plain owner color while members/household are still loading.
- */
+/** Hook form for the calendar views. `fallback` is the unassigned grey; falls back to the
+ *  plain owner color while members/household are still loading. */
 export function useEventColor(fallback: string = UNASSIGNED_COLOR): (e: ColorableEvent) => string {
   const { persons, household } = useEventColorSource()
   return useMemo(() => {

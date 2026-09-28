@@ -91,6 +91,33 @@ private let fixtureRestScope = RestDataScopeKey(
 
 @MainActor
 @Suite struct RestStateContractTests {
+    @Test func expiredAuthenticationHasAnExplicitRecoveryState() {
+        let d = RestDomain<[Int]>([], isEmpty: \.isEmpty)
+        d.apply(Result<[Int], Error>.failure(WaffledAPI.APIError.http(401, "Expired")))
+        #expect(d.state == .signInRequired(updatedAt: nil))
+    }
+
+    @Test func failedApprovalsKeepTheirEntryPointVisible() async {
+        let model = ApprovalsModel(fetchRedemptions: { throw URLError(.notConnectedToInternet) },
+                                   fetchChores: { throw URLError(.notConnectedToInternet) })
+        await model.load(scope: fixtureRestScope)
+        #expect(model.isEmpty)
+        #expect(model.showsEntryPoint)
+        #expect(model.entryTitle == "Check approvals")
+    }
+
+    @Test func pendingWritesNeverHideFailedReads() {
+        let failures: [RestState] = [.error(message: "Failed"), .offline(updatedAt: nil),
+                                     .stale(updatedAt: fixtureDate, message: "Old")]
+        for failure in failures {
+            for pending: RestState in [.queued(pending: 1, updatedAt: fixtureDate),
+                                       .conflict(message: "Conflict", updatedAt: fixtureDate)] {
+                #expect(RestState.combined([pending, failure]) == failure)
+                #expect(RestState.combined([failure, pending]) == failure)
+            }
+        }
+    }
+
     @Test func restDataScopeChangesForNewSessionsAndServers() {
         let epoch = RestDataScope()
         let first = RestDataScopeKey(scope: epoch, apiBaseURL: "https://one.example")
@@ -149,14 +176,14 @@ private let fixtureRestScope = RestDataScopeKey(
         #expect(domain.state == .conflict(message: "Changed on another device", updatedAt: fixtureDate))
     }
 
-    @Test func partialScreenFailureCombinesAsStaleNotEmpty() {
+    @Test func partialScreenFailureDoesNotBorrowSuccessfulSiblingsTimestamp() {
         let state = RestState.combined([
             .empty(updatedAt: fixtureDate),
             .error(message: "Couldn’t load"),
         ])
 
-        if case .stale = state { /* expected */ }
-        else { Issue.record("Expected a partial response to be stale") }
+        #expect(state == .error(message: "Couldn’t load"))
+        #expect(state.updatedAt == nil)
         #expect(!state.isAuthoritative)
     }
 
@@ -201,17 +228,14 @@ private let fixtureRestScope = RestDataScopeKey(
         #expect(RestState.combined([newer, oldest]) == expected)
     }
 
-    @Test func loadingDefersBareErrorsUntilSiblingRequestsSettle() {
+    @Test func loadingDoesNotHideKnownFailures() {
         let error = RestState.error(message: "Couldn’t load")
         let loading = RestState.loading
 
-        #expect(RestState.combined([error, loading]) == .loading)
-        #expect(RestState.combined([loading, error]) == .loading)
-        #expect(RestState.combined([.ready(updatedAt: fixtureDate), error, loading]) == .loading)
-        #expect(RestState.combined([.ready(updatedAt: fixtureDate), error]) == .stale(
-            updatedAt: fixtureDate,
-            message: "Some data couldn’t be refreshed."
-        ))
+        #expect(RestState.combined([error, loading]) == error)
+        #expect(RestState.combined([loading, error]) == error)
+        #expect(RestState.combined([.ready(updatedAt: fixtureDate), error, loading]) == error)
+        #expect(RestState.combined([.ready(updatedAt: fixtureDate), error]) == error)
     }
 
     @Test func offlineDomainDoesNotBorrowAFreshSiblingsTimestamp() {
@@ -278,8 +302,8 @@ private let fixtureRestScope = RestDataScopeKey(
 
         #expect(model.choresSubtitle == "Couldn’t load")
         #expect(!model.state.isAuthoritative)
-        if case .stale = model.state { /* expected */ }
-        else { Issue.record("Expected a partial Family hub response to be stale") }
+        if case .error = model.state { /* expected: no timestamp for the failed domain */ }
+        else { Issue.record("Expected a partial Family hub response to retain its error") }
     }
 
     @Test func approvalFailureCannotRenderAllCaughtUp() async {
@@ -816,6 +840,47 @@ private let fixtureRestScope = RestDataScopeKey(
             await Task.yield()
         }
         Issue.record("Expected sign-out to rotate the REST scope synchronously")
+    }
+
+    @Test func changedServerClearsLocalDataAndRotatesScopeBeforeRestart() async {
+        let stop = DeferredRestValue<Bool>()
+        let recorder = ConnectionTransitionRecorder()
+        let sync = SyncManager(testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop))
+        let original = sync.restDataScopeKey
+        let update = Task { await sync.updateConnection(apiBaseURL: "https://new-server.example") }
+        await stop.waitUntilStarted()
+        #expect(recorder.events == ["stop:true"])
+        #expect(sync.restDataScopeKey == original)
+        await stop.succeed(true)
+        #expect(await update.value == .updated)
+        #expect(sync.restDataScopeKey != original)
+        #expect(recorder.events == ["stop:true", "apply-configuration", "start"])
+    }
+
+    @Test func failedServerTeardownDoesNotAdoptConfigurationOrRotateScope() async {
+        let stop = DeferredRestValue<Bool>()
+        let recorder = ConnectionTransitionRecorder()
+        let sync = SyncManager(testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop))
+        let original = sync.restDataScopeKey
+        let update = Task { await sync.updateConnection(apiBaseURL: "https://new-server.example") }
+        await stop.waitUntilStarted()
+        await stop.succeed(false)
+        #expect(await update.value == .teardownFailed)
+        #expect(sync.restDataScopeKey == original)
+        #expect(recorder.events == ["stop:true"])
+    }
+
+    @Test func explicitSignOutClearsLocalDataAndRotatesScope() async {
+        let stop = DeferredRestValue<Bool>()
+        let recorder = ConnectionTransitionRecorder()
+        let sync = SyncManager(testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop))
+        let original = sync.restDataScopeKey
+        let signOut = Task { await sync.signOut(clearLocal: true) }
+        await stop.waitUntilStarted()
+        #expect(recorder.events == ["stop:true"])
+        #expect(sync.restDataScopeKey != original)
+        await stop.succeed(true)
+        #expect(await signOut.value)
     }
 
     @Test func signOutPreemptsUpdateBeforeConfigurationOrRestart() async {

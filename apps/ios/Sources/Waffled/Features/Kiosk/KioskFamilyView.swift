@@ -9,6 +9,11 @@ struct KioskFamilyView: View {
     @Binding var path: [HubRoute]
     @State private var model = KioskFamilyModel()
 
+    init(path: Binding<[HubRoute]>, model: KioskFamilyModel? = nil) {
+        _path = path
+        _model = State(initialValue: model ?? KioskFamilyModel())
+    }
+
     private let cols = [GridItem(.adaptive(minimum: 300, maximum: 460), spacing: 16, alignment: .top)]
     /// Verification one-shot (WAFFLED_OPEN_PERSON).
     private static var didOpenPerson = false
