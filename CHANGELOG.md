@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Guests can read Weekly Planning without changing shared lists.** Opening the Meals
+  step shows an empty grocery count when no list exists, without creating one.
+
 - Permission saves from older clients now preserve newer capability choices they
   do not know how to send, preventing unrelated settings changes from silently
   resetting who can correct reward history.
