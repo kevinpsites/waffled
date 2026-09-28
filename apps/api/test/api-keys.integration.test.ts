@@ -229,7 +229,7 @@ describe('hyphenated sibling routes are reachable with the right scope', () => {
 // Currency conversions are half of the currencies surface and sit in the same file, but only
 // /api/currencies was given to the `rewards` resource — so a key could manage the
 // denominations and not the rates between them.
-describe('currency conversions answer to the rewards scope', () => {
+describe('currency conversions and ledger corrections answer to the rewards scope', () => {
   const BOGUS = '00000000-0000-4000-8000-000000000000'
   let rewardsRead = ''
   let rewardsWrite = ''
@@ -244,6 +244,38 @@ describe('currency conversions answer to the rewards scope', () => {
     rewardsWrite = await mintKey('rewards-w', ['rewards:write'])
     otherKey = await mintKey('photos-r', ['photos:read'])
     await call('POST', '/api/currencies', kevin, { label: 'Bucks', symbol: '💵' })
+  })
+
+  it('requires rewards:write for ledger corrections and still enforces the handler boundary', async () => {
+    const path = `/api/ledger-entries/${BOGUS}/correct`
+    const body = { reason: 'Scope coverage', idempotencyKey: '11111111-1111-4111-8111-111111111111' }
+    for (const key of [rewardsRead, otherKey]) {
+      const denied = await keyCall('POST', path, key, body)
+      expect(denied.statusCode).toBe(403)
+      expect(msg(denied)).toMatch(/missing the required scope: rewards:write/)
+    }
+    const missing = await keyCall('POST', path, rewardsWrite, body)
+    expect(missing.statusCode).toBe(404)
+    expect(msg(missing)).toMatch(/ledger entry not found/i)
+  })
+
+  it('does not let rewards:write bypass the owner correction capability', async () => {
+    const { query } = await import('../src/platform/db')
+    const { rows: [owner] } = await query<{ is_admin: boolean; member_type: string }>(
+      'select is_admin, member_type from persons where id=$1', [ownerId]
+    )
+    try {
+      await query("update persons set is_admin=false, member_type='teen' where id=$1", [ownerId])
+      const denied = await keyCall('POST', `/api/ledger-entries/${BOGUS}/correct`, rewardsWrite, {
+        reason: 'Capability coverage', idempotencyKey: '22222222-2222-4222-8222-222222222222',
+      })
+      expect(denied.statusCode).toBe(403)
+      expect(msg(denied)).toMatch(/do not have permission/i)
+      expect(msg(denied)).not.toMatch(/scope/i)
+    } finally {
+      await query('update persons set is_admin=$2, member_type=$3 where id=$1',
+        [ownerId, owner.is_admin, owner.member_type])
+    }
   })
 
   it('reads with rewards:read and writes only with rewards:write', async () => {

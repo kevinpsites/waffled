@@ -25,6 +25,7 @@ describe('DEFAULT_PERMISSIONS', () => {
       'reward.manage',
       'reward.approve',
       'reward.grant',
+      'reward.correct',
       'goal.manage',
       // Not "run the weekly planning session" — anybody may do that. See lib/api/permissions.ts.
       'planning.manage',

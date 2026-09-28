@@ -5,21 +5,22 @@
 import { AuthError } from './auth'
 import { query } from './db'
 import type { Tenant } from '../modules/households/households'
+import type { PoolClient } from 'pg'
 
 // `planning.manage` is the odd one out: it does not gate RUNNING a weekly planning session —
 // anybody in the household can — only the household-wide choices the session offers, currently
 // which of your lists its first step asks about.
-export type Capability = 'chore.manage' | 'chore.approve' | 'reward.manage' | 'reward.approve' | 'reward.grant' | 'goal.manage' | 'planning.manage'
-export const CAPABILITIES: Capability[] = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'reward.grant', 'goal.manage', 'planning.manage']
+export type Capability = 'chore.manage' | 'chore.approve' | 'reward.manage' | 'reward.approve' | 'reward.grant' | 'reward.correct' | 'goal.manage' | 'planning.manage'
+export const CAPABILITIES: Capability[] = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'reward.grant', 'reward.correct', 'goal.manage', 'planning.manage']
 
 export type MemberRole = 'adult' | 'teen' | 'kid'
 export const ROLES: MemberRole[] = ['adult', 'teen', 'kid']
 
 // adult = full rights; teen/kid = nothing until an admin grants it.
 export const DEFAULT_PERMISSIONS: Record<MemberRole, Record<Capability, boolean>> = {
-  adult: { 'chore.manage': true, 'chore.approve': true, 'reward.manage': true, 'reward.approve': true, 'reward.grant': true, 'goal.manage': true, 'planning.manage': true },
-  teen: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'goal.manage': false, 'planning.manage': false },
-  kid: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'goal.manage': false, 'planning.manage': false },
+  adult: { 'chore.manage': true, 'chore.approve': true, 'reward.manage': true, 'reward.approve': true, 'reward.grant': true, 'reward.correct': true, 'goal.manage': true, 'planning.manage': true },
+  teen: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'reward.correct': false, 'goal.manage': false, 'planning.manage': false },
+  kid: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'reward.correct': false, 'goal.manage': false, 'planning.manage': false },
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -87,12 +88,13 @@ export async function assertSelfOrCapability(
 
 // Route guard: admins pass immediately; everyone else is checked against the household's stored
 // matrix for their member_type. Throws 403 on a miss.
-export async function requireCapability(tenant: Tenant, cap: Capability): Promise<void> {
+export async function requireCapability(tenant: Tenant, cap: Capability, client?: PoolClient): Promise<void> {
   if (tenant.isAdmin) return
-  const { rows } = await query<{ settings: unknown }>(
-    `select settings from households where id = $1`,
-    [tenant.householdId]
-  )
+  const sql = `select settings from households where id = $1`
+  const params = [tenant.householdId]
+  const { rows } = client
+    ? await client.query<{ settings: unknown }>(sql, params)
+    : await query<{ settings: unknown }>(sql, params)
   if (!can(tenant.memberType, tenant.isAdmin, cap, rows[0]?.settings)) {
     throw new AuthError('You do not have permission to do this', 403)
   }
