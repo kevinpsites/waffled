@@ -152,7 +152,18 @@ func TestRewritesTheRepoCaddyfile(t *testing.T) {
 			t.Errorf("%q survived the rewrite of the real Caddyfile", gone)
 		}
 	}
-	if n := strings.Count(out, "127.0.0.1:3002"); n != 2 {
-		t.Errorf("the real Caddyfile has %d api upstreams rewritten, expected 2", n)
+	if n := strings.Count(out, "127.0.0.1:3002"); n != 3 {
+		t.Errorf("the real Caddyfile has %d api upstreams rewritten, expected 3", n)
+	}
+	mediaStart := strings.Index(out, "handle /media/*")
+	if mediaStart < 0 {
+		t.Fatal("the native proxy must preserve the protected media route")
+	}
+	media := out[mediaStart:]
+	authorize := strings.Index(media, "forward_auth 127.0.0.1:3002")
+	strip := strings.Index(media, "uri strip_prefix /media")
+	serve := strings.Index(media, "file_server")
+	if authorize < 0 || strip <= authorize || serve <= strip || !strings.Contains(media, "uri /api/media/authorize") {
+		t.Errorf("native media must validate the original URL before stripping its prefix and serving a file:\n%s", media)
 	}
 }

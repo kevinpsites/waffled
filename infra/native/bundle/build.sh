@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Assembles the self-contained `runtime/` directory that Waffled for Mac ships: the four
 # service binaries (Postgres 16, Node 24, Caddy 2, the built PowerSync service), the api
-# and web builds, and the compose config files — plus a manifest with a sha256 for every
-# file. Nothing in the output depends on Homebrew, a system Node, or Docker at run time.
+# and web builds, the compose config files and the `waffled-runtime` supervisor that drives
+# them all — plus a manifest with a sha256 for every file. Nothing in the output depends on
+# Homebrew, a system Node, or Docker at run time.
 # See README.md next to this file for the layout, sizes, sources and gotchas.
 #
 #   ./build.sh fetch            populate the cache (downloads + the PowerSync build)
@@ -10,10 +11,14 @@
 #   ./build.sh verify <outdir>  manifest check + smoke test (the test for this script)
 #   ./build.sh clean [--all]    remove ./out (and with --all the cache too)
 #
+# Build-time dependencies: the Xcode command-line tools' base utilities, plus Go (only
+# `build`, for bin/waffled-runtime — everything else comes from the cache or the bundled
+# Node). `fetch` and `verify` need no Go.
+#
 # Env: WAFFLED_BUNDLE_CACHE (default ~/Library/Caches/WaffledBundle), WAFFLED_BUNDLE_SEED
-# (default ~/Library/Caches/WaffledSpike — the Phase 1 spike's downloads are reused when
-# present so a rebuild costs no network), WAFFLED_BUNDLE_NO_NETWORK=1 (fail instead of
-# downloading anything), WAFFLED_BUNDLE_NPM_CI=1 (force `npm ci` for api + web).
+# (default ~/Library/Caches/WaffledSpike — an optional second cache dir to copy downloads
+# from, e.g. a previous machine's; unset or missing = no seeding), WAFFLED_BUNDLE_NO_NETWORK=1
+# (fail instead of downloading anything), WAFFLED_BUNDLE_NPM_CI=1 (force `npm ci` for api + web).
 #
 # bash 3.2-clean (macOS /bin/bash): no associative arrays, no ${x,,}, no mapfile.
 set -euo pipefail
@@ -75,6 +80,13 @@ warn() { printf '%s⚠ %s%s\n' "$c_ylw" "$*" "$c_reset"; }
 die()  { printf '%s✗ %s%s\n' "$c_red" "$*" "$c_reset" >&2; exit 1; }
 hsize() { du -sh "$1" 2>/dev/null | cut -f1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "$1 not found on PATH (needed at build time)"; }
+# Go is the only build-time dependency that is not downloaded into the cache, so say what it
+# is for rather than leaving someone to guess which of these steps wanted it.
+need_go() {
+  command -v go >/dev/null 2>&1 || die "go not found on PATH — \`build\` compiles the supervisor
+  into bin/waffled-runtime from apps/runtime (see its go.mod for the version). Install Go
+  (brew install go), or use a bundle someone else built: \`fetch\` and \`verify\` need no Go."
+}
 
 # ── network helpers ──────────────────────────────────────────────────────────
 download() { # download <url> <dest>
@@ -216,7 +228,7 @@ cmd_fetch() {
   need curl; need tar; need shasum; need lipo
   mkdir -p "$CACHE"
   say "cache: $CACHE"
-  [ -d "$SEED" ] && say "seed:  $SEED (spike downloads reused when present)"
+  [ -d "$SEED" ] && say "seed:  $SEED (downloads reused from this cache when present)"
   fetch_node
   fetch_postgres_server
   fetch_postgres_client
@@ -293,6 +305,27 @@ build_caddy() {
   cp "$CADDY_HOME/caddy" "$1/bin/caddy"
   xattr -c "$1/bin/caddy" 2>/dev/null || true
   ok "caddy v$CADDY_VERSION ($(hsize "$1/bin/caddy"))"
+}
+
+# The supervisor itself. It ships INSIDE the bundle (at bin/waffled-runtime, which is why
+# `--bundle` defaults to the directory above the binary) and therefore has to be built
+# before the manifest is written, or `verify` refuses it as an `extra file`. Go is the one
+# build-time dependency that is not downloaded into the cache — CI installs it, and a dev
+# Mac has it from Homebrew.
+build_runtime() {
+  local out="$1/bin/waffled-runtime" src="$ROOT/apps/runtime"
+  say "→ waffled-runtime → bin/waffled-runtime (go build)"
+  need_go
+  mkdir -p "$1/bin"
+  # -trimpath so the binary carries no build-machine paths; -s -w drops the symbol and
+  # DWARF tables (~30 % smaller, and nothing symbolicates it); -X stamps the version the
+  # `version` subcommand prints, which verify then asserts — that is what makes the check
+  # "built from this tree" rather than "a binary is present".
+  ( cd "$src" && GOOS="$PLATFORM" GOARCH="$ARCH" go build -trimpath \
+      -ldflags "-s -w -X main.version=$(api_version)" -o "$out" ./cmd/waffled-runtime ) \
+    || die "go build ./cmd/waffled-runtime failed"
+  xattr -c "$out" 2>/dev/null || true
+  ok "waffled-runtime $(api_version) ($(hsize "$out"))"
 }
 
 npm_build() { # npm_build <app dir> — npm ci (if needed) + npm run build with the bundled node
@@ -405,13 +438,14 @@ EOF
 cmd_build() {
   local out="${1:-$DEFAULT_OUT}"
   have_fetched || die "cache is incomplete — run: $0 fetch"
-  need lipo; need rsync; need xxd
+  need lipo; need rsync; need xxd; need_go
   case "$out" in /*) ;; *) out="$PWD/$out" ;; esac
   say "building runtime/ → $out"
   rm -rf "$out"; mkdir -p "$out"
   build_node "$out"
   build_postgres "$out"
   build_caddy "$out"
+  build_runtime "$out"
   build_api "$out"
   build_web "$out"
   build_powersync "$out"
@@ -456,6 +490,12 @@ cmd_verify() {
   local nodev; nodev="$("$RT/bin/node" -p 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).components.node.version' "$RT/manifest.json")"
   check "node --version" 0 "^v${nodev}\$" "" -- bin/node --version
   check "caddy version" 0 "^v[0-9]" "" -- bin/caddy version
+  # The supervisor, run from inside the bundle it supervises. `version` is the one
+  # subcommand that touches neither the data directory nor the manifest, so it proves the
+  # binary executes with nothing on PATH; the version it prints is stamped from this tree
+  # at build time, so a stale binary left over from an earlier build fails here.
+  local waffledv; waffledv="$("$RT/bin/node" -p 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).waffledVersion' "$RT/manifest.json")"
+  check "waffled-runtime version" 0 "^waffled-runtime ${waffledv}\$" "" -- bin/waffled-runtime version
   local b
   for b in postgres initdb pg_ctl pg_dump pg_restore pg_isready psql; do
     check "postgres/bin/$b --version" 0 "\(PostgreSQL\) 16\." "dyld|Library not loaded" -- "bin/postgres/bin/$b" --version
@@ -495,7 +535,10 @@ cmd_verify() {
   fi
   rm -rf "$SMOKE_HOME"
   say "── sizes"
-  ( cd "$RT" && du -sh bin/node bin/postgres bin/caddy api powersync web config licenses manifest.json 2>/dev/null | sed 's/^/  /' && printf '  %s\ttotal\n' "$(du -sh . | cut -f1)" )
+  # `|| true`: du exits non-zero when one of these is missing, and under `set -e` +
+  # pipefail that would abort verify HERE — swallowing the verdict for the very failure
+  # (a deleted file) the run was meant to report.
+  ( cd "$RT" && du -sh bin/node bin/postgres bin/caddy bin/waffled-runtime api powersync web config licenses manifest.json 2>/dev/null | sed 's/^/  /' && printf '  %s\ttotal\n' "$(du -sh . | cut -f1)" ) || true
   say ""
   if [ "$FAIL" = 0 ]; then ok "verify: $PASS checks passed"; else die "verify: $FAIL failed, $PASS passed"; fi
 }

@@ -90,3 +90,66 @@ func TestWriteFileReportsAnUnwritableDirectory(t *testing.T) {
 		t.Errorf("the error should name the target path, got: %v", err)
 	}
 }
+
+// Four files in this runtime are small JSON records written the same way — runtime.json,
+// bonjour.json, a dump's sidecar and the backup failure note — and each had grown its own
+// copy of marshal → append a newline → write. The copies had already started to drift,
+// which is how one of them ends up with different crash semantics than its siblings.
+func TestWriteJSONRoundTripsThroughAFileAPersonCanRead(t *testing.T) {
+	type record struct {
+		Name  string `json:"name"`
+		Port  int    `json:"port"`
+		Setup bool   `json:"setup"`
+	}
+	path := filepath.Join(t.TempDir(), "bonjour.json")
+	want := record{Name: "The Seinfelds", Port: 8080}
+
+	if err := WriteJSON(path, want, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Indented and newline-terminated: these files are read in a terminal when something
+	// has gone wrong, and `cat` should not leave the prompt mid-line.
+	if !strings.Contains(string(raw), "\n  \"name\": \"The Seinfelds\"") {
+		t.Errorf("not written for a person to read:\n%s", raw)
+	}
+	if !strings.HasSuffix(string(raw), "}\n") {
+		t.Errorf("no trailing newline:\n%q", raw)
+	}
+	if st, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	} else if st.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %o, want the mode asked for", st.Mode().Perm())
+	}
+
+	var got record
+	if err := ReadJSON(path, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Errorf("round trip gave %+v, want %+v", got, want)
+	}
+}
+
+// Absence is a normal answer for every one of these files, and callers tell it apart from
+// a corrupt one — a first run has no runtime.json, a stopped server has no bonjour.json.
+func TestReadJSONDistinguishesAbsentFromUnreadable(t *testing.T) {
+	dir := t.TempDir()
+	var got struct{ Name string }
+
+	err := ReadJSON(filepath.Join(dir, "absent.json"), &got)
+	if !os.IsNotExist(err) {
+		t.Errorf("a missing file gave %v, want something os.IsNotExist recognises", err)
+	}
+
+	corrupt := filepath.Join(dir, "corrupt.json")
+	if err := os.WriteFile(corrupt, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ReadJSON(corrupt, &got); err == nil || os.IsNotExist(err) {
+		t.Errorf("a corrupt file gave %v, want a decode error", err)
+	}
+}

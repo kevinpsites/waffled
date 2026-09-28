@@ -7,7 +7,8 @@ Waffled is a monorepo, but it is **not** an npm-workspaces monorepo — there is
 root `package.json`. Each app manages its own dependencies: `apps/api` and
 `apps/web` each have their own `package.json` + `package-lock.json`, and you run
 `npm` **inside each directory**. The iOS app lives in `apps/ios` (see
-[iOS development](/developer/ios/)).
+[iOS development](/developer/ios/)); the Mac menu-bar app and its Go runtime live in
+`apps/mac` and `apps/runtime` (see [below](#working-on-the-mac-app-and-runtime)).
 
 ## Requirements
 
@@ -96,6 +97,28 @@ SIMCTL_CHILD_WAFFLED_DEV_TOKEN=$TOKEN
 
 Mint `$TOKEN` with `./waffled token`. Full build and run instructions are in
 [iOS development](/developer/ios/).
+
+## Working on the Mac app and runtime
+
+[Waffled for Mac](/install/mac/) is two pieces: `apps/runtime` (`waffled-runtime`, the Go
+supervisor that runs the server natively) and `apps/mac` (the SwiftUI menu-bar app that shells
+out to it). You need Go (the version in `apps/runtime/go.mod`), Xcode, and XcodeGen.
+
+```bash
+# Runtime — hermetic unit tests (no bundle, no Docker)
+(cd apps/runtime && go test ./...)
+
+# Mac app — regenerate the project after adding or removing files, then test on the host Mac
+(cd apps/mac && xcodegen generate && \
+  xcodebuild test -project Waffled.xcodeproj -scheme Waffled -destination 'platform=macOS')
+```
+
+Always pass `-project Waffled.xcodeproj`: `apps/ios` has a scheme with the same name. To run
+the app against a runtime you are changing, or to build a whole `Waffled.app` with a runtime
+bundle inside it, follow **dev mode** in
+[`apps/mac/README.md`](https://github.com/kevinpsites/waffled/blob/main/apps/mac/README.md).
+The runtime's integration tests, which boot a real stack from a built bundle, are covered in
+[`apps/runtime/README.md`](https://github.com/kevinpsites/waffled/blob/main/apps/runtime/README.md).
 
 ## See also
 

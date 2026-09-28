@@ -42,12 +42,19 @@ Then apply it:
 ./waffled up
 ```
 
+**On Waffled for Mac** there is no `.env` to edit. With Ollama on the same Mac, choose
+**Ollama** in the **AI settings** row — on the first run's setup screen, or later in
+**Settings… → Basic** — and keep the address it suggests, `http://localhost:11434`. Waffled
+checks that Ollama answers there and lists the models it has. The model goes under
+**Settings… → Advanced → AI model and limits** (`llama3.1` unless you change it). Apply, and
+restart Waffled when it asks. See [Mac install](/install/mac/#changing-settings-later).
+
 Full variable reference: [Environment variables](/install/environment-variables/)
 and [AI providers](/administration/ai-providers/).
 
 ## 4. Select the provider in the app
 
-Open **Settings → AI & capture** and choose **Ollama** plus your model. This is
+Open **Settings → AI & Capture** and choose **Ollama** plus your model. This is
 per-household. What the capture bar actually does:
 [AI capture bar](/features/capture/).
 

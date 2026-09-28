@@ -210,9 +210,11 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     coin chips, tinted by the currency's color) plus a **"Needs your OK"** strip to
     approve/deny redemptions the kids filed from the web kiosk. Tap a person →
     their **reward shop**: a header with their balances and a catalog grid (emoji ·
-    title · cost) where each reward shows **Redeem** (debits on confirm — redeem +
-    auto-approve, since the actor is a parent) when affordable in that reward's
-    currency, or **"N to go"** when short. The shop is topped by a violet
+    title · cost) where each reward shows **Redeem** (debits on confirm; a reward the
+    household set to need a parent's OK is filed as **pending** for the approvals
+    strip rather than approved on the spot) when affordable in that reward's currency
+    and it's a wallet you may spend — your own, or anyone's with `reward.manage`,
+    otherwise **"Ask a parent to redeem for {name}"** — or **"N to go"** when short. The shop is topped by a violet
     **"Saving toward"** hero (emoji · title · progress · "have of cost") when the
     person has a target, from the overview's `savingToward`. Over REST
     (`GET /api/balances`, `/api/rewards`, `/api/redemptions`, `/api/persons/:id/

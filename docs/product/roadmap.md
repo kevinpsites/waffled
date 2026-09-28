@@ -17,6 +17,14 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Done ✅
 
+- **iPhone calendar: Month → Week → Day** — the phone Calendar tab rebuilt from the design
+  handoff: a full-height month grid with ISO week numbers and up to four titles a day, a
+  horizontal week card rail (tap an event to edit it), and a pushed Day timeline with overlap
+  lanes, switched from the header's view menu or a pinch. Planned meals and thaw reminders
+  get their own amber / faint styling, and week cards close on that night's dinner. Agenda
+  stays, in the same menu. The
+  decisions behind it: [ios-calendar-redesign.md](ios-calendar-redesign.md).
+
 - **Per-person calendar columns (web/kiosk + iPad)** — a **People** view beside
   Month/Week/Day/Agenda that splits one day into a column per family member (the layout the
   dispencer17 fork had). "Whose column" resolves to **`events.person_id`** — the assignee
@@ -30,7 +38,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   needed: participants already ride both the REST payload and the PowerSync replica, so the
   view works offline like the others. On iOS it's **iPad-only**, as the original sizing
   predicted — it was briefly on iPhone too, but four members already truncate titles to
-  "Dinn…", so the phone keeps Agenda/Month/Day and its person filter. The iPad reuses the
+  "Dinn…", so the phone keeps its person filter instead (its views are now Month → Week →
+  Day, plus Agenda). The iPad reuses the
   same `CalTimeGrid` the Week view uses, generalised so a column can be a person instead of
   a date; the person filter chips are hidden in People mode, since the columns already are
   that split.
@@ -94,7 +103,7 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   ("Trade"), saving-toward jar/bar.
 - **Goals** — types (count/total/habit/checklist), shared vs each-tracks, create/edit/
   detail read-model, person + family overview, **calendar → goal** auto-count (single
-  and recurring events) with learned suggestions, **swappable data views** on the goal-detail
+  and recurring events) with learned suggestions and **per-goal ignored words**, **swappable data views** on the goal-detail
   page (heatmaps, year grid, pace-to-target, year ring, by-person bars, collection grid,
   consistency calendar) matched to goal type + timeframe. The Log sheet's **note chips
   now suggest a goal's own most-logged notes** (scoped per participant, blended with the
@@ -252,6 +261,74 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   edit a rhythm, which is where you already go to ask about one, but it is not a record you
   can page through.
 
+- **Waffled for Mac — a downloadable app that runs the family server natively, no Docker.**
+  Plex-style: the web app stays the UI, the Mac app is a menu-bar icon (running / starting /
+  error) whose menu opens the web UI, copies the server address, toggles start-at-login, and
+  backs up. Same api, migrations, PowerSync, Caddy and web build as Compose — only packaging
+  and supervision differ, via a Go runtime supervisor (`apps/runtime`) that is a CLI first
+  (`waffled-runtime start|status|backup|config|move|doctor`). The app carries the whole 669 MB
+  runtime inside it, verifies it against a manifest before starting anything, walks a
+  household through its first run — a **Where things go** screen settles the data folder,
+  the nightly backup and its hour, the address other devices use (this Mac's name, its IP,
+  or a name the household points at it) and the port, all before anything is created. The
+  same screen comes back as **Settings…** afterwards, applying only what changed, with a
+  **Move…** that takes the whole household to another folder when the startup disk fills
+  up. Both screens have three tabs, so anything Settings changes can be chosen before the
+  first start too: **Basic** (those rows as drawers, plus how many nightly
+  backups to keep and a provider segment — Not now, Claude, OpenAI-compatible, or Ollama
+  detected on the Mac), **Advanced** (AI model and limits, calendar sync, sessions and
+  sign-in, rate limits) and **Diagnostics** (log level and format) — every control one the
+  runtime really forwards ([`mac-settings-redesign.md`](./mac-settings-redesign.md)). It **updates itself** via Sparkle — one download that swaps the
+  app, the runtime and the schema together, snapshotting and rolling back if the new version
+  cannot come up healthy. Signed with a Developer ID, **notarized and stapled**, and shipped
+  as a DMG built by `apps/mac/Scripts/release-mac.sh`, so Gatekeeper opens it with no
+  warning. Apple silicon and macOS 14+ only for now; Windows follows from the same runtime
+  later. Plan, risks and phases in [`native-mac-plan.md`](./native-mac-plan.md); how to use
+  it: [docs → Mac install](https://docs.waffled.app/install/mac/).
+
+- **Weekly Planning** — a guided session that walks the family through deciding the week
+  ahead in ten steps (loose ends · calendar · horizon scan · family night · connection ·
+  goals · meals · tasks · kids · recap). New optional `weeklyPlanning` module (default
+  **off**), `planning_sessions` / `planning_session_steps` tables, and a server-owned step
+  catalog so web and iOS can't drift on the shape of the session. **Shipped:** the
+  module shell — Settings → Modules panel (session day/time, per-step opt-out), the
+  `/planning` screen with its lobby, the step chrome (counter → agenda sheet, the one
+  question, progress hair, skip/affirm footer), the saved record, plus a step-in-the-URL
+  scheme, planning any later week, and both exits (leave for now / start the week over) —
+  **and all ten steps** — Loose ends, Calendar, Horizon scan, Family night, Connection,
+  Goals, Meals, Tasks, Kids, Recap — built in parallel behind a per-step file seam (see the
+  plan doc's "Building the steps in parallel"), five at a time in two waves that merged with
+  no conflicts, then a validation pass that fixed ten reported defects across five of them.
+  **iOS parity shipped too** — the session shell (lobby, chrome, agenda sheet, the
+  parked-note handoff with each step's lent verb, "leave for now" as a per-device pause,
+  the saved record, the settings panel) and all ten step bodies, reachable from the Family hub,
+  Settings, the iPad display's Today card, and a Planning page the iPad can pin to its rail. Built the same way
+  the web steps were — a registry naming all ten keys and ten stub files on day one, so
+  each step could be written against its own files and nothing shared; six agents in two
+  waves, integrating with two compile errors between them, both in the wiring rather than
+  the steps. The port also turned up three defects in shipped code: `step.number` is a
+  CATALOG index and neither client's counter may use it (the server's own comment said the
+  opposite), the progress hair was positional on web and settled-based on iOS, and iOS had
+  never decoded `periodDone`/`stepDone`/`stepTotal` at all — so every iOS surface had been
+  showing habit goals their LIFETIME count instead of this period's. The architectural
+  point held: the session stores almost nothing — two tables
+  (`planning_sessions`, `planning_session_steps`) plus `planning_parked_items` — and every
+  decision lands in the module that owns it. Step 1 is the one exception and it stores nothing
+  either: it *routes* items to later steps, recorded in the session's own jsonb — and the
+  step it routes to now opens with the note, a shell-level handoff every step (and the iOS
+  pass) inherits rather than implements. A later validation round added two things worth
+  naming: the **finished week now reads the week back** on both clients — the saved record
+  opens with step 10's own read-back (the seven days, what the session changed grouped by
+  module, the last call, what was left alone) instead of a tick-list of step names, which
+  survives underneath as the record of what was skipped on purpose — and **which of your
+  lists step 1 asks about is now a household choice**, made IN the step by whoever is
+  running the session (an opt-out map where absent means relevant, so a long-lived
+  "someday" list stops coming up every session while overdue chores and late rhythms
+  still always count; goals are the Goals step's, not step 1's). It is gated by a new `planning.manage` capability that
+  every adult holds by default rather than by admin — running a session is not an admin
+  act — with the same switches still in Settings → Modules → Weekly Planning. Design:
+  `Weekly Planning v4` canvas; plan: `docs/product/weekly-planning-plan.md`.
+
 ## Partial / in progress 🟡
 
 - **Waffled-Bites (kid companion device)** — the pairing system and the parent-facing
@@ -287,16 +364,28 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Planned 🚧
 
-- **Waffled for Mac — a downloadable app that runs the family server natively, no Docker.**
-  Plex-style: the web app stays the UI, the Mac app is a menu-bar icon (running / starting /
-  error) whose menu opens the web UI, copies the server address, toggles start-at-login, and
-  backs up. A non-technical person should go from download to a working household in under
-  five minutes, and relaunching re-opens the existing server. Same API, migrations,
-  PowerSync, Caddy and web build as Compose — only packaging and supervision differ, via a
-  small Go runtime supervisor that is a CLI first (`waffled-runtime start|status|backup`).
-  Mac only for now; Windows follows from the same runtime later. Plan, risks and phases in
-  [`native-mac-plan.md`](./native-mac-plan.md); Phase 1 is a throwaway native spike to prove
-  bundled Postgres and PowerSync-outside-Docker before any Swift is written.
+- **The rest of the Mac Settings design** — each its own piece of runtime work before a
+  control can appear: photos in a folder of their own (media relocation), backups in a
+  folder of their own, backups that include photos, keeping every backup ("Forever"), an
+  offsite copy to S3/B2/R2, a hostname Caddy actually serves with a certificate, and a beta
+  update channel. Listed with the reason each is not a setting yet in §3d of
+  [`mac-settings-redesign.md`](./mac-settings-redesign.md).
+- **Observability on the Mac — a gap today.** Docker installs can export OpenTelemetry
+  traces and metrics to a collector (`./waffled observability up`, or your own). A Mac
+  install cannot: the bundle ships neither the `otel.js` preload nor the ~100 MB of
+  `@opentelemetry/*` packages, so `OTEL_*` in `config.env` reaches nothing and Diagnostics
+  offers only log level and format. What a Mac has instead is per-service logs, `waffled-runtime
+  doctor` and Settings → System Health — point-in-time, nothing continuous, nothing that
+  leaves the machine. Deferred on purpose (2026-09-11); the work and its forced order are
+  §3d item 8 of [`mac-settings-redesign.md`](./mac-settings-redesign.md).
+- **Waffled for Windows** — the same Go runtime, a different wrapper (a tray app rather
+  than a menu-bar one), and a bundle of Windows binaries instead of Mach-O ones. Nothing in
+  the Mac work forecloses it; §9 of [`native-mac-plan.md`](./native-mac-plan.md) records
+  what would have to change. Not started.
+- **iOS "find your Waffled server"** — Bonjour discovery in the app, so a phone on the same
+  network offers the household's Mac instead of asking for an address. The runtime already
+  advertises `_waffled._tcp`; the phone half is Phase 4 of
+  [`native-mac-plan.md`](./native-mac-plan.md).
 - **Chore due-dates on the calendar.** The last piece of "the calendar as the all-in-one
   dated view": overlay `chore_instances.due_on` onto the calendar as read-only all-day chips,
   tapping through to the chore rather than the event editor. Deliberately chips, not
@@ -465,6 +554,23 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   ignores it entirely; re-planning should preserve it. Un-gated (collaborative/attribution,
   like list authorship — no capability needed to volunteer or reassign a cook).
 
+- **Scheduled plates should reference the library plate, not snapshot it (copy-on-write).**
+  Scheduling a saved plate today **copies** it (`POST /api/meals/:id/schedule` →
+  `copyMeal`), so the night points at a private duplicate. Recipe edits still flow through —
+  the copy holds `meal_recipes.recipe_id` references and the grocery rebuild reads
+  ingredients live — but **editing the saved plate itself never reaches nights already
+  scheduled from it**: add a fourth side to "BBQ Sunday" and last Sunday, and next Sunday,
+  keep the three they had. That leaves two mental models for one slot, which is the real
+  problem: a scheduled *recipe* is a reference, a scheduled *plate* is a snapshot. The fix is
+  to schedule by reference and copy only when someone edits **that night** (swap a side,
+  change the cook, adjust servings) — the behavior people expect by default, while still
+  protecting the template from a one-Tuesday tweak. Two costs to accept up front: editing a
+  plate then also changes **past** nights still using it verbatim (and a grocery rebuild on an
+  old week would follow), and the weekly-planning undo receipt's `mealId` check gets weaker,
+  because re-picking the same library plate would no longer write a fresh `meal_id` — it
+  stays correct, just no longer belt-and-braces. Bounding it to future weeks needs a
+  "has this night been touched" flag; one rule is better than two.
+
 - **Apple Health → goals — remaining follow-ons (iPhone).** Tiers 0–2 shipped (see **Done** —
   the full metric set incl. rings/mindful/mood, the **four distance metrics** (walk + run,
   cycling, swimming, wheelchair — fractional, mi/km per device region), **workout-type metrics**
@@ -554,6 +660,33 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   Apple-Speech dictation against the same `/api/recipes/ingest/*` endpoints, with the two
   import buttons gated on the household's provider. Still planned: **instruction-driven edits**
   ("make it vegetarian", "double it").
+- **API-key scopes declared per route, not by path prefix.** Findings, measurements and
+  the plan in [`api-key-scopes-plan.md`](./api-key-scopes-plan.md). Today `API_SCOPES` maps a
+  path *prefix* to a resource and one global gate enforces it (`scopeForRequest` +
+  `enforceApiKeyScope`), which has two costs. It is **fragile**: the scope lives far from
+  the route, and a hyphenated sibling silently belongs to nobody — `/api/chore-instances`
+  is not under `/api/chores`, `/api/pantry-staples` reads like pantry but is a lists route,
+  and a bare `startsWith` would have made `/api/households/invites` readable with
+  `family:read`. And it is **coarse**: a whole prefix gets one resource, so a surface that
+  writes across modules (Weekly Planning hands out chores, features goals, adds events,
+  fills the meal plan) has *no* correct scope — one `weeklyPlanning` scope would be a
+  skeleton key past `chores:write` and the rest, which is why the prefix sits in
+  `UNSCOPED_YET` instead. Declared per route, each route asks for the downstream scope it
+  actually needs and both problems go. lambda-api supports this directly — method-based
+  middleware (`api.post(path, requireScope('chores:write'), handler)`) and path-scoped
+  `api.use`; earlier comments in `route-guards.ts` and `api-keys.ts` claimed otherwise and
+  were simply wrong.
+  **The trap to design around:** today's model is fail-*closed* by construction — a route
+  absent from the catalog is 403, which is why the 29 planning routes were never an
+  exposure. Naive per-route middleware inverts that: forget the guard and the route is
+  wide open to any key. Global middleware runs *before* route middleware and `finally()`
+  can't alter an already-generated response, so a global default-deny cannot be cleared by
+  a later route guard. The fix is therefore a **typed registrar** wrapping
+  `api.get/post/...` where a scope — or an explicit `sessionOnly` marker — is a *required*
+  argument, so omission is a compile error and fail-closed survives the move. Retires the
+  `scope catalog covers the route table` guard in `api-keys.integration.test.ts` and both
+  deny buckets in `api-keys.ts`, which exist only because the declaration is remote from
+  the route. ~135 routes, mechanical but wide.
 - **Shared album import** for Photos (Google Photos / iCloud).
 - **Server-side fuzzy person resolution** for capture (nicknames/aliases).
 - **Milestone reward payouts** — deferred by design (needs idempotency + attribution rules).

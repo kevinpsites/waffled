@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // AppName is the folder Waffled uses inside the platform's application-support location.
@@ -22,6 +23,12 @@ const AppName = "Waffled"
 // under this leaves room for that plus a margin. Exceed it and the postmaster starts,
 // logs nothing alarming, and is simply unreachable over the socket.
 const maxSocketDirLen = 85
+
+// SocketDirPrefix names the fallback socket directory made when the data path is too
+// long. `uninstall` matches on it: that directory is the one thing outside the data root
+// this runtime deletes, and the path comes out of runtime.json, so the prefix is what
+// keeps a hand-edited file from turning an uninstall into an rm -rf of somewhere else.
+const SocketDirPrefix = "wfl"
 
 // Layout is every path the runtime uses, derived from one root.
 type Layout struct {
@@ -41,6 +48,9 @@ type Layout struct {
 	CaddyfilePath string
 	// BundleCache memoizes a successful manifest verification (see internal/manifest).
 	BundleCache string
+	// BonjourState records what the running supervisor is advertising, so `status` —
+	// which runs in a different process — can report it without asking the database.
+	BonjourState string
 }
 
 // At derives the layout from a root directory.
@@ -58,6 +68,7 @@ func At(root string) Layout {
 		Caddy:         filepath.Join(root, "caddy"),
 		CaddyfilePath: filepath.Join(root, "Caddyfile"),
 		BundleCache:   filepath.Join(root, "bundle-verified.json"),
+		BonjourState:  filepath.Join(root, "bonjour.json"),
 	}
 }
 
@@ -101,7 +112,7 @@ func (l Layout) SocketDir(recorded string) (dir string, fellBack bool, err error
 	if len(l.Postgres) <= maxSocketDirLen {
 		return l.Postgres, false, nil
 	}
-	tmp, err := os.MkdirTemp("", "wfl")
+	tmp, err := os.MkdirTemp("", SocketDirPrefix)
 	if err != nil {
 		return "", false, fmt.Errorf("create a short postgres socket directory: %w", err)
 	}
@@ -145,4 +156,29 @@ func (l Layout) Risks() []string {
 		}
 	}
 	return warnings
+}
+
+// HumanBytes renders a size the way every command that prints one renders it. It lives
+// here because the data directory is the thing whose size gets printed — by `uninstall`,
+// by `move`, and by `doctor`'s disk-space check.
+func HumanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for rest := n / unit; rest >= unit; rest /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+// FreeBytes is how much room the volume holding path has left.
+func FreeBytes(path string) (uint64, error) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(path, &st); err != nil {
+		return 0, err
+	}
+	return uint64(st.Bavail) * uint64(st.Bsize), nil
 }

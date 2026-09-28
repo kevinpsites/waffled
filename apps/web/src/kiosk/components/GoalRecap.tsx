@@ -7,7 +7,7 @@
 //                     detail ("Event to be reviewed").
 // Nothing is written until a row is confirmed. Colors follow the palette: coral
 // for Confirm, violet for the recap accent — no green.
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useGoalRecap, useGoalSuggestions, goalCalendarApi, usePersons, type RecapItem, type RecapState, type Suggestion, type SuggestionsState } from '../../lib/api'
 import type { Person } from '../../lib/api'
 import { Icon } from '../icons'
@@ -389,7 +389,18 @@ export function ReviewList({ goalId, variant }: { goalId?: string | null; varian
 function SuggestionCard({ state }: { state: SuggestionsState }) {
   const { items, loading, refetch } = state
   const [busy, setBusy] = useState<Record<string, boolean>>({})
+  // The row whose "Ignore…" picker is open, and the words picked in it.
+  const [ignoring, setIgnoring] = useState<string | null>(null)
+  const [picked, setPicked] = useState<string[]>([])
   if (loading || items.length === 0) return null
+
+  function openIgnore(s: Suggestion) {
+    setIgnoring(ignoring === s.eventId ? null : s.eventId)
+    setPicked([])
+  }
+  function toggleWord(w: string) {
+    setPicked((p) => (p.includes(w) ? p.filter((x) => x !== w) : [...p, w]))
+  }
 
   async function act(s: Suggestion, fn: () => Promise<unknown>) {
     setBusy((b) => ({ ...b, [s.eventId]: true }))
@@ -413,7 +424,8 @@ function SuggestionCard({ state }: { state: SuggestionsState }) {
       </div>
       <div className="recap-rows">
         {items.map((s) => (
-          <div key={s.eventId} className="recap-row">
+          <Fragment key={s.eventId}>
+          <div className="recap-row">
             <div className="recap-ico">{s.goalEmoji ?? '🎯'}</div>
             <div className="recap-main">
               <div className="recap-name">{s.title}</div>
@@ -439,8 +451,46 @@ function SuggestionCard({ state }: { state: SuggestionsState }) {
               >
                 Dismiss
               </button>
+              {s.ignoreWords?.length > 0 && (
+                <button
+                  type="button"
+                  className="recap-didnt"
+                  aria-expanded={ignoring === s.eventId}
+                  disabled={!!busy[s.eventId]}
+                  onClick={() => openIgnore(s)}
+                >
+                  Ignore…
+                </button>
+              )}
             </div>
           </div>
+          {ignoring === s.eventId && (
+            <div className="recap-ignore">
+              <div className="recap-ignore-t">Stop suggesting events with these words for {s.goalTitle}:</div>
+              <div className="recap-ignore-words">
+                {s.ignoreWords.map((w) => {
+                  const on = picked.includes(w)
+                  return (
+                    <button key={w} type="button" className={`recap-chip ${on ? 'on' : ''}`} aria-pressed={on} onClick={() => toggleWord(w)}>
+                      {w}
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="recap-ignore-act">
+                <button type="button" className="btn btn-ghost" onClick={() => setIgnoring(null)}>Cancel</button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={picked.length === 0 || !!busy[s.eventId]}
+                  onClick={() => act(s, () => goalCalendarApi.ignore({ goalId: s.goalId, words: picked }).then(() => setIgnoring(null)))}
+                >
+                  Ignore for this goal
+                </button>
+              </div>
+            </div>
+          )}
+          </Fragment>
         ))}
       </div>
     </div>

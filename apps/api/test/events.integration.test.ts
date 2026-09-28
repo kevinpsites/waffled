@@ -285,6 +285,24 @@ describe('events api', () => {
     expect(r.events.some((e: { title: string }) => e.title === 'Swim lessons')).toBe(true)
   })
 
+  // A week or month grid draws a trip that began before it, so the range has to include it. All-day
+  // ends are exclusive: "Lake week" covers Jun 5–9 in Chicago, "Long weekend" Jun 5–7.
+  it('returns an all-day trip that started before the range and is still on in it', async () => {
+    const lake = await call('POST', '/api/events', kevin, {
+      title: 'Lake week', startsAt: '2026-06-05T17:00:00Z', endsAt: '2026-06-10T17:00:00Z', allDay: true,
+    })
+    expect(lake.statusCode).toBe(201)
+    const weekend = await call('POST', '/api/events', kevin, {
+      title: 'Long weekend', startsAt: '2026-06-05T17:00:00Z', endsAt: '2026-06-08T17:00:00Z', allDay: true,
+    })
+    expect(weekend.statusCode).toBe(201)
+
+    const r = JSON.parse((await call('GET', '/api/events?from=2026-06-08&to=2026-06-09', kevin)).body)
+    const titles = r.events.map((e: { title: string }) => e.title)
+    expect(titles).toContain('Lake week')
+    expect(titles).not.toContain('Long weekend')
+  })
+
   it('supports multiple participants (date night) and replaces them on edit', async () => {
     const kelly = JSON.parse(
       (await call('POST', '/api/persons', kevin, { name: 'Kelly', memberType: 'adult', colorHex: '#E0548B' })).body

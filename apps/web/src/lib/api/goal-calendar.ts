@@ -36,6 +36,16 @@ export interface Suggestion {
   goalTitle: string
   goalEmoji: string | null
   via: 'memory' | 'keyword' | 'llm'
+  // Title words the person can pick to stop suggesting events like this for the goal.
+  ignoreWords: string[]
+}
+
+// Settings → Smart matching: words ignored per goal.
+export interface IgnoreGroup {
+  goalId: string
+  goalTitle: string
+  goalEmoji: string | null
+  words: string[]
 }
 
 export const goalCalendarApi = {
@@ -62,6 +72,11 @@ export const goalCalendarApi = {
     apiSend<{ ok: boolean }>('POST', '/api/goal-calendar/suggestions/link', body).then(tap('goals')),
   dismiss: (body: { eventId: string }) =>
     apiSend<{ ok: boolean }>('POST', '/api/goal-calendar/suggestions/dismiss', body),
+  ignore: (body: { goalId: string; words: string[] }) =>
+    apiSend<{ ok: boolean }>('POST', '/api/goal-calendar/suggestions/ignore', body),
+  ignores: () => apiGet<{ groups: IgnoreGroup[] }>('/api/goal-calendar/ignores'),
+  removeIgnore: (body: { goalId: string; word: string }) =>
+    apiSend<{ ok: boolean }>('POST', '/api/goal-calendar/ignores/remove', body),
   // Settings → Smart matching: the learned word→goal cache, view + forget.
   memory: () => apiGet<{ groups: MemoryGroup[] }>('/api/goal-calendar/memory'),
   forgetMemory: (body: { goalId: string; token?: string | null }) =>

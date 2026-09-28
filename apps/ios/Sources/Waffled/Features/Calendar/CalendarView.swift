@@ -1,17 +1,22 @@
 import SwiftUI
 
-/// Calendar tab — an upcoming-agenda list grouped by day, read live from the
-/// local mirror. (A month grid can follow; the agenda is the high-value first cut
-/// and exercises the same synced data as Today.)
+/// Calendar tab on iPhone: Month is home, a tapped day pushes Day, and the header's view menu
+/// (or a pinch) switches between Month, Week, Day and Agenda — Agenda carries the AI capture
+/// bar. Screens live in `PhoneCalendarViews.swift`; see docs/product/ios-calendar-redesign.md.
 struct CalendarView: View {
+    typealias CalMode = PhoneCalendar.Mode
+
     @Environment(SyncManager.self) private var sync
     /// A reminder tap routes here with the event id to open (see AppRoot).
     var openEventId: Binding<String?> = .constant(nil)
     @State private var editing: EventEditTarget?
-    /// Tapping an event opens its full detail (the editor is reached from there).
     @State private var detailEvent: SyncedEvent?
     /// Remembered across tab switches + launches, so your preferred view sticks.
-    @AppStorage("waffled.calendarMode") private var mode: CalMode = .agenda
+    @AppStorage("waffled.calendarMode") private var storedMode: CalMode = .month
+    /// The screen under a pushed Day: Month, Week or Agenda.
+    @State private var root: CalMode = .month
+    @State private var showsDay = false
+    @State private var restoredMode = false
     @State private var filterPerson: String?       // nil = Everyone
     @State private var monthAnchor = Date()         // the month the grid shows
     @State private var selectedDay = Agenda.todayKey(TimeZone.current)
@@ -20,21 +25,6 @@ struct CalendarView: View {
     @State private var countdowns = CountdownsModel()
     @State private var editingCountdown: WaffledAPI.Countdown?
 
-    /// No People mode here on purpose — it's iPad-only. A phone splits into columns
-    /// too narrow to read (four members already truncate titles to "Dinn…"), and the
-    /// person filter below covers "just show me one person's day" on a phone.
-    enum CalMode: String, CaseIterable { case agenda, month, day
-        var label: String { rawValue.capitalized }
-        var icon: String {
-            switch self {
-            case .agenda: return "list.bullet"
-            case .month: return "calendar"
-            case .day: return "calendar.day.timeline.left"
-            }
-        }
-    }
-
-    /// What the event editor sheet is creating/editing.
     enum EventEditTarget: Identifiable {
         case new(Date)
         case edit(SyncedEvent)
@@ -47,20 +37,17 @@ struct CalendarView: View {
     }
 
     private var tz: TimeZone { sync.householdTz }
-    /// The household's first day of the week — the month grid and its headings follow
-    /// it. Sunday until the setting reaches this device (it's persisted across launches,
-    /// so that's only ever a fresh install).
+    /// The household's first day of the week. Sunday until the setting reaches this device.
     private var firstDay: HouseholdWeekStart { sync.householdWeekStart ?? .sunday }
-    /// Events filtered to the selected person — owner or a participant — or all.
-    private var filtered: [SyncedEvent] {
-        guard let p = filterPerson else { return sync.events }
-        return sync.events.filter { $0.personId == p || $0.participantIds.contains(p) }
+    private var mode: CalMode { showsDay ? .day : root }
+    /// Day → events for the grids: the index `SyncManager` keeps, narrowed by the person filter.
+    private var dayIndex: [String: [SyncedEvent]] {
+        Agenda.filtered(byDay: sync.eventsByDay, person: filterPerson)
     }
     private var groups: [(day: String, items: [SyncedEvent])] {
-        Agenda.upcoming(filtered, from: Agenda.todayKey(tz), tz: tz)
+        Agenda.upcoming(byDay: dayIndex, from: Agenda.todayKey(tz))
     }
-    /// Agenda day keys = union of event days and countdown days (today forward), sorted —
-    /// so a day with only a countdown still appears (countdowns behave like all-day events).
+    /// Agenda day keys = event days ∪ countdown days (today forward), so a countdown-only day shows.
     private var agendaDays: [String] {
         let todayKey = Agenda.todayKey(tz)
         var days = Set(groups.map { $0.day })
@@ -69,32 +56,14 @@ struct CalendarView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header.padding(.horizontal, 18).padding(.top, 8).padding(.bottom, 10)
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: mode == .agenda ? 18 : 14) {
-                        switch mode {
-                        case .agenda: agendaContent
-                        case .month:  monthContent
-                        case .day:    dayContent
-                        }
-                    }
-                    .padding(.horizontal, 18).padding(.bottom, WF.tabBarClearance)
-                }
-                // When the day grid appears, jump to the morning (or the first event).
-                .task(id: "\(mode.rawValue)-\(selectedDay)") {
-                    guard mode == .day else { return }
-                    try? await Task.sleep(for: .milliseconds(60))
-                    withAnimation { proxy.scrollTo(dayScrollHour(), anchor: .top) }
-                }
-                // Swipe left/right on the month or day grid to step to the next/previous
-                // month or day. Simultaneous (not exclusive) so vertical scrolling still
-                // works; we only act on a clearly-horizontal flick.
-                .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded(handleCalendarSwipe))
-            }
+        NavigationStack {
+            rootScreen
+                .background(WF.canvas)
+                .toolbar(.hidden, for: .navigationBar)
+                // Read by the pushed Day's system back button ("‹ September").
+                .navigationTitle(monthName(selectedDay))
+                .navigationDestination(isPresented: $showsDay) { dayScreen }
         }
-        .background(WF.canvas)
         .sheet(item: $editing) { target in
             switch target {
             case let .new(date): EventEditSheet(event: nil, initialDate: date)
@@ -112,61 +81,186 @@ struct CalendarView: View {
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
         }
-        // Open the event a tapped reminder routed us to (once it's in the mirror).
+        .task { restoreMode() }
         .task { openReminderEvent(openEventId.wrappedValue) }
         .task { await countdowns.load() }
+        // The root, not `mode`: a Day tapped open from Month is a drill-in, and remembering it
+        // would reopen the tab on today's Day (the tab rebuilds this view, resetting the day).
+        .onChange(of: root) { _, m in storedMode = m }
+        .onChange(of: showsDay) { _, pushed in
+            // Back from a Day you paged through lands on that day's month.
+            if !pushed, let d = dayKeyToDate(selectedDay) { monthAnchor = d }
+        }
         .onChange(of: openEventId.wrappedValue) { _, id in openReminderEvent(id) }
         .onChange(of: sync.events) { _, _ in
             if openEventId.wrappedValue != nil { openReminderEvent(openEventId.wrappedValue) }
         }
     }
 
-    /// Open an event's detail by id (from a reminder tap), then clear the request.
     private func openReminderEvent(_ id: String?) {
         guard let id, let ev = sync.events.first(where: { $0.id == id }) else { return }
         detailEvent = ev
         openEventId.wrappedValue = nil
     }
 
-    // MARK: header (month title + view toggle + add)
+    // MARK: navigation
 
-    private var header: some View {
-        HStack(spacing: 12) {
-            switch mode {
-            case .agenda:
-                Text(monthTitle(Date(), year: false)).font(WF.serif(30)).foregroundStyle(WF.ink)
-            case .month:
-                Button { stepMonth(-1) } label: { chevron("chevron.left") }
-                Text(monthTitle(monthAnchor, year: true)).font(WF.serif(24)).foregroundStyle(WF.ink).lineLimit(1)
-                Button { stepMonth(1) } label: { chevron("chevron.right") }
-            case .day:
-                Button { stepDay(-1) } label: { chevron("chevron.left") }
-                Text(dayTitle(selectedDay)).font(WF.serif(22)).foregroundStyle(WF.ink).lineLimit(1)
-                Button { stepDay(1) } label: { chevron("chevron.right") }
-            }
-            Spacer()
-            Menu {
-                ForEach(CalMode.allCases, id: \.self) { m in
-                    Button { withAnimation { mode = m } } label: { Label(m.label, systemImage: m.icon) }
-                }
-            } label: {
-                Image(systemName: mode.icon)
-                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink2)
-                    .frame(width: 38, height: 38).background(WF.card).clipShape(Circle())
-                    .overlay(Circle().strokeBorder(WF.hair, lineWidth: 1))
-            }
-            Button { editing = .new(mode == .agenda ? Date() : (dayKeyToDate(selectedDay) ?? Date())) } label: {
-                Image(systemName: "plus").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
-                    .frame(width: 38, height: 38).background(WF.primary).clipShape(Circle())
-            }
-            .buttonStyle(.plain)
+    private func restoreMode() {
+        guard !restoredMode else { return }
+        restoredMode = true
+        let start = CalMode.restored(stored: storedMode,
+                                     override: DemoHooks.kioskCalMode.flatMap(CalMode.init(rawValue:)))
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) { show(start) }
+    }
+
+    /// Month pages by `monthAnchor`, Week by `selectedDay`; switching between them carries the
+    /// position across so you land on the same stretch of time.
+    private func show(_ target: CalMode) {
+        if target == .day {
+            showsDay = true
+            return
+        }
+        if target == .month, root != .month, let d = dayKeyToDate(selectedDay) {
+            monthAnchor = d
+        }
+        if target == .week, root == .month, !showsDay {
+            selectedDay = PhoneCalendar.focusDay(selected: selectedDay, inMonthOf: monthAnchor,
+                                                 today: Agenda.todayKey(tz), tz: tz)
+        }
+        root = target
+        showsDay = false
+    }
+
+    // MARK: screens
+
+    @ViewBuilder private var rootScreen: some View {
+        switch root {
+        case .week: weekScreen
+        case .agenda: agendaScreen
+        case .month, .day: monthScreen
         }
     }
 
-    private func chevron(_ s: String) -> some View {
-        Image(systemName: s).font(.system(size: 13, weight: .heavy)).foregroundStyle(WF.ink2)
-            .frame(width: 30, height: 30).background(WF.card).clipShape(Circle())
-            .overlay(Circle().strokeBorder(WF.hair, lineWidth: 1))
+    private var monthScreen: some View {
+        VStack(spacing: 0) {
+            header {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(DateFmt.string(monthAnchor, "MMMM", tz)).font(WF.serif(25)).foregroundStyle(WF.ink)
+                    Text(DateFmt.string(monthAnchor, "yyyy", tz)).font(WF.serif(25, .regular)).foregroundStyle(WF.ink3)
+                }
+                .lineLimit(1)
+            }
+            PhoneMonthGrid(rows: PhoneCalendar.monthRows(monthAnchor, tz: tz, firstDay: firstDay),
+                           firstDay: firstDay, tz: tz, byDay: dayIndex, countdownsByDay: countdowns.byDate,
+                           todayKey: Agenda.todayKey(tz), selectedDay: selectedDay,
+                           onPick: { key in selectedDay = key; show(.day) })
+                .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { value in
+                    if let step = HorizontalSwipe.step(value) { stepMonth(step) }
+                })
+        }
+        .padding(.bottom, WF.fixedBarClearance)
+        .calendarPinchZoom { show(mode.zoomed(in: $0)) }
+    }
+
+    private var weekScreen: some View {
+        let days = PhoneCalendar.weekDays(containing: selectedDay, tz: tz, firstDay: firstDay)
+        return VStack(spacing: 0) {
+            header {
+                Text(PhoneCalendar.weekTitle(days, tz: tz)).font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(WF.ink).lineLimit(1)
+            }
+            PhoneWeekRail(days: days, tz: tz, firstDay: firstDay, byDay: dayIndex, countdownsByDay: countdowns.byDate,
+                          todayKey: Agenda.todayKey(tz), selectedDay: $selectedDay,
+                          onEditEvent: { editing = .edit($0) },
+                          onTapCountdown: openCountdown)
+        }
+        .padding(.bottom, WF.fixedBarClearance)
+        .calendarPinchZoom { show(mode.zoomed(in: $0)) }
+    }
+
+    private var dayScreen: some View {
+        PhoneDayTimeline(day: selectedDay, tz: tz, events: dayIndex[selectedDay] ?? [],
+                         countdowns: countdowns.byDate[selectedDay] ?? [],
+                         isToday: selectedDay == Agenda.todayKey(tz),
+                         onTapEvent: { detailEvent = $0 },
+                         onTapCountdown: openCountdown,
+                         onAddAt: { editing = .new($0) },
+                         onSwipeDay: stepDay)
+            .padding(.bottom, WF.fixedBarClearance)
+            .background(WF.canvas)
+            .calendarPinchZoom { show(mode.zoomed(in: $0)) }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    optionsMenu
+                    addButton
+                }
+            }
+    }
+
+    private var agendaScreen: some View {
+        VStack(spacing: 0) {
+            header { Text(monthTitle(Date(), year: false)).font(WF.serif(30)).foregroundStyle(WF.ink) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) { agendaContent }
+                    .padding(.horizontal, 18).padding(.bottom, WF.tabBarClearance)
+            }
+        }
+    }
+
+    // MARK: header (title + view/filter menu + add)
+
+    private func header<Title: View>(@ViewBuilder _ title: () -> Title) -> some View {
+        HStack(spacing: 8) {
+            title()
+            Spacer(minLength: 8)
+            optionsMenu
+            addButton
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 52)
+    }
+
+    /// The view switcher: its icon names the current view, and the menu also holds the
+    /// per-person filter, marked by a dot while one is on.
+    private var optionsMenu: some View {
+        Menu {
+            Picker("View", selection: Binding(get: { mode }, set: { m in withAnimation { show(m) } })) {
+                ForEach(CalMode.allCases, id: \.self) { m in Label(m.label, systemImage: m.icon).tag(m) }
+            }
+            .pickerStyle(.inline)
+            Picker("Show", selection: $filterPerson.animation()) {
+                Label("Everyone", systemImage: "person.2").tag(String?.none)
+                ForEach(sync.members) { m in Text(m.name).tag(Optional(m.id)) }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            Image(systemName: mode.icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(WF.ink2)
+                .frame(width: 32, height: 32)
+                .background(WF.card, in: Circle())
+                .overlay(Circle().strokeBorder(WF.hair, lineWidth: 1))
+                .overlay(alignment: .topTrailing) {
+                    if filterPerson != nil {
+                        Circle().fill(WF.primary).frame(width: 9, height: 9)
+                            .overlay(Circle().strokeBorder(WF.canvas, lineWidth: 1.5))
+                    }
+                }
+        }
+        .accessibilityLabel("\(mode.label) view")
+        .accessibilityValue(filterPerson == nil ? "Everyone" : "Filtered to one person")
+    }
+
+    private var addButton: some View {
+        Button { editing = .new(mode == .agenda ? Date() : (dayKeyToDate(selectedDay) ?? Date())) } label: {
+            Image(systemName: "plus").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 34, height: 34).background(WF.primary, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("New event")
     }
 
     // MARK: agenda
@@ -216,7 +310,6 @@ struct CalendarView: View {
                 if let m = member {
                     Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 24)
                 } else {
-                    // "Everyone" — a family glyph so the chip matches the person chips' size.
                     Image(systemName: "person.2.fill").font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(on ? WF.onInk : WF.ink2)
                         .frame(width: 24, height: 24)
@@ -233,89 +326,8 @@ struct CalendarView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: month grid
-
-    @ViewBuilder private var monthContent: some View {
-        let cells = monthCells(monthAnchor)
-        VStack(spacing: 8) {
-            HStack(spacing: 0) {
-                // Rotated to the household's first day. Indexed by offset, not by the
-                // label: "T" and "S" each appear twice, so `id: \.self` would collide.
-                ForEach(Array(Cal.rotated(["S", "M", "T", "W", "T", "F", "S"], from: firstDay).enumerated()), id: \.offset) { _, d in
-                    Text(d).font(.system(size: 11, weight: .heavy)).foregroundStyle(WF.ink3)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 4) {
-                ForEach(cells, id: \.key) { cell in monthCell(cell) }
-            }
-        }
-        .padding(12)
-        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
-
-        dayHeading(selectedDay).padding(.top, 6)
-        let dayItems = Agenda.forDay(filtered, day: selectedDay, tz: tz)
-        let dayCountdowns = countdownsForDay(selectedDay)
-        if dayItems.isEmpty && dayCountdowns.isEmpty {
-            Button { editing = .new(dayKeyToDate(selectedDay) ?? Date()) } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "plus").font(.system(size: 12, weight: .heavy))
-                    Text("Add an event").font(.system(size: 14, weight: .semibold))
-                }
-                .foregroundStyle(WF.ink3).padding(.vertical, 10)
-            }
-            .buttonStyle(.plain)
-        } else {
-            VStack(spacing: 8) {
-                ForEach(dayItems) { ev in EventCard(event: ev, tz: tz) { detailEvent = ev } }
-                ForEach(dayCountdowns) { c in CountdownCard(countdown: c, sleeps: countdowns.sleeps) { openCountdown(c) } }
-            }
-        }
-    }
-
-    private func monthCell(_ cell: MonthCell) -> some View {
-        let isSelected = cell.key == selectedDay
-        let isToday = cell.key == Agenda.todayKey(tz)
-        // The whole cell is the day-select Button. A countdown is shown only as a
-        // (non-interactive) badge indicator here — tapping the day selects it and the
-        // countdown then appears as an all-day row in the detail list below, where it's
-        // tappable to edit (countdowns are treated like all-day events across the views).
-        return Button { withAnimation { selectedDay = cell.key } } label: {
-            VStack(spacing: 3) {
-                Text("\(cell.day)")
-                    .font(.system(size: 14, weight: isToday ? .heavy : .semibold))
-                    .foregroundStyle(cell.inMonth ? (isToday ? WF.primary : WF.ink) : WF.ink3.opacity(0.5))
-                if let cds = countdowns.byDate[cell.key], let first = cds.first {
-                    HStack(spacing: 2) {
-                        Text(first.emoji ?? "⏳").font(.system(size: 8))
-                        Text(CountdownFormat.short(first.daysLeft)).font(.system(size: 8, weight: .heavy)).foregroundStyle(WF.warn)
-                        if cds.count > 1 { Text("+\(cds.count - 1)").font(.system(size: 8, weight: .bold)).foregroundStyle(WF.ink3) }
-                    }
-                    .padding(.horizontal, 3).padding(.vertical, 1)
-                    .background(WF.warnT).clipShape(Capsule())
-                } else {
-                    HStack(spacing: 2) {
-                        ForEach(Array(dotColors(cell.key).prefix(3).enumerated()), id: \.offset) { _, hex in
-                            Circle().fill(Color(hexString: hex) ?? WF.ink3).frame(width: 5, height: 5)
-                        }
-                    }
-                    .frame(height: 5)
-                }
-            }
-            .frame(maxWidth: .infinity).frame(height: 44)
-            .background(isSelected ? WF.primary.opacity(0.12) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(isSelected ? WF.primary : Color.clear, lineWidth: 1.5))
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// Tapping a countdown row: standalone → inline editor (rename/move/remove); an
-    /// event-source countdown (`id` == event id) → that event's detail (falls back to
-    /// nothing if the id doesn't resolve, e.g. a recurring series); birthday → no-op
-    /// (managed on the person's profile).
+    /// A countdown row: standalone → inline editor; event-source (`id` == event id) → that
+    /// event's detail; birthday → no-op.
     private func openCountdown(_ c: WaffledAPI.Countdown) {
         switch c.source {
         case "standalone": editingCountdown = c
@@ -324,154 +336,14 @@ struct CalendarView: View {
         }
     }
 
-    /// Countdowns for a day, only from today forward (past countdowns drop off, like the
-    /// Today card). Keyed by the same `YYYY-MM-DD` as the event day buckets.
     private func countdownsForDay(_ day: String) -> [WaffledAPI.Countdown] {
         countdowns.byDate[day] ?? []
     }
 
-    /// Distinct event colors on a day (for the month dots) — whole-family events
-    /// contribute the family color, so a day everyone is on shows one dot, not three.
-    private func dotColors(_ key: String) -> [String] {
-        var seen = Set<String>(); var colors: [String] = []
-        let palette = sync.eventPalette
-        for e in filtered where Agenda.dayKey(e, tz) == key {
-            let hex = palette.hex(for: e) ?? "#A6A29B"
-            if seen.insert(hex).inserted { colors.append(hex) }
-        }
-        return colors
-    }
-
-    // MARK: day grid
-
-    private static let hourHeight: CGFloat = 52
-
-    @ViewBuilder private var dayContent: some View {
-        let all = Agenda.forDay(filtered, day: selectedDay, tz: tz)
-        let allDay = all.filter { $0.allDay }
-        let timed = all.filter { !$0.allDay && $0.startsAt != nil }
-        let dayCountdowns = countdownsForDay(selectedDay)
-
-        if !allDay.isEmpty || !dayCountdowns.isEmpty {
-            VStack(spacing: 6) {
-                ForEach(allDay) { ev in EventCard(event: ev, tz: tz) { detailEvent = ev } }
-                ForEach(dayCountdowns) { c in CountdownCard(countdown: c, sleeps: countdowns.sleeps) { openCountdown(c) } }
-            }
-        }
-        ZStack(alignment: .topLeading) {
-            VStack(spacing: 0) {
-                ForEach(0..<24, id: \.self) { h in
-                    Button { editing = .new(dateAt(hour: h)) } label: {
-                        HStack(alignment: .top, spacing: 8) {
-                            Text(hourLabel(h)).font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(WF.ink3).frame(width: 48, alignment: .trailing)
-                            Rectangle().fill(WF.hair).frame(height: 1)
-                            Spacer(minLength: 0)
-                        }
-                        .frame(height: Self.hourHeight, alignment: .top)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .id(h)
-                }
-            }
-            ForEach(timed) { ev in dayBlock(ev) }
-            // The "now" line, only on today.
-            if selectedDay == Agenda.todayKey(tz) { nowLine }
-        }
-        .padding(.top, 2)
-    }
-
-    /// Live red current-time indicator (dot in the hour gutter + a rule across the day),
-    /// repositioned every minute. Only shown when the day view is on today.
-    private var nowLine: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { ctx in
-            let comps = hourMinute(ctx.date)
-            let y = (CGFloat(comps.h) + CGFloat(comps.m) / 60) * Self.hourHeight
-            ZStack(alignment: .leading) {
-                Rectangle().fill(Self.nowRed).frame(height: 2).padding(.leading, 56)
-                Circle().fill(Self.nowRed).frame(width: 8, height: 8).offset(x: 52)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .offset(y: y - 1)
-            .allowsHitTesting(false)
-        }
-    }
-
-    private static let nowRed = Color(red: 0.89, green: 0.22, blue: 0.20)
-
-    @ViewBuilder private func dayBlock(_ ev: SyncedEvent) -> some View {
-        if let start = ev.startsAt {
-            let comps = hourMinute(start)
-            let y = (CGFloat(comps.h) + CGFloat(comps.m) / 60) * Self.hourHeight
-            let durMin = ev.endsAt.map { max(30, $0.timeIntervalSince(start) / 60) } ?? 60
-            let height = max(30, CGFloat(durMin) / 60 * Self.hourHeight - 4)
-            // A chip *with a background*, so the household's event style applies (the
-            // leading rule stays the raw color — in solid it merges into the fill, which
-            // is exactly what the web's matching `border-left` does).
-            let paint = sync.eventPalette.chip(for: ev)
-            Button { detailEvent = ev } label: {
-                HStack(spacing: 7) {
-                    RoundedRectangle(cornerRadius: 99).fill(paint.color).frame(width: 3)
-                    VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 3) {
-                            RhythmEventMark(event: ev, size: 11)
-                            Text(ev.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(paint.foreground).lineLimit(1)
-                        }
-                        if height > 40 {
-                            Text(EventTime.timeLabel(start, tz)).font(.system(size: 10.5, weight: .medium))
-                                .foregroundStyle(paint.foreground.opacity(0.75))
-                        }
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 8).padding(.vertical, 5)
-                .frame(maxWidth: .infinity, alignment: .leading).frame(height: height, alignment: .top)
-                .background(paint.background)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .padding(.leading, 60).padding(.trailing, 2)
-            .offset(y: y)
-        }
-    }
-
-    private func hourLabel(_ h: Int) -> String {
-        let hr = h % 12 == 0 ? 12 : h % 12
-        return "\(hr) \(h < 12 ? "AM" : "PM")"
-    }
-    private func hourMinute(_ date: Date) -> (h: Int, m: Int) {
-        let cal = Cal.gregorian(tz)
-        let c = cal.dateComponents([.hour, .minute], from: date)
-        return (c.hour ?? 0, c.minute ?? 0)
-    }
-    private func dateAt(hour: Int) -> Date {
-        let cal = Cal.gregorian(tz)
-        let base = dayKeyToDate(selectedDay) ?? Date()
-        return cal.date(bySettingHour: hour, minute: 0, second: 0, of: base) ?? base
-    }
-    /// Hour to scroll the day grid to: one before the first event, else 7 AM.
-    private func dayScrollHour() -> Int {
-        let starts = Agenda.forDay(filtered, day: selectedDay, tz: tz)
-            .filter { !$0.allDay }.compactMap(\.startsAt)
-        if let first = starts.min() { return max(0, hourMinute(first).h - 1) }
-        return 7
-    }
-    private func stepDay(_ n: Int) {
-        let cal = Cal.gregorian(tz)
-        if let d = dayKeyToDate(selectedDay), let nd = cal.date(byAdding: .day, value: n, to: d) {
-            withAnimation { selectedDay = EventTime.dayKey(nd, tz) }
-        }
-    }
-    private func dayTitle(_ key: String) -> String {
-        guard let d = dayKeyToDate(key) else { return key }
-        return DateFmt.string(d, "EEE · MMM d", tz)
-    }
-
     // MARK: helpers
 
-    private func monthTitle(_ date: Date, year: Bool) -> String {
-        return DateFmt.string(date, year ? "MMMM yyyy" : "MMMM", tz)
+    private func stepDay(_ n: Int) {
+        withAnimation { selectedDay = PhoneCalendar.shift(selectedDay, byDays: n, tz: tz) }
     }
 
     private func stepMonth(_ n: Int) {
@@ -479,39 +351,18 @@ struct CalendarView: View {
         if let d = cal.date(byAdding: .month, value: n, to: monthAnchor) { withAnimation { monthAnchor = d } }
     }
 
-    /// Horizontal flick on the grid → step month (month view) or day (day view). Ignored
-    /// in agenda mode (a continuous list) and for predominantly-vertical drags.
-    private func handleCalendarSwipe(_ value: DragGesture.Value) {
-        guard let dir = HorizontalSwipe.step(value) else { return }
-        switch mode {
-        case .month: stepMonth(dir)
-        case .day:   stepDay(dir)
-        case .agenda: break
-        }
+    private func monthTitle(_ date: Date, year: Bool) -> String {
+        DateFmt.string(date, year ? "MMMM yyyy" : "MMMM", tz)
+    }
+
+    private func monthName(_ key: String) -> String {
+        dayKeyToDate(key).map { DateFmt.string($0, "MMMM", tz) } ?? "Calendar"
     }
 
     private func dayKeyToDate(_ key: String) -> Date? {
-        return DateFmt.date(key, "yyyy-MM-dd", tz)
+        DateFmt.date(key, "yyyy-MM-dd", tz)
     }
 
-    struct MonthCell { let key: String; let day: Int; let inMonth: Bool }
-
-    /// 42 day-cells (6 weeks) covering `anchor`'s month, led by the household's own
-    /// first day of the week rather than a fixed Sunday.
-    private func monthCells(_ anchor: Date) -> [MonthCell] {
-        let cal = Cal.gregorian(tz)
-        let comps = cal.dateComponents([.year, .month], from: anchor)
-        guard let first = cal.date(from: comps) else { return [] }
-        let anchorMonth = cal.component(.month, from: first)
-        let start = Cal.weekStart(first, tz, firstDay)
-        return (0..<42).compactMap { i in
-            guard let d = cal.date(byAdding: .day, value: i, to: start) else { return nil }
-            return MonthCell(key: EventTime.dayKey(d, tz), day: cal.component(.day, from: d),
-                             inMonth: cal.component(.month, from: d) == anchorMonth)
-        }
-    }
-
-    /// A day heading: serif relative label ("Today") + gray date ("Sat · May 31").
     @ViewBuilder private func dayHeading(_ key: String) -> some View {
         HStack(spacing: 8) {
             Text(relativeLabel(key)).font(WF.serif(20)).foregroundStyle(WF.ink)
@@ -535,9 +386,8 @@ struct CalendarView: View {
     }
 }
 
-/// One agenda event as its own rounded card — time, event color bar, title, owner
-/// avatar — matching the mobile calendar mock. The bar takes the family color on a
-/// whole-family event; the avatar stays the owner's, because that's identity.
+/// One agenda event as a rounded card. The colour bar takes the family colour on a whole-family
+/// event; the avatar stays the owner's, because that's identity.
 struct EventCard: View {
     @Environment(SyncManager.self) private var sync
     let event: SyncedEvent
@@ -563,8 +413,6 @@ struct EventCard: View {
             .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
             .wfShadow1()
             .contentShape(Rectangle())
-            // Subtly fade events that have already finished, so the eye lands on what's
-            // still ahead.
             .opacity(isPast ? 0.5 : 1)
         }
         .buttonStyle(.plain)
@@ -576,13 +424,10 @@ struct EventCard: View {
         return ""
     }
 
-    /// Has this event already ended? Shared with the Today agenda rows via `Agenda.isPast`.
     private var isPast: Bool { Agenda.isPast(event, tz) }
 }
 
-/// A countdown rendered like an all-day event row (same card as `EventCard`), so
-/// countdowns appear inline in the calendar's agenda / day / month-detail lists. The
-/// "time" column shows the days-left. Tap routes via the caller (`onTap`).
+/// A countdown drawn as an all-day event row (the same card as `EventCard`).
 struct CountdownCard: View {
     let countdown: WaffledAPI.Countdown
     let sleeps: Bool
@@ -610,8 +455,6 @@ struct CountdownCard: View {
     }
 }
 
-/// Shared empty-state for not-yet-built tabs — keeps the scaffold honest about
-/// what's real vs. stubbed.
 struct TabPlaceholder: View {
     let icon: String
     let title: String
@@ -657,9 +500,8 @@ enum RecurringEventEditPolicy {
     }
 }
 
-/// Keeps destructive event UI open until the server or local mirror confirms the
-/// deletion. Both event-delete surfaces share this policy so a rejected request can
-/// never be mistaken for success just because the sheet disappeared.
+/// Keeps destructive event UI open until the deletion is confirmed, so a rejected request is
+/// never mistaken for success because the sheet disappeared.
 enum EventDeletionPolicy {
     static func perform(
         isRecurring: Bool,
@@ -678,20 +520,19 @@ enum EventDeletionPolicy {
     }
 }
 
-/// Create or edit a calendar event — title, date, time + duration (or all-day),
-/// participants, calendar (Google destination, create only), and location. Each
-/// field is its own labeled card, mirroring the web EventModal. Writes to the
-/// local PowerSync mirror (offline-first; uploads on reconnect).
+/// Create or edit a calendar event. Writes to the local PowerSync mirror (offline-first).
 struct EventEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(SyncManager.self) private var sync
     let event: SyncedEvent?
     let initialDate: Date
+    /// Called once, after a successful write, BEFORE the sheet dismisses. "Did they save or
+    /// cancel?" is otherwise unanswerable from outside, and Weekly Planning's parked-note handoff
+    /// turns on that distinction: a CANCELLED composer must leave the note.
+    var onSaved: (() -> Void)?
 
-    /// The id to edit/delete against. A recurring occurrence's row id doesn't exist in
-    /// the `events` table — it lives on the master, so we resolve through `seriesId`
-    /// (an edit applies to the whole series; iOS has no per-occurrence scope dialog yet).
-    /// For a single event `seriesId == id`, so this is a no-op there.
+    /// A recurring occurrence's row id doesn't exist in the `events` table — it lives on the
+    /// master — so resolve through `seriesId`. For a single event `seriesId == id`.
     private var editId: String? { event.map { $0.seriesId ?? $0.id } }
 
     @State private var title: String
@@ -699,37 +540,36 @@ struct EventEditSheet: View {
     @State private var start: Date
     @State private var durationMin: Int
     @State private var allDay: Bool
-    /// Waffled-owned "show a countdown" flag — surfaces this event in the countdowns list.
+    /// The last day an all-day event covers (inclusive); saved as the exclusive end.
+    @State private var lastDay: Date
+    enum WhenField { case startDate, startTime, endDate, endTime }
+    /// The date or time pill whose picker is open inside the When card.
+    @State private var openWhen: WhenField?
     @State private var isCountdown: Bool
     /// Ordered so the first one picked is the "owner" (drives the calendar list).
     @State private var participants: [String]
     @State private var location: String
     @State private var confirmDelete = false
     @State private var loadedParticipants = false
-    /// The "Repeats" picker state. Built into an RRULE on save (recurring events go
-    /// through REST — the local mirror can't expand a rule). Loaded from the master's
-    /// rule when editing an existing recurring event.
+    /// Built into an RRULE on save — recurring events go through REST because the local mirror
+    /// can't expand a rule.
     @State private var repeatState = RepeatState.none
     @State private var loadedRepeat = false
-    /// The recurrence end condition (web parity). `never` repeats forever; `on` passes a
-    /// hard end date (`recurrenceEndAt`); `after` rides a `COUNT=N` inside the rule.
+    /// `never` repeats forever; `on` passes `recurrenceEndAt`; `after` rides a `COUNT=N` in the rule.
     @State private var endMode: RepeatEnd = .never
     @State private var untilDate = Date().addingTimeInterval(60 * 60 * 24 * 90) // ~3 months out
     @State private var occurrenceCount = 10
     enum RepeatEnd { case never, on, after }
-    /// When editing/deleting an already-recurring event, ask which occurrences to touch.
     @State private var scopePrompt: ScopePrompt?
     enum ScopePrompt { case save, delete }
     @State private var originalSeriesFields: RecurringEventSeriesFields?
     @State private var saveError: String?
     @State private var deleting = false
-    // Google calendar picker (create only).
     @State private var calendars: [WaffledAPI.CalendarLink] = []
     @State private var calendarId: String?
     @State private var calTouched = false
-    // Goal linking, available on create AND edit (consistent picker). The PowerSync
-    // events table has no goal columns, so a goal-linked save goes through the rich
-    // REST route (POST on create, PATCH on edit) instead of the local mirror.
+    // Goal linking, on create AND edit. The PowerSync events table has no goal columns, so a
+    // goal-linked save goes through the rich REST route.
     let prefillGoalId: String?
     let prefillGoalStepId: String?
     let prefillParticipantIds: [String]?
@@ -740,42 +580,49 @@ struct EventEditSheet: View {
     @State private var suggestion: WaffledAPI.GoalSuggestOne?
     @State private var suggesting = false
     @State private var suggestTask: Task<Void, Never>?
-    // Auto-link: when memory is confident enough the goal is pre-filled; the note
-    // stays until the person overrides the picker (mirrors the web's userTouchedGoal).
+    // Auto-link: when memory is confident the goal is pre-filled, until the person overrides it.
     @State private var autoLinkedId: String?
     @State private var userTouchedGoal = false
-    // Rhythm linking — the reverse of booking from the register. A scheduling rhythm is
-    // settled by an event landing in its period, and most of those get onto the calendar
-    // from here rather than from the rhythm. `originalRhythmId` is what decides whether a
-    // save touches the link at all: an edit that never opened this picker must leave the
-    // column out entirely, since a missing rhythm_id means "leave it alone" upstream.
+    // Rhythm linking. `originalRhythmId` decides whether a save touches the link at all; see
+    // `rhythmLinkChanged`.
     @State private var rhythmId: String?
     @State private var originalRhythmId: String?
     @State private var linkableRhythms: [WaffledAPI.Rhythm] = []
     @FocusState private var titleFocused: Bool
 
     private static let iso = ISO8601DateFormatter()
-    private static let durations = [15, 30, 45, 60, 90, 120, 180, 240]
 
+    /// `prefillTitle` / `prefillStart` exist for surfaces that already KNOW what the event is.
+    /// `prefillStart` is a full `Date`, not an hour: the gap is an instant the server computed in
+    /// the household's zone, and re-deriving it here is how the two disagree.
     init(event: SyncedEvent?, initialDate: Date, prefillGoalId: String? = nil,
-         prefillGoalStepId: String? = nil, prefillParticipantIds: [String]? = nil) {
+         prefillGoalStepId: String? = nil, prefillParticipantIds: [String]? = nil,
+         prefillTitle: String? = nil, prefillStart: Date? = nil,
+         onSaved: (() -> Void)? = nil) {
         self.event = event
         self.initialDate = initialDate
+        // Explicit init, so the memberwise one is suppressed: without this parameter a
+        // caller can only reach `onSaved` by mutating the value after construction.
+        self.onSaved = onSaved
         self.prefillGoalId = prefillGoalId
         self.prefillGoalStepId = prefillGoalStepId
         self.prefillParticipantIds = prefillParticipantIds
         let cal = Cal.current
-        // Create defaults to 5pm on the given day; edit uses the event's times.
-        let startDate = event?.startsAt ?? (cal.date(bySettingHour: 17, minute: 0, second: 0, of: initialDate) ?? initialDate)
+        // Create defaults to 5pm unless the caller named the instant (a connection slot).
+        let startDate = event?.startsAt
+            ?? prefillStart
+            ?? (cal.date(bySettingHour: 17, minute: 0, second: 0, of: initialDate) ?? initialDate)
         let mins: Int = {
-            guard let s = event?.startsAt, let e = event?.endsAt else { return 60 }
-            return max(15, Int(e.timeIntervalSince(s) / 60))
+            guard event?.allDay != true, let s = event?.startsAt, let e = event?.endsAt else { return 60 }
+            return EventEnd.minutes(from: s, to: e)
         }()
-        _title = State(initialValue: event?.title ?? "")
+        _title = State(initialValue: event?.title ?? prefillTitle ?? "")
         _day = State(initialValue: startDate)
         _start = State(initialValue: startDate)
         _durationMin = State(initialValue: mins)
         _allDay = State(initialValue: event?.allDay ?? false)
+        _lastDay = State(initialValue: EventEnd.allDayLastDay(
+            start: startDate, end: event?.allDay == true ? event?.endsAt : nil, cal: cal))
         _isCountdown = State(initialValue: event?.isCountdown ?? false)
         let eventParticipants = event.map {
             !$0.participantIds.isEmpty ? $0.participantIds : ($0.personId.map { [$0] } ?? [])
@@ -789,16 +636,22 @@ struct EventEditSheet: View {
     }
 
     private var editing: Bool { event != nil }
+    private var timedEnd: Date { resolvedStart.addingTimeInterval(Double(durationMin) * 60) }
+    private var endDayBinding: Binding<Date> {
+        Binding(get: { timedEnd },
+                set: { durationMin = EventEnd.minutes(from: resolvedStart, to: combine($0, timedEnd)) })
+    }
+    private var endTimeBinding: Binding<Date> {
+        Binding(get: { timedEnd },
+                set: { durationMin = EventEnd.minutes(from: resolvedStart, to: combine(timedEnd, $0)) })
+    }
     private var canSave: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty
         && (!wasRecurring || originalSeriesFields != nil)
         && !deleting
     }
-    /// True when editing a materialized occurrence of a recurring series (the local
-    /// mirror sets `occurrenceStart` only for those). Drives the scope chooser.
+    /// True when editing a materialized occurrence (the mirror sets `occurrenceStart` only there).
     private var wasRecurring: Bool { event?.occurrenceStart != nil }
-    /// The chosen start instant (device tz) — used for the RRULE's default weekday /
-    /// nth-weekday ordinal and the live "Repeats" summary.
     private var resolvedStart: Date {
         let cal = Cal.current
         return allDay ? (cal.date(bySettingHour: 12, minute: 0, second: 0, of: day) ?? day) : combine(day, start)
@@ -806,7 +659,6 @@ struct EventEditSheet: View {
 
     /// The owner (first family member who's a participant) drives the calendar list.
     private var primaryPerson: String? { participants.first }
-    /// The owner's own writable calendars that sync (or are their ★ target).
     private var ownerCals: [WaffledAPI.CalendarLink] {
         guard let p = primaryPerson else { return [] }
         return calendars.filter { $0.isWritable && $0.personId == p && ($0.selected || $0.isWriteTarget) }
@@ -832,42 +684,8 @@ struct EventEditSheet: View {
                             .padding(.horizontal, 13).padding(.vertical, 11).innerField()
                     }
 
-                    group("Date") {
-                        DatePicker("", selection: $day, displayedComponents: .date)
-                            .labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                    whenCard
 
-                    if !allDay {
-                        HStack(spacing: 14) {
-                            group("Time") {
-                                DatePicker("", selection: $start, displayedComponents: .hourAndMinute)
-                                    .labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            group("Duration") {
-                                Menu {
-                                    ForEach(durationOptions, id: \.self) { m in
-                                        Button(durationLabel(m)) { durationMin = m }
-                                    }
-                                } label: {
-                                    HStack {
-                                        Text(durationLabel(durationMin)).font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink)
-                                        Spacer()
-                                        Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
-                                    }
-                                    .padding(.horizontal, 13).padding(.vertical, 11).innerField()
-                                }
-                            }
-                        }
-                    }
-
-                    // All day — boxed grouping like the web, with a toggle.
-                    Toggle(isOn: $allDay.animation()) {
-                        Text("All day").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
-                    }
-                    .tint(FamilyColor.person3.solid)
-                    .padding(14).cardBox()
-
-                    // Countdown flag — surfaces this event in the "N days until…" list.
                     Toggle(isOn: $isCountdown) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("⏳ Show a countdown").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
@@ -934,9 +752,7 @@ struct EventEditSheet: View {
                     bottomBar.padding(.top, 6)
                 }
                 .padding(18)
-                // Read-only: the fields stay legible (this is still how you look at a
-                // feed event's details) but nothing here can be changed. Cancel lives
-                // in the toolbar, outside this, so there's always a way out.
+                // Read-only: the fields stay legible but nothing changes. Cancel is in the toolbar.
                 .disabled(isReadOnly)
             }
             .background(WF.canvas)
@@ -947,11 +763,22 @@ struct EventEditSheet: View {
             }
             .task { await load() }
             .task {
-                // Autofocus the title on a fresh event (small delay lets the sheet settle).
                 if !editing { try? await Task.sleep(for: .milliseconds(350)); titleFocused = true }
             }
             .onChange(of: participants) { _, _ in recomputeDefaultCalendar(); clearOrphanGoal(); scheduleSuggest() }
             .onChange(of: title) { _, _ in scheduleSuggest() }
+            .onChange(of: allDay) { _, _ in openWhen = nil }
+            // An all-day end can't be picked before its start (timed ends floor in `EventEnd.minutes`).
+            .onChange(of: lastDay) { _, picked in
+                let floor = Cal.current.startOfDay(for: day)
+                if picked < floor { lastDay = floor }
+            }
+            // Moving the start day carries an all-day span with it.
+            .onChange(of: day) { old, new in
+                let cal = Cal.current
+                let span = cal.dateComponents([.day], from: cal.startOfDay(for: old), to: cal.startOfDay(for: lastDay)).day ?? 0
+                lastDay = cal.date(byAdding: .day, value: max(0, span), to: cal.startOfDay(for: new)) ?? new
+            }
             .confirmationDialog(
                 scopePrompt == .delete ? "Delete repeating event" : "Save repeating event",
                 isPresented: Binding(get: { scopePrompt != nil }, set: { if !$0 { scopePrompt = nil } }),
@@ -963,8 +790,8 @@ struct EventEditSheet: View {
                 }
                 Button(del ? "This and all future events" : "Save this and all future events",
                        role: del ? .destructive : nil) { applyScope("following") }
-                // "All events" (incl. past) is offered only for edits — needed to change
-                // the recurrence rule — never for delete, so past events can't be wiped.
+                // "All events" (incl. past) is offered only for edits — needed to change the
+                // recurrence rule — never for delete, so past events can't be wiped.
                 if !del { Button("Save all events") { applyScope("all") } }
                 Button("Cancel", role: .cancel) { scopePrompt = nil }
             } message: {
@@ -980,10 +807,8 @@ struct EventEditSheet: View {
         .modifier(KioskSheetPresentation(kiosk: DeviceExperience.current == .kiosk))
     }
 
-    /// A subscribed feed is a one-way read, so this event can't be saved or deleted
-    /// from here. Gating the SHEET (not the screens that present it) means every
-    /// route in is covered — the detail view, `PersonView`'s day list, and anything
-    /// added later. See `EventOrigin.blocksEditing`.
+    /// A subscribed feed is a one-way read. Gating the SHEET, not the screens that present it,
+    /// covers every route in. See `EventOrigin.blocksEditing`.
     private var isReadOnly: Bool { EventOrigin.blocksEditing(event) }
 
     @ViewBuilder private var bottomBar: some View {
@@ -1020,9 +845,8 @@ struct EventEditSheet: View {
 
     // MARK: goal linking (create only)
 
-    /// Calendar-opted goals whose participants include every chosen attendee.
-    /// Empty until ≥1 attendee is picked (web: the picker is participant-gated, and
-    /// an empty attendee set must NOT vacuously match every goal).
+    /// Calendar-opted goals whose participants include every chosen attendee. Empty until ≥1 is
+    /// picked: an empty attendee set must NOT vacuously match every goal.
     private var eligibleGoalsForAttendees: [WaffledAPI.Goal] {
         guard !participants.isEmpty else { return [] }
         let att = Set(participants)
@@ -1034,9 +858,6 @@ struct EventEditSheet: View {
     }
     private var selectedGoal: WaffledAPI.Goal? { eligibleGoals.first { $0.id == goalId } }
 
-    /// "Keeps a rhythm" — mirrors the web EventModal picker, and reuses the same menu
-    /// shape as "Counts toward" above so the two links read as siblings rather than as
-    /// two unrelated ideas.
     @ViewBuilder private var rhythmSection: some View {
         if !linkableRhythms.isEmpty {
             group("Keeps a rhythm · optional") {
@@ -1118,14 +939,11 @@ struct EventEditSheet: View {
         return "Completes: \(s.label)"
     }
 
-    /// The pre-linked goal to surface the "we've learned this" note — only while it's
-    /// still the chosen goal and the person hasn't overridden the picker.
     private var autoLinkedGoal: WaffledAPI.Goal? {
         guard let id = autoLinkedId, goalId == id, !userTouchedGoal else { return nil }
         return eligibleGoals.first { $0.id == id }
     }
 
-    /// Auto-link note: memory was confident, so the goal is pre-filled below.
     private func autoLinkedHint(_ g: WaffledAPI.Goal) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "sparkles").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ai)
@@ -1140,7 +958,6 @@ struct EventEditSheet: View {
         .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.ai.opacity(0.25), lineWidth: 1))
     }
 
-    /// The web's "thinking" box, shown while the server matches a goal.
     private var suggestingHint: some View {
         HStack(spacing: 10) {
             Image(systemName: "sparkles").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ai)
@@ -1177,13 +994,12 @@ struct EventEditSheet: View {
         Task { await loadSteps(for: id) }
     }
 
-    /// Fetch a goal's checklist steps (empty for non-checklist goals).
     private func loadSteps(for id: String) async {
         goalSteps = (try? await WaffledAPI().goalDetail(id: id))?.steps ?? []
     }
 
-    /// Drop a chosen goal that no longer fits the attendees (mirrors the web's
-    /// orphan-clear). Guarded so an async-loading goal list can't wipe a prefill.
+    /// Drop a chosen goal that no longer fits the attendees. Guarded so an async load can't wipe
+    /// a prefill.
     private func clearOrphanGoal() {
         guard !eligibleGoals.isEmpty, let gid = goalId else { return }
         if !eligibleGoalsForAttendees.contains(where: { $0.id == gid }) {
@@ -1191,9 +1007,8 @@ struct EventEditSheet: View {
         }
     }
 
-    /// Debounced live goal match for the inline hint (create, no goal chosen yet) —
-    /// only once attendees are chosen, so a suggestion never names people who aren't
-    /// on the event. Server `suggest-one` runs memory → keyword → LLM.
+    /// Debounced live goal match — only once attendees are chosen, so a suggestion never names
+    /// people who aren't on the event.
     private func scheduleSuggest() {
         suggestTask?.cancel()
         let t = title.trimmingCharacters(in: .whitespaces)
@@ -1210,8 +1025,6 @@ struct EventEditSheet: View {
             if Task.isCancelled || goalId != nil || userTouchedGoal { return }
             suggesting = false
             if let s, s.auto == true {
-                // Learned pattern — pre-link automatically; the note + picker let
-                // the person unlink. (Web: an `auto` result overrides the chip.)
                 suggestion = nil
                 autoLinkedId = s.goalId
                 goalId = s.goalId
@@ -1229,33 +1042,27 @@ struct EventEditSheet: View {
         if editing, !loadedParticipants {
             loadedParticipants = true
             let ids = await sync.eventParticipantIds(editId ?? event!.id)
-            // Keep the owner (person_id) first, then any other participants.
             if !ids.isEmpty { participants = (participants + ids.filter { !participants.contains($0) }) }
         }
         if !editing, calendars.isEmpty {
             calendars = (try? await WaffledAPI().calendarLinks()) ?? []
             recomputeDefaultCalendar()
         }
-        // Goals power the "Counts toward" picker on both create and edit.
         if eligibleGoals.isEmpty {
             eligibleGoals = (try? await WaffledAPI().goalsIn(listId: nil)) ?? []
         }
-        // Scheduling-shape rhythms only: a completion rhythm closes its period on "I did
-        // it", so an event pointing at one would settle nothing. The call 403s when the
-        // rhythms module is off, which leaves this empty and hides the picker.
+        // Scheduling-shape rhythms only: a completion rhythm would settle nothing. A 403 hides it.
         if linkableRhythms.isEmpty {
             linkableRhythms = ((try? await WaffledAPI().rhythms()) ?? [])
                 .filter { $0.satisfiedBy == .scheduling && $0.isActive }
         }
-        // The local mirror doesn't carry the rule; load it from the master so the
-        // "Repeats" picker reflects the current cadence when editing a recurring event.
+        // The local mirror doesn't carry the rule, so load it from the master when editing.
         if wasRecurring, !loadedRepeat, let ev = event {
             loadedRepeat = true
             if let detail = try? await WaffledAPI().eventDetail(id: ev.seriesId ?? ev.id) {
                 if prefillGoalId == nil { goalId = detail.goalId }
                 if prefillGoalStepId == nil { goalStepId = detail.goalStepId }
-                // COUNT rides in the rule; strip it before parsing the cadence, then
-                // restore it as the "after N times" end condition (mirrors the web).
+                // COUNT rides in the rule; strip it before parsing the cadence, then restore it.
                 if let rule = detail.rrule {
                     if let n = Self.extractCount(rule) {
                         endMode = .after
@@ -1281,7 +1088,6 @@ struct EventEditSheet: View {
         if let gid = goalId, goalSteps.isEmpty { await loadSteps(for: gid) }
     }
 
-    /// Pull the `COUNT=N` out of a stored rule (the end-condition picker owns it).
     private static func extractCount(_ rule: String) -> Int? {
         guard let r = rule.range(of: "COUNT=\\d+", options: .regularExpression) else { return nil }
         return Int(rule[r].dropFirst("COUNT=".count))
@@ -1290,19 +1096,9 @@ struct EventEditSheet: View {
         rule.replacingOccurrences(of: ";?COUNT=\\d+", with: "", options: .regularExpression)
     }
 
-    /// Default to the owner's ★ calendar (then any of theirs), until manually picked.
     private func recomputeDefaultCalendar() {
         guard !editing, !calTouched else { return }
         calendarId = (ownerCals.first { $0.isWriteTarget } ?? ownerCals.first)?.id
-    }
-
-    private var durationOptions: [Int] {
-        Self.durations.contains(durationMin) ? Self.durations : (Self.durations + [durationMin]).sorted()
-    }
-    private func durationLabel(_ m: Int) -> String {
-        if m < 60 { return "\(m) min" }
-        let h = Double(m) / 60
-        return h == h.rounded() ? "\(Int(h)) hr" : String(format: "%.1f hr", h)
     }
 
     // MARK: repeats picker
@@ -1320,8 +1116,6 @@ struct EventEditSheet: View {
         }
     }
 
-    /// A live plain-English summary of the rule the picker currently builds, including
-    /// the end condition (COUNT renders via `describeRrule`; an end date is appended).
     private var repeatSummary: String {
         let d = buildDraft()
         let base = Recurrence.describeRrule(d.rrule, start: resolvedStart)
@@ -1356,7 +1150,6 @@ struct EventEditSheet: View {
         }
     }
 
-    /// The end condition — Never · On a date · After N times. Mirrors the web's picker.
     private var endsRow: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
@@ -1397,13 +1190,11 @@ struct EventEditSheet: View {
 
     private func setFreq(_ f: RepeatFreq) {
         repeatState.freq = f
-        // byday only applies to the weekly preset + custom-weekly; clear it otherwise so
-        // the built rule (and summary) stay clean.
+        // byday only applies to the weekly preset + custom-weekly; clear it so the rule stays clean.
         if f != .weekly && f != .custom { repeatState.byday = [] }
     }
 
-    /// The weekday set the picker is effectively using — an empty `byday` means "the
-    /// event's own weekday" (what `buildRrule` defaults to).
+    /// An empty `byday` means "the event's own weekday" (what `buildRrule` defaults to).
     private var effectiveByday: [String] {
         repeatState.byday.isEmpty ? [Recurrence.weekdayCode(resolvedStart)] : repeatState.byday
     }
@@ -1465,7 +1256,6 @@ struct EventEditSheet: View {
         }
     }
 
-    /// Ordinals offered for "the Nth <weekday> of the month": 1…5 and -1 (last).
     private static let monthlyOrdinals = [1, 2, 3, 4, 5, -1]
     private static let ordinalWord = ["", "first", "second", "third", "fourth", "fifth"]
 
@@ -1497,8 +1287,6 @@ struct EventEditSheet: View {
         }
     }
 
-    /// The resolved field values for a save — recomputed deterministically so both the
-    /// direct save and the scope-chooser path build the same payload.
     private struct Draft {
         let startISO: String, endISO: String?, name: String, loc: String?
         let ids: [String], chosenCal: String?, rrule: String?, recurrenceEndAt: String?
@@ -1507,11 +1295,11 @@ struct EventEditSheet: View {
     private func buildDraft() -> Draft {
         let startDate = resolvedStart
         let startISO = Self.iso.string(from: startDate)
-        let endISO = allDay ? nil : Self.iso.string(from: startDate.addingTimeInterval(Double(durationMin) * 60))
+        let endISO = allDay
+            ? Self.iso.string(from: EventEnd.allDayExclusiveEnd(lastDay: lastDay, cal: Cal.current))
+            : Self.iso.string(from: startDate.addingTimeInterval(Double(durationMin) * 60))
         let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedLoc = location.trimmingCharacters(in: .whitespaces)
-        // The cadence rule; the end condition is layered on (COUNT in the rule, an end
-        // date passed separately) the same way the web composes it.
         let base = Recurrence.buildRrule(repeatState, start: startDate)
         var rrule = base
         var recurrenceEndAt: String?
@@ -1552,14 +1340,11 @@ struct EventEditSheet: View {
 
     private func save() {
         saveError = nil
-        // Editing an already-recurring event first asks which occurrences to change.
         if wasRecurring { scopePrompt = .save; return }
         performSave(scope: nil)
-        // performSave dismisses once the write lands, so the detail screen's reload
-        // (on our dismiss) sees fresh data instead of racing the in-flight write.
+        // performSave dismisses once the write lands, so the detail screen's reload sees fresh data.
     }
 
-    /// The scope chooser picked an option — run the right action; it dismisses when done.
     private func applyScope(_ scope: String) {
         let mode = scopePrompt
         scopePrompt = nil
@@ -1567,12 +1352,8 @@ struct EventEditSheet: View {
         if mode == .delete { performDelete(scope: scope) } else { performSave(scope: scope) }
     }
 
-    /// Whether this save should say anything about the rhythm link.
-    ///
-    /// Only when it actually changed. Every write path treats an absent rhythm_id as
-    /// "leave it alone" — deliberately, so a client that predates the picker can't blank
-    /// a link by omission — which means an unchanged link must stay off the wire, and an
-    /// unlink has to be stated as a null rather than inferred from a missing value.
+    /// Only when the link changed: every write path treats an absent rhythm_id as "leave it
+    /// alone", so an unlink must be an explicit null.
     private var rhythmLinkChanged: Bool { rhythmId != originalRhythmId }
 
     private func performSave(scope: String?) {
@@ -1582,8 +1363,7 @@ struct EventEditSheet: View {
             do {
                 if let editId {
                     if wasRecurring {
-                        // A single occurrence sends only override-backed fields. A
-                        // following/all edit sends the complete replacement master.
+                        // A single occurrence sends only override-backed fields.
                         let appliesToSeries = scope != "this"
                         try await WaffledAPI().updateEvent(
                             id: editId, title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
@@ -1598,8 +1378,7 @@ struct EventEditSheet: View {
                             scope: scope, occurrenceStart: event?.occurrenceStart, isCountdown: isCountdown)
                         sync.touchGoals()
                     } else if let rrule = d.rrule {
-                        // A single event being made recurring — promote in place (no scope),
-                        // routed through REST so the server materializes the occurrences.
+                        // A single event made recurring — promoted in place via REST.
                         try await WaffledAPI().updateEvent(
                             id: editId, title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
                             allDay: allDay, location: d.loc, personIds: d.ids,
@@ -1610,9 +1389,7 @@ struct EventEditSheet: View {
                             recurrenceEndAt: d.recurrenceEndAt, isCountdown: isCountdown)
                         sync.touchGoals()
                     } else if goalId != nil || prefillGoalId != nil || rhythmLinkChanged {
-                        // A goal or rhythm link was set, changed, or removed → PATCH the
-                        // rich REST route (the local mirror has no goal columns, and an
-                        // unlink has to carry an explicit null); PowerSync re-syncs.
+                        // A goal or rhythm link change → PATCH the rich REST route.
                         try await WaffledAPI().updateEvent(
                             id: editId, title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
                             allDay: allDay, location: d.loc, personIds: d.ids, goalId: goalId, goalStepId: goalStepId,
@@ -1626,9 +1403,7 @@ struct EventEditSheet: View {
                                                    isCountdown: isCountdown)
                     }
                 } else if d.rrule != nil || goalId != nil {
-                    // Recurring and/or goal-linked create goes through the rich REST route
-                    // (the local events table has no goal columns and can't expand a rule);
-                    // PowerSync down-syncs the master + materialized occurrences.
+                    // Recurring and/or goal-linked create goes through the rich REST route.
                     _ = try await WaffledAPI().createEvent(
                         title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO, allDay: allDay,
                         location: d.loc, personIds: d.ids, goalId: goalId, goalStepId: goalStepId,
@@ -1644,6 +1419,7 @@ struct EventEditSheet: View {
                 saveError = "Couldn’t save this event. Check your connection and try again."
                 return
             }
+            onSaved?()  // before the dismiss, so a caller can act on a real save
             dismiss()   // after the write, so the caller's reload picks up fresh data
         }
     }
@@ -1656,8 +1432,7 @@ struct EventEditSheet: View {
             let deleted = await EventDeletionPolicy.perform(
                 isRecurring: wasRecurring,
                 deleteRecurring: {
-                    // 'this' cancels one occurrence, 'following' caps the series, 'all'
-                    // (or nil) drops the whole series — all server-side over REST.
+                    // 'this' cancels one occurrence, 'following' caps the series, 'all' drops it.
                     try await WaffledAPI().deleteEvent(
                         id: id, scope: scope, occurrenceStart: event?.occurrenceStart
                     )
@@ -1674,15 +1449,74 @@ struct EventEditSheet: View {
         }
     }
 
-    /// Combine a date's Y/M/D with a time's H/M into one instant (device tz).
     private func combine(_ dayDate: Date, _ time: Date) -> Date {
-        let cal = Cal.current
-        let d = cal.dateComponents([.year, .month, .day], from: dayDate)
-        let t = cal.dateComponents([.hour, .minute], from: time)
-        return cal.date(from: DateComponents(year: d.year, month: d.month, day: d.day, hour: t.hour, minute: t.minute)) ?? dayDate
+        EventEnd.combine(day: dayDate, time: time, cal: Cal.current)
     }
 
-    /// A labeled field card (label top-left, content below) — the web's panel look.
+    /// All day, Starts and Ends in one card. Dates and times are pills that open their picker
+    /// under the row, like Calendar's editor (labels: `EventEnd.dayLabel`).
+    private var whenCard: some View {
+        let tz = Cal.current.timeZone
+        return VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: $allDay.animation()) {
+                Text("All day").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+            }
+            .tint(FamilyColor.person3.solid)
+            Rectangle().fill(WF.hair).frame(height: 1)
+            whenRow("Starts") {
+                whenPill(.startDate, "Start date", EventEnd.dayLabel(day, tz: tz))
+                if !allDay { whenPill(.startTime, "Start time", EventEnd.timeLabel(start, tz: tz)) }
+            }
+            openPicker(among: [.startDate, .startTime])
+            whenRow("Ends") {
+                whenPill(.endDate, "End date", EventEnd.dayLabel(allDay ? lastDay : timedEnd, tz: tz))
+                if !allDay { whenPill(.endTime, "End time", EventEnd.timeLabel(timedEnd, tz: tz)) }
+            }
+            openPicker(among: [.endDate, .endTime])
+        }
+        .padding(14).cardBox()
+    }
+
+    private func whenRow<V: View>(_ label: String, @ViewBuilder _ pills: () -> V) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink2)
+            HStack(spacing: 8) { pills() }
+        }
+    }
+
+    private func whenPill(_ field: WhenField, _ name: String, _ text: String) -> some View {
+        let open = openWhen == field
+        return Button { withAnimation(.snappy) { openWhen = open ? nil : field } } label: {
+            Text(text).font(.system(size: 15, weight: .semibold)).monospacedDigit()
+                .foregroundStyle(open ? WF.primary : WF.ink)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .wfChip(selected: open)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(name).accessibilityValue(text)
+    }
+
+    @ViewBuilder private func openPicker(among fields: [WhenField]) -> some View {
+        if let field = openWhen, fields.contains(field) {
+            Group {
+                switch field {
+                case .startDate:
+                    DatePicker("Start date", selection: $day, displayedComponents: .date).datePickerStyle(.graphical)
+                case .startTime:
+                    DatePicker("Start time", selection: $start, displayedComponents: .hourAndMinute).datePickerStyle(.wheel)
+                case .endDate:
+                    DatePicker("End date", selection: allDay ? $lastDay : endDayBinding, displayedComponents: .date)
+                        .datePickerStyle(.graphical)
+                case .endTime:
+                    DatePicker("End time", selection: endTimeBinding, displayedComponents: .hourAndMinute).datePickerStyle(.wheel)
+                }
+            }
+            .labelsHidden().tint(WF.primary)
+            .frame(maxWidth: .infinity)
+            .transition(.opacity)
+        }
+    }
+
     private func group<V: View>(_ label: String, @ViewBuilder _ content: () -> V) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink2)
@@ -1693,11 +1527,9 @@ struct EventEditSheet: View {
 }
 
 private extension View {
-    /// The outer card-group chrome (white box on the tan sheet, hairline border).
     func cardBox() -> some View {
         frame(maxWidth: .infinity, alignment: .leading).wfField()
     }
-    /// The inner input chrome (white, hairline border) — sits on the white box.
     func innerField() -> some View {
         frame(maxWidth: .infinity, alignment: .leading).wfField(radius: WF.rSM)
     }
