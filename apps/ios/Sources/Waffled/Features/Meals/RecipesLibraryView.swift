@@ -1,16 +1,13 @@
 import SwiftUI
 import Observation
 
-/// The Recipes library — every recipe in the household **and every saved plate**
-/// (decision 11: a saved meal is a first-class citizen of the library), searchable +
-/// filterable, rendered as a two-column card grid. Tapping a card opens its detail.
-/// The server returns the whole library (no server-side search), so all filtering and
-/// sorting happens client-side in `LibraryFilter`, mirroring the kiosk.
+/// The Recipes library — every recipe in the household **and every saved plate**, searchable +
+/// filterable, as a two-column card grid. The server returns the whole library (no server-side
+/// search), so all filtering and sorting happens client-side in `LibraryFilter`.
 @MainActor
 @Observable
 final class RecipesModel {
     private(set) var recipes: [WaffledAPI.RecipeSummary] = []
-    /// Saved plates, listed alongside the recipes.
     private(set) var meals: [WaffledAPI.MealDTO] = []
     /// The searchable text for every entry, keyed by id and rebuilt **once per load**.
     /// Recomputing it per keystroke is the search-field jank trap this app has hit.
@@ -22,8 +19,7 @@ final class RecipesModel {
 
     func load() async {
         loading = true
-        // Plates come from a different endpoint, and a server predating Meal Builder
-        // simply has none — which must not blank the recipes alongside them.
+        // A server predating Meal Builder simply has no plates, which must not blank the recipes.
         let api = self.api
         async let fetchedRecipes = try? await api.recipeLibrary()
         async let fetchedMeals = try? await api.savedMeals()
@@ -39,8 +35,6 @@ final class RecipesModel {
         loading = false
     }
 
-    /// Replace one recipe in place after a favorite/cooked change on the detail
-    /// screen, so the library reflects it without a full reload.
     func apply(_ updated: WaffledAPI.RecipeSummary) {
         if let i = recipes.firstIndex(where: { $0.id == updated.id }) {
             recipes[i] = updated
@@ -48,7 +42,6 @@ final class RecipesModel {
         }
     }
 
-    /// Drop a deleted recipe from the library without a full reload.
     func remove(id: String) {
         recipes.removeAll { $0.id == id }
         haystacks[id] = nil
@@ -68,17 +61,12 @@ enum RecipeSort: String, CaseIterable, Identifiable {
     }
 }
 
-/// The Recipes library screen — the searchable/sortable/filterable card grid.
-/// Normally it lives inside the Meals tab's NavigationStack and a card pushes the
-/// recipe (or plate) detail; in **pick mode** (`onPick` set, e.g. the planner's
-/// "Choose a recipe" sheet, or the Meal Builder's "＋ Add a side") a card calls back
-/// instead, so the same browse UI doubles as the picker. `model` is owned by the caller.
+/// The Recipes library screen. Normally inside the Meals tab's NavigationStack, where a card
+/// pushes the detail; in **pick mode** (`onPick` set) a card calls back instead, so the same
+/// browse UI doubles as the picker. `model` is owned by the caller.
 struct RecipesLibraryView: View {
     let model: RecipesModel
     var onPick: ((WaffledAPI.RecipeSummary) -> Void)? = nil
-    /// Pick a saved plate. When picking is on but this is nil the caller can only use
-    /// a single recipe (the planner's slot picker), so plates are hidden rather than
-    /// rendered as a control that does nothing.
     var onPickMeal: ((WaffledAPI.MealDTO) -> Void)? = nil
     /// A plate to leave out — the one currently being built. Adding a plate to itself
     /// flattens it into itself, which silently renumbers every dish it already has.
@@ -86,24 +74,17 @@ struct RecipesLibraryView: View {
     @Environment(SyncManager.self) private var sync
     @State private var f = LibraryFilters()
     @State private var creating = false
-    /// A recipe just written from inside the picker, held until the editor's cover has
-    /// finished dismissing — then handed to `onPick`.
     @State private var createdForPick: WaffledAPI.RecipeSummary?
-    /// Non-nil ⇒ the Meal Builder is up. Presented (not pushed) because this screen is
-    /// hosted by four different navigation stacks, only one of which knows MealsRoute.
+    @State private var createdMealForPick: WaffledAPI.MealDTO?
+    /// Non-nil ⇒ the Meal Builder is up. Presented, not pushed: this screen is hosted by four
+    /// navigation stacks, only one of which knows MealsRoute.
     @State private var building: MealBuilderStart?
     @FocusState private var searchFocused: Bool
-    /// Recently-opened recipes — a shortcut back to what you just had open.
     @State private var recent: [WaffledAPI.RecipeSummary] = []
-    /// Whose history the rail shows. Per-device (a viewing preference, not household
-    /// config), so it's `@AppStorage` rather than server state — same as the web's
-    /// localStorage key, and the same reason the pinned Today goal is stored locally.
+    /// Per-device (a viewing preference, not household config), so `@AppStorage` rather than
+    /// server state — same as the web's localStorage key.
     @AppStorage("waffled.recentRecipesScope") private var recentScope = "me"
 
-    /// Seed `initialProtein` to open the library pre-filtered to one protein (the
-    /// "Cook from your pantry" mains deep-link), or `initialNewOnly` to open filtered
-    /// to never-cooked recipes (the recipe-detail "🆕 New" tag deep-link). Preserves
-    /// the memberwise call sites.
     init(model: RecipesModel, initialProtein: String? = nil, initialNewOnly: Bool = false,
          onPick: ((WaffledAPI.RecipeSummary) -> Void)? = nil,
          onPickMeal: ((WaffledAPI.MealDTO) -> Void)? = nil,
@@ -118,7 +99,6 @@ struct RecipesLibraryView: View {
         _f = State(initialValue: seed)
     }
 
-    // iPhone: 2 fixed columns. iPad: adaptive — as many ~240pt cards as fit the width.
     private var cols: [GridItem] {
         DeviceExperience.current == .kiosk
             ? [GridItem(.adaptive(minimum: 220, maximum: 320), spacing: 14)]
@@ -134,32 +114,19 @@ struct RecipesLibraryView: View {
             content
         }
         .background(WF.canvas)
-        // Picking, and the recipe you want isn't written yet: write it here and it fills
-        // the slot you opened. This lives in the nav bar rather than beside the filter
-        // chips — a fourth chip overflowed the row on a phone and wrapped its label mid-
-        // word, and "+" in the bar is where iOS puts "make a new one" anyway. Both hosts
-        // (the planner's picker sheet and the Meal Builder's add-a-dish sheet) use only
-        // `.cancellationAction`, so this can't collide. Only a recipe — a plate inside a
-        // plate isn't something the picker's callers can take.
         .toolbar {
             if onPick != nil {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { creating = true } label: { Image(systemName: "plus") }
-                        .accessibilityLabel("New recipe")
-                }
+                ToolbarItem(placement: .primaryAction) { newControl }
             }
         }
-        // `.onAppear`, not `.task`: this has to re-run when the library is returned
-        // TO — popping back from a recipe is what makes that recipe the newest entry
-        // in the rail. `.onAppear` fires on every appearance by contract; `.task`'s
-        // behaviour on a NavigationStack pop is an implementation detail to rely on.
+            // `.onAppear`, not `.task`: this has to re-run when the library is returned TO, and
+            // `.task`'s behaviour on a NavigationStack pop is an implementation detail.
         .onAppear { Task { await loadRecent() } }
         .onChange(of: recentScope) { _, _ in Task { await loadRecent() } }
         .refreshable { await model.load(); await loadRecent() }
         .fullScreenCover(isPresented: $creating, onDismiss: {
-            // Hand a just-written recipe back only once the editor is fully gone:
-            // picking dismisses the picker sheet this library sits in, and tearing
-            // down two presentations in the same frame drops the animation.
+            // Hand a just-written recipe back only once the editor is fully gone: tearing down
+            // two presentations in the same frame drops the animation.
             if let saved = createdForPick { createdForPick = nil; onPick?(saved) }
         }) {
             RecipeEditorView(mode: .create) { saved in
@@ -167,24 +134,23 @@ struct RecipesLibraryView: View {
                 if onPick != nil { createdForPick = saved }
             }
         }
-        .fullScreenCover(item: $building) { start in
-            NavigationStack { MealBuilderView(start: start, recipes: model) }
-                // A plate built here belongs in the library the moment it's saved.
-                .onDisappear { Task { await model.load() } }
+        .fullScreenCover(item: $building, onDismiss: {
+            if let plate = createdMealForPick { createdMealForPick = nil; onPickMeal?(plate) }
+        }) { start in
+            NavigationStack {
+                MealBuilderView(start: start, recipes: model,
+                                onUse: onPickMeal == nil ? nil : { createdMealForPick = $0 })
+            }
+            .onDisappear { Task { await model.load() } }
         }
-        // A recipe or meal written anywhere else (another device, the editor, the
-        // planner) reloads the library — and the rail with it, since a rename or a
-        // delete has to be reflected there too. Recording a VIEW doesn't move this
-        // rev; returning to the library is what refreshes the rail, above.
         .onChange(of: sync.mealsRev) { _, _ in Task { await model.load(); await loadRecent() } }
-        // In pick mode (the planner's "Choose a recipe" sheet), focus search on open.
         .task {
             if onPick != nil { try? await Task.sleep(for: .milliseconds(350)); searchFocused = true }
         }
     }
 
-    /// Inline search field — kept in the content (not `.searchable`), since the Meals
-    /// tab's principal segmented control suppresses the nav-bar search drawer.
+    /// Kept in the content, not `.searchable`: the Meals tab's principal segmented control
+    /// suppresses the nav-bar search drawer.
     private var searchField: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").font(.system(size: 14)).foregroundStyle(WF.ink3)
@@ -205,8 +171,6 @@ struct RecipesLibraryView: View {
         .padding(.horizontal, 16).padding(.top, 10)
     }
 
-    /// Plates the current caller can actually use. In pick mode without a meal handler
-    /// a plate card would be a control that does nothing when tapped.
     private var pickableMeals: [WaffledAPI.MealDTO] {
         guard onPick == nil || onPickMeal != nil else { return [] }
         guard let excludeMealId else { return model.meals }
@@ -270,8 +234,6 @@ struct RecipesLibraryView: View {
 
     // MARK: chrome
 
-    /// Sort + filter live in the content (not the nav bar) so the Meals segmented
-    /// control stays centered.
     private var controlsBar: some View {
         HStack(spacing: 8) {
             Menu {
@@ -280,9 +242,8 @@ struct RecipesLibraryView: View {
                         Label(s.rawValue, systemImage: s.icon).tag(s)
                     }
                 }
-                // Plates carry no cuisine/protein/dietary metadata, so every structured
-                // facet below legitimately drops them — the control that *selects* them
-                // has to be a TYPE filter, or it would filter itself out.
+                // Plates carry no cuisine/protein/dietary metadata, so every structured facet
+                // below drops them — the control that *selects* them has to be a TYPE filter.
                 if !pickableMeals.isEmpty {
                     Section("Show") {
                         Picker("Show", selection: $f.type) {
@@ -305,17 +266,34 @@ struct RecipesLibraryView: View {
             Button { withAnimation(.snappy) { f.onlyFavorites.toggle() } } label: {
                 pill(systemImage: onlyFavoritesIcon, text: "Favorites", active: f.onlyFavorites)
             }
-            // Browsing (not picking for a meal slot) → offer something new to make.
             if onPick == nil {
-                Menu {
-                    Button { creating = true } label: { Label("New recipe", systemImage: "book") }
-                    Button { building = .fresh } label: { Label("New meal", systemImage: "square.stack.3d.up") }
-                } label: {
+                Menu { newMenuItems } label: {
                     pill(systemImage: "plus", text: "New", active: false)
                 }
             }
         }
         .padding(.horizontal, 16).padding(.top, 8)
+    }
+
+    private var offer: LibraryNewOffer {
+        LibraryNewOffer.of(canPickMeal: onPick == nil || onPickMeal != nil)
+    }
+
+    @ViewBuilder private var newControl: some View {
+        if offer.offersMeal {
+            Menu { newMenuItems } label: { Image(systemName: "plus") }
+                .accessibilityLabel("New recipe or meal")
+        } else {
+            Button { creating = true } label: { Image(systemName: "plus") }
+                .accessibilityLabel("New recipe")
+        }
+    }
+
+    @ViewBuilder private var newMenuItems: some View {
+        Button { creating = true } label: { Label("New recipe", systemImage: "book") }
+        if offer.offersMeal {
+            Button { building = .fresh } label: { Label("New meal", systemImage: "square.stack.3d.up") }
+        }
     }
 
     private var onlyFavoritesIcon: String { f.onlyFavorites ? "heart.fill" : "heart" }
@@ -342,10 +320,6 @@ struct RecipesLibraryView: View {
         }
     }
 
-    /// A horizontal shortcut strip back to recently-opened recipes. Rendered only
-    /// when there IS history — an empty strip under a heading is worse than nothing —
-    /// and deliberately smaller than a `RecipeCard`, so it reads as a way back rather
-    /// than a second library.
     @ViewBuilder private var recentRail: some View {
         if !recent.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
@@ -374,8 +348,6 @@ struct RecipesLibraryView: View {
         }
     }
 
-    // Mirrors `card(_:)`: a picker-mode tap hands the recipe back, otherwise it
-    // pushes the detail through the same route the grid uses.
     @ViewBuilder private func recentTile(_ r: WaffledAPI.RecipeSummary) -> some View {
         if let onPick {
             Button { onPick(r) } label: { recentTileLabel(r) }.buttonStyle(.plain)
@@ -386,8 +358,6 @@ struct RecipesLibraryView: View {
 
     private func recentTileLabel(_ r: WaffledAPI.RecipeSummary) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            // CachedImage for the same reason the grid uses it — these scroll, and
-            // AsyncImage would re-decode on every pass.
             CachedImage(r.imageUrl, contentMode: .fill) {
                 RecipeGradient.forCategory(r.category)
                     .overlay(Text(r.emoji ?? RecipeGradient.emoji(r.category)).font(.system(size: 26)))
@@ -407,8 +377,6 @@ struct RecipesLibraryView: View {
         recent = (try? await WaffledAPI().recentRecipes(scope: scope)) ?? []
     }
 
-    /// Inline chips for whatever's active, with a one-tap Clear (shown only when
-    /// at least one filter is on).
     private var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -450,24 +418,20 @@ struct RecipesLibraryView: View {
     }
 }
 
-/// One recipe tile: a gradient hero with the recipe emoji, then title + a compact
-/// meta line (cuisine · protein · time · cooked count).
 struct RecipeCard: View {
     let recipe: WaffledAPI.RecipeSummary
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .topTrailing) {
-                // CachedImage (NSCache-backed, resolves relative /media URLs) shows the real
-                // photo when there is one; otherwise the category gradient + emoji. Cards
-                // live in a LazyVGrid, so AsyncImage would re-fetch on every scroll/keystroke.
+                // CachedImage, never AsyncImage: cards live in a LazyVGrid, so AsyncImage would
+                // re-fetch on every scroll/keystroke.
                 CachedImage(recipe.imageUrl, contentMode: .fill) {
                     RecipeGradient.forCategory(recipe.category)
                         .overlay(Text(recipe.emoji ?? RecipeGradient.emoji(recipe.category)).font(.system(size: 42)))
                 }
                 .frame(height: 104).frame(maxWidth: .infinity).clipped()
                 .overlay(alignment: .topLeading) {
-                    // Never cooked → a "🆕" corner badge (mirrors the kiosk library).
                     if recipe.cookedCount == 0 {
                         Text("🆕").font(.system(size: 15)).padding(7)
                     }
@@ -477,8 +441,6 @@ struct RecipeCard: View {
                 }
             }
             VStack(alignment: .leading, spacing: 5) {
-                // Fixed 2-line title + an always-present meta + collection line, so every
-                // card is the same height regardless of how many tags a recipe has.
                 Text(recipe.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
                     .lineLimit(2).multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40, alignment: .topLeading)
@@ -496,7 +458,6 @@ struct RecipeCard: View {
         HStack(spacing: 8) {
             if let c = recipe.cuisine { meta("🌍", c) }
             if let p = recipe.protein { meta("🥩", p) }
-            // Total time = prep + cook (the card summarizes; the detail breaks it down).
             if let t = recipe.totalTimeMinutes { meta("🕐", "\(t)m") }
             if recipe.cookedCount > 0 { meta("👨‍🍳", "\(recipe.cookedCount)×") }
         }
@@ -508,8 +469,6 @@ struct RecipeCard: View {
     }
 }
 
-/// A saved plate in the recipe library — same tile shape as `RecipeCard`, with the
-/// type badge that tells the two apart.
 struct MealCard: View {
     let meal: WaffledAPI.MealDTO
 
@@ -522,7 +481,6 @@ struct MealCard: View {
                             .font(.system(size: 34)).lineLimit(1)
                     )
                     .frame(height: 104).frame(maxWidth: .infinity).clipped()
-                // Plates and recipes share one grid, so each plate says what it is.
                 Text("🍽️ Meal")
                     .font(.system(size: 10, weight: .heavy)).foregroundStyle(WF.onInk)
                     .padding(.horizontal, 7).padding(.vertical, 3)
@@ -539,7 +497,6 @@ struct MealCard: View {
                     meta("🍽️", "\(meal.servings)")
                 }
                 .lineLimit(1)
-                // Keeps every card the same height as a RecipeCard's collection line.
                 Text(" ").font(.system(size: 11, weight: .medium)).foregroundStyle(WF.ink3)
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -553,7 +510,6 @@ struct MealCard: View {
     }
 }
 
-/// Category → hero gradient + fallback emoji, mirroring the kiosk's `GRAD_BY_CATEGORY`.
 enum RecipeGradient {
     static func forCategory(_ category: String?) -> LinearGradient {
         let pair: (UInt32, UInt32)
@@ -578,15 +534,11 @@ enum RecipeGradient {
 }
 
 extension WaffledAPI.RecipeSummary {
-    /// Total active time = prep + cook (the library card's "🕐"), or nil if neither is set.
     var totalTimeMinutes: Int? {
         let t = (prepTimeMinutes ?? 0) + (cookTimeMinutes ?? 0)
         return t > 0 ? t : nil
     }
 
-    /// A minimal placeholder for an instant recipe-detail header when only partial
-    /// info is on hand (the planner, the Today card). The detail screen reloads the
-    /// full recipe on appear.
     static func placeholder(id: String, title: String, emoji: String?, category: String?,
                             cookTimeMinutes: Int?, servings: Int?) -> WaffledAPI.RecipeSummary {
         .init(id: id, title: title, emoji: emoji, category: category, prepTimeMinutes: nil,

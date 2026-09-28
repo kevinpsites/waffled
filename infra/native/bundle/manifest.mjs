@@ -106,6 +106,18 @@ async function verify(root) {
   if (manifest.arch !== process.arch) problems.push(`manifest arch ${manifest.arch} but this machine is ${process.arch}`)
   if (manifest.platform !== process.platform) problems.push(`manifest platform ${manifest.platform} but this machine is ${process.platform}`)
   const actual = await walk(root)
+  // Containment — the one rule set equality cannot express. A link that pointed outside the
+  // tree when the bundle was built is recorded faithfully, so manifest and disk agree while
+  // the bundle is broken for anyone who unpacks it somewhere else. Lexical, in relative
+  // space, so a root that itself sits under symlinks (/var → /private/var) yields no false
+  // escapes; a target resolving to the root itself is inside it. Twin of escapesRoot() in
+  // apps/runtime/internal/manifest/manifest.go — the two verifiers must agree.
+  for (const [rel, target] of Object.entries(actual.symlinks)) {
+    const resolved = path.posix.join(path.posix.dirname(rel), target)
+    if (path.posix.isAbsolute(target) || resolved === '..' || resolved.startsWith('../')) {
+      problems.push(`symlink escapes the bundle: ${rel} → ${target}`)
+    }
+  }
   for (const [rel, want] of Object.entries(manifest.files)) {
     const got = actual.files[rel]
     if (!got) { problems.push(`missing file: ${rel}`); continue }

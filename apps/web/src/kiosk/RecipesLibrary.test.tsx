@@ -4,12 +4,18 @@ import { RecipesLibrary } from './RecipesLibrary'
 import { TopbarSlotProvider } from './topbar-slot'
 import type { Recipe } from '../lib/api'
 
-// Drive the library off a fixed recipe set by mocking the data hook; everything
-// else in the api slice stays real (the component only reads useRecipes here).
+// Drive the library off a fixed recipe set by mocking the data hook; the rest of the api
+// slice stays real.
 const recipesRef: { current: Recipe[] } = { current: [] }
+// Saved plates are stubbed too: the empty state below is only correct when BOTH halves of
+// the unified library are known empty, so the test owns both rather than racing a fetch.
 vi.mock('../lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/api')>()
-  return { ...actual, useRecipes: () => ({ recipes: recipesRef.current, loading: false, error: false }) }
+  return {
+    ...actual,
+    useRecipes: () => ({ recipes: recipesRef.current, loading: false, error: false }),
+    useSavedMeals: () => ({ meals: [], loading: false, error: false, refetch: () => {} }),
+  }
 })
 
 function makeRecipe(over: Partial<Recipe> & { id: string; title: string }): Recipe {
@@ -82,5 +88,44 @@ describe('RecipesLibrary — New / never-cooked filter', () => {
     renderLib()
     expect(within(cardFor('Fresh Salad')).getByText('🆕')).toBeInTheDocument()
     expect(within(cardFor('Old Faithful Stew')).queryByText('🆕')).not.toBeInTheDocument()
+  })
+})
+
+describe('RecipesLibrary — the empty library', () => {
+  beforeEach(() => { recipesRef.current = [] })
+
+  it('is one invitation, with exactly one primary button', () => {
+    renderLib()
+    expect(screen.getByText('No recipes yet')).toBeInTheDocument()
+    // One call to action on the whole screen — the topbar's copy stands down.
+    expect(screen.getAllByRole('button', { name: /new recipe/i })).toHaveLength(1)
+    expect(document.querySelectorAll('.btn-primary')).toHaveLength(1)
+  })
+
+  it('drops the chrome that has nothing to work on', () => {
+    renderLib()
+    expect(screen.queryByLabelText(/search recipes and meals/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^sort$/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /favorites/i })).not.toBeInTheDocument()
+    expect(screen.queryByText('Collection')).not.toBeInTheDocument()
+    expect(screen.queryByText(/0 of 0/)).not.toBeInTheDocument()
+  })
+
+  it('keeps the search and filters the moment there is something to search', () => {
+    recipesRef.current = [makeRecipe({ id: 'a', title: 'Fresh Salad' })]
+    renderLib()
+    expect(screen.getByLabelText(/search recipes and meals/i)).toBeInTheDocument()
+    expect(screen.getByText('1 of 1')).toBeInTheDocument()
+    expect(screen.queryByText('No recipes yet')).not.toBeInTheDocument()
+  })
+
+  it('says "nothing matches" rather than "no recipes" when a search misses', () => {
+    recipesRef.current = [makeRecipe({ id: 'a', title: 'Fresh Salad' })]
+    renderLib()
+    fireEvent.change(screen.getByLabelText(/search recipes and meals/i), { target: { value: 'zzz' } })
+    expect(screen.getByText(/nothing matches these filters/i)).toBeInTheDocument()
+    // The way out stays on screen: the box you typed in, and Clear.
+    expect(screen.getByLabelText(/search recipes and meals/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^clear$/i })).toBeInTheDocument()
   })
 })

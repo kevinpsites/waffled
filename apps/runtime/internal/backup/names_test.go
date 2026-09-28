@@ -21,10 +21,14 @@ func TestDumpNameIsUTCAndSortable(t *testing.T) {
 	}
 }
 
-func TestSnapshotNameCarriesTheVersion(t *testing.T) {
+// A snapshot is taken because a schema is about to cross from one build to another, so
+// its name has to answer both halves of "which build was this taken before?" — the one
+// that wrote the data and the one about to change it. Only the second is knowable from
+// the running binary, which is why the first is remembered in runtime.json.
+func TestSnapshotNameCarriesBothVersions(t *testing.T) {
 	at := time.Date(2026, 9, 8, 3, 0, 0, 0, time.UTC)
-	got := SnapshotName("0.14.3", at)
-	if want := "pre-migrate-0.14.3-20260908-030000.dump"; got != want {
+	got := SnapshotName("0.14.3", "0.15.0", at)
+	if want := "pre-migrate-0.14.3-to-0.15.0-20260908-030000.dump"; got != want {
 		t.Errorf("SnapshotName = %q, want %q", got, want)
 	}
 	if !IsSnapshot(got) {
@@ -33,14 +37,31 @@ func TestSnapshotNameCarriesTheVersion(t *testing.T) {
 	if IsDump(got) {
 		t.Errorf("%q is a snapshot, not a routine dump — the two retention pools must not overlap", got)
 	}
+	if _, ok := StampOf(got); !ok {
+		t.Errorf("StampOf could not read the timestamp back out of %q", got)
+	}
+}
+
+// Data written before the from-version was recorded has no answer to "which build wrote
+// this?". The name must say so rather than leave a hole a reader would mistake for the
+// other version.
+func TestSnapshotNameSaysUnknownWhenThereIsNoFromVersion(t *testing.T) {
+	at := time.Date(2026, 9, 8, 3, 0, 0, 0, time.UTC)
+	got := SnapshotName("", "0.15.0", at)
+	if want := "pre-migrate-unknown-to-0.15.0-20260908-030000.dump"; got != want {
+		t.Errorf("SnapshotName = %q, want %q", got, want)
+	}
+	if _, ok := StampOf(got); !ok {
+		t.Errorf("StampOf could not read the timestamp back out of %q", got)
+	}
 }
 
 // A version with no dots, or one an operator has hand-edited, must not produce a name
 // the stamp parser cannot read back — that is what keeps snapshot pruning chronological.
-func TestSnapshotNameSanitisesTheVersion(t *testing.T) {
+func TestSnapshotNameSanitisesBothVersions(t *testing.T) {
 	at := time.Date(2026, 9, 8, 3, 0, 0, 0, time.UTC)
-	got := SnapshotName("0.14.3 (dirty)/../etc", at)
-	if want := "pre-migrate-0.14.3-dirty-etc-20260908-030000.dump"; got != want {
+	got := SnapshotName("0.14.3 (dirty)/../etc", "0.15.0 (dirty)", at)
+	if want := "pre-migrate-0.14.3-dirty-etc-to-0.15.0-dirty-20260908-030000.dump"; got != want {
 		t.Errorf("SnapshotName = %q, want %q", got, want)
 	}
 	if _, ok := StampOf(got); !ok {

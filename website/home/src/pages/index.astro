@@ -20,19 +20,20 @@ import { LINKS, DOCS, FEATURES, HOSTED_FORM_URL } from '../consts';
 						Get started
 						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
 					</a>
-					<a class="btn btn-ghost btn-lg" href={LINKS.github} rel="noopener">
-						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.8-1.3-1.8-1.1-.7 0-.7 0-.7 1.2 0 1.9 1.2 1.9 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2 0-.3-.5-1.5.2-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.8 18.3 5 18.3 5c.7 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .5Z"/></svg>
-						View on GitHub
+					<a class="btn btn-ghost btn-lg" href={LINKS.macDownload}>
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M5 21h14"/></svg>
+						Download for Mac
 					</a>
 				</div>
+				<p class="hero-alt rise d3">Or anywhere Docker runs — Linux, a NAS, a Raspberry Pi:</p>
 				<div class="code-chip rise d3">
 					<span class="prompt">$</span>
 					<code>git clone … &amp;&amp; ./waffled up</code>
 					<button class="copy" data-copy="git clone https://github.com/kevinpsites/waffled && cd waffled && ./waffled up">Copy</button>
 				</div>
 				<div class="hero-meta rise d4">
-					<span><i class="dot" style="background:var(--wf-mint)"></i> Docker, one command</span>
-					<span><i class="dot" style="background:var(--wf-coral)"></i> Runs on a Raspberry Pi</span>
+					<span><i class="dot" style="background:var(--wf-mint)"></i> Mac app, no Docker</span>
+					<span><i class="dot" style="background:var(--wf-coral)"></i> Docker, one command</span>
 					<span><i class="dot" style="background:var(--wf-violet)"></i> Native iOS app</span>
 				</div>
 			</div>
@@ -132,7 +133,8 @@ import { LINKS, DOCS, FEATURES, HOSTED_FORM_URL } from '../consts';
 						<div class="s-ic">🖥️</div>
 						<div>
 							<h3>Your server</h3>
-							<p>One Docker command brings up the API, database, and sync engine — the data behind every screen never leaves hardware you control.</p>
+							<p>A Mac mini on the shelf or a Linux box in the closet. The Mac app, or one Docker command, brings up the API, database, and sync engine — the data behind every screen never leaves hardware you control.</p>
+							<a class="s-link" href={LINKS.mac}>Waffled for Mac →</a>
 						</div>
 					</li>
 				</ul>
@@ -213,7 +215,7 @@ import { LINKS, DOCS, FEATURES, HOSTED_FORM_URL } from '../consts';
 					<div class="plan-top">
 						<span class="plan-badge">Free &amp; open source</span>
 						<h3>Self-host it</h3>
-						<p>Clone the repo, run <code>./waffled up</code>, done. Waffled is AGPL open source and free — forever. Every byte lives on hardware you control, and it’s the whole app: nothing held back behind a paywall.</p>
+						<p>Download the Mac app, or clone the repo and run <code>./waffled up</code> — done. Waffled is AGPL open source and free — forever. Every byte lives on hardware you control, and it’s the whole app: nothing held back behind a paywall.</p>
 					</div>
 					<ul class="plan-list">
 						<li>Free forever</li>
@@ -242,28 +244,47 @@ import { LINKS, DOCS, FEATURES, HOSTED_FORM_URL } from '../consts';
 	</section>
 
 	<!-- ── Install ──────────────────────────────────────────────────────── -->
-	<section class="section install">
+	<section class="section install" id="install">
 		<div class="wrap">
-			<div>
+			<div class="section-head">
 				<span class="eyebrow">Up in minutes</span>
-				<h2>If you can run Docker, you can run Waffled</h2>
-				<p>Clone the repo and run one command. It pulls prebuilt images, runs migrations, and starts the whole stack.</p>
-				<div class="steps">
-					<div class="step"><span class="n">1</span><p><strong>Clone</strong> the repository onto any machine with Docker.</p></div>
-					<div class="step"><span class="n">2</span><p><strong><code>./waffled up</code></strong> — API, database, and sync engine come online.</p></div>
-					<div class="step"><span class="n">3</span><p><strong>Open the kiosk</strong>, sign in, and invite your household.</p></div>
-				</div>
-				<div class="hero-actions" style="margin-top:26px">
-					<a class="btn btn-primary" href={LINKS.quickStart}>Read the quick start</a>
-					<a class="btn btn-ghost" href={LINKS.requirements}>Requirements</a>
-				</div>
+				<h2>Download it on a Mac, or run it anywhere Docker does</h2>
+				<p>The same server either way — same app, same data, same web app. Pick by the machine you have.</p>
 			</div>
-			<div class="terminal">
-				<div class="terminal-bar">
-					<i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>
-					<span>bash</span>
+			<div class="plans">
+				<div class="plan">
+					<div class="plan-top">
+						<span class="plan-badge">No Docker needed</span>
+						<h3>Waffled for Mac</h3>
+						<p>The whole server in one download, run from a menu-bar icon. For a Mac with Apple silicon and macOS 14 or later.</p>
+					</div>
+					<div class="steps">
+						<div class="step"><span class="n">1</span><p><strong>Download</strong> Waffled for Mac.</p></div>
+						<div class="step"><span class="n">2</span><p><strong>Drag it to Applications</strong> and open it. A setup window starts the server — no Terminal.</p></div>
+						<div class="step"><span class="n">3</span><p><strong>Open Waffled</strong>, name your household, and type the address it shows into the kitchen tablet.</p></div>
+					</div>
+					<ul class="plan-list">
+						<li>Updates itself from the menu bar</li>
+						<li>Nightly backups, on from the start</li>
+						<li>Signed and notarized by Apple</li>
+					</ul>
+					<div class="hero-actions">
+						<a class="btn btn-primary" href={LINKS.macDownload}>Download for Mac</a>
+						<a class="btn btn-ghost" href={LINKS.mac}>Mac install guide</a>
+					</div>
 				</div>
-				<pre><code><span class="c"># grab it and bring the stack up</span>
+				<div class="plan">
+					<div class="plan-top">
+						<span class="plan-badge">Linux · NAS · Pi · VPS</span>
+						<h3>Docker Compose</h3>
+						<p>Clone the repo and run one command. It pulls prebuilt images, runs migrations, and starts the whole stack.</p>
+					</div>
+					<div class="terminal">
+						<div class="terminal-bar">
+							<i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>
+							<span>bash</span>
+						</div>
+						<pre><code><span class="c"># grab it and bring the stack up</span>
 <span class="p">$</span> git clone https://github.com/kevinpsites/waffled
 <span class="p">$</span> cd waffled
 <span class="p">$</span> ./waffled up
@@ -273,6 +294,12 @@ import { LINKS, DOCS, FEATURES, HOSTED_FORM_URL } from '../consts';
 <span class="g">✓</span> api · postgres · sync   <span class="g">healthy</span>
 
   Kiosk ready at <span class="p">http://localhost:8080</span></code></pre>
+					</div>
+					<div class="hero-actions">
+						<a class="btn btn-primary" href={LINKS.quickStart}>Read the quick start</a>
+						<a class="btn btn-ghost" href={LINKS.requirements}>Requirements</a>
+					</div>
+				</div>
 			</div>
 		</div>
 	</section>

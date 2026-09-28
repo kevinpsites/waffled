@@ -15,8 +15,12 @@ import (
 // port on this Mac, where Docker holds 8080 and 8081 and the public site therefore falls
 // forward onto PowerSync's default of 8082.
 //
+// preferredPublic is the port the household would like the public site on — HTTP_PORT,
+// or the compose default. It is a preference: a busy one falls forward like any other,
+// and the Ready screen says which port it landed on.
+//
 // isFree is injected so the allocation can be tested against an arbitrary machine.
-func choosePorts(isFree func(ports.Scope, int) bool) (rtstate.Ports, error) {
+func choosePorts(isFree func(ports.Scope, int) bool, preferredPublic int) (rtstate.Ports, error) {
 	var chosen rtstate.Ports
 	var used []int
 
@@ -32,7 +36,7 @@ func choosePorts(isFree func(ports.Scope, int) bool) (rtstate.Ports, error) {
 	var err error
 	// Public first: these are the ports other devices remember, so they get the best
 	// claim on the familiar compose numbers.
-	if chosen.Public, err = pick(ports.Public, DefaultPublicPort); err != nil {
+	if chosen.Public, err = pick(ports.Public, preferredPublic); err != nil {
 		return chosen, err
 	}
 	if chosen.PowerSyncPublic, err = pick(ports.Public, DefaultPowerSyncPublicPort); err != nil {

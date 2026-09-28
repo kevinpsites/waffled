@@ -60,7 +60,7 @@ final class RestScreenshotTests: XCTestCase {
             let photos = PhotosModel(fetchPhotos: { try await feed.rows([photo]) })
             let family = FamilyHubModel(fetchChores: { try await feed.rows(chores) }, fetchGoals: { try await feed.rows([]) }, fetchStars: { try await feed.rows(stars) }, fetchLists: { try await feed.rows([]) }, fetchPhotos: { try await feed.rows([photo]) })
             let kioskFamily = KioskFamilyModel(fetchChores: { try await feed.rows(chores) }, fetchStars: { try await feed.rows(stars) })
-            let dash = DashboardModel(fetchMeals: { _ in try await feed.rows([dinner]) }, fetchChores: { try await feed.rows(chores) }, fetchGrocery: { try await feed.rows([.init(id: "milk", checked: false)]) }, fetchGoals: { try await feed.rows([]) }, fetchRecap: { try await feed.rows([]) }, fetchSuggestions: { try await feed.rows([]) })
+            let dash = DashboardModel(fetchMeals: { _ in try await feed.rows([dinner]) }, fetchChores: { try await feed.rows(chores) }, fetchGrocery: { try await feed.rows([.init(id: "milk", checked: false)]) }, fetchGoals: { try await feed.rows([]) }, fetchRecap: { try await feed.rows([]) }, fetchSuggestions: { try await feed.rows([]) }, fetchChoreInstances: { _ in try await feed.rows([chore]) }, setChoreComplete: { _, _ in })
             let kiosk = KioskTodayModel(fetchChores: { try await feed.rows(chores) }, fetchMeals: { _ in try await feed.rows([dinner]) }, fetchGrocery: { try await feed.rows([.init(id: "milk", name: "Milk", quantity: nil, checked: false, section: nil, assignee: nil, aisle: nil, sourceRecipeIds: nil)]) }, fetchGoals: { try await feed.rows([]) }, fetchWeather: { nil })
             if mode != .loading {
                 await approvals.load(scope: sync.restDataScopeKey)

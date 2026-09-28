@@ -57,9 +57,7 @@ enum PeopleColumns {
         return columns
     }
 
-    // No lane packing lives here. The People view renders through `CalTimeGrid`,
-    // which packs each column's events itself in `placedEvents(_:)` — one
-    // implementation, on the path that actually ships. A second copy in this file
-    // would only ever be exercised by tests, so it could stay green while the real
-    // one regressed.
+    // No lane packing lives here. Every time grid — `CalTimeGrid` on iPad and the iPhone
+    // day view — packs through `TimeLanes.place`, one tested implementation on the path
+    // that ships. Don't add a second copy here.
 }

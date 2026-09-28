@@ -60,4 +60,32 @@ describe('GoalDetail', () => {
     expect(await screen.findByText('July')).toBeInTheDocument() // data-view switcher, defaulted to Month
     expect(screen.getByText('Creek hike')).toBeInTheDocument() // recent activity
   })
+
+  it('reads the week’s target in the corner, and names the weeks planned after it', async () => {
+    const planned = {
+      ...detail,
+      weekPlans: [
+        { weekStart: '2026-09-13', target: 10, done: 3, current: true },
+        { weekStart: '2026-09-20', target: 12, done: 0, current: false },
+      ],
+    }
+    globalThis.fetch = vi.fn(async (url: string) => {
+      if (String(url).includes('/activity')) {
+        return { ok: true, json: async () => ({ startDate: '2026-01-01', endDate: null, today: '2026-09-15', days: [] }) }
+      }
+      if (String(url).includes('/api/goals/g1')) return { ok: true, json: async () => ({ goal: planned }) }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    render(
+      <MemoryRouter initialEntries={['/goals/g1']}>
+        <Routes>
+          <Route path="/goals/:id" element={<GoalDetail />} />
+        </Routes>
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByText('3 of 10 hours')).toBeInTheDocument()
+    expect(screen.getByText('Week of Sep 20: 12 hours')).toBeInTheDocument()
+  })
 })

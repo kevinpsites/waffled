@@ -24,7 +24,7 @@ func thisMac(taken ...int) func(ports.Scope, int) bool {
 // api and PowerSync all came up green and only Caddy failed, 30 seconds later, on a
 // port already held by a service we had started ourselves.
 func TestChoosePortsNeverHandsOutThePortTwice(t *testing.T) {
-	chosen, err := choosePorts(thisMac(8080, 8081, 8090, 3000, 5432))
+	chosen, err := choosePorts(thisMac(8080, 8081, 8090, 3000, 5432), DefaultPublicPort)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestChoosePortsNeverHandsOutThePortTwice(t *testing.T) {
 }
 
 func TestChoosePortsPrefersTheDefaultsWhenFree(t *testing.T) {
-	chosen, err := choosePorts(thisMac())
+	chosen, err := choosePorts(thisMac(), DefaultPublicPort)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestChoosePortsPrefersTheDefaultsWhenFree(t *testing.T) {
 
 // A taken default must move to the next free port, not fail.
 func TestChoosePortsFallsForward(t *testing.T) {
-	chosen, err := choosePorts(thisMac(DefaultPublicPort))
+	chosen, err := choosePorts(thisMac(DefaultPublicPort), DefaultPublicPort)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestChoosePortsFallsForward(t *testing.T) {
 // The default PowerSync loopback port (8082) sits right where the public site lands when
 // 8080 and 8081 are busy. Pin the specific arrangement so it cannot regress.
 func TestPublicAndPowerSyncDoNotCollideWhenTheComposePortsAreBusy(t *testing.T) {
-	chosen, err := choosePorts(thisMac(8080, 8081))
+	chosen, err := choosePorts(thisMac(8080, 8081), DefaultPublicPort)
 	if err != nil {
 		t.Fatal(err)
 	}

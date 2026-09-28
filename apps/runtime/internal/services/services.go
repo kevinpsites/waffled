@@ -16,7 +16,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
+	"github.com/kevinpsites/waffled/apps/runtime/internal/bonjour"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/caddyconf"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/configenv"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/datadir"
@@ -32,10 +34,17 @@ const (
 	API       = "api"
 	PowerSync = "powersync"
 	Caddy     = "caddy"
+	// Bonjour is the advisory child that advertises the server on the local network.
+	// It is NOT a member of the server: see Plan.Bonjour.
+	Bonjour = "bonjour"
+	// Admin is the break-glass operator CLI, run on demand. It has no log file and no
+	// pidfile: it is a person's command, in their terminal.
+	Admin = "admin"
 )
 
 // Order is the dependency order Compose expresses with depends_on + healthchecks.
-// Stopping walks it backwards.
+// Stopping walks it backwards. Bonjour is not here: it is advertised after the server is
+// up and withdrawn before it comes down, but it is not a step of the sequence.
 var Order = []string{Postgres, API, PowerSync, Caddy}
 
 // StorageDatabase is PowerSync's own bucket-storage database, created by 00-init.sql.
@@ -100,6 +109,27 @@ func (p Plan) Children() []Spec {
 	return []Spec{p.API(), p.PowerSync(), p.Caddy()}
 }
 
+// Bonjour advertises the running server on the local network through the system DNS-SD
+// client, which registers with mDNSResponder and withdraws the moment it is killed —
+// which is why it is supervised as a child rather than called as a library.
+//
+// It is an ADVISORY child: deliberately not in Children(), not in Order, and not in
+// PortChecks. `status`'s services array is what the menu-bar app renders as rows and
+// what DeriveState summarises into the icon, and a household whose Bonjour registration
+// failed still has a completely working server. It gets its own status block instead.
+func (p Plan) Bonjour(inst bonjour.Instance) Spec {
+	tool := bonjour.Tool()
+	return Spec{
+		Name: Bonjour,
+		Path: tool,
+		Args: inst.Args(tool),
+		Env:  p.baseEnv(),
+		// Port stays 0 on purpose: dns-sd binds nothing. The port being advertised is
+		// Caddy's, and it belongs to the instance and the status block, not here, where
+		// it would look like a port to check.
+	}
+}
+
 // Plan holds everything the specs are derived from.
 type Plan struct {
 	Bundle    string
@@ -143,18 +173,27 @@ func (p Plan) storageURL() string {
 	return p.Env.DatabaseURL(p.Ports.Postgres, StorageDatabase)
 }
 
+// dbEnv is what every node process that opens this household's database needs: the api
+// itself, the migrator, and the operator CLI. Shared so a new required variable cannot
+// reach two of the three — the api would serve, and `admin` would connect and then fail
+// to sign or decrypt.
+func (p Plan) dbEnv() []string {
+	return []string{
+		"NODE_ENV=production",
+		"DATABASE_URL=" + p.databaseURL(),
+		"LOCAL_JWT_SECRET=" + p.Env.Get(configenv.KeyLocalJWTSecret),
+		"TOKEN_ENCRYPTION_KEY=" + p.Env.Get(configenv.KeyTokenEncryptionKey),
+		"POWERSYNC_JWT_PRIVATE_KEY=" + p.Env.Get(configenv.KeyPowerSyncJWTPrivateKey),
+	}
+}
+
 // API mirrors the compose `api` service. HOST is set even though the api only honours it
 // once the HOST change lands (PR #177) — setting it now means the day it merges, the
 // api is on loopback with no runtime change.
 func (p Plan) API() Spec {
-	env := append(p.baseEnv(),
-		"NODE_ENV=production",
+	env := append(append(p.baseEnv(), p.dbEnv()...),
 		"HOST=127.0.0.1",
 		"PORT="+strconv.Itoa(p.Ports.API),
-		"DATABASE_URL="+p.databaseURL(),
-		"LOCAL_JWT_SECRET="+p.Env.Get(configenv.KeyLocalJWTSecret),
-		"TOKEN_ENCRYPTION_KEY="+p.Env.Get(configenv.KeyTokenEncryptionKey),
-		"POWERSYNC_JWT_PRIVATE_KEY="+p.Env.Get(configenv.KeyPowerSyncJWTPrivateKey),
 		"STORAGE_DRIVER=local",
 		"MEDIA_DIR="+p.Layout.Media,
 		"MEDIA_BASE_URL=/media",
@@ -163,8 +202,8 @@ func (p Plan) API() Spec {
 		"POWERSYNC_PUBLIC_URL=",
 		// The PUBLIC PowerSync port — Caddy's, not the loopback one.
 		"POWERSYNC_PORT="+strconv.Itoa(p.Ports.PowerSyncPublic),
-		"LOG_FORMAT=json",
-		"LOG_LEVEL=info",
+		"LOG_FORMAT="+p.logSetting("LOG_FORMAT", "json", "pretty"),
+		"LOG_LEVEL="+p.logSetting("LOG_LEVEL", "info", "debug", "warn", "error"),
 		// There is no backup SIDECAR natively — but there are backups, and the runtime
 		// writes the same backup_runs rows the sidecar does. BACKUP_ENABLED=false makes
 		// the api's health check short-circuit to "backups are turned off", which would
@@ -195,19 +234,33 @@ func (p Plan) API() Spec {
 // bundle's own dist/migrate.js, which resolves the .sql files at ../migrations relative
 // to itself — the reason api/dist stays a directory in the bundle.
 func (p Plan) Migrate() Spec {
-	env := append(p.baseEnv(),
-		"NODE_ENV=production",
-		"DATABASE_URL="+p.databaseURL(),
-		"LOCAL_JWT_SECRET="+p.Env.Get(configenv.KeyLocalJWTSecret),
-		"TOKEN_ENCRYPTION_KEY="+p.Env.Get(configenv.KeyTokenEncryptionKey),
-		"POWERSYNC_JWT_PRIVATE_KEY="+p.Env.Get(configenv.KeyPowerSyncJWTPrivateKey),
-	)
+	env := append(p.baseEnv(), p.dbEnv()...)
 	return Spec{
 		Name:    Migrate,
 		Path:    p.node(),
 		Args:    []string{p.node(), filepath.Join(p.Bundle, p.apiMigrate())},
 		Env:     env,
 		OneShot: true,
+	}
+}
+
+// Admin is the break-glass operator CLI — the native form of compose's
+// `docker exec waffled-api node dist/admin.js <args>`. It is the same bundled file the
+// api ships, so it needs the api's database environment and nothing that serves HTTP.
+//
+// Not a OneShot: admin.js prompts for a typed confirmation on a TTY, so the supervisor
+// streams the caller's own stdio through rather than capturing it.
+func (p Plan) Admin(args []string) Spec {
+	env := append(p.baseEnv(), p.dbEnv()...)
+	// The same settings the api runs with — token lifetimes and TZ change what a reset or
+	// a session prune actually writes.
+	env = append(env, p.passthrough()...)
+
+	return Spec{
+		Name: Admin,
+		Path: p.node(),
+		Args: append([]string{p.node(), filepath.Join(p.Bundle, p.apiAdmin())}, args...),
+		Env:  env,
 	}
 }
 
@@ -405,15 +458,37 @@ func (p Plan) provenance() []string {
 // passthroughKeys are optional settings an operator may add to config.env by hand. They
 // are forwarded verbatim when present, and omitted entirely when not, so the api falls
 // back to its own defaults rather than seeing an empty string.
+//
+// It is an allowlist on purpose: each key is one a household is meant to set, and never
+// a pass-everything rule. OTEL_* and UPDATE_CHECK_REPO are left out because they would do
+// nothing natively — see docs/product/mac-settings-redesign.md §3.
 var passthroughKeys = []string{
 	"PUBLIC_BASE_URL",
 	"ACCESS_TOKEN_TTL_SECONDS", "REFRESH_TOKEN_TTL_DAYS", "AUTH_FORCE_PASSWORD",
+	"OIDC_NATIVE_REDIRECT_URI",
+	"RATE_LIMIT_SETUP_MAX", "RATE_LIMIT_LOGIN_ACCOUNT_MAX", "RATE_LIMIT_LOGIN_IP_MAX",
+	"RATE_LIMIT_OIDC_START_MAX", "RATE_LIMIT_OIDC_EXCHANGE_MAX", "RATE_LIMIT_REFRESH_MAX",
+	"RATE_LIMIT_KIOSK_PAIR_MAX", "RATE_LIMIT_KIOSK_TOKEN_MAX", "RATE_LIMIT_MEDIA_MAX",
 	"ANTHROPIC_API_KEY", "ANTHROPIC_MODEL",
 	"OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_BASE_URL",
 	"OLLAMA_HOST", "OLLAMA_MODEL",
+	"AI_TIMEOUT_MS", "AI_MAX_RETRIES",
 	"GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_CALENDAR_REDIRECT_URI", "GOOGLE_CALENDAR_SCOPES",
 	"MS_CLIENT_ID", "MS_CLIENT_SECRET", "MS_CALENDAR_REDIRECT_URI", "MS_CALENDAR_SCOPES",
 	"TZ",
+}
+
+// logSetting reads one of the api's logging keys from config.env, lower-cased. Anything
+// but the default or one of the alternatives the api knows becomes the default, which is
+// what the api would quietly do with it anyway.
+func (p Plan) logSetting(key, def string, alternatives ...string) string {
+	v := strings.ToLower(strings.TrimSpace(p.Env.Get(key)))
+	for _, a := range alternatives {
+		if v == a {
+			return v
+		}
+	}
+	return def
 }
 
 func (p Plan) passthrough() []string {
@@ -440,6 +515,13 @@ func (p Plan) apiMigrate() string {
 		return p.Manifest.Components.API.Migrate
 	}
 	return "api/dist/migrate.js"
+}
+
+// apiAdmin sits beside migrate.js in the bundle's api/dist, and is derived from it rather
+// than hard-coded so a bundle that moves that directory only says so once. The manifest
+// has no entry of its own for it — build.sh copies the whole of dist.
+func (p Plan) apiAdmin() string {
+	return filepath.Join(filepath.Dir(p.apiMigrate()), "admin.js")
 }
 
 func (p Plan) powersyncEntry() string {

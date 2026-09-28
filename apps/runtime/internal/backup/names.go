@@ -49,11 +49,20 @@ func DumpName(at time.Time) string {
 	return DumpPrefix + at.UTC().Format(stampLayout) + DumpExt
 }
 
-// SnapshotName is the file a pre-migration snapshot writes. The version is in the name
-// because the only question anyone asks of a rollback point is "which build was this
-// taken before?".
-func SnapshotName(version string, at time.Time) string {
-	return SnapshotPrefix + sanitizeVersion(version) + "-" + at.UTC().Format(stampLayout) + DumpExt
+// SnapshotName is the file a pre-migration snapshot writes.
+//
+// Both versions are in the name because a snapshot marks a crossing, and the question
+// anyone asks of a rollback point is which way it was going: `from` wrote the data (read
+// back out of runtime.json, since a running binary cannot know it) and `to` is the build
+// about to change the schema. An empty `from` becomes "unknown" — data written before
+// that was recorded genuinely has no answer, and a hole in the name would read as the
+// other version.
+//
+// Names written by earlier builds carry a single version and still parse: StampOf reads
+// the last two dash-separated fields, and everything before them is prose.
+func SnapshotName(from, to string, at time.Time) string {
+	return SnapshotPrefix + sanitizeVersion(from) + "-to-" + sanitizeVersion(to) +
+		"-" + at.UTC().Format(stampLayout) + DumpExt
 }
 
 // IsDump and IsSnapshot classify a file into exactly one pool, or neither.

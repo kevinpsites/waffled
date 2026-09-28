@@ -367,11 +367,18 @@ export async function todayEvents(householdId: string, date: string, viewerPerso
   return rows
 }
 
+// Events starting in [from, to], plus all-day events that began earlier and are still on at `from`
+// (their end is exclusive), so a week or month grid can draw a trip that started before it.
+const inRange = (alias: string) =>
+  `and ((${alias}.starts_at at time zone h.timezone)::date between $2::date and $3::date
+        or (${alias}.all_day and (${alias}.starts_at at time zone h.timezone)::date < $2::date
+            and (${alias}.ends_at at time zone h.timezone)::date > $2::date))`
+
 export async function rangeEvents(householdId: string, from: string, to: string, viewerPersonId: string | null): Promise<EventRow[]> {
   const { rows } = await query<EventRow>(
-    `${SINGLE_SELECT} ${visibleTo('e', '$4')} and (e.starts_at at time zone h.timezone)::date between $2::date and $3::date
+    `${SINGLE_SELECT} ${visibleTo('e', '$4')} ${inRange('e')}
      union all
-     ${OCC_SELECT} ${visibleTo('o', '$4')} and (o.starts_at at time zone h.timezone)::date between $2::date and $3::date
+     ${OCC_SELECT} ${visibleTo('o', '$4')} ${inRange('o')}
      order by starts_at`,
     [householdId, from, to, viewerPersonId]
   )

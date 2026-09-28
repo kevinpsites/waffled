@@ -6,6 +6,8 @@ import { Icon } from '../icons'
 import { createEventLocal, updateEventLocal, deleteEventLocal, tombstoneEvent } from '../../lib/powersync/events-local'
 import { parseRepeat, buildRrule, describeRrule, weekdayCode, nthWeekdayOfMonth, type RepeatFreq, type CustomUnit, type MonthlyMode } from './recurrence'
 import { WeekdayChips } from './WeekdayChips'
+import { EventWhenField } from './EventWhenField'
+import { allDayExclusiveEnd, allDayLastDay } from './event-when'
 
 // Scope of an edit/delete to a recurring event, surfaced via a small chooser.
 type EditScope = 'this' | 'following' | 'all'
@@ -51,17 +53,6 @@ function toIso(date: string, time: string): string {
   return new Date(`${date}T${time}`).toISOString()
 }
 
-const DURATIONS: Array<{ min: number; label: string }> = [
-  { min: 15, label: '15 min' },
-  { min: 30, label: '30 min' },
-  { min: 45, label: '45 min' },
-  { min: 60, label: '1 hr' },
-  { min: 90, label: '1.5 hr' },
-  { min: 120, label: '2 hr' },
-  { min: 180, label: '3 hr' },
-  { min: 240, label: '4 hr' },
-]
-
 // A new event can be opened with some fields pre-filled — e.g. "Plan time" on a
 // goal hands us the goal + its people so the event is linked from the start.
 export interface EventPrefill {
@@ -84,9 +75,11 @@ function initialForm(event?: AgendaEvent, date?: string, time?: string, prefill?
       event.endsAt && !event.allDay
         ? Math.max(15, Math.round((new Date(event.endsAt).getTime() - d.getTime()) / 60000))
         : 60
+    const day = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
     return {
       title: event.title,
-      day: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+      day,
+      lastDay: event.allDay ? allDayLastDay(event.startsAt, event.endsAt) : day,
       time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
       durationMin,
       allDay: event.allDay,
@@ -103,6 +96,7 @@ function initialForm(event?: AgendaEvent, date?: string, time?: string, prefill?
   return {
     title: prefill?.title ?? '',
     day: date ?? localToday(),
+    lastDay: date ?? localToday(),
     time: time ?? '17:00',
     durationMin: prefill?.durationMin ?? 60,
     allDay: false,
@@ -479,8 +473,10 @@ export function EventModal({
   // (personIds), `restPayload` for REST (participantIds).
   function buildPayloads() {
     const startsAt = form.allDay ? toIso(form.day, '12:00') : toIso(form.day, form.time)
-    // Timed events get start + duration; all-day events have no end.
-    const endsAt = form.allDay ? null : new Date(new Date(startsAt).getTime() + form.durationMin * 60000).toISOString()
+    // Timed events get start + duration; an all-day end is exclusive (event-when.ts).
+    const endsAt = form.allDay
+      ? allDayExclusiveEnd(form.lastDay)
+      : new Date(new Date(startsAt).getTime() + form.durationMin * 60000).toISOString()
     // Calendar choice only when the picker was shown (owner has >1); else auto-route.
     const chosenCal = !editing && ownerCals.length > 1 ? calendarId || null : null
     const draft = {
@@ -701,33 +697,10 @@ export function EventModal({
             <input value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="Soccer practice" autoFocus />
           </label>
 
-          <label className="field">
-            <span>Date</span>
-            <input type="date" value={form.day} onChange={(e) => set('day', e.target.value)} />
-          </label>
-          {!form.allDay && (
-            <div className="field-row">
-              <label className="field">
-                <span>Time</span>
-                <input type="time" value={form.time} onChange={(e) => set('time', e.target.value)} />
-              </label>
-              <label className="field">
-                <span>Duration</span>
-                <select value={form.durationMin} onChange={(e) => set('durationMin', Number(e.target.value))}>
-                  {DURATIONS.map((d) => (
-                    <option key={d.min} value={d.min}>
-                      {d.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          )}
-
-          <label className="field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input type="checkbox" checked={form.allDay} onChange={(e) => set('allDay', e.target.checked)} style={{ width: 'auto' }} />
-            <span style={{ margin: 0 }}>All day</span>
-          </label>
+          <EventWhenField
+            value={{ day: form.day, time: form.time, durationMin: form.durationMin, allDay: form.allDay, lastDay: form.lastDay }}
+            onChange={(when) => setForm((f) => ({ ...f, ...when }))}
+          />
 
           <label className="field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input type="checkbox" checked={form.isCountdown} onChange={(e) => set('isCountdown', e.target.checked)} style={{ width: 'auto' }} />

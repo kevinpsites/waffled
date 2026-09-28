@@ -8,11 +8,13 @@
 package schedule
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/kevinpsites/waffled/apps/runtime/internal/atomicfile"
@@ -20,13 +22,6 @@ import (
 
 // Label is the launchd job label. The plist filename must match it.
 const Label = "app.waffled.backup"
-
-// The nightly hour. 03:00 local, an hour after the Compose sidecar's 02:00 default so a
-// household running both during a migration does not have them collide.
-const (
-	Hour   = 3
-	Minute = 0
-)
 
 // Agent is one installable schedule. Every path is explicit rather than derived at
 // install time so the tests can point it at a temp directory: nothing here may write
@@ -40,6 +35,13 @@ type Agent struct {
 	BundleDir  string
 	DataDir    string
 	LogPath    string
+	// At is the local 24-hour time the nightly backup runs, "HH:MM". Empty means
+	// DefaultHour:DefaultMinute — a string rather than two ints so that a household
+	// choosing midnight is not read as one that chose nothing.
+	At string
+	// Keep is how many routine dumps the nightly run retains, passed to it as --keep.
+	// Zero means the runtime's default, and writes no --keep at all.
+	Keep int
 	// UID is the user's, for the gui/<uid> domain launchctl bootstraps into.
 	UID int
 
@@ -136,6 +138,117 @@ func (a *Agent) Loaded() (bool, error) {
 	return false, fmt.Errorf("launchctl print %s: %w", a.domainTarget(), err)
 }
 
+// ScheduledDataDir reports which data directory the installed plist backs up, read out of
+// its own ProgramArguments. Empty when nothing is installed, the file cannot be parsed,
+// or it carries no --data.
+//
+// The label is global: one Mac holds one nightly backup, belonging to whichever data
+// directory installed it. Anything deciding whether that schedule is *theirs* to remove
+// has to ask this rather than trust the plist's presence.
+func (a *Agent) ScheduledDataDir() (string, error) {
+	dir, found, err := a.scheduledFlag("--data")
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return "", fmt.Errorf("%s names no --data directory", a.PlistPath())
+	}
+	return dir, nil
+}
+
+// ScheduledKeep reports how many routine dumps the installed schedule keeps, read out of
+// its own ProgramArguments like the data directory is. Zero when it passes no --keep —
+// a schedule installed before retention was configurable, which keeps the default.
+func (a *Agent) ScheduledKeep() (int, error) {
+	raw, found, err := a.scheduledFlag("--keep")
+	if err != nil || !found {
+		return 0, err
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 {
+		return 0, fmt.Errorf("%s passes --keep %q, which is not a number of backups", a.PlistPath(), raw)
+	}
+	return n, nil
+}
+
+// scheduledFlag is the value after flag in the installed plist's ProgramArguments.
+func (a *Agent) scheduledFlag(flag string) (value string, found bool, err error) {
+	raw, err := os.ReadFile(a.PlistPath())
+	if err != nil {
+		return "", false, err
+	}
+	args, err := programArguments(raw)
+	if err != nil {
+		return "", false, fmt.Errorf("read %s: %w", a.PlistPath(), err)
+	}
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == flag {
+			return args[i+1], true, nil
+		}
+	}
+	return "", false, nil
+}
+
+// programArguments pulls the ProgramArguments array back out of a plist. It reads the
+// token stream rather than matching strings so that the XML escaping Plist() applies —
+// the whole reason that function marshals instead of concatenating — is undone the same
+// way launchd would undo it.
+func programArguments(raw []byte) ([]string, error) {
+	dec := xml.NewDecoder(bytes.NewReader(raw))
+	var (
+		out        []string
+		lastKey    string
+		cur        string
+		inKey      bool
+		inString   bool
+		collecting bool
+	)
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			// Reaching the end without ever closing the array means the file is
+			// truncated or malformed. Returning what accumulated so far would hand back
+			// half a path with the confidence of a whole one.
+			return nil, fmt.Errorf("no complete ProgramArguments array: %w", err)
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			switch t.Name.Local {
+			case "key":
+				inKey, lastKey = true, ""
+			case "array":
+				collecting = lastKey == "ProgramArguments"
+			case "string":
+				inString, cur = true, ""
+			}
+		case xml.CharData:
+			// Accumulated, not appended: a comment or CDATA inside an element splits its
+			// text across several tokens, and appending each would turn one path into
+			// several arguments — silently truncating it.
+			if inKey {
+				lastKey += string(t)
+			}
+			if collecting && inString {
+				cur += string(t)
+			}
+		case xml.EndElement:
+			switch t.Name.Local {
+			case "key":
+				inKey = false
+			case "string":
+				if collecting && inString {
+					out = append(out, cur)
+				}
+				inString = false
+			case "array":
+				if collecting {
+					return out, nil
+				}
+			}
+		}
+	}
+}
+
 // Uninstall unloads the job and removes the plist. Quiet when nothing is installed —
 // that is what a user does after an uninstall, and what an updater does defensively.
 func (a *Agent) Uninstall() error {
@@ -171,6 +284,12 @@ func (a *Agent) Plist() ([]byte, error) {
 	if a.DataDir != "" {
 		args = append(args, "--data", a.DataDir)
 	}
+	if a.Keep < 0 {
+		return nil, fmt.Errorf("retention must keep at least one backup, got %d", a.Keep)
+	}
+	if a.Keep > 0 {
+		args = append(args, "--keep", strconv.Itoa(a.Keep))
+	}
 
 	d := dict{}
 	d.str("Label", Label)
@@ -178,7 +297,11 @@ func (a *Agent) Plist() ([]byte, error) {
 	// RunAtLoad false: installing the schedule must not kick off a dump on the spot, and
 	// neither should every login.
 	d.boolean("RunAtLoad", false)
-	d.raw("StartCalendarInterval", dict{}.intPair("Hour", Hour, "Minute", Minute))
+	hour, minute, err := a.at()
+	if err != nil {
+		return nil, err
+	}
+	d.raw("StartCalendarInterval", dict{}.intPair("Hour", hour, "Minute", minute))
 	if a.LogPath != "" {
 		// Both streams go to one file. A nightly backup that fails silently is the whole
 		// failure mode this schedule exists to avoid.
@@ -188,6 +311,13 @@ func (a *Agent) Plist() ([]byte, error) {
 	// The dump can take a while on a large household; launchd should not consider the
 	// job wedged and kill it partway through writing a file.
 	d.boolean("AbandonProcessGroup", false)
+	// Without this, Login Items & Extensions lists the agent as the executable it runs:
+	// "waffled-runtime", a generic exec icon, and no idea what it belongs to. Named only
+	// when the binary really is inside an app — a runtime run from Terminal belongs to no
+	// app, and pointing macOS at one that is not there would be worse than the bare name.
+	if id := a.owningAppIdentifier(); id != "" {
+		d.arr("AssociatedBundleIdentifiers", []string{id})
+	}
 
 	body, err := xml.MarshalIndent(plistDoc{Version: "1.0", Body: d}, "", "\t")
 	if err != nil {
@@ -196,7 +326,73 @@ func (a *Agent) Plist() ([]byte, error) {
 	header := xml.Header +
 		"<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" " +
 		"\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
-	return append([]byte(header), append(body, '\n')...), nil
+	return append([]byte(header), append(selfCloseBooleans(body), '\n')...), nil
+}
+
+// owningAppIdentifier is the bundle identifier of the .app this binary lives inside, or
+// "" when it does not live inside one.
+//
+// Read from that app's own Info.plist rather than written down here: the runtime ships
+// inside Waffled.app but is a CLI in its own right, and the two must not disagree about
+// which app — if any — a schedule installed from it belongs to.
+func (a *Agent) owningAppIdentifier() string {
+	app := enclosingApp(a.BinaryPath)
+	if app == "" {
+		return ""
+	}
+	raw, err := os.ReadFile(filepath.Join(app, "Contents", "Info.plist"))
+	if err != nil {
+		return ""
+	}
+	return bundleIdentifier(raw)
+}
+
+// enclosingApp walks up from a path to the nearest ".app" directory containing it.
+func enclosingApp(path string) string {
+	for dir := filepath.Dir(path); ; {
+		if strings.HasSuffix(dir, ".app") {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
+// bundleIdentifier pulls CFBundleIdentifier out of an Info.plist. A whole plist parser is
+// not warranted for one string, and a miss is handled the same way an absent app is.
+func bundleIdentifier(plist []byte) string {
+	const key = "<key>CFBundleIdentifier</key>"
+	i := bytes.Index(plist, []byte(key))
+	if i < 0 {
+		return ""
+	}
+	rest := plist[i+len(key):]
+	open := bytes.Index(rest, []byte("<string>"))
+	if open < 0 {
+		return ""
+	}
+	rest = rest[open+len("<string>"):]
+	close := bytes.Index(rest, []byte("</string>"))
+	if close < 0 {
+		return ""
+	}
+	return strings.TrimSpace(string(rest[:close]))
+}
+
+// selfCloseBooleans rewrites `<false></false>` as `<false/>`.
+//
+// Not cosmetic: launchd refuses the long spelling. `launchctl bootstrap` answers
+// "Bootstrap failed: 5: Input/output error" and loads nothing, so the nightly backup is
+// never scheduled — measured on macOS 15.7 against two dictionaries that `plutil -lint`
+// and every plist reader here call identical. encoding/xml always writes the long form
+// for an empty element and offers no way to ask for the short one, so this is done to the
+// bytes. `<true>`/`<false>` are the only empty elements this plist has.
+func selfCloseBooleans(body []byte) []byte {
+	body = bytes.ReplaceAll(body, []byte("<false></false>"), []byte("<false/>"))
+	return bytes.ReplaceAll(body, []byte("<true></true>"), []byte("<true/>"))
 }
 
 // The minimum of the plist XML grammar this one job needs. Property lists are an ordered

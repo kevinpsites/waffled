@@ -76,9 +76,8 @@ beforeAll(async () => {
   app = (await import('../src/app')).default
   closePool = (await import('../src/platform/db')).closePool
 
-  // First-run onboarding creates the first household + owner admin; self-serve
-  // POST /api/households is now admin-gated. mint('dev|kevin') still resolves via
-  // the identity seeded for the owner below.
+  // Self-serve POST /api/households is admin-gated, so the first household comes from
+  // onboarding; mint('dev|kevin') resolves via the identity seeded below.
   const setup = await call('POST', '/api/auth/setup', undefined, {
     household: { name: 'Sites', timezone: 'America/Chicago' },
     admin: { name: 'Kevin', email: 'kevin@example.com', password: 'ownerpass1' },
@@ -105,8 +104,7 @@ beforeAll(async () => {
   })
 })
 
-// Create a member with a login identity so a minted token resolves to them — the
-// /api/persons route doesn't create logins, so we seed person + identity directly.
+// /api/persons doesn't create logins, so seed person + identity directly.
 async function addMember(name: string, memberType: string, isAdmin: boolean, sub: string): Promise<string> {
   return withClient(async (c) => {
     const p = await c.query<{ id: string }>(
@@ -365,6 +363,73 @@ describe('chore management (edit/delete)', () => {
     choreId = (await instances()).find((i) => i.choreTitle === 'Walk dog')!.choreId
   })
 
+  // TURNING A RECURRING CHORE INTO A ONE-OFF. The `dueOn` move updates EVERY pending
+  // instance and its guard reads `updated.rrule` (the value AFTER the update), so
+  // "Repeats → Once" collapses every pending row onto one date — which `uq_chore_inst
+  // (chore_id, due_on)` then rejects. A one-off has ONE pending instance by definition, so
+  // that is what the conversion leaves behind; done/awaiting rows are never touched.
+  it('turns a recurring chore into a one-off without colliding on due_on', async () => {
+    const { query } = await import('../src/platform/db')
+    const made = await call('POST', '/api/chores', kevin, {
+      title: 'Water plants', personId: kevinId, rrule: 'FREQ=DAILY', rewardAmount: 1,
+    })
+    expect(made.statusCode).toBe(201)
+    const id = JSON.parse(made.body).chore.id as string
+    // Instances are materialised lazily by the today read, so ask for it before copying.
+    await call('GET', '/api/chore-instances/today', kevin)
+
+    await query(
+      `insert into chore_instances (household_id, chore_id, person_id, due_on, status)
+       select household_id, chore_id, person_id, due_on + 1, 'pending' from chore_instances
+        where chore_id = $1 and deleted_at is null order by due_on limit 1`,
+      [id]
+    )
+    await query(
+      `insert into chore_instances (household_id, chore_id, person_id, due_on, status)
+       select household_id, chore_id, person_id, due_on + 2, 'pending' from chore_instances
+        where chore_id = $1 and deleted_at is null order by due_on limit 1`,
+      [id]
+    )
+    const pending = async () => {
+      const { rows } = await query<{ due_on: string }>(
+        `select to_char(due_on,'YYYY-MM-DD') as due_on from chore_instances
+          where chore_id = $1 and deleted_at is null and status = 'pending' order by due_on`,
+        [id]
+      )
+      return rows.map((r) => r.due_on)
+    }
+    expect((await pending()).length).toBeGreaterThan(1)
+
+    const target = (await pending())[0]
+    const res = await call('PATCH', `/api/chores/${id}`, kevin, { rrule: null, dueOn: target })
+    expect(res.statusCode).toBe(200)
+    expect(await pending()).toEqual([target])
+  })
+
+  // Shape is not a date: `2026-02-31` passes /^\d{4}-\d{2}-\d{2}$/ and then fails in
+  // Postgres, so the guard must reject it itself. A dueOn-ONLY patch is the Weekly
+  // Planning Tasks step's whole write, and dueOn is not a chore COLUMN — every other
+  // caller sends a whole form, so this single-field case needs pinning.
+  it('moves the day on a patch carrying only dueOn', async () => {
+    const { query } = await import('../src/platform/db')
+    const made = await call('POST', '/api/chores', kevin, { title: 'Day only', personId: kevinId })
+    const id = JSON.parse(made.body).chore.id as string
+    const res = await call('PATCH', `/api/chores/${id}`, kevin, { dueOn: '2026-03-05' })
+    expect(res.statusCode).toBe(200)
+    const { rows } = await query<{ due_on: string }>(
+      `select to_char(due_on,'YYYY-MM-DD') as due_on from chore_instances
+        where chore_id = $1 and deleted_at is null order by due_on limit 1`, [id])
+    expect(rows[0]?.due_on).toBe('2026-03-05')
+  })
+
+  it('refuses a date that looks right but does not exist', async () => {
+    const made = await call('POST', '/api/chores', kevin, { title: 'Impossible', personId: kevinId })
+    const id = JSON.parse(made.body).chore.id as string
+    expect((await call('PATCH', `/api/chores/${id}`, kevin, { dueOn: '2026-02-31' })).statusCode).toBe(400)
+    expect((await call('PATCH', `/api/chores/${id}`, kevin, { dueOn: '2026-13-01' })).statusCode).toBe(400)
+    expect((await call('PATCH', `/api/chores/${id}`, kevin, { dueOn: '2026-02-28' })).statusCode).toBe(200)
+  })
+
   it('edits a chore, reflected in the instance list', async () => {
     const res = await call('PATCH', `/api/chores/${choreId}`, kevin, { title: 'Walk the dog', rewardAmount: 5 })
     expect(res.statusCode).toBe(200)
@@ -385,11 +450,9 @@ describe('chore management (edit/delete)', () => {
     const patched = await call('PATCH', `/api/chores/${before.choreId}`, kevin, { requiresApproval: true })
     expect(patched.statusCode).toBe(200)
 
-    // the existing instance — not just future ones — now requires approval
     const after = (await raw()).find((i) => i.choreTitle === 'Feed fish')!
     expect(after.requiresApproval).toBe(true)
 
-    // and completing it parks in 'awaiting' instead of 'done'
     const done = await call('POST', `/api/chore-instances/${after.id}/complete`, kevin)
     expect(JSON.parse(done.body).instance.status).toBe('awaiting')
   })
@@ -594,7 +657,6 @@ describe('weekly schedules + up-for-grabs claim', () => {
     expect(claim.statusCode).toBe(200)
     expect(JSON.parse(claim.body).instance.personId).toBe(kevinId)
 
-    // second claim is rejected — someone already grabbed it
     expect((await call('POST', `/api/chore-instances/${inst.id}/claim`, kevin, { personId: kevinId })).statusCode).toBe(409)
   })
 
@@ -603,11 +665,9 @@ describe('weekly schedules + up-for-grabs claim', () => {
     const choreId = (await instances()).find((i) => i.choreTitle === 'Reassign me')!
     expect(choreId.personId).toBe(kevinId)
 
-    // edit → up for grabs: the pending instance follows to person_id null
     expect((await call('PATCH', `/api/chores/${choreId.choreId}`, kevin, { personId: null })).statusCode).toBe(200)
     expect((await instances()).find((i) => i.choreTitle === 'Reassign me')!.personId).toBeNull()
 
-    // edit → a person: the pending instance follows to them
     expect((await call('PATCH', `/api/chores/${choreId.choreId}`, kevin, { personId: kevinId })).statusCode).toBe(200)
     expect((await instances()).find((i) => i.choreTitle === 'Reassign me')!.personId).toBe(kevinId)
   })
@@ -630,13 +690,9 @@ describe('assign capability gating', () => {
     await call('POST', '/api/chores', kevin, { title: 'Assignable', personId: null, rrule: 'FREQ=DAILY' })
     const inst = (await instances()).find((i) => i.choreTitle === 'Assignable')!
 
-    // → another person: needs chore.manage, which a kid lacks → 403
     expect((await call('POST', `/api/chore-instances/${inst.id}/assign`, wallyTok, { personId: kevinId })).statusCode).toBe(403)
-    // → self (just claiming) is allowed
     expect((await call('POST', `/api/chore-instances/${inst.id}/assign`, wallyTok, { personId: wally })).statusCode).toBe(200)
-    // → up-for-grabs (releasing) is allowed
     expect((await call('POST', `/api/chore-instances/${inst.id}/assign`, wallyTok, { personId: null })).statusCode).toBe(200)
-    // an admin/manager can assign to another person
     expect((await call('POST', `/api/chore-instances/${inst.id}/assign`, kevin, { personId: kevinId })).statusCode).toBe(200)
   })
 })
@@ -676,7 +732,6 @@ describe('parent-approval chores', () => {
     const rej = await call('POST', `/api/chore-instances/${inst.id}/reject`, kevin)
     expect(rej.statusCode).toBe(200)
     expect(JSON.parse(rej.body).instance.status).toBe('pending')
-    // rejecting a non-awaiting instance 409s
     expect((await call('POST', `/api/chore-instances/${inst.id}/reject`, kevin)).statusCode).toBe(409)
   })
 
@@ -714,11 +769,9 @@ describe('photo-proof chores', () => {
     const inst = (await instances()).find((i) => i.choreTitle === 'Tidy room')!
     expect(inst.requiresPhoto).toBe(true)
 
-    // no photo → 422, still pending
     expect((await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin)).statusCode).toBe(422)
     expect((await instances()).find((i) => i.choreTitle === 'Tidy room')!.status).toBe('pending')
 
-    // with a proof key → done, proofUrl resolves to /media/<key>
     const done = await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin, {
       storageKey: `${householdId}/${'a'.repeat(32)}.jpg`,
       contentType: 'image/jpeg',
@@ -755,7 +808,6 @@ describe('photo-proof chores', () => {
     expect((await call('PATCH', `/api/chores/${before.choreId}`, kevin, { requiresPhoto: true })).statusCode).toBe(200)
     const after = (await instances()).find((i) => i.choreTitle === 'Sweep')!
     expect(after.requiresPhoto).toBe(true)
-    // and completing it now needs a photo
     expect((await call('POST', `/api/chore-instances/${after.id}/complete`, kevin)).statusCode).toBe(422)
   })
 })
@@ -780,7 +832,6 @@ describe('photo-proof retention', () => {
     expect(put.statusCode).toBe(200)
     expect(JSON.parse(put.body).proofTtlDays).toBe(7)
     expect(JSON.parse((await call('GET', '/api/chores/settings', kevin)).body).proofTtlDays).toBe(7)
-    // put it back to the default for the sweep test below
     await call('PUT', '/api/chores/settings', kevin, { proofTtlDays: 3 })
   })
 
@@ -795,12 +846,10 @@ describe('photo-proof retention', () => {
   it('the sweep deletes aged proofs (keeping hadProof) but spares fresh + awaiting ones', async () => {
     const agedId = await completedWithProof('Old proof')   // will be backdated past the TTL
     await completedWithProof('Fresh proof')                // stays (completed just now)
-    // an awaiting (not settled) photo chore must never be swept, however old
     await call('POST', '/api/chores', kevin, { title: 'Pending proof', personId: kevinId, rewardAmount: 1, requiresPhoto: true, requiresApproval: true })
     const pend = (await instances()).find((i) => i.choreTitle === 'Pending proof')!
     await call('POST', `/api/chore-instances/${pend.id}/complete`, kevin, { storageKey: `${householdId}/${'c'.repeat(32)}.jpg`, contentType: 'image/jpeg' })
 
-    // backdate the aged one + the awaiting one well past the 3-day window
     await withClient((c) =>
       c.query(`update chore_instances set completed_at = now() - interval '5 days' where id = any($1)`, [[agedId, pend.id]])
     )
@@ -814,7 +863,6 @@ describe('photo-proof retention', () => {
     expect(aged.proofUrl).toBeNull()   // blob + key gone
     expect(aged.hadProof).toBe(true)   // …but we still remember a photo was attached
     expect(after.find((i) => i.choreTitle === 'Fresh proof')!.proofUrl).toMatch(/[0-9a-f]{32}\.jpg$/)
-    // awaiting one keeps its proof despite being backdated
     expect(after.find((i) => i.choreTitle === 'Pending proof')!.proofUrl).toMatch(/c{32}\.jpg$/)
   })
 })
@@ -845,19 +893,15 @@ describe('stored proof photos (review/manage)', () => {
     expect(a.proofUrl).toMatch(/[0-9a-f]{32}\.jpg$/)
     expect(proofs.some((p) => p.choreTitle === 'Proof B')).toBe(true)
 
-    // delete one
     expect((await call('DELETE', `/api/chore-proofs/${aId}`, kevin)).statusCode).toBe(204)
     proofs = await listProofs()
     expect(proofs.some((p) => p.instanceId === aId)).toBe(false)
-    // its instance still records that a photo was attached
     const aInst = JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body).instances.find((i: { id: string; hadProof: boolean }) => i.id === aId)
     expect(aInst.hadProof).toBe(true)
     expect(aInst.proofUrl).toBeNull()
 
-    // delete unknown → 404
     expect((await call('DELETE', '/api/chore-proofs/00000000-0000-0000-0000-000000000000', kevin)).statusCode).toBe(404)
 
-    // clear all → none left
     const cleared = await call('DELETE', '/api/chore-proofs', kevin)
     expect(cleared.statusCode).toBe(200)
     expect(JSON.parse(cleared.body).cleared).toBeGreaterThanOrEqual(1)
@@ -910,13 +954,12 @@ describe('chore capability gating (non-admin members)', () => {
 
   it('a non-admin adult holds the default capabilities; a kid holds none', async () => {
     const adult = JSON.parse((await call('GET', '/api/household', adultToken)).body).person
-    expect(adult.capabilities.sort()).toEqual(['chore.approve', 'chore.manage', 'goal.manage', 'reward.approve', 'reward.grant', 'reward.manage'])
+    expect(adult.capabilities.sort()).toEqual(['chore.approve', 'chore.manage', 'goal.manage', 'planning.manage', 'reward.approve', 'reward.grant', 'reward.manage'])
     const kid = JSON.parse((await call('GET', '/api/household', kidToken)).body).person
     expect(kid.capabilities).toEqual([])
   })
 
   it('a non-admin adult CAN create a chore for someone else and approve one', async () => {
-    // create for the kid (not self) → needs chore.manage, which the adult has
     const add = await call('POST', '/api/chores', adultToken, { title: 'Adult-set', personId: kidId, rewardAmount: 1, requiresApproval: true })
     expect(add.statusCode).toBe(201)
     const list = JSON.parse((await call('GET', '/api/chore-instances/today', adultToken)).body).instances as Array<{ id: string; choreTitle: string }>
@@ -943,7 +986,6 @@ describe('chore capability gating (non-admin members)', () => {
   })
 
   it('granting teen/kid chore.approve via /api/permissions lets them approve', async () => {
-    // admin grants the kid role chore.approve
     const put = await call('PUT', '/api/permissions', kevin, { permissions: { kid: { 'chore.approve': true } } })
     expect(put.statusCode).toBe(200)
     expect(JSON.parse(put.body).permissions.kid['chore.approve']).toBe(true)
@@ -954,7 +996,6 @@ describe('chore capability gating (non-admin members)', () => {
     await call('POST', `/api/chore-instances/${inst.id}/complete`, kidToken)
     expect((await call('POST', `/api/chore-instances/${inst.id}/approve`, kidToken)).statusCode).toBe(200)
 
-    // reset so later assumptions about defaults hold
     await call('PUT', '/api/permissions', kevin, { permissions: { kid: { 'chore.approve': false } } })
   })
 
@@ -1036,7 +1077,6 @@ describe('capture — chores target', () => {
     const res = await commit({ targetKind: 'chore', verb: 'complete', targetId: inst.id, args: { storageKey: foreignKey, contentType: 'image/jpeg' } })
     expect(res.statusCode).toBe(400)
     expect(JSON.parse(res.body).message).toMatch(/proof/i)
-    // still pending, and no proof key was stored
     const after = await withClient((c) =>
       c.query<{ status: string; proof_storage_key: string | null }>(
         `select status, proof_storage_key from chore_instances where id=$1`, [inst.id]
@@ -1045,7 +1085,6 @@ describe('capture — chores target', () => {
     expect(after.rows[0].status).toBe('pending')
     expect(after.rows[0].proof_storage_key).toBeNull()
 
-    // a key that DOES belong to the household still works
     const ownKey = `${householdId}/${'d'.repeat(32)}.jpg`
     const ok = await commit({ targetKind: 'chore', verb: 'complete', targetId: inst.id, args: { storageKey: ownKey, contentType: 'image/jpeg' } })
     expect(ok.statusCode).toBe(200)
@@ -1116,17 +1155,13 @@ describe('one-off chores + rollover (carry-forward)', () => {
     const future = shift(today, 3)
     const add = await call('POST', '/api/chores', kevin, { title: 'OneOff Future', personId: kevinId, dueOn: future })
     expect(add.statusCode).toBe(201)
-    // visible on today's list right away — a task you added today is on your list today…
     const mine = (await instances()).filter((i) => i.choreTitle === 'OneOff Future')
     expect(mine).toHaveLength(1)
     expect(mine[0].dueOn).toBe(future) // …but its due date is preserved so the UI can say "due in 3 days"
     expect(mine[0].status).toBe('pending')
-    // it counts toward today's totals (list ↔ rings stay consistent)
     expect((await meTotal()).total).toBeGreaterThanOrEqual(1)
-    // still present when the due day itself is requested
     const ahead = JSON.parse((await call('GET', `/api/chore-instances/today?date=${future}`, kevin)).body).instances as Inst[]
     expect(ahead.filter((i) => i.choreTitle === 'OneOff Future')).toHaveLength(1)
-    // but NOT on a date before it was created (no time-traveling onto past lists)
     const past = shift(today, -5)
     const back = JSON.parse((await call('GET', `/api/chore-instances/today?date=${past}`, kevin)).body).instances as Inst[]
     expect(back.some((i) => i.choreTitle === 'OneOff Future')).toBe(false)
@@ -1145,7 +1180,6 @@ describe('one-off chores + rollover (carry-forward)', () => {
     expect(carried).toBeTruthy()
     expect(carried!.dueOn).toBe(past) // original date preserved → "overdue · since …"
     expect(carried!.status).toBe('pending')
-    // and it counts toward today's totals
     expect(before.total).toBeGreaterThanOrEqual(1)
   })
 
@@ -1155,7 +1189,6 @@ describe('one-off chores + rollover (carry-forward)', () => {
     const inst = (await instances()).find((i) => i.choreTitle === 'Done OneOff')!
     const past = shift(today, -3)
     await withClient((c) => c.query(`update chore_instances set due_on=$2 where id=$1`, [inst.id, past]))
-    // complete it (on its past date)
     expect((await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin)).statusCode).toBe(200)
     expect((await instances()).some((i) => i.choreTitle === 'Done OneOff')).toBe(false)
   })
