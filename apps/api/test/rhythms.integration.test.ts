@@ -58,6 +58,17 @@ async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
 // The household's own date, not the runner's: period maths is done in its timezone.
 const householdToday = (): Promise<string> =>
   withClient(async (c) => (await c.query(`select (now() at time zone 'America/Chicago')::date::text as d`)).rows[0].d)
+const plus = (date: string, n: number) =>
+  new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
+
+// The first of a month relative to today. Rhythm fixtures derive their dates from this
+// rather than naming a calendar month: a hardcoded one passes until real time reaches it
+// and then fails for good, because a suggested day that has gone by is nulled out.
+const firstOfMonth = async (monthsOut: number) => {
+  const d = new Date(`${(await householdToday()).slice(0, 7)}-01T00:00:00Z`)
+  d.setUTCMonth(d.getUTCMonth() + monthsOut)
+  return d.toISOString().slice(0, 10)
+}
 
 beforeAll(async () => {
   pg = await new PostgreSqlContainer('postgres:16').start()
@@ -1941,9 +1952,6 @@ describe('a booking window narrower than the period', () => {
 
 describe('the period a scheduling rhythm is asking about', () => {
   // The register tiles to the household's real today, so these anchor relative to it.
-  const plus = (date: string, n: number) =>
-    new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
-
   async function listed(body: Record<string, unknown>) {
     const res = await call('POST', '/api/rhythms', kevin, { satisfiedBy: 'scheduling', ...body })
     expect(res.statusCode).toBe(201)
@@ -1988,17 +1996,10 @@ describe('a which-day hint on a rhythm booked by hand', () => {
   }
   const patchRule = (id: string, rrule: string | null) => call('PATCH', `/api/rhythms/${id}`, kevin, { rrule })
 
-  // Anchored a month out, not in the past: a suggestion that has already gone by is nulled
-  // out, so a current-month period would make this pass or fail on the date it happens to
-  // run — green until that month's third Saturday, red for the rest of the month.
-  const firstOfNextMonth = async () => {
-    const d = new Date(`${(await householdToday()).slice(0, 7)}-01T00:00:00Z`)
-    d.setUTCMonth(d.getUTCMonth() + 1)
-    return d.toISOString().slice(0, 10)
-  }
-
   it('keeps the hint without booking anything, and suggests that day for the period', async () => {
-    const res = await create({ title: 'Family outing by hand', startsOn: await firstOfNextMonth(), rrule: 'FREQ=MONTHLY;BYDAY=3SA' })
+    // Anchored a month out, not in the past: a current-month period would put the hinted
+    // day behind today for the back third of every month, and it would be nulled out.
+    const res = await create({ title: 'Family outing by hand', startsOn: await firstOfMonth(1), rrule: 'FREQ=MONTHLY;BYDAY=3SA' })
     expect(res.statusCode).toBe(201)
     const id = idOf(res)
     const row = await rowOf(id)
@@ -2010,16 +2011,24 @@ describe('a which-day hint on a rhythm booked by hand', () => {
   })
 
   it('suggests the hinted day on the attention item, and still counts a booking on another day', async () => {
+    // A period half a year out, reached by asking attention for a date inside it. Both ends
+    // are the first of a month, so the period grid lines up whenever this runs.
+    const periodStart = await firstOfMonth(6)
+    const saturday = nthSaturday(periodStart, 1)
+    // Any other day inside the 7-day window. The first Saturday is one of days 1–7, so the
+    // offset it takes is the one to avoid.
+    const otherDay = plus(periodStart, saturday === plus(periodStart, 3) ? 2 : 3)
     const id = idOf(await create({
-      title: 'Date night on a Saturday', startsOn: '2026-01-01', bookWithin: '7 days', leadTime: '7 days',
+      title: 'Date night on a Saturday', startsOn: await firstOfMonth(-6), bookWithin: '7 days', leadTime: '7 days',
       rrule: 'FREQ=MONTHLY;BYDAY=1SA',
     }))
-    const items = async () => JSON.parse((await call('GET', '/api/rhythms/attention?to=2027-03-03', kevin)).body).items
+    const items = async () =>
+      JSON.parse((await call('GET', `/api/rhythms/attention?to=${plus(periodStart, 2)}`, kevin)).body).items
     const item = (await items()).find((i: { rhythm: { id: string } }) => i.rhythm.id === id)
-    expect(item.suggestedOn).toBe('2027-03-06')
-    // A hint, not a rule: a Thursday inside the window settles the period all the same.
+    expect(item.suggestedOn).toBe(saturday)
+    // A hint, not a rule: another day inside the window settles the period all the same.
     const booked = await call('POST', `/api/rhythms/${id}/schedule`, kevin, {
-      startsAt: '2027-03-04T23:00:00Z', periodStart: '2027-03-01',
+      startsAt: `${otherDay}T23:00:00Z`, periodStart,
     })
     expect(booked.statusCode).toBe(201)
     expect((await items()).map((i: { rhythm: { id: string } }) => i.rhythm.id)).not.toContain(id)
@@ -2064,10 +2073,7 @@ describe('a which-day hint on a rhythm booked by hand', () => {
   })
 
   it('never suggests a day that has already gone by this period', async () => {
-    const today: string = await withClient(async (c) =>
-      (await c.query(`select (now() at time zone 'America/Chicago')::date::text as d`)).rows[0].d)
-    const plus = (date: string, n: number) =>
-      new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
+    const today = await householdToday()
     // A week that began three days ago. A daily hint's first slot is behind us, so today is the day.
     const daily = idOf(await create({ title: 'Daily hint', every: '7 days', startsOn: plus(today, -3), rrule: 'FREQ=DAILY' }))
     expect((await rowOf(daily)).suggestedOn).toBe(today)
