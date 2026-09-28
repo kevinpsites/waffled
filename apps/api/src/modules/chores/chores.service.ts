@@ -866,7 +866,7 @@ export async function uncompleteInstance(tenant: Tenant, id: string): Promise<Ch
       return null
     }
     if (inst.awarded && inst.reward_amount && inst.person_id) {
-      await lockLedgerSubject(client, tenant.householdId, inst.person_id)
+      await lockLedgerSubject(client, tenant.householdId, inst.person_id, { includeArchived: true })
       const balance = await client.query<{ balance: string }>(
         `select coalesce(sum(amount),0) as balance from ledger_entries
           where household_id=$1 and person_id=$2 and currency=$3 and deleted_at is null`,

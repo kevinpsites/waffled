@@ -14,13 +14,14 @@ import { HouseholdReferenceError } from './household-refs'
 export async function lockLedgerSubject(
   client: PoolClient,
   householdId: string,
-  personId: string
+  personId: string,
+  options: { includeArchived?: boolean } = {}
 ): Promise<void> {
   const locked = await client.query(
     `select id from persons
-      where household_id=$1 and id=$2 and deleted_at is null
+      where household_id=$1 and id=$2 and ($3::boolean or deleted_at is null)
       for no key update`,
-    [householdId, personId]
+    [householdId, personId, options.includeArchived ?? false]
   )
   if (!locked.rowCount) throw new HouseholdReferenceError('person not found')
 }
@@ -29,12 +30,17 @@ export async function lockLedgerSubject(
 // Call only after lockLedgerSubject; a concurrent disable/delete must finish before
 // validation, and a successful read must remain valid until the debit commits.
 export async function lockSpendableCurrencies(client: PoolClient, householdId: string, currencies: string[]): Promise<boolean> {
+  return lockLedgerCurrencies(client, householdId, currencies, currencies)
+}
+
+export async function lockLedgerCurrencies(client: PoolClient, householdId: string, currencies: string[], spendableCurrencies: string[]): Promise<boolean> {
   const keys = [...new Set(currencies)].sort()
   const { rowCount } = await client.query(
     `select key from currencies
-      where household_id=$1 and key=any($2::text[]) and spendable=true and deleted_at is null
+      where household_id=$1 and key=any($2::text[]) and deleted_at is null
+        and (not (key=any($3::text[])) or spendable=true)
       order by key for share`,
-    [householdId, keys]
+    [householdId, keys, spendableCurrencies]
   )
   return rowCount === keys.length
 }

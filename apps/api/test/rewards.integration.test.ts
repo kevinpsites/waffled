@@ -1047,6 +1047,54 @@ describe('review: chore clawbacks and currency locks', () => {
     expect(debits.rowCount).toBe(1)
   })
 
+  it.each([10, 0])('can safely undo an archived member’s chore with balance %s', async (balance) => {
+    const { personId, instanceId } = await earnedChore(`archived-${balance}`)
+    await withClient(async (c) => {
+      if (balance === 0) await c.query("insert into ledger_entries (household_id,person_id,currency,amount,reason,created_by) values ($1,$2,'stars',-10,'reward_redeemed',$3)", [householdId, personId, kevinId])
+      await c.query('update persons set deleted_at=now() where id=$1', [personId])
+    })
+    const result = await call('POST', `/api/chore-instances/${instanceId}/uncomplete`, kevin)
+    expect(result.statusCode).toBe(balance === 10 ? 200 : 409)
+    const stored = await withClient((c) => c.query('select status,awarded from chore_instances where id=$1', [instanceId]))
+    expect(stored.rows[0]).toEqual({ status: balance === 10 ? 'pending' : 'done', awarded: balance !== 10 })
+    const ledger = await withClient((c) => c.query('select sum(amount)::int as balance from ledger_entries where household_id=$1 and person_id=$2', [householdId, personId]))
+    expect(ledger.rows[0].balance).toBe(0)
+  })
+
+  it.each(['create', 'update'])('locks currencies in key order before %s promotes a default', async (operation) => {
+    const originalDefault = await withClient(async (c) => (await c.query('select id from currencies where household_id=$1 and is_default=true and deleted_at is null', [householdId])).rows[0].id)
+    const late = JSON.parse((await call('POST', '/api/currencies', kevin, { label: `ZZ order ${operation}` })).body).currency
+    const early = JSON.parse((await call('POST', '/api/currencies', kevin, { label: `AA order ${operation}` })).body).currency
+    const blocker = new Client({ connectionString: url })
+    const observer = new Client({ connectionString: url })
+    await Promise.all([blocker.connect(), observer.connect()])
+    await blocker.query('begin')
+    await blocker.query('select id from currencies where id=$1 for update', [early.id])
+    const pending = operation === 'update'
+      ? call('PATCH', `/api/currencies/${late.id}`, kevin, { isDefault: true })
+      : call('POST', '/api/currencies', kevin, { label: 'New ordered default', isDefault: true })
+    let laterRowAvailable = false
+    let barrierError: unknown
+    try {
+      const pid = (await blocker.query('select pg_backend_pid() as pid')).rows[0].pid
+      await waitForLockWaiters(observer, pid, 1, ['%currencies%'])
+      try {
+        await observer.query('select id from currencies where id=$1 for update nowait', [late.id])
+        laterRowAvailable = true
+      } catch (error) {
+        if ((error as { code?: string }).code !== '55P03') throw error
+      }
+    } catch (error) { barrierError = error } finally {
+      await blocker.query('commit')
+      await Promise.all([blocker.end(), observer.end()])
+    }
+    const result = await pending
+    await call('PATCH', `/api/currencies/${originalDefault}`, kevin, { isDefault: true })
+    if (barrierError) throw barrierError
+    expect(result.statusCode).toBe(operation === 'update' ? 200 : 201)
+    expect(laterRowAvailable).toBe(true)
+  })
+
   it('refuses undo after spending, preserving completion and proof atomically', async () => {
     const { personId, instanceId } = await earnedChore('spent')
     await withClient((c) => c.query("update chore_instances set proof_storage_key='review-proof.jpg',proof_content_type='image/jpeg',had_proof=true where id=$1", [instanceId]))
@@ -1087,15 +1135,15 @@ describe('review: chore clawbacks and currency locks', () => {
     expect(await starsOf(personId)).toBe(8)
   })
 
-  it.each(['from', 'to'])('rechecks a concurrently disabled %s conversion currency under lock', async (side) => {
+  it.each(['from', 'to'])('requires spendability only for the debit side after concurrent %s changes', async (side) => {
     const personId = await addMember(`Conversion disable ${side}`, 'kid', false, `dev|disable-${side}`)
     const from = JSON.parse((await call('POST', '/api/currencies', kevin, { label: `From ${side}`, spendable: true })).body).currency
     const to = JSON.parse((await call('POST', '/api/currencies', kevin, { label: `To ${side}`, spendable: true })).body).currency
     await call('POST', `/api/persons/${personId}/award`, kevin, { currency: from.key, amount: 10 })
     const conv = JSON.parse((await call('POST', '/api/conversions', kevin, { fromCurrency: from.key, toCurrency: to.key, fromAmount: 1, toAmount: 1 })).body).conversion
     const result = await runAfterConcurrentCurrencyDisable(side === 'from' ? from.id : to.id, () => call('POST', `/api/conversions/${conv.id}/apply`, kevin, { personId }))
-    expect(result.statusCode).toBe(409)
+    expect(result.statusCode).toBe(side === 'from' ? 409 : 200)
     const entries = await withClient((c) => c.query("select id from ledger_entries where person_id=$1 and reason='conversion'", [personId]))
-    expect(entries.rowCount).toBe(0)
+    expect(entries.rowCount).toBe(side === 'from' ? 0 : 2)
   })
 })
