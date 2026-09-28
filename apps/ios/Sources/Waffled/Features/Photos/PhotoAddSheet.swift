@@ -152,6 +152,7 @@ struct PhotoAddSheet: View {
     private func ingest(_ items: [PhotosPickerItem]) async {
         // Reset the picker selection token so the next pick fires onChange again.
         defer { picks = [] }
+        guard let operationAPI = try? api.boundToCurrentPrincipal() else { return }
         for item in items {
             let row = Row()
             rows.append(row)
@@ -162,7 +163,7 @@ struct PhotoAddSheet: View {
                     throw Failure.decode
                 }
                 rows[index].image = image
-                let uploaded = try await api.uploadImage(image)
+                let uploaded = try await operationAPI.uploadImage(image)
                 rows[index].storageKey = uploaded.key
                 rows[index].status = .ready
                 if !sharedAlbum.isEmpty { rows[index].album = sharedAlbum }
@@ -185,6 +186,7 @@ struct PhotoAddSheet: View {
         guard !creating else { return }
         creating = true; defer { creating = false }
         errorText = nil
+        guard let operationAPI = try? api.boundToCurrentPrincipal() else { return }
         var failures = 0
         for row in rows where row.status == .ready {
             guard let key = row.storageKey else { continue }
@@ -196,7 +198,7 @@ struct PhotoAddSheet: View {
             ]
             body["memory"] = album.isEmpty ? .null : .string(album)
             do {
-                _ = try await api.createPhoto(body)
+                _ = try await operationAPI.createPhoto(body)
             } catch {
                 failures += 1
             }

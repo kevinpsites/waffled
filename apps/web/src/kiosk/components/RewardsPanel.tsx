@@ -54,9 +54,9 @@ export function RewardsPanel() {
   }, [kids, person])
   const activeKid = kids.find((k) => k.personId === activeKidId) ?? null
   // Redeeming spends a wallet: your own is always yours to spend, someone else's
-  // needs reward.manage — the same rule the server enforces, so we render the
+  // needs reward.approve — the same rule the server enforces, so we render the
   // affordance only when it would succeed.
-  const canRedeemActive = !!activeKid && (canManage || activeKid.personId === person?.id)
+  const canRedeemActive = !!activeKid && (canApprove || activeKid.personId.toLowerCase() === person?.id.toLowerCase())
 
   const [category, setCategory] = useState<string>('all')
   const [redeemFor, setRedeemFor] = useState<Reward | null>(null)

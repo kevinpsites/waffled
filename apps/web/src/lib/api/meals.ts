@@ -1,6 +1,6 @@
 // Meals & recipes domain — client slice, types, and hooks.
 import { useCallback, useEffect, useState } from 'react'
-import { apiGet, apiSend, apiDelete, localToday } from './client'
+import { apiDelete, apiDeleteForIdentity, apiGet, apiSend, apiSendForIdentity, localToday } from './client'
 import { tap, useRefetchOn } from './bus'
 import type { OnHandCount } from './mealBuilder'
 
@@ -294,7 +294,9 @@ export const mealsApi = {
     apiSend<{ start: string; mealType: string; suggestions: PlanCard[]; via: string; error?: string }>('POST', '/api/meals/plan-week', req),
   planMonth: (req: PlanMonthRequest) =>
     apiSend<{ start: string; mealType: string; suggestions: PlanCard[]; via: string; error?: string; existing?: PlanCard[] }>('POST', '/api/meals/plan-month', req),
-  recipes: () => apiGet<{ recipes: Recipe[] }>('/api/recipes'),
+  recipes: (identityScope?: string | null) => identityScope === undefined
+    ? apiGet<{ recipes: Recipe[] }>('/api/recipes')
+    : apiSendForIdentity<{ recipes: Recipe[] }>(identityScope, 'GET', '/api/recipes'),
   // Distinct ingredient-section names across the household's recipes (most-used first)
   // — feeds the editor's section-name suggestions.
   recipeSections: () => apiGet<{ sections: string[] }>('/api/recipes/sections'),
@@ -311,14 +313,25 @@ export const mealsApi = {
   // clipboard / .md download). Returns the markdown text + a suggested filename.
   recipeMarkdown: (id: string) =>
     apiGet<{ markdown: string; filename: string }>(`/api/recipes/${id}/markdown`),
-  planSlot: (slot: PlanSlot) => apiSend<{ entry: WeekEntry }>('POST', '/api/meals/plan', slot).then(tap('meals')),
-  clearSlot: (date: string, mealType: string) =>
-    apiDelete(`/api/meals/plan?date=${date}&mealType=${mealType}`).then(tap('meals')),
+  planSlot: (slot: PlanSlot, identityScope?: string | null) =>
+    (identityScope === undefined
+      ? apiSend<{ entry: WeekEntry }>('POST', '/api/meals/plan', slot)
+      : apiSendForIdentity<{ entry: WeekEntry }>(identityScope, 'POST', '/api/meals/plan', slot))
+      .then(tap('meals')),
+  clearSlot: (date: string, mealType: string, identityScope?: string | null) =>
+    (identityScope === undefined
+      ? apiDelete(`/api/meals/plan?date=${date}&mealType=${mealType}`)
+      : apiDeleteForIdentity(identityScope, `/api/meals/plan?date=${date}&mealType=${mealType}`))
+      .then(tap('meals')),
   // Quiet variants don't tap the refetch bus — used mid-swap so two writes don't
   // each trigger a refetch (which would briefly show the half-swapped state).
-  planSlotQuiet: (slot: PlanSlot) => apiSend<{ entry: WeekEntry }>('POST', '/api/meals/plan', slot),
-  clearSlotQuiet: (date: string, mealType: string) =>
-    apiDelete(`/api/meals/plan?date=${date}&mealType=${mealType}`),
+  planSlotQuiet: (slot: PlanSlot, identityScope?: string | null) => identityScope === undefined
+    ? apiSend<{ entry: WeekEntry }>('POST', '/api/meals/plan', slot)
+    : apiSendForIdentity<{ entry: WeekEntry }>(identityScope, 'POST', '/api/meals/plan', slot),
+  clearSlotQuiet: (date: string, mealType: string, identityScope?: string | null) =>
+    identityScope === undefined
+      ? apiDelete(`/api/meals/plan?date=${date}&mealType=${mealType}`)
+      : apiDeleteForIdentity(identityScope, `/api/meals/plan?date=${date}&mealType=${mealType}`),
   updateRecipe: (
     id: string,
     patch: RecipeWriteInput & { isFavorite?: boolean; rating?: number; userNotes?: string; overrides?: RecipeOverrides },

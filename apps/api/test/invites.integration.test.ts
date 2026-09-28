@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { randomBytes } from 'node:crypto'
+import { Client, type QueryResult } from 'pg'
 import { runMigrations } from '../src/migrate'
 
 const SECRET = 'waffled-local-dev-secret-change-me'
@@ -73,6 +74,36 @@ beforeAll(async () => {
     `insert into persons (household_id, name, member_type, is_admin, account_id) values ($1,'Bob','adult',true,$2) returning id`,
     [householdB, bobAccountId]
   )
+
+  const helperAcct = await query(
+    `insert into accounts (email, password_hash, last_household_id) values ('helper@example.com',$1,$2) returning id`,
+    [hashPassword('helperpass12'), householdB]
+  )
+  await query(
+    `insert into persons (household_id, name, member_type, is_admin, account_id)
+     values ($1,'Helper','adult',false,$2)`,
+    [householdB, helperAcct.rows[0].id]
+  )
+
+  const lockedAcct = await query(
+    `insert into accounts (email, password_hash, last_household_id) values ('locked@example.com',$1,$2) returning id`,
+    [hashPassword('lockedpass12'), householdB]
+  )
+  await query(
+    `insert into persons (household_id, name, member_type, account_id, access_expires_at)
+     values ($1,'Locked Helper','caregiver',$2,now() - interval '1 day')`,
+    [householdA, lockedAcct.rows[0].id]
+  )
+
+  const strandedAcct = await query(
+    `insert into accounts (email, password_hash, last_household_id) values ('stranded@example.com',$1,$2) returning id`,
+    [hashPassword('strandedpass12'), householdB]
+  )
+  await query(
+    `insert into persons (household_id, name, member_type, account_id, access_expires_at)
+     values ($1,'Stranded Helper','caregiver',$2,now() - interval '1 day')`,
+    [householdB, strandedAcct.rows[0].id]
+  )
 }, 60_000)
 
 afterAll(async () => {
@@ -97,9 +128,200 @@ describe('P2.4 invite-and-accept', () => {
     expect((await call('POST', '/api/households/invites', teenToken, { email: 'x@example.com' })).statusCode).toBe(403)
   })
 
+  it('validates temporary role, admin, and expiration combinations', async () => {
+    expect((await call('POST', '/api/households/invites', kevinToken, {
+      email: 'bad-admin@example.com', memberType: 'guest', isAdmin: true,
+    })).statusCode).toBe(400)
+    expect((await call('POST', '/api/households/invites', kevinToken, {
+      email: 'bad-expiry@example.com', memberType: 'adult', accessEndsOn: '2099-06-15',
+    })).statusCode).toBe(400)
+    expect((await call('POST', '/api/households/invites', kevinToken, {
+      email: 'past@example.com', memberType: 'caregiver', accessEndsOn: '2020-01-01',
+    })).statusCode).toBe(400)
+  })
+
+  it('canonicalizes the legacy accessExpiresAt invite field in the database', async () => {
+    const response = await call('POST', '/api/households/invites', kevinToken, {
+      email: 'legacy-expiry@example.com',
+      memberType: 'guest',
+      accessExpiresAt: '2099-06-16T12:00:00.000Z',
+    })
+    expect(response.statusCode).toBe(201)
+    expect(json(response).invite).toMatchObject({
+      accessEndsOn: '2099-06-15',
+      accessExpiresAt: '2099-06-16T05:00:00.000Z',
+    })
+  })
+
+  it('rejects a future legacy invite instant when its canonical complete day is already over', async () => {
+    const now = new Date()
+    const exact = new Date(now.getTime() + 5 * 60_000)
+    const sameUtcDay = now.toISOString().slice(0, 10) === exact.toISOString().slice(0, 10)
+    const timezone = sameUtcDay && exact.getUTCHours() !== 23 ? 'UTC' : 'Pacific/Honolulu'
+    await query(`update households set timezone = $1 where id = $2`, [timezone, householdA])
+    try {
+      const response = await call('POST', '/api/households/invites', kevinToken, {
+        email: 'canonical-past-invite@example.com',
+        memberType: 'guest',
+        accessExpiresAt: exact.toISOString(),
+      })
+      expect(response.statusCode).toBe(400)
+      expect((await query(
+        `select 1 from household_invites
+          where household_id = $1 and lower(email) = 'canonical-past-invite@example.com'`,
+        [householdA]
+      )).rows).toHaveLength(0)
+    } finally {
+      await query(`update households set timezone = 'America/Chicago' where id = $1`, [householdA])
+    }
+  })
+
+  it('lets an expired-only account return through a fresh temporary invite', async () => {
+    const accessEndsOn = '2099-06-15'
+    const invitation = await call('POST', '/api/households/invites', kevinToken, {
+      email: 'locked@example.com', memberType: 'guest', accessEndsOn,
+    })
+    expect(invitation.statusCode).toBe(201)
+
+    // There is no active tenant in which to show an accept screen. Successful
+    // credential login bootstraps the fresh invite and lands in that household.
+    const session = await login('locked@example.com', 'lockedpass12')
+    expect(session).toMatchObject({
+      memberType: 'guest',
+      accessExpiresAt: '2099-06-16T05:00:00.000Z',
+    })
+    expect(session.memberships).toHaveLength(1)
+    expect(session.memberships[0]).toMatchObject({ householdId: householdA, memberType: 'guest' })
+    expect(session.pendingInvites).toHaveLength(0)
+
+    const restored = await query(
+      `select member_type, access_expires_at from persons p join accounts a on a.id = p.account_id
+        where p.household_id = $1 and lower(a.email) = 'locked@example.com'`,
+      [householdA]
+    )
+    expect(restored.rows).toHaveLength(1)
+    expect(restored.rows[0].member_type).toBe('guest')
+    expect(new Date(restored.rows[0].access_expires_at).toISOString()).toBe('2099-06-16T05:00:00.000Z')
+  })
+
+  it('returns a controlled denial when an expired-only account has no fresh invite', async () => {
+    const denied = await call('POST', '/api/auth/login', undefined, {
+      email: 'stranded@example.com', password: 'strandedpass12',
+    })
+    expect(denied.statusCode).toBe(403)
+    expect(json(denied)).toMatchObject({ error: 'Forbidden', message: 'No active household access for this account.' })
+  })
+
+  it('hides and refuses invites from soft-deleted households, including login bootstrap', async () => {
+    const deadHousehold = await query(
+      `insert into households (name, timezone) values ('Deleted invite house', 'UTC') returning id`
+    )
+    const deadHouseholdId = deadHousehold.rows[0].id
+    const deadBobInvite = await query(
+      `insert into household_invites (household_id, email, member_type, created_at)
+       values ($1, 'bob@example.com', 'guest', clock_timestamp() - interval '2 days') returning id`,
+      [deadHouseholdId]
+    )
+    const deadBootstrapInvite = await query(
+      `insert into household_invites (household_id, email, member_type, created_at)
+       values ($1, 'stranded@example.com', 'caregiver', clock_timestamp() - interval '2 days') returning id`,
+      [deadHouseholdId]
+    )
+    await query(`update households set deleted_at = clock_timestamp() where id = $1`, [deadHouseholdId])
+
+    const bobToken = (await login('bob@example.com', 'bobpass12')).accessToken
+    const visible = json(await call('GET', '/api/auth/invites', bobToken)).invites
+    expect(visible.map((invite: { id: string }) => invite.id)).toContain(inviteId)
+    expect(visible.map((invite: { id: string }) => invite.id)).not.toContain(deadBobInvite.rows[0].id)
+
+    const directAccept = await call(
+      'POST',
+      `/api/auth/invites/${deadBobInvite.rows[0].id}/accept`,
+      bobToken
+    )
+    expect(directAccept.statusCode).toBe(404)
+    expect((await query(
+      `select 1 from persons where household_id = $1 and account_id = $2 and deleted_at is null`,
+      [deadHouseholdId, bobAccountId]
+    )).rows).toHaveLength(0)
+
+    const liveInvite = await call('POST', '/api/households/invites', kevinToken, {
+      email: 'stranded@example.com', memberType: 'caregiver', accessEndsOn: '2099-06-15',
+    })
+    expect(liveInvite.statusCode).toBe(201)
+    const bootstrapped = await login('stranded@example.com', 'strandedpass12')
+    expect(bootstrapped.memberships).toHaveLength(1)
+    expect(bootstrapped.memberships[0]).toMatchObject({ householdId: householdA, memberType: 'caregiver' })
+    expect(bootstrapped.pendingInvites).toHaveLength(0)
+
+    const deadState = await query(
+      `select accepted_at from household_invites where id = $1`,
+      [deadBootstrapInvite.rows[0].id]
+    )
+    expect(deadState.rows[0].accepted_at).toBeNull()
+  })
+
   it('cannot invite someone already a member of the household (409)', async () => {
     expect((await call('POST', '/api/households/invites', kevinToken, { email: 'kevin@example.com' })).statusCode).toBe(409)
   })
+
+  it('serializes concurrent duplicate invite creation at the HTTP boundary', async () => {
+    const blocker = new Client({ connectionString: pg.getConnectionUri() })
+    let firstRequest: Promise<RunResult> | undefined
+    let secondRequest: Promise<RunResult> | undefined
+    try {
+      await blocker.connect()
+      await blocker.query(`set statement_timeout = '10s'`)
+      await blocker.query('begin')
+      await blocker.query(`select id from households where id = $1 for update`, [householdA])
+
+      firstRequest = call('POST', '/api/households/invites', kevinToken, {
+        email: 'parallel-create@example.com', memberType: 'caregiver', accessEndsOn: '2099-06-15',
+      })
+      secondRequest = call('POST', '/api/households/invites', kevinToken, {
+        email: 'PARALLEL-CREATE@example.com', memberType: 'caregiver', accessEndsOn: '2099-06-15',
+      })
+
+      // Both requests must overlap at the authoritative household lock. Without
+      // this barrier, Promise.all can accidentally exercise two sequential calls
+      // and give false confidence about the duplicate race.
+      let waitingRequests = 0
+      for (let attempt = 0; attempt < 200; attempt++) {
+        await blocker.query(`select pg_stat_clear_snapshot()`)
+        const activity = await blocker.query<{ count: string }>(
+          `select count(*)::text as count
+             from pg_stat_activity
+            where datname = current_database()
+              and pid <> pg_backend_pid()
+              and state = 'active'
+              and wait_event_type = 'Lock'
+              and query ilike '%select timezone from households%for update%'`
+        )
+        waitingRequests = Number(activity.rows[0].count)
+        if (waitingRequests >= 2) break
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      expect(waitingRequests).toBeGreaterThanOrEqual(2)
+
+      await blocker.query('commit')
+      const responses = await Promise.all([firstRequest, secondRequest])
+      firstRequest = undefined
+      secondRequest = undefined
+      expect(responses.map((response) => response.statusCode).sort()).toEqual([201, 409])
+
+      const pending = await query(
+        `select id from household_invites
+          where household_id = $1 and lower(email) = lower($2)
+            and accepted_at is null and revoked_at is null`,
+        [householdA, 'parallel-create@example.com']
+      )
+      expect(pending.rows).toHaveLength(1)
+    } finally {
+      await blocker.query('rollback').catch(() => {})
+      await Promise.allSettled([firstRequest, secondRequest].filter(Boolean))
+      await blocker.end().catch(() => {})
+    }
+  }, 30_000)
 
   it('the invited account sees the pending invite on login and via GET /api/auth/invites', async () => {
     const d = await login('bob@example.com', 'bobpass12')
@@ -132,6 +354,29 @@ describe('P2.4 invite-and-accept', () => {
     expect((await login('bob@example.com', 'bobpass12')).pendingInvites).toHaveLength(0)
   })
 
+  it('carries caregiver access expiration into a hidden membership', async () => {
+    const accessEndsOn = '2099-06-15'
+    const invite = json(await call('POST', '/api/households/invites', kevinToken, {
+      email: 'helper@example.com', memberType: 'caregiver', accessEndsOn,
+    })).invite
+    expect(invite).toMatchObject({ memberType: 'caregiver', isAdmin: false, accessEndsOn })
+    expect(new Date(invite.accessExpiresAt).toISOString()).toBe('2099-06-16T05:00:00.000Z')
+
+    const helperToken = (await login('helper@example.com', 'helperpass12')).accessToken
+    const accepted = await call('POST', `/api/auth/invites/${invite.id}/accept`, helperToken)
+    expect(accepted.statusCode).toBe(201)
+    expect(json(accepted).membership).toMatchObject({ memberType: 'caregiver', isAdmin: false, accessEndsOn })
+
+    const membership = await query(
+      `select p.member_type, p.is_admin, p.show_on_kiosk, p.access_expires_at
+         from persons p join accounts a on a.id=p.account_id
+        where p.household_id=$1 and lower(a.email)='helper@example.com'`,
+      [householdA]
+    )
+    expect(membership.rows[0]).toMatchObject({ member_type: 'caregiver', is_admin: false, show_on_kiosk: false })
+    expect(membership.rows[0].access_expires_at.toISOString()).toBe('2099-06-16T05:00:00.000Z')
+  })
+
   it('rejects accepting an invite addressed to a different email (403)', async () => {
     // a fresh invite for carol, but Bob (logged in) tries to accept it
     const carolInvite = json(await call('POST', '/api/households/invites', kevinToken, { email: 'carol@example.com' })).invite.id
@@ -146,5 +391,291 @@ describe('P2.4 invite-and-accept', () => {
     // revoked invites don't show in the household's pending list
     const list = json(await call('GET', '/api/households/invites', kevinToken))
     expect(list.invites.find((i: { id: string }) => i.id === id)).toBeUndefined()
+  })
+
+  it('revalidates a stale invite inside the membership transaction', async () => {
+    const { createMembershipFromInvite } = await import('../src/modules/auth/accounts')
+    const account = await query(
+      `insert into accounts (email, password_hash, last_household_id)
+       values ('race-helper@example.com', null, $1) returning id`,
+      [householdA]
+    )
+    const accountId = account.rows[0].id
+    const expiredPerson = await query(
+      `insert into persons (household_id, name, member_type, account_id, access_expires_at)
+       values ($1, 'Race Helper', 'caregiver', $2, clock_timestamp() - interval '1 day') returning id`,
+      [householdA, accountId]
+    )
+    const pending = await query(
+      `insert into household_invites
+         (household_id, email, member_type, is_admin, access_expires_at, invited_by)
+       values ($1, 'race-helper@example.com', 'guest', false,
+               clock_timestamp() + interval '1 day',
+               (select owner_person_id from households where id = $1))
+       returning id, household_id, member_type, is_admin, access_expires_at`,
+      [householdA]
+    )
+    const stale = pending.rows[0]
+
+    // Model the race directly: a caller loaded a valid invite, then the admin
+    // revoked it before the membership transaction acquired its decision lock.
+    await query(`update household_invites set revoked_at = clock_timestamp() where id = $1`, [stale.id])
+
+    await expect(createMembershipFromInvite(accountId, 'race-helper@example.com', {
+      id: stale.id,
+    })).rejects.toMatchObject({ statusCode: 403 })
+
+    const membership = await query(
+      `select id, member_type, access_expires_at from persons
+        where household_id = $1 and account_id = $2 and deleted_at is null`,
+      [householdA, accountId]
+    )
+    expect(membership.rows).toHaveLength(1)
+    expect(membership.rows[0].id).toBe(expiredPerson.rows[0].id)
+    expect(membership.rows[0].member_type).toBe('caregiver')
+    expect(membership.rows[0].access_expires_at.getTime()).toBeLessThan(Date.now())
+
+    const invite = await query(`select accepted_at, revoked_at from household_invites where id = $1`, [stale.id])
+    expect(invite.rows[0].accepted_at).toBeNull()
+    expect(invite.rows[0].revoked_at).not.toBeNull()
+  })
+
+  it('rejects an invite whose deadline has passed before the locked decision', async () => {
+    const { createMembershipFromInvite } = await import('../src/modules/auth/accounts')
+    const { getPool } = await import('../src/platform/db')
+    const account = await query(
+      `insert into accounts (email, password_hash, last_household_id)
+       values ('deadline-helper@example.com', null, $1) returning id`,
+      [householdA]
+    )
+    const expiredInvite = await query(
+      `insert into household_invites
+         (household_id, email, member_type, is_admin, access_expires_at, invited_by)
+       values ($1, 'deadline-helper@example.com', 'guest', false,
+               clock_timestamp() + interval '150 milliseconds',
+               (select owner_person_id from households where id = $1))
+       returning id, household_id, member_type, is_admin, access_expires_at`,
+      [householdA]
+    )
+    const stale = expiredInvite.rows[0]
+
+    // Hold the row across the deadline. The accepting transaction begins while the
+    // invite is still valid, then waits on FOR UPDATE until after it expires. A
+    // transaction-start `now()` check would incorrectly accept this invite.
+    const blocker = await getPool().connect()
+    await blocker.query('begin')
+    await blocker.query(`select id from household_invites where id = $1 for update`, [stale.id])
+    const acceptance = createMembershipFromInvite(account.rows[0].id, 'deadline-helper@example.com', {
+      id: stale.id,
+    })
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    await blocker.query('commit')
+    blocker.release()
+
+    await expect(acceptance).rejects.toMatchObject({ statusCode: 403 })
+
+    expect((await query(
+      `select 1 from persons where household_id = $1 and account_id = $2 and deleted_at is null`,
+      [householdA, account.rows[0].id]
+    )).rows).toHaveLength(0)
+    expect((await query(
+      `select accepted_at from household_invites where id = $1`,
+      [stale.id]
+    )).rows[0].accepted_at).toBeNull()
+  })
+
+  it('locks the household before reactivating a person during a concurrent timezone patch', async () => {
+    const { createMembershipFromInvite } = await import('../src/modules/auth/accounts')
+    const account = await query(
+      `insert into accounts (email, password_hash, last_household_id)
+       values ('timezone-race-helper@example.com', null, $1) returning id`,
+      [householdA]
+    )
+    const expiredPerson = await query(
+      `insert into persons (household_id, name, member_type, account_id, access_expires_at)
+       values ($1, 'Timezone Race Helper', 'caregiver', $2,
+               clock_timestamp() - interval '1 day') returning id`,
+      [householdA, account.rows[0].id]
+    )
+    const invitation = await query(
+      `insert into household_invites
+         (household_id, email, member_type, is_admin, access_ends_on, invited_by)
+       values ($1, 'timezone-race-helper@example.com', 'guest', false, '2099-06-15',
+               (select owner_person_id from households where id = $1))
+       returning id`,
+      [householdA]
+    )
+
+    const blocker = new Client({ connectionString: pg.getConnectionUri() })
+    const timezoneClient = new Client({ connectionString: pg.getConnectionUri() })
+    let pendingAcceptance: Promise<unknown> | undefined
+    let pendingTimezoneUpdate: Promise<QueryResult> | undefined
+    try {
+      await Promise.all([blocker.connect(), timezoneClient.connect()])
+      await blocker.query(`set statement_timeout = '10s'`)
+      await timezoneClient.query(`set statement_timeout = '10s'`)
+      const timezonePid = (await timezoneClient.query<{ pid: number }>(`select pg_backend_pid() as pid`)).rows[0].pid
+
+      // Pin the expired membership. Acceptance must already hold a SHARE lock on
+      // the household before it reaches and waits on this person row.
+      await blocker.query('begin')
+      await blocker.query(`select id from persons where id = $1 for update`, [expiredPerson.rows[0].id])
+      pendingAcceptance = createMembershipFromInvite(
+        account.rows[0].id,
+        'timezone-race-helper@example.com',
+        { id: invitation.rows[0].id }
+      )
+
+      let acceptanceIsWaiting = false
+      for (let attempt = 0; attempt < 200; attempt++) {
+        const activity = await timezoneClient.query<{ waiting: boolean }>(
+          `select exists (
+             select 1 from pg_stat_activity
+              where datname = current_database()
+                and pid <> pg_backend_pid()
+                and state = 'active'
+                and wait_event_type = 'Lock'
+           ) as waiting`
+        )
+        if (activity.rows[0].waiting) {
+          acceptanceIsWaiting = true
+          break
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      expect(acceptanceIsWaiting).toBe(true)
+
+      pendingTimezoneUpdate = timezoneClient.query(
+        `update households set timezone = 'Pacific/Honolulu' where id = $1`,
+        [householdA]
+      )
+      let timezoneUpdateIsWaiting = false
+      for (let attempt = 0; attempt < 200; attempt++) {
+        // PostgreSQL caches statistics snapshots inside this open blocker
+        // transaction; clear it so each poll sees the new waiter.
+        await blocker.query(`select pg_stat_clear_snapshot()`)
+        const activity = await blocker.query<{ wait_event_type: string | null }>(
+          `select wait_event_type from pg_stat_activity where pid = $1`,
+          [timezonePid]
+        )
+        if (activity.rows[0]?.wait_event_type === 'Lock') {
+          timezoneUpdateIsWaiting = true
+          break
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      expect(timezoneUpdateIsWaiting).toBe(true)
+
+      await blocker.query('commit')
+      const [accepted] = await Promise.all([pendingAcceptance, pendingTimezoneUpdate])
+      pendingAcceptance = undefined
+      pendingTimezoneUpdate = undefined
+      expect(accepted).toMatchObject({
+        personId: expiredPerson.rows[0].id,
+        householdId: householdA,
+        memberType: 'guest',
+        accessEndsOn: '2099-06-15',
+        created: false,
+      })
+
+      const canonical = await query(
+        `select p.access_ends_on as person_end, p.access_expires_at as person_expiry,
+                hi.access_ends_on as invite_end, hi.access_expires_at as invite_expiry,
+                hi.accepted_at
+           from persons p
+           join household_invites hi on hi.id = $3
+          where p.household_id = $1 and p.account_id = $2 and p.deleted_at is null`,
+        [householdA, account.rows[0].id, invitation.rows[0].id]
+      )
+      expect(canonical.rows[0]).toMatchObject({
+        person_end: '2099-06-15',
+        invite_end: '2099-06-15',
+      })
+      expect(canonical.rows[0].person_expiry.toISOString()).toBe('2099-06-16T10:00:00.000Z')
+      expect(canonical.rows[0].invite_expiry.toISOString()).toBe('2099-06-16T10:00:00.000Z')
+      expect(canonical.rows[0].accepted_at).not.toBeNull()
+    } finally {
+      await blocker.query('rollback').catch(() => {})
+      await Promise.allSettled([pendingAcceptance, pendingTimezoneUpdate].filter(Boolean))
+      await Promise.all([blocker.end().catch(() => {}), timezoneClient.end().catch(() => {})])
+      await query(`update households set timezone = 'America/Chicago' where id = $1`, [householdA])
+    }
+  }, 30_000)
+
+  it('keeps overlapping HTTP acceptance and a lost-response retry idempotent', async () => {
+    const { hashPassword } = await import('../src/modules/auth/auth')
+    const account = await query(
+      `insert into accounts (email, password_hash, last_household_id)
+       values ('duplicate-helper@example.com', $1, $2) returning id`,
+      [hashPassword('duplicatepass12'), householdB]
+    )
+    await query(
+      `insert into persons (household_id, name, member_type, account_id)
+       values ($1, 'Duplicate Helper', 'adult', $2)`,
+      [householdB, account.rows[0].id]
+    )
+    const duplicateToken = (await login('duplicate-helper@example.com', 'duplicatepass12')).accessToken
+    const invitation = json(await call('POST', '/api/households/invites', kevinToken, {
+      email: 'duplicate-helper@example.com', memberType: 'caregiver', accessEndsOn: '2099-06-15',
+    })).invite
+
+    const blocker = new Client({ connectionString: pg.getConnectionUri() })
+    let firstRequest: Promise<RunResult> | undefined
+    let secondRequest: Promise<RunResult> | undefined
+    try {
+      await blocker.connect()
+      await blocker.query(`set statement_timeout = '10s'`)
+      await blocker.query('begin')
+      await blocker.query(`select id from household_invites where id = $1 for update`, [invitation.id])
+
+      firstRequest = call('POST', `/api/auth/invites/${invitation.id}/accept`, duplicateToken)
+      secondRequest = call('POST', `/api/auth/invites/${invitation.id}/accept`, duplicateToken)
+
+      let waitingRequests = 0
+      for (let attempt = 0; attempt < 200; attempt++) {
+        await blocker.query(`select pg_stat_clear_snapshot()`)
+        const activity = await blocker.query<{ count: string }>(
+          `select count(*)::text as count
+             from pg_stat_activity
+            where datname = current_database()
+              and pid <> pg_backend_pid()
+              and state = 'active'
+              and wait_event_type = 'Lock'
+              and query ilike '%from household_invites%for update%'`
+        )
+        waitingRequests = Number(activity.rows[0].count)
+        if (waitingRequests >= 2) break
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      expect(waitingRequests).toBeGreaterThanOrEqual(2)
+
+      await blocker.query('commit')
+      const responses = await Promise.all([firstRequest, secondRequest])
+      firstRequest = undefined
+      secondRequest = undefined
+      expect(responses.map((response) => response.statusCode).sort()).toEqual([200, 201])
+      const memberships = responses.map((response) => json(response).membership)
+      expect(memberships[0].personId).toBe(memberships[1].personId)
+      expect(memberships[0]).toMatchObject({
+        householdId: householdA,
+        memberType: 'caregiver',
+        accessEndsOn: '2099-06-15',
+      })
+
+      // A client that lost either successful response can retry after both
+      // transactions commit and still recover the same active membership.
+      const retry = await call('POST', `/api/auth/invites/${invitation.id}/accept`, duplicateToken)
+      expect(retry.statusCode).toBe(200)
+      expect(json(retry).membership.personId).toBe(memberships[0].personId)
+    } finally {
+      await blocker.query('rollback').catch(() => {})
+      await Promise.allSettled([firstRequest, secondRequest].filter(Boolean))
+      await blocker.end().catch(() => {})
+    }
+
+    expect((await query(
+      `select 1 from persons where household_id = $1 and account_id = $2 and deleted_at is null`,
+      [householdA, account.rows[0].id]
+    )).rows).toHaveLength(1)
   })
 })

@@ -62,6 +62,31 @@ const activeSessions = async (accountId: string): Promise<number> =>
     [accountId]
   )).rows[0].n
 
+async function seedCliAccount(label: string): Promise<{ accountId: string; email: string }> {
+  const email = `cli-${label}@example.com`
+  const account = await query(
+    `insert into accounts (email, last_household_id) values ($1, $2) returning id`,
+    [email, householdB]
+  )
+  await query(
+    `insert into persons (household_id, name, member_type, account_id) values ($1, $2, 'adult', $3)`,
+    [householdB, `CLI ${label}`, account.rows[0].id]
+  )
+  return { accountId: account.rows[0].id, email }
+}
+
+async function expectCliExit(...cliArgs: string[]): Promise<number | undefined> {
+  const saved = process.exit
+  let code: number | undefined
+  process.exit = ((c?: number): never => { code = c; throw new Error('exit') }) as typeof process.exit
+  try {
+    await run(...cliArgs).catch(() => {})
+  } finally {
+    process.exit = saved
+  }
+  return code
+}
+
 beforeAll(async () => {
   pg = await new PostgreSqlContainer('postgres:16').start()
   dbUrl = pg.getConnectionUri()
@@ -152,15 +177,51 @@ describe('P4.2 add-member + list-accounts', () => {
   })
 
   it('add-member exits non-zero when no account uses the email', async () => {
-    const saved = process.exit
-    let code: number | undefined
-    process.exit = ((c?: number): never => { code = c; throw new Error('exit') }) as typeof process.exit
-    try {
-      await run('add-member', '--email', 'nobody@example.com', '--household-id', householdA, '--yes').catch(() => {})
-    } finally {
-      process.exit = saved
+    expect(await expectCliExit('add-member', '--email', 'nobody@example.com', '--household-id', householdA, '--yes')).toBe(1)
+  })
+
+  it('accepts exactly the five member roles and hides temporary roles from the kiosk', async () => {
+    for (const memberType of ['adult', 'caregiver', 'guest', 'teen', 'kid']) {
+      const account = await seedCliAccount(memberType)
+      await run('add-member', '--email', account.email, '--household-id', householdA,
+        '--member-type', memberType, '--yes')
+      const membership = await query(
+        `select member_type, is_admin, show_on_kiosk from persons
+          where household_id=$1 and account_id=$2 and deleted_at is null`,
+        [householdA, account.accountId]
+      )
+      expect(membership.rows).toEqual([{
+        member_type: memberType,
+        is_admin: false,
+        show_on_kiosk: memberType !== 'caregiver' && memberType !== 'guest',
+      }])
     }
-    expect(code).toBe(1)
+  })
+
+  it('allows --admin only for adults', async () => {
+    const adult = await seedCliAccount('adult-admin')
+    await run('add-member', '--email', adult.email, '--household-id', householdA,
+      '--member-type', 'adult', '--admin', '--yes')
+    const membership = await query(
+      `select member_type, is_admin from persons where household_id=$1 and account_id=$2 and deleted_at is null`,
+      [householdA, adult.accountId]
+    )
+    expect(membership.rows).toEqual([{ member_type: 'adult', is_admin: true }])
+
+    for (const memberType of ['caregiver', 'guest', 'teen', 'kid']) {
+      expect(await expectCliExit('add-member', '--email', adult.email, '--household-id', householdA,
+        '--member-type', memberType, '--admin', '--yes')).toBe(1)
+    }
+  })
+
+  it('rejects an unknown member role before writing a membership', async () => {
+    const account = await seedCliAccount('invalid-role')
+    expect(await expectCliExit('add-member', '--email', account.email, '--household-id', householdA,
+      '--member-type', 'robot', '--yes')).toBe(1)
+    expect((await query(
+      `select 1 from persons where household_id=$1 and account_id=$2 and deleted_at is null`,
+      [householdA, account.accountId]
+    )).rows).toHaveLength(0)
   })
 
   it('list-accounts shows a human and all their households', async () => {

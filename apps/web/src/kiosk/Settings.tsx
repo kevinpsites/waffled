@@ -3,12 +3,12 @@ import { avTint } from './components/Avatar'
 import { useSearchParams } from 'react-router'
 import { useSyncHealth, type SyncHealthStatus } from '../lib/powersync/sync-health'
 import { restartPowerSyncHard } from '../lib/powersync/db'
-import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, useWeeklyPlanning, weeklyPlanningApi, planningDayName, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type IcsFeed, type MealCalendarSettings, type Currency, type MemoryGroup, type IgnoreGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef, type PlanningListCandidate } from '../lib/api'
+import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, useWeeklyPlanning, weeklyPlanningApi, planningDayName, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, PrincipalTransitionError, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type IcsFeed, type MealCalendarSettings, type Currency, type MemoryGroup, type IgnoreGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef, type PlanningListCandidate } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
 import { useThemePref } from '../lib/theme'
 import { eventStyle } from '../lib/display'
 import { familyColorHex } from '../lib/event-color'
-import { PersonModal } from './components/PersonModal'
+import { PersonModal, accessEndDate } from './components/PersonModal'
 import { ColorPicker, COLOR_SWATCHES } from './components/ColorPicker'
 import { SettingCard } from './components/SettingCard'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -62,14 +62,22 @@ function ageFrom(birthday: string | null | undefined): number | null {
   return age >= 0 ? age : null
 }
 
-function roleLine(m: SettingsMember): string {
+function roleLine(m: SettingsMember, householdTimezone: string): string {
   const parts: string[] = [m.memberType.charAt(0).toUpperCase() + m.memberType.slice(1)]
   if (m.isOwner) parts.push('Owner')
   else if (m.isAdmin) parts.push('Admin')
   const age = ageFrom(m.birthday)
-  if (age != null && m.memberType !== 'adult') parts.push(`age ${age}`)
+  if (age != null && (m.memberType === 'teen' || m.memberType === 'kid')) parts.push(`age ${age}`)
   if (m.hasLogin) parts.push('signed in')
-  else if (m.memberType !== 'adult') parts.push('managed by parents')
+  else if (m.memberType === 'teen' || m.memberType === 'kid') parts.push('managed by parents')
+  if (m.accessExpiresAt || m.accessEndsOn) {
+    const expires = m.accessExpiresAt ? new Date(m.accessExpiresAt) : null
+    const endsOn = m.accessEndsOn ?? accessEndDate(m.accessExpiresAt, householdTimezone)
+    const displayEnd = endsOn
+      ? new Date(`${endsOn}T12:00:00.000Z`).toLocaleDateString('en-US', { timeZone: 'UTC' })
+      : ''
+    parts.push(expires && expires.getTime() <= Date.now() ? 'access expired' : `access ends ${displayEnd}`)
+  }
   return parts.join(' · ')
 }
 
@@ -80,14 +88,14 @@ function fmtBirthday(birthday: string | null | undefined): string | null {
   return b.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
 }
 
-function MemberRow({ m, onClick }: { m: SettingsMember; onClick: () => void }) {
+function MemberRow({ m, householdTimezone, onClick }: { m: SettingsMember; householdTimezone: string; onClick: () => void }) {
   const bday = fmtBirthday(m.birthday)
   return (
     <div className="set-member" onClick={onClick}>
       <div className="av md" style={{ background: avTint(m.colorHex) }}>{m.avatarEmoji ?? '🙂'}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="set-member-n">{m.name}</div>
-        <div className="tiny muted" style={{ fontWeight: 600 }}>{roleLine(m)}</div>
+        <div className="tiny muted" style={{ fontWeight: 600 }}>{roleLine(m, householdTimezone)}</div>
       </div>
       {bday && <div className="tiny muted set-bday" style={{ fontWeight: 600 }}>🎂 {bday}</div>}
       <div className="set-swatch" style={{ background: m.colorHex ?? '#A6A29B' }} />
@@ -120,9 +128,12 @@ function CardHeader({ title, sub, mid }: { title: React.ReactNode; sub?: React.R
   )
 }
 
-// Role-based permissions grid (admin-only). Saves the whole matrix on each toggle
-// (optimistic, reverts on failure); admins have everything, so they are not a row.
-const PERM_ROLES: Role[] = ['adult', 'teen', 'kid']
+// Role-based permissions grid (admin-only). Guest is hard read-only; the other
+// non-admin roles can be tuned per household.
+// columns = the capabilities. Saves the whole matrix on each toggle (optimistic,
+// reverts on failure) — matches the auto-save feel of the other settings cards.
+// Admins always have everything, so they're not a row here.
+const PERM_ROLES: Role[] = ['adult', 'caregiver', 'guest', 'teen', 'kid']
 function PermissionsCard() {
   const [matrix, setMatrix] = useState<PermissionMatrix | null>(null)
   const [error, setError] = useState(false)
@@ -169,7 +180,7 @@ function PermissionsCard() {
                     type="checkbox"
                     className="set-check"
                     checked={matrix[role][cap]}
-                    disabled={saving}
+                    disabled={saving || role === 'guest'}
                     aria-label={`${ROLE_LABELS[role]}: ${CAPABILITY_LABELS[cap]}`}
                     onChange={() => toggle(role, cap)}
                   />
@@ -868,7 +879,7 @@ function MyAccountPanel() {
         </>
       )}
 
-      <KioskPinCard personId={info.personId} hasPin={info.hasPin} />
+      {info.memberType !== 'guest' && <KioskPinCard personId={info.personId} hasPin={info.hasPin} />}
     </div>
   )
 }
@@ -955,7 +966,7 @@ function FamilyPanel() {
 
       <SettingCard>
         {members.map((m) => (
-          <MemberRow key={m.id} m={m} onClick={() => setEditing(m)} />
+          <MemberRow key={m.id} m={m} householdTimezone={household.timezone} onClick={() => setEditing(m)} />
         ))}
       </SettingCard>
       <button type="button" className="btn btn-ghost set-add" onClick={() => setAdding(true)}>＋ Add a person</button>
@@ -1030,7 +1041,7 @@ function FamilyPanel() {
       <PermissionsCard />
 
       {(editing || adding) && (
-        <PersonModal person={editing} onClose={() => { setEditing(null); setAdding(false) }} onSaved={refetch} />
+        <PersonModal person={editing} householdTimezone={household.timezone} onClose={() => { setEditing(null); setAdding(false) }} onSaved={refetch} />
       )}
     </div>
   )
@@ -2315,20 +2326,37 @@ function ConversionsSection({ currencies }: { currencies: Currency[] }) {
 // Sign out — clears the local session and revokes the refresh token, firing
 // waffled:auth-changed. Tap-to-confirm, so a stray kiosk touch can't sign everyone out.
 function SignOutButton({ className }: { className?: string }) {
-  const [confirm, setConfirm] = useState(false)
+  const [confirm, setConfirm] = useState<'none' | 'confirm' | 'discard' | 'quarantine'>('none')
   const [busy, setBusy] = useState(false)
   async function signOut() {
-    if (!confirm) { setConfirm(true); return }
+    if (confirm === 'none') { setConfirm('confirm'); return }
     setBusy(true)
     try {
-      await authApi.logout()
-    } catch {
-      setBusy(false) // logout already clears the local session on its own; only reset if it threw before that
+      await authApi.logout({ discardPending: confirm === 'discard' || confirm === 'quarantine' })
+    } catch (err) {
+      if (err instanceof PrincipalTransitionError && err.result === 'pending-uploads') {
+        setConfirm('discard')
+      } else if (err instanceof PrincipalTransitionError && err.result === 'purge-failed') {
+        // A forced signed-out transition can quarantine the unreadable replica;
+        // startup will retry its cleanup before any future principal sees it.
+        setConfirm('quarantine')
+      } else {
+        setConfirm('confirm')
+      }
+      setBusy(false)
     }
   }
   return (
     <button type="button" className={className ?? 'btn btn-ghost'} onClick={signOut} disabled={busy}>
-      {busy ? 'Signing out…' : confirm ? 'Tap again to sign out' : '⏻ Sign out'}
+      {busy
+        ? 'Signing out…'
+        : confirm === 'quarantine'
+          ? 'Sign out & keep local data locked'
+          : confirm === 'discard'
+          ? 'Discard unsynced changes & sign out'
+          : confirm === 'confirm'
+            ? 'Tap again to sign out'
+            : '⏻ Sign out'}
     </button>
   )
 }
@@ -2769,18 +2797,24 @@ function AboutPanel() {
 function HouseholdsPanel() {
   const { household, memberships, pendingInvites } = useHousehold()
   const [switching, setSwitching] = useState<string | null>(null)
+  const [discarding, setDiscarding] = useState<string | null>(null)
   const [accepting, setAccepting] = useState<string | null>(null)
 
   async function doSwitch(id: string) {
+    if (switching || accepting) return
     setSwitching(id)
     try {
-      await authApi.switchHousehold(id)
+      await authApi.switchHousehold(id, { discardPending: discarding === id })
       window.location.assign('/')
-    } catch {
+    } catch (err) {
+      if (err instanceof PrincipalTransitionError && err.result === 'pending-uploads') {
+        setDiscarding(id)
+      }
       setSwitching(null)
     }
   }
   async function doAccept(id: string) {
+    if (switching || accepting) return
     setAccepting(id)
     try {
       await authApi.acceptInvite(id)
@@ -2810,8 +2844,12 @@ function HouseholdsPanel() {
               {current ? (
                 <span className="tiny muted" style={{ fontWeight: 700 }}>Current</span>
               ) : (
-                <button type="button" className="btn btn-primary" disabled={switching === m.householdId} onClick={() => doSwitch(m.householdId)}>
-                  {switching === m.householdId ? 'Switching…' : 'Switch'}
+                <button type="button" className="btn btn-primary" disabled={switching !== null || accepting !== null} onClick={() => doSwitch(m.householdId)}>
+                  {switching === m.householdId
+                    ? 'Switching…'
+                    : discarding === m.householdId
+                      ? 'Discard unsynced changes & switch'
+                      : 'Switch'}
                 </button>
               )}
             </div>
@@ -2827,7 +2865,7 @@ function HouseholdsPanel() {
           {pendingInvites.map((inv) => (
             <div key={inv.id} className="set-row2" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
               <div className="set-row2-t">{inv.householdName}</div>
-              <button type="button" className="btn btn-primary" disabled={accepting === inv.id} onClick={() => doAccept(inv.id)}>
+              <button type="button" className="btn btn-primary" disabled={switching !== null || accepting !== null} onClick={() => doAccept(inv.id)}>
                 {accepting === inv.id ? 'Accepting…' : 'Accept'}
               </button>
             </div>
@@ -3446,10 +3484,18 @@ export function Settings() {
   const isAdmin = person?.isAdmin ?? false
     // The households tab only appears when there's something to act on. Not admin-gated.
   const showHouseholds = memberships.length > 1 || pendingInvites.length > 0
-    // The self-service Account items appear only for a real personal login.
+  // Credential self-service remains available to a guest with a personal login,
+  // but their profile is shared household state and therefore stays read-only.
   const showAccount = !isKioskMode() && !!account?.hasAccount
-  const nav = NAV.filter((n) => (!n.admin || isAdmin) && (n.key !== 'households' || showHouseholds) && ((n.key !== 'profile' && n.key !== 'account') || showAccount))
-    // Fall back to About (which holds sign-out) rather than whatever sorts first.
+  const showProfile = showAccount && person?.memberType !== 'guest'
+  const nav = NAV.filter((n) =>
+    (!n.admin || isAdmin) &&
+    (n.key !== 'households' || showHouseholds) &&
+    (n.key !== 'profile' || showProfile) &&
+    (n.key !== 'account' || showAccount)
+  )
+  // Fall back to About (holds sign-out & account info) rather than whatever
+  // happens to sort first, so a limited/kiosk user lands somewhere sensible.
   const activeTab = nav.some((n) => n.key === tab) ? tab : (nav.some((n) => n.key === 'about') ? 'about' : nav[0]?.key ?? 'about')
 
   return (

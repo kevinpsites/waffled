@@ -48,9 +48,18 @@ const household = {
   },
 }
 
-const capabilities = ['chore.manage', 'chore.approve', 'reward.manage', 'goal.manage']
+const capabilities = [
+  'chore.manage', 'chore.approve', 'reward.manage', 'reward.approve',
+  'reward.grant', 'reward.correct', 'goal.manage',
+]
 const permissionRow = Object.fromEntries(capabilities.map((capability) => [capability, false]))
-const permissions = { adult: permissionRow, teen: permissionRow, kid: permissionRow }
+const permissions = {
+  adult: permissionRow,
+  caregiver: permissionRow,
+  guest: permissionRow,
+  teen: permissionRow,
+  kid: permissionRow,
+}
 const empty = {
   balances: [], chores: [], countdowns: [], currencies: [], entries: [], events: [],
   goals: [], groups: [], instances: [], items: [], lists: [], meals: [], members: [],
@@ -63,7 +72,10 @@ async function mockApi(page: Page) {
     let body: unknown = empty
 
     if (path === '/api/auth/status') body = { initialized: true, methods: ['password'] }
-    else if (path === '/api/auth/login') body = { accessToken: 'test-access', refreshToken: 'test-refresh', expiresIn: 900 }
+    else if (path === '/api/auth/login') body = {
+      accessToken: 'test-access', refreshToken: 'test-refresh', expiresIn: 900,
+      memberType: 'adult', accessExpiresAt: null,
+    }
     else if (path === '/api/household') body = { provisioned: true, household, person, memberships: [], pendingInvites: [] }
     else if (path === '/api/household/settings') {
       body = {
@@ -71,7 +83,11 @@ async function mockApi(page: Page) {
         members: [{ ...person, hasLogin: true, loginEmail: 'alex@example.test', hasPassword: true, hasPin: false, isOwner: true }],
       }
     } else if (path === '/api/persons') body = { persons: [person] }
-    else if (path === '/api/permissions') body = { permissions, capabilities, roles: ['adult', 'teen', 'kid'] }
+    else if (path === '/api/permissions') body = {
+      permissions,
+      capabilities,
+      roles: ['adult', 'caregiver', 'guest', 'teen', 'kid'],
+    }
     else if (path === '/api/weather') body = { weather: null }
     else if (path === '/api/updates') body = { enabled: false, updateAvailable: false }
     else if (path === '/api/calendar/status') body = { connected: false, configured: false }

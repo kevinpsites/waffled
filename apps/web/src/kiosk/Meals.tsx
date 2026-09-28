@@ -11,6 +11,7 @@ import {
   useHousehold,
   useMealsWeek,
   useRecipes,
+  currentIdentityScope,
   localToday,
   type Meal,
   type Recipe,
@@ -288,14 +289,20 @@ export function Meals() {
 
   // `quiet` writes don't tap the refetch bus (used for the first of the two swap
   // writes so the half-swapped state never flashes).
-  async function putSlot(date: string, mealType: string, entry: WeekEntry | undefined, quiet = false) {
+  async function putSlot(
+    date: string,
+    mealType: string,
+    entry: WeekEntry | undefined,
+    quiet: boolean,
+    identityScope: string | null
+  ) {
     if (entry) {
       const slot = entry.recipeId
         ? { date, mealType, recipeId: entry.recipeId, cookPersonId: entry.cook?.personId ?? null }
         : { date, mealType, title: entry.title ?? 'Planned', cookPersonId: entry.cook?.personId ?? null }
-      await (quiet ? api.planSlotQuiet : api.planSlot)(slot)
+      await (quiet ? api.planSlotQuiet : api.planSlot)(slot, identityScope)
     } else {
-      await (quiet ? api.clearSlotQuiet : api.clearSlot)(date, mealType)
+      await (quiet ? api.clearSlotQuiet : api.clearSlot)(date, mealType, identityScope)
     }
   }
 
@@ -362,6 +369,7 @@ export function Meals() {
         const b = bySlot.get(tgt)
         const [sd, sm] = src.split('|')
         const [td, tm] = tgt.split('|')
+        const identityScope = currentIdentityScope()
         // Optimistic: swap the two slots' content locally so the grid updates the
         // instant you drop — no round-trip delay, no half-swapped flash.
         mutate((prev) => {
@@ -375,8 +383,8 @@ export function Meals() {
           // First write quiet (no refetch); second taps → one reconciling refetch
           // that matches the optimistic state, so nothing flickers.
           try {
-            await putSlot(td, tm, a, true)
-            await putSlot(sd, sm, b, false)
+            await putSlot(td, tm, a, true, identityScope)
+            await putSlot(sd, sm, b, false, identityScope)
           } catch {
             refetch() // on failure, fall back to server truth
           }

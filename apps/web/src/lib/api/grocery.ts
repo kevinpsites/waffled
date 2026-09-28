@@ -2,7 +2,7 @@
 // (multiple named lists, sectioned items, assignees) AND the Today dashboard's
 // Grocery card (the original grocery exports are kept intact).
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
-import { apiGet, apiSend, apiDelete } from './client'
+import { apiGet, apiSend, apiSendForIdentity, apiDelete } from './client'
 import { tap, useRefetchOn, useLiveRefresh } from './bus'
 
 // ---- grocery (Today dashboard) ---------------------------------------------
@@ -124,10 +124,15 @@ export const groceryApi = {
     apiDelete(`/api/lists/grocery/from-recipe/${recipeId}${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),
 
   // lists (the Lists screen)
-  lists: () => apiGet<{ lists: ListSummary[] }>('/api/lists'),
+  lists: (identityScope?: string | null) => identityScope === undefined
+    ? apiGet<{ lists: ListSummary[] }>('/api/lists')
+    : apiSendForIdentity<{ lists: ListSummary[] }>(identityScope, 'GET', '/api/lists'),
   list: (id: string) => apiGet<ListDetail>(`/api/lists/${id}`),
-  createList: (input: { name: string; emoji?: string | null }) =>
-    apiSend<{ list: ListSummary }>('POST', '/api/lists', input).then((r) => r.list),
+  createList: (input: { name: string; emoji?: string | null }, identityScope?: string | null) =>
+    (identityScope === undefined
+      ? apiSend<{ list: ListSummary }>('POST', '/api/lists', input)
+      : apiSendForIdentity<{ list: ListSummary }>(identityScope, 'POST', '/api/lists', input))
+      .then((r) => r.list),
   renameList: (id: string, patch: { name?: string; emoji?: string | null }) =>
     apiSend<{ list: ListSummary }>('PATCH', `/api/lists/${id}`, patch).then((r) => r.list),
   deleteList: (id: string) => apiDelete(`/api/lists/${id}`).then(tap('grocery')),
@@ -141,15 +146,20 @@ export const groceryApi = {
   applyTemplate: (templateId: string, name?: string) =>
     apiSend<{ list: ListSummary }>('POST', `/api/lists/templates/${templateId}/apply`, name ? { name } : {}).then((r) => r.list).then(tap('grocery')),
 
-  addListItem: (listId: string, input: { name: string; quantity?: string | null; section?: string | null; store?: string | null; assignedTo?: string | null; priority?: number }) =>
-    apiSend<{ item: ListItem }>('POST', `/api/lists/${listId}/items`, {
+  addListItem: (listId: string, input: { name: string; quantity?: string | null; section?: string | null; store?: string | null; assignedTo?: string | null; priority?: number }, identityScope?: string | null) => {
+    const body = {
       name: input.name,
       quantity: input.quantity ?? null,
       category: input.section ?? null,
       ...(input.store !== undefined ? { store: input.store } : {}),
       assignedTo: input.assignedTo ?? null,
       ...(input.priority ? { priority: input.priority } : {}),
-    }).then((r) => r.item).then(tap('grocery')),
+    }
+    return (identityScope === undefined
+      ? apiSend<{ item: ListItem }>('POST', `/api/lists/${listId}/items`, body)
+      : apiSendForIdentity<{ item: ListItem }>(identityScope, 'POST', `/api/lists/${listId}/items`, body))
+      .then((r) => r.item).then(tap('grocery'))
+  },
   patchListItem: (id: string, patch: PatchItemBody) =>
     apiSend<{ item: ListItem }>('PATCH', `/api/list-items/${id}`, patchBody(patch)).then((r) => r.item).then(tap('grocery')),
   // The household's previously-used store names (most-used first) — quick-select for
@@ -165,8 +175,13 @@ export const groceryApi = {
   // grocery board (auto-built view) + pantry staples
   groceryBoard: (weekStart?: string) =>
     apiGet<GroceryBoard>(`/api/lists/grocery/board${weekStart ? `?weekStart=${weekStart}` : ''}`),
-  rebuildGrocery: (weekStart?: string) =>
-    apiSend<{ rebuilt: number; board: GroceryBoard }>('POST', `/api/lists/grocery/rebuild${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),
+  rebuildGrocery: (weekStart?: string, identityScope?: string | null) => {
+    const path = `/api/lists/grocery/rebuild${weekStart ? `?weekStart=${weekStart}` : ''}`
+    return (identityScope === undefined
+      ? apiSend<{ rebuilt: number; board: GroceryBoard }>('POST', path)
+      : apiSendForIdentity<{ rebuilt: number; board: GroceryBoard }>(identityScope, 'POST', path))
+      .then(tap('grocery'))
+  },
   // "Start over": un-check everything on the given week's list (Refresh keeps checks).
   clearGroceryChecks: (weekStart?: string) =>
     apiSend<{ cleared: number; board: GroceryBoard }>('POST', `/api/lists/grocery/clear-checks${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),

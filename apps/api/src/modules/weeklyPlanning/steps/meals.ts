@@ -257,8 +257,8 @@ export async function mealsStepView(tenant: Tenant, weekStart: string, hintChore
 
 async function groceryLine(tenant: Tenant, weekStart: string): Promise<{ items: number; checked: number } | null> {
   if (!(await listsOn(tenant.householdId))) return null
-  const board = await groceryBoard(tenant, weekStart)
-  const items = board.items as { checked?: boolean }[]
+  const board = await groceryBoard(tenant, weekStart, tenant.memberType !== 'guest')
+  const items = (board?.items ?? []) as { checked?: boolean }[]
   return { items: items.length, checked: items.filter((i) => i.checked).length }
 }
 

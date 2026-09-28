@@ -333,7 +333,8 @@ private let fixtureRestScope = RestDataScopeKey(
             id: "redemption-1", rewardId: "reward-1", personId: "person-1",
             personName: "Maya", personAvatar: nil, personColor: nil,
             title: "Movie night", emoji: "🎬", cost: 5, currency: "stars",
-            status: "pending", decidedAt: nil, createdAt: "2026-09-03T12:00:00Z"
+            status: "pending", requestedBy: nil, ledgerId: nil, refundLedgerId: nil,
+            decidedAt: nil, createdAt: "2026-09-03T12:00:00Z"
         )
         let chore = try! JSONDecoder().decode(
             WaffledAPI.ChoreInstanceDTO.self,
@@ -578,7 +579,8 @@ private let fixtureRestScope = RestDataScopeKey(
             id: "tenant-a-redemption", rewardId: "reward-1", personId: "person-a",
             personName: "Alex", personAvatar: nil, personColor: nil,
             title: "Movie night", emoji: "🎬", cost: 5, currency: "stars",
-            status: "pending", decidedAt: nil, createdAt: "2026-09-03T12:00:00Z"
+            status: "pending", requestedBy: nil, ledgerId: nil, refundLedgerId: nil,
+            decidedAt: nil, createdAt: "2026-09-03T12:00:00Z"
         )
         let redemptions = RestResponse<[WaffledAPI.RewardRedemption]>(.success([redemption]))
         let chores = RestResponse<[WaffledAPI.ChoreInstanceDTO]>(.success([]))
@@ -609,7 +611,8 @@ private let fixtureRestScope = RestDataScopeKey(
             id: "tenant-a-redemption", rewardId: "reward-1", personId: "person-a",
             personName: "Alex", personAvatar: nil, personColor: nil,
             title: "Movie night", emoji: "🎬", cost: 5, currency: "stars",
-            status: "pending", decidedAt: nil, createdAt: "2026-09-03T12:00:00Z"
+            status: "pending", requestedBy: nil, ledgerId: nil, refundLedgerId: nil,
+            decidedAt: nil, createdAt: "2026-09-03T12:00:00Z"
         )
         let model = ApprovalsModel(
             fetchRedemptions: {
@@ -641,10 +644,10 @@ private let fixtureRestScope = RestDataScopeKey(
         let oldModuleCalls = RestFetchCalls()
         let sync = SyncManager()
         let personA = WaffledAPI.CurrentPerson(
-            id: "person-a", memberType: "adult", isAdmin: true, capabilities: []
+            id: "person-a", memberType: "adult", isAdmin: true, accessExpiry: .null, capabilities: []
         )
         let personB = WaffledAPI.CurrentPerson(
-            id: "person-b", memberType: "adult", isAdmin: false, capabilities: []
+            id: "person-b", memberType: "adult", isAdmin: false, accessExpiry: .null, capabilities: []
         )
         let oldScope = sync.restDataScopeKey
         let oldLoad = Task {
@@ -677,10 +680,10 @@ private let fixtureRestScope = RestDataScopeKey(
         let oldModules = DeferredRestValue<WaffledAPI.HouseholdModules>()
         let sync = SyncManager()
         let personA = WaffledAPI.CurrentPerson(
-            id: "person-a", memberType: "adult", isAdmin: true, capabilities: []
+            id: "person-a", memberType: "adult", isAdmin: true, accessExpiry: .null, capabilities: []
         )
         let personB = WaffledAPI.CurrentPerson(
-            id: "person-b", memberType: "adult", isAdmin: false, capabilities: []
+            id: "person-b", memberType: "adult", isAdmin: false, accessExpiry: .null, capabilities: []
         )
         let oldLoad = Task {
             await sync.loadIdentity(
@@ -708,7 +711,7 @@ private let fixtureRestScope = RestDataScopeKey(
         let replacementCalls = RestFetchCalls()
         let sync = SyncManager()
         let person = WaffledAPI.CurrentPerson(
-            id: "person-a", memberType: "adult", isAdmin: true, capabilities: []
+            id: "person-a", memberType: "adult", isAdmin: true, accessExpiry: .null, capabilities: []
         )
         let oldLoad = Task {
             await sync.loadIdentity(
@@ -749,7 +752,7 @@ private let fixtureRestScope = RestDataScopeKey(
         let moduleCalls = RestFetchCalls()
         let sync = SyncManager()
         let person = WaffledAPI.CurrentPerson(
-            id: "person-a", memberType: "adult", isAdmin: true, capabilities: []
+            id: "person-a", memberType: "adult", isAdmin: true, accessExpiry: .null, capabilities: []
         )
         let fetchModules: @Sendable () async throws -> WaffledAPI.HouseholdModules = {
             await moduleCalls.record("modules")
@@ -778,7 +781,7 @@ private let fixtureRestScope = RestDataScopeKey(
         let moduleCalls = RestFetchCalls()
         let sync = SyncManager()
         let person = WaffledAPI.CurrentPerson(
-            id: "person-a", memberType: "adult", isAdmin: true, capabilities: []
+            id: "person-a", memberType: "adult", isAdmin: true, accessExpiry: .null, capabilities: []
         )
         let fetchModules: @Sendable () async throws -> WaffledAPI.HouseholdModules = {
             await moduleCalls.record("modules")
@@ -875,12 +878,12 @@ private let fixtureRestScope = RestDataScopeKey(
         let recorder = ConnectionTransitionRecorder()
         let sync = SyncManager(testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop))
         let original = sync.restDataScopeKey
-        let signOut = Task { await sync.signOut(clearLocal: true) }
+        let signOut = Task { await sync.signOut(policy: .securityCritical) }
         await stop.waitUntilStarted()
         #expect(recorder.events == ["stop:true"])
         #expect(sync.restDataScopeKey != original)
         await stop.succeed(true)
-        #expect(await signOut.value)
+        #expect(await signOut.value == .completed)
     }
 
     @Test func signOutPreemptsUpdateBeforeConfigurationOrRestart() async {
@@ -896,7 +899,7 @@ private let fixtureRestScope = RestDataScopeKey(
         }
         await firstStop.waitUntilStarted()
 
-        let signOut = Task { await sync.signOut() }
+        let signOut = Task { await sync.signOut(policy: .securityCritical) }
         await waitForScopeRotation(sync, from: oldScope)
         #expect(recorder.events == ["stop:false"])
         await firstStop.succeed(true)
@@ -904,8 +907,8 @@ private let fixtureRestScope = RestDataScopeKey(
         let updateResult = await update.value
         let signOutResult = await signOut.value
         #expect(updateResult == .transitionInProgress)
-        #expect(signOutResult)
-        #expect(recorder.events == ["stop:false", "stop:false"])
+        #expect(signOutResult == .completed)
+        #expect(recorder.events == ["stop:false", "stop:true"])
     }
 
     @Test func signOutPreemptsReauthenticationBeforeCredentialAdoptionOrRestart() async {
@@ -923,16 +926,16 @@ private let fixtureRestScope = RestDataScopeKey(
         }
         await firstStop.waitUntilStarted()
 
-        let signOut = Task { await sync.signOut() }
+        let signOut = Task { await sync.signOut(policy: .securityCritical) }
         await waitForScopeRotation(sync, from: oldScope)
-        #expect(recorder.events == ["stop:false"])
+        #expect(recorder.events == ["stop:true"])
         await firstStop.succeed(true)
 
         let reauthenticationResult = await reauthentication.value
         let signOutResult = await signOut.value
         #expect(!reauthenticationResult)
-        #expect(signOutResult)
-        #expect(recorder.events == ["stop:false", "stop:false"])
+        #expect(signOutResult == .completed)
+        #expect(recorder.events == ["stop:true", "stop:true"])
     }
 
     @Test func completedSignOutRejectsALateResponseBoundToItsOldScope() async {
@@ -943,17 +946,17 @@ private let fixtureRestScope = RestDataScopeKey(
         )
         let oldScope = sync.restDataScopeKey
 
-        let signOut = Task { await sync.signOut() }
+        let signOut = Task { await sync.signOut(policy: .securityCritical) }
         await firstStop.waitUntilStarted()
         await firstStop.succeed(true)
-        #expect(await signOut.value)
+        #expect(await signOut.value == .completed)
 
         let didReauthenticate = await sync.reauthenticate(expectedScope: oldScope) {
             recorder.record("adopt-credentials")
         }
 
         #expect(!didReauthenticate)
-        #expect(recorder.events == ["stop:false"])
+        #expect(recorder.events == ["stop:true"])
     }
 }
 

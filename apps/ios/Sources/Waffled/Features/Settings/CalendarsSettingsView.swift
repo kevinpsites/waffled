@@ -508,18 +508,19 @@ struct CalendarsSettingsView: View {
     }
 
     private func setAllSync(_ accountId: String, _ selected: Bool) async {
+        guard let operationAPI = try? api.boundToCurrentPrincipal() else { return }
         message = nil
         let cals = status?.calendars.filter { $0.accountId == accountId && $0.selected != selected } ?? []
         var updated = 0
         for c in cals {
             do {
-                try await api.updateCalendarLink(id: c.id, ["selected": .bool(selected)])
+                try await operationAPI.updateCalendarLink(id: c.id, ["selected": .bool(selected)])
                 updated += 1
             } catch {
                 break
             }
         }
-        let refreshed = await load()
+        let refreshed = await load(using: operationAPI)
         if updated < cals.count {
             message = "Updated \(updated) of \(cals.count) calendars. The rest weren’t changed; try again."
         } else if !refreshed {
@@ -618,10 +619,10 @@ struct CalendarsSettingsView: View {
     // MARK: actions
 
     @discardableResult
-    private func load() async -> Bool {
+    private func load(using operationAPI: WaffledAPI? = nil) async -> Bool {
         let recoveringInitialLoad = status == nil
         do {
-            status = try await api.calendarStatus()
+            status = try await (operationAPI ?? api).calendarStatus()
             if recoveringInitialLoad { message = nil }
             loading = false
             return true

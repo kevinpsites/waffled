@@ -38,9 +38,9 @@ export type MutateVerb = 'complete' | 'log' | 'reschedule' | 'reassign' | 'redee
 export type MutateTargetKind = 'chore' | 'goal' | 'listItem' | 'event' | 'reward'
 
 // Member types for the `person` intent, and a human label for the preview.
-export const MEMBER_TYPES = ['adult', 'teen', 'kid'] as const
+export const MEMBER_TYPES = ['adult', 'caregiver', 'guest', 'teen', 'kid'] as const
 export function memberTypeLabel(t: string): string {
-  return t === 'kid' ? 'Kid' : t === 'teen' ? 'Teen' : 'Adult'
+  return t === 'kid' ? 'Kid' : t === 'teen' ? 'Teen' : t === 'caregiver' ? 'Caregiver' : t === 'guest' ? 'Guest' : 'Adult'
 }
 
 // Goal types for the `goal` intent, and a human label for the preview.
@@ -465,14 +465,18 @@ function detectCountdown(text: string, now: Date): Extract<ParsedIntent, { kind:
 // avatarEmoji/birthday/isAdmin. Relationship word → memberType.
 const REL_KID = 'son|daughter|kid|child|boy|girl|baby'
 const REL_TEEN = 'teenager|teen'
+const REL_CAREGIVER = 'babysitter|sitter|nanny|caregiver'
+const REL_GUEST = 'guest|visitor'
 const REL_ADULT = 'husband|wife|spouse|partner|mom|mum|mommy|mother|dad|daddy|father|parent|adult|grandma|grandpa|grandmother|grandfather'
-const PERSON_REL = new RegExp(`\\b(?:add|create|make|register)\\s+(?:my|our|a|an|the)?\\s*(?:new\\s+)?(${REL_KID}|${REL_TEEN}|${REL_ADULT})(?![’'ʼ]s)\\b[\\s,:-]*(?:named\\s+|called\\s+)?(.+)$`, 'i')
+const PERSON_REL = new RegExp(`\\b(?:add|create|make|register)\\s+(?:my|our|a|an|the)?\\s*(?:new\\s+)?(${REL_KID}|${REL_TEEN}|${REL_CAREGIVER}|${REL_GUEST}|${REL_ADULT})(?![’'ʼ]s)\\b[\\s,:-]*(?:named\\s+|called\\s+)?(.+)$`, 'i')
 const PERSON_MEMBER = /\b(?:add|create|make|register)\s+(?:a\s+|an\s+|the\s+|my\s+|our\s+)?(?:new\s+)?(?:family\s+member|household\s+member|family\s+profile|profile|person|member)\b\s*(?:for\s+|named\s+|called\s+|[:-]\s*)?(.+)$/i
 
 function memberTypeForRel(word: string): string {
   const w = word.toLowerCase()
   if (new RegExp(`^(?:${REL_KID})$`, 'i').test(w)) return 'kid'
   if (new RegExp(`^(?:${REL_TEEN})$`, 'i').test(w)) return 'teen'
+  if (new RegExp(`^(?:${REL_CAREGIVER})$`, 'i').test(w)) return 'caregiver'
+  if (new RegExp(`^(?:${REL_GUEST})$`, 'i').test(w)) return 'guest'
   return 'adult'
 }
 

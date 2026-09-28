@@ -19,6 +19,7 @@ final class FamilyNightSettingsModel {
     private(set) var busyCalendar = false
     var errorMessage: String?
 
+    private let identityScope: () -> String?
     private let fetch: Fetch
     private let setConfig: SetConfig
     private let schedule: Schedule
@@ -31,8 +32,10 @@ final class FamilyNightSettingsModel {
         fetch: @escaping Fetch = { try await WaffledAPI().familyNight() },
         setConfig: @escaping SetConfig = { try await WaffledAPI().setFamilyNightConfig($0) },
         schedule: @escaping Schedule = { try await WaffledAPI().scheduleFamilyNight() },
-        unschedule: @escaping Unschedule = { try await WaffledAPI().unscheduleFamilyNight() }
+        unschedule: @escaping Unschedule = { try await WaffledAPI().unscheduleFamilyNight() },
+        identityScope: @escaping () -> String? = { AppConfig.currentIdentityScope }
     ) {
+        self.identityScope = identityScope
         self.fetch = fetch
         self.setConfig = setConfig
         self.schedule = schedule
@@ -71,9 +74,14 @@ final class FamilyNightSettingsModel {
     private func persistPendingSchedule() async {
         guard !busySchedule else { return }
         busySchedule = true
-        defer { busySchedule = false }
+        let scope = identityScope()
+        defer {
+            busySchedule = false
+            if identityScope() != scope { pendingSchedule = nil }
+        }
 
         while let requested = pendingSchedule {
+            guard identityScope() == scope else { return }
             pendingSchedule = nil
             errorMessage = nil
             do {
@@ -81,6 +89,7 @@ final class FamilyNightSettingsModel {
                     "dayOfWeek": .int(requested.day),
                     "time": .string(requested.time),
                 ])
+                guard identityScope() == scope else { return }
                 confirmedDayOfWeek = confirmed.dayOfWeek
                 confirmedTime = confirmed.time
 

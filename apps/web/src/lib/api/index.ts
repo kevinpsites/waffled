@@ -1,9 +1,10 @@
 // Barrel for the api client. Each domain lives in its own module so screens own one file
 // outright; this file re-exports the slices and composes the flat `api` object.
 //
-// Adding a domain: create ./<domain>.ts, then add one `export * from` line and one spread
-// below — keep it append-only.
-export { localToday, invalidateGetCache, getAccessToken, setSession, clearSession, isKioskMode, isDisplayMode, setDisplayMode, clearKioskDevice, clearProfileSession, enterKioskMode, getDeviceId } from './client'
+// Adding a domain: create ./<domain>.ts exporting `<domain>Api` + types/hooks,
+// then add one `export * from` line and one spread below. That's the only shared
+// touch — keep it append-only.
+export { localToday, invalidateGetCache, getAccessToken, currentIdentityScope, acknowledgeCurrentIdentityScopeAfterGate, setSession, setSessionFrom, clearSession, isKioskMode, isDisplayMode, setDisplayMode, clearKioskDevice, clearProfileSession, enterKioskMode, getDeviceId, PrincipalTransitionError } from './client'
 export * from './kiosk'
 export * from './bus'
 export * from './persons'

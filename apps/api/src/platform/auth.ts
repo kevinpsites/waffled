@@ -26,6 +26,16 @@ export class AuthError extends Error {
   }
 }
 
+// Stable terminal-session signal for a JWT which once selected a real membership,
+// but whose membership is now expired, revoked, or deleted. Clients distinguish
+// this from an unknown/unprovisioned principal and from ordinary permission 403s.
+export class MembershipInactiveError extends AuthError {
+  constructor() {
+    super('Household access has expired or was revoked.', 401)
+    this.name = 'membership_inactive'
+  }
+}
+
 /// The caller is authenticated but their household is not there — never onboarded, or
 /// deleted, or the database was restored under a token that outlived it. Separate from a
 /// plain `AuthError` because the two 403s call for opposite handling: a permission denial

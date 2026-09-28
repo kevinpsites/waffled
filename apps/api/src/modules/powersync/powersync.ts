@@ -12,6 +12,8 @@ import {
 import jwt from 'jsonwebtoken'
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { tenantRoute } from '../../platform/route-guards'
+import { query } from '../../platform/db'
+import { MembershipInactiveError } from '../../platform/auth'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -55,14 +57,15 @@ export function getJwks(): { keys: JsonWebKey[] } {
   return { keys: [keys().publicJwk] }
 }
 
-export function mintPowerSyncToken(sub: string, householdId: string): string {
-  return jwt.sign({ household_id: householdId }, keys().privateKey, {
+export function mintPowerSyncToken(
+  sub: string, householdId: string, expiresAt = Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS
+): string {
+  return jwt.sign({ household_id: householdId, exp: expiresAt }, keys().privateKey, {
     algorithm: 'RS256',
     keyid: KID,
     subject: sub,
     issuer: ISSUER,
     audience: AUDIENCE,
-    expiresIn: TOKEN_TTL_SECONDS,
   })
 }
 
@@ -108,11 +111,21 @@ export function registerPowerSyncRoutes(api: Api): void {
 
   // Authed: a provisioned member exchanges their session for a PowerSync token.
   api.get('/api/powersync/token', tenantRoute(async (tenant, req: Request, res: Response) => {
-    const token = mintPowerSyncToken(tenant.sub, tenant.householdId)
+    const { rows } = await query<{ access_expires_at: Date | null }>(
+      `select access_expires_at from persons where id = $1 and household_id = $2 and deleted_at is null`,
+      [tenant.personId, tenant.householdId]
+    )
+    if (!rows[0]) throw new MembershipInactiveError()
+    const now = Math.floor(Date.now() / 1000)
+    const deadline = rows[0].access_expires_at
+    // The sync service validates this JWT without re-reading membership state.
+    const expiresAt = Math.min(now + TOKEN_TTL_SECONDS, deadline ? Math.floor(deadline.getTime() / 1000) : Infinity)
+    if (expiresAt <= now) throw new MembershipInactiveError()
+    const token = mintPowerSyncToken(tenant.sub, tenant.householdId, expiresAt)
     return res.status(200).json({
       token,
       powerSyncUrl: powerSyncPublicUrl(req),
-      expiresIn: TOKEN_TTL_SECONDS,
+      expiresIn: expiresAt - now,
     })
   }))
 }

@@ -37,6 +37,18 @@ On **iPhone** the app is a personal planner — bottom tabs, capture-first. On *
 
 In-app **Settings → About** holds the **server address** — point the app at your Waffled server's base URL (your machine's LAN IP or hostname; see [Reverse proxy & TLS](/install/reverse-proxy/)). Notifications are local, under **Settings → Notifications**.
 
+## Signing out and switching households
+
+Signing out, changing households, or switching a shared iPad profile clears the previous
+person's local calendar mirror, event reminders, and active Cook Mode session before the
+next account opens. If calendar changes are still waiting to upload, a manual switch warns
+you before discarding them. Leave Waffled open while connected to let those changes sync.
+
+On the first launch after this privacy update, Waffled checks the existing local mirror
+before showing an account or profile. If it asks you to finish a private-data update,
+choose **Retry** after reconnecting, or **Discard changes** only if you do not need the
+waiting offline edits. A failed cleanup keeps the account picker blocked until retry succeeds.
+
 ## Module
 
 The app renders native screens for whatever modules are **enabled server-side** — a module with no iOS screen simply doesn't appear (it degrades gracefully). Calendar and Today are always present. Module toggles themselves live in the web app's Settings → Modules.

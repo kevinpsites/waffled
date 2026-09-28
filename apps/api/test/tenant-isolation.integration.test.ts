@@ -218,15 +218,15 @@ describe('reward redemption cannot reach another household', () => {
     expect(res.statusCode).toBe(200)
     const redemptions = JSON.parse(res.body).redemptions as { personId: string; personName: string | null }[]
     const poisoned = redemptions.find((r) => r.personId === bPersonId)
-    expect(poisoned).toBeTruthy()
-    expect(poisoned?.personName).toBe(null)
+    // Invalid household/person links are excluded, even if legacy data bypassed the FK.
+    expect(poisoned).toBeUndefined()
     expect(res.body).not.toContain(VICTIM_NAME)
   })
 })
 
 // ---- Finding 6 — redeeming on behalf of another member ----------------------
 // Same rule its sibling POST /api/conversions/:id/apply already enforces: your own
-// balance is yours to spend, someone else's needs the reward.manage capability.
+// balance is yours to spend, someone else's needs the reward.approve capability.
 describe('redeeming for another member needs the capability', () => {
   it('lets a kid redeem for themselves but not for a sibling', async () => {
     const reward = await call('POST', '/api/rewards', attacker, { title: 'Movie night', cost: 3, requiresApproval: true })

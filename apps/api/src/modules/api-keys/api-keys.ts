@@ -49,7 +49,7 @@ export const API_SCOPES: ApiScopeDef[] = [
   { resource: 'lists', label: 'Lists', description: 'Grocery and to-do lists', prefixes: ['/api/lists', '/api/pantry-staples'] },
   { resource: 'pantry', label: 'Pantry', description: 'On-hand inventory', prefixes: ['/api/pantry'] },
   { resource: 'chores', label: 'Chores', description: 'Chores and completions', prefixes: ['/api/chores', '/api/chore-instances', '/api/chore-proofs'] },
-  { resource: 'rewards', label: 'Rewards', description: 'Rewards, balances, currencies, and conversions', prefixes: ['/api/rewards', '/api/redemptions', '/api/balances', '/api/currencies', '/api/conversions'] },
+  { resource: 'rewards', label: 'Rewards', description: 'Rewards, balances, currencies, conversions, and corrections', prefixes: ['/api/rewards', '/api/redemptions', '/api/balances', '/api/currencies', '/api/conversions', '/api/ledger-entries'] },
   { resource: 'meals', label: 'Meals', description: 'Recipes and meal planning', prefixes: ['/api/recipes', '/api/meals'] },
   { resource: 'calendar', label: 'Calendar', description: 'Calendar events', prefixes: ['/api/events'] },
   { resource: 'goals', label: 'Goals', description: 'Goals and progress', prefixes: ['/api/goals', '/api/goal-lists'] },
@@ -174,7 +174,8 @@ export async function authenticateApiKey(req: Request, rawKey: string): Promise<
        join persons p on p.id = k.person_id and p.deleted_at is null
       where k.key_hash = $1
         and k.revoked_at is null
-        and (k.expires_at is null or k.expires_at > now())`,
+        and (k.expires_at is null or k.expires_at > now())
+        and (p.access_expires_at is null or p.access_expires_at > now())`,
     [hashKey(rawKey)]
   )
   const r = rows[0]

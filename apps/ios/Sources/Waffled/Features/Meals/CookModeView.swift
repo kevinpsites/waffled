@@ -843,10 +843,31 @@ private struct AddTimerControl: View {
 /// timer so the alarm still reaches the cook if they've left the app. The notification
 /// is cancelled the moment its timer fires in-app (or is paused/dismissed) to avoid a
 /// double alert.
+struct TimerNotificationDelivery: Sendable {
+    let schedule: @MainActor @Sendable (UNNotificationRequest) -> Void
+    let cancel: @MainActor @Sendable (String) -> Void
+
+    static let live = TimerNotificationDelivery(
+        schedule: { UNUserNotificationCenter.current().add($0) },
+        cancel: {
+            let center = UNUserNotificationCenter.current()
+            center.removePendingNotificationRequests(withIdentifiers: [$0])
+            center.removeDeliveredNotifications(withIdentifiers: [$0])
+        }
+    )
+}
+
 @MainActor
 final class TimerAlarm {
     private var player: AVAudioPlayer?
     private let center = UNUserNotificationCenter.current()
+    private weak var notifications: NotificationManager?
+    private let testDelivery: TimerNotificationDelivery?
+
+    init(notificationManager: NotificationManager? = nil, notifications: TimerNotificationDelivery? = nil) {
+        self.notifications = notificationManager
+        self.testDelivery = notifications
+    }
 
     /// Ask once for permission and pre-load the looping chime so `start()` is instant.
     func prepare() async {
@@ -887,22 +908,21 @@ final class TimerAlarm {
     /// straight back into Cook Mode — at the DISH whose timer fired (re-opening its whole
     /// plate if it had one), on the step it fired on.
     func scheduleNotification(id: String, fireAt: Date, name: String, link: CookTimerLink) {
-        let interval = fireAt.timeIntervalSinceNow
-        guard interval > 0.5 else { return }
-        let c = UNMutableNotificationContent()
-        c.title = "Timer done"
-        c.body = "\(name) — your cook timer is up."
-        c.sound = .default
-        c.interruptionLevel = .timeSensitive
-        c.threadIdentifier = "waffled-cook-timers"
-        c.userInfo = link.userInfo(timerId: id)
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
-        center.add(UNNotificationRequest(identifier: id, content: c, trigger: trigger))
+        if let testDelivery {
+            let content = UNMutableNotificationContent()
+            content.title = "Timer done"
+            content.body = name
+            content.userInfo = link.userInfo(timerId: id)
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, fireAt.timeIntervalSinceNow), repeats: false)
+            testDelivery.schedule(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
+        } else {
+            notifications?.scheduleCookTimer(id: id, fireAt: fireAt, name: name, link: link)
+        }
     }
 
     func cancelNotification(_ id: String) {
-        center.removePendingNotificationRequests(withIdentifiers: [id])
-        center.removeDeliveredNotifications(withIdentifiers: [id])
+        if let testDelivery { testDelivery.cancel(id) }
+        else { notifications?.cancelCookTimer(id) }
     }
 
     /// A short, looping-friendly system sound shipped with iOS.

@@ -10,6 +10,7 @@ import SwiftUI
 struct KioskCodeEntrySheet: View {
     @Environment(KioskMode.self) private var kiosk
     @Environment(SyncManager.self) private var sync
+    @Environment(Session.self) private var session
     @Environment(\.dismiss) private var dismiss
 
     @State private var code = ""
@@ -91,7 +92,7 @@ struct KioskCodeEntrySheet: View {
         busy = true; error = nil
         let name = label.trimmingCharacters(in: .whitespaces)
         error = await kiosk.enableViaCode(code.trimmingCharacters(in: .whitespaces),
-                                          label: name.isEmpty ? nil : name, sync: sync)
+                                          label: name.isEmpty ? nil : name, sync: sync, session: session)
         busy = false
         if error == nil { dismiss() }   // gate flips to the picker
     }

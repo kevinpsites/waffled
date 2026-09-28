@@ -142,6 +142,28 @@ describe('weekly planning · meals · the gate', () => {
     expect((await call('GET', '/api/weekly-planning/meals', kevin)).statusCode).toBe(403)
   })
 
+  it('lets a guest read meals without creating shared grocery state', async () => {
+    const { query } = await import('../src/platform/db')
+    const h = await query<{ id: string }>(
+      `insert into households (name, timezone, settings)
+       values ('Guest planning', 'America/Chicago', '{"modules":{"weeklyPlanning":true}}') returning id`
+    )
+    const p = await query<{ id: string }>(
+      `insert into persons (household_id, name, member_type) values ($1, 'Visitor', 'guest') returning id`,
+      [h.rows[0].id]
+    )
+    await query(
+      `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified)
+       values ($1, $2, 'password', 'dev|planning-guest', true)`,
+      [h.rows[0].id, p.rows[0].id]
+    )
+    const res = await call('GET', '/api/weekly-planning/meals', mint('dev|planning-guest'))
+    expect(res.statusCode).toBe(200)
+    expect(json(res).groceries).toEqual({ items: 0, checked: 0 })
+    const lists = await query(`select id from lists where household_id=$1`, [h.rows[0].id])
+    expect(lists.rows).toHaveLength(0)
+  })
+
   it('opens once the module is on, and the SERVER names the week', async () => {
     expect((await call('PATCH', '/api/household/modules', kevin, { weeklyPlanning: true })).statusCode).toBe(200)
     const planning = json(await call('GET', '/api/weekly-planning', kevin))

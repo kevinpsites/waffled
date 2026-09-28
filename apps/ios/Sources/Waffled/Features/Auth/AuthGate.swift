@@ -50,6 +50,7 @@ struct SplashView: View {
 /// (setup is a one-time web/admin action) rather than shipping a wizard here.
 struct LoginView: View {
     @Environment(Session.self) private var session
+    @Environment(SyncManager.self) private var sync
     @State private var email = ""
     @State private var password = ""
     @State private var error: String?
@@ -106,7 +107,7 @@ struct LoginView: View {
             }
             .foregroundStyle(WF.ink2)
         }
-        .buttonStyle(.plain).padding(.top, 18)
+        .buttonStyle(.plain).disabled(busy).padding(.top, 18)
     }
 
     private var header: some View {
@@ -210,6 +211,7 @@ struct LoginView: View {
                 .foregroundStyle(WF.ink3)
             }
             .buttonStyle(.plain)
+            .disabled(busy)
 
             if showServer {
                 VStack(spacing: 8) {
@@ -219,6 +221,7 @@ struct LoginView: View {
                         .keyboardType(.URL)
                         .padding(11).background(WF.panel)
                         .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                        .disabled(busy)
                     Button {
                         guard AppConfig.setApiBaseURL(serverURL) else {
                             error = "Enter a full server address beginning with http:// or https://."
@@ -233,7 +236,7 @@ struct LoginView: View {
                             .background(WF.card2).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plain).disabled(busy)
                 }
                 .padding(.top, 2)
             }
@@ -268,13 +271,13 @@ struct LoginView: View {
     private func submit() async {
         guard canSubmit else { return }
         busy = true; error = nil
-        error = await session.login(email: email, password: password)
+        error = await session.login(email: email, password: password, sync: sync)
         busy = false
     }
 
     private func submitOIDC() async {
         busy = true; error = nil
-        error = await session.loginWithOIDC()
+        error = await session.loginWithOIDC(sync: sync)
         busy = false
     }
 }

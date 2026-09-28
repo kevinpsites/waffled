@@ -37,13 +37,14 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Dark mode** + Settings → Appearance (Light / Dark / Match system) | ✅ | ✅ | ✅ | ✅ Done — web/kiosk **and** iPhone/iPad share one warm-dark palette (`apps/ios/DARK_MODE.md`) |
 | **Email/password** login (built-in) | ✅ | ✅ | ✅ | ✅ Done |
 | Rotating refresh tokens + transparent 401-refresh | ✅ | ✅ | ✅ | ✅ Done (Keychain token store) |
+| Local data cleared before sign-out, household changes, and shared-iPad profile switches; pending offline edits require explicit discard | — | — | ✅ | ✅ [Native account transitions](/features/mobile/#signing-out-and-switching-households) |
 | **OIDC SSO** (backend-mediated, invite-gated) | ✅ | ✅ | ✅ | ✅ Done (`ASWebAuthenticationSession`) |
 | Admin-managed OIDC config (Settings, secret encrypted at rest) | ✅ | ❌ N/A | ❌ N/A | ✅ Done — web/server-only admin by design |
 | Disable password login / force SSO (break-glass guard) | ✅ | ✅ | ✅ | ✅ Done — config is web/server-only admin by design; every client's login screen honors it (an SSO-only server hides the email/password form on web **and** iPhone/iPad) |
 | **Member management** — grant a person a login (email ± password) + kiosk PIN | ✅ | ✅ | ✅ | ✅ Done |
-| **Members CRUD** (profiles: name, avatar, color, role, admin, birthday) | ✅ | ✅ | ✅ | ✅ Done |
+| **Members CRUD** (profiles: name, avatar, color, five roles, admin, birthday, temporary-access expiry) | ✅ | ✅ | ✅ | ✅ Done |
 | **Custom member color** — a ninth swatch opens a free hex picker | ✅ | ✅ | ✅ | ✅ Done — any `#RRGGBB` value, validated server-side, and a solid chip picks black or white text so even a pale color stays readable. Web: member editor + My Profile. iPhone/iPad: member editor, plus **Settings → Households** so a non-admin can set their own color |
-| **Role-based permissions** — per-role capability grid (Settings → Family); [model](/concepts/permissions/) | ✅ | ✅ | ✅ | ✅ Done (editable matrix, admin-only) |
+| **Role-based permissions** — per-role capability grid plus hard read-only guests (Settings → Family); [model](/concepts/permissions/) | ✅ | ✅ | ✅ | ✅ Done (editable matrix, admin-only) |
 | Sign out (revokes refresh) | ✅ | ✅ | ✅ | ✅ Done |
 
 ## Kiosk & ambient display
@@ -132,6 +133,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Photo-proof **review** (tap thumbnail → large photo → Approve/Not-yet) | ✅ | ✅ | ✅ | ✅ Done |
 | Proof **retention** — auto-delete after N days (default 3, admin setting) | ✅ | ✅ | ✅ | ✅ Done |
 | Stored-proof **review & delete** gallery (view / delete / clear all) | ✅ | ✅ | ✅ | ✅ Done |
+| **Concurrent balance checks** — spending, conversions and chore undo serialize; undo preserves completion/proof when the balance cannot cover the reversal | ✅ | ✅ | ✅ | ✅ Done |
 | **Capability gating** — `chore.manage` / `chore.approve`; anyone may add for self/up-for-grabs | ✅ | ✅ | ✅ | ✅ Done |
 
 ## Rewards & economy
@@ -148,7 +150,8 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Conversions / "Trade"** (e.g. 10 ⭐ → 1 💵) | ✅ | ✅ | ✅ | ✅ Done |
 | **Saving-toward** a reward — bar/jar progress + inline redeem | ✅ | ✅ | ✅ | ✅ Done |
 | **Spot-award stars** — parent hands out ad-hoc stars (untied to a chore) + optional reason | ✅ | ✅ | ✅ | ✅ Done — gated on `reward.grant`; mobile: **Award** on the person profile **and** a person-picker Award sheet on the Rewards page → `POST /api/persons/:id/award`; the ledger row reads "spot award — {reason}" (person-overview surfaces `ledger_entries.note`) |
-| **Capability gating** — `reward.manage` / `reward.approve` / `reward.grant`; anyone may redeem for **self**, but redeeming (or converting) on behalf of **another member** needs `reward.manage` — enforced on the REST route and the capture bar alike | ✅ | ✅ | ✅ | ✅ Done |
+| Append-only **corrections and refunds** — linked reversal, optional replacement, required reason | ✅ | ✅ | ✅ | ✅ Done — `reward.correct`; originals remain visible and concurrent retries are idempotent |
+| **Capability gating** — `reward.manage` / `reward.approve` / `reward.grant` / `reward.correct`; members with write access may request for self or cancel their own pending request; acting for others needs `reward.approve`, and pending approval must come from someone other than the balance owner (a parent may request and approve for a child) | ✅ | ✅ | ✅ | ✅ Done |
 | Milestone reward **payouts** | 🚧 | 🚧 | 🚧 | 🚧 Deferred (design done) |
 
 ## Goals

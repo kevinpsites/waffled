@@ -1,6 +1,7 @@
 // Members CRUD against a real Postgres (Testcontainers), scoped per household.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
+import { Client, type QueryResult } from 'pg'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 
@@ -189,6 +190,258 @@ describe('POST /api/persons', () => {
     expect(JSON.parse(res.body).person.colorHex).toBe('#0f9d58')
   })
 
+  it('creates temporary caregiver and guest roles hidden from the shared kiosk by default', async () => {
+    const accessEndsOn = '2099-06-15'
+    const caregiver = await call('POST', '/api/persons', kevin, {
+      name: 'Casey',
+      memberType: 'caregiver',
+      accessEndsOn,
+    })
+    expect(caregiver.statusCode).toBe(201)
+    expect(JSON.parse(caregiver.body).person).toMatchObject({
+      name: 'Casey',
+      memberType: 'caregiver',
+      isAdmin: false,
+      showOnKiosk: false,
+      accessEndsOn,
+    })
+    // America/Chicago's exclusive next-midnight for the selected date (CDT).
+    expect(new Date(JSON.parse(caregiver.body).person.accessExpiresAt).toISOString()).toBe('2099-06-16T05:00:00.000Z')
+
+    const guest = await call('POST', '/api/persons', kevin, { name: 'Grace', memberType: 'guest' })
+    expect(guest.statusCode).toBe(201)
+    expect(JSON.parse(guest.body).person).toMatchObject({ memberType: 'guest', isAdmin: false, showOnKiosk: false })
+  })
+
+  it('canonicalizes the legacy accessExpiresAt request field without extending its instant', async () => {
+    const caregiver = await call('POST', '/api/persons', kevin, {
+      name: 'Legacy Casey',
+      memberType: 'caregiver',
+      // 07:00 in America/Chicago: the last complete local day is June 15.
+      accessExpiresAt: '2099-06-16T12:00:00.000Z',
+    })
+    expect(caregiver.statusCode).toBe(201)
+    expect(JSON.parse(caregiver.body).person).toMatchObject({
+      accessEndsOn: '2099-06-15',
+      accessExpiresAt: '2099-06-16T05:00:00.000Z',
+    })
+
+    const shippedWebShape = await call('POST', '/api/persons', kevin, {
+      name: 'Legacy Web Casey',
+      memberType: 'caregiver',
+      // The old web date picker encoded the selected local day at 23:59:59.999.
+      accessExpiresAt: '2099-06-16T04:59:59.999Z',
+    })
+    expect(shippedWebShape.statusCode).toBe(201)
+    expect(JSON.parse(shippedWebShape.body).person).toMatchObject({
+      accessEndsOn: '2099-06-15',
+      accessExpiresAt: '2099-06-16T05:00:00.000Z',
+    })
+  })
+
+  it('rejects a future legacy instant when its canonical complete day is already over', async () => {
+    const { query } = await import('../src/platform/db')
+    const now = new Date()
+    const exact = new Date(now.getTime() + 5 * 60_000)
+    const sameUtcDay = now.toISOString().slice(0, 10) === exact.toISOString().slice(0, 10)
+    // UTC is deterministic except around its next midnight/legacy 23:59 shape;
+    // Honolulu is safely in the middle of the prior local day in those cases.
+    const timezone = sameUtcDay && exact.getUTCHours() !== 23 ? 'UTC' : 'Pacific/Honolulu'
+    await query(`update households set timezone = $1 where id = $2`, [timezone, kevinHouseholdId])
+    try {
+      const response = await call('POST', '/api/persons', kevin, {
+        name: 'Canonical Past Legacy Person',
+        memberType: 'caregiver',
+        accessExpiresAt: exact.toISOString(),
+      })
+      expect(response.statusCode).toBe(400)
+      expect((await query(
+        `select 1 from persons where household_id = $1 and name = 'Canonical Past Legacy Person'`,
+        [kevinHouseholdId]
+      )).rows).toHaveLength(0)
+    } finally {
+      await query(`update households set timezone = 'America/Chicago' where id = $1`, [kevinHouseholdId])
+    }
+  })
+
+  it('validates an access end date against the timezone committed under the same household lock', async () => {
+    const { query } = await import('../src/platform/db')
+    const timezoneClient = new Client({ connectionString: pg.getConnectionUri() })
+    let pendingCreate: Promise<RunResult> | undefined
+    try {
+      await timezoneClient.connect()
+      await timezoneClient.query(`set statement_timeout = '10s'`)
+      await query(`update households set timezone = 'Pacific/Honolulu' where id = $1`, [kevinHouseholdId])
+      const accessEndsOn = (await query<{ access_ends_on: string }>(
+        `select (clock_timestamp() at time zone 'Pacific/Honolulu')::date::text as access_ends_on`
+      )).rows[0].access_ends_on
+
+      await timezoneClient.query('begin')
+      await timezoneClient.query(
+        `update households set timezone = 'Pacific/Kiritimati' where id = $1`,
+        [kevinHouseholdId]
+      )
+      pendingCreate = call('POST', '/api/persons', kevin, {
+        name: 'Concurrent Timezone Validation',
+        memberType: 'caregiver',
+        accessEndsOn,
+      })
+
+      let requestIsWaiting = false
+      for (let attempt = 0; attempt < 200; attempt++) {
+        await timezoneClient.query(`select pg_stat_clear_snapshot()`)
+        const activity = await timezoneClient.query<{ waiting: boolean }>(
+          `select exists (
+             select 1 from pg_stat_activity
+              where datname = current_database()
+                and pid <> pg_backend_pid()
+                and state = 'active'
+                and wait_event_type = 'Lock'
+                and query ilike '%select timezone from households%for share%'
+           ) as waiting`
+        )
+        if (activity.rows[0].waiting) {
+          requestIsWaiting = true
+          break
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      expect(requestIsWaiting).toBe(true)
+
+      await timezoneClient.query('commit')
+      const response = await pendingCreate
+      pendingCreate = undefined
+      expect(response.statusCode).toBe(400)
+      expect((await query(
+        `select 1 from persons where household_id = $1 and name = 'Concurrent Timezone Validation'`,
+        [kevinHouseholdId]
+      )).rows).toHaveLength(0)
+    } finally {
+      await timezoneClient.query('rollback').catch(() => {})
+      await Promise.allSettled([pendingCreate].filter(Boolean))
+      await timezoneClient.end().catch(() => {})
+      await query(`delete from persons where household_id = $1 and name = 'Concurrent Timezone Validation'`, [kevinHouseholdId])
+      await query(`update households set timezone = 'America/Chicago' where id = $1`, [kevinHouseholdId])
+    }
+  }, 30_000)
+
+  it('rejects admin rights for restricted roles and expiration on permanent roles', async () => {
+    expect((await call('POST', '/api/persons', kevin, {
+      name: 'Admin Guest', memberType: 'guest', isAdmin: true,
+    })).statusCode).toBe(400)
+    expect((await call('POST', '/api/persons', kevin, {
+      name: 'Temporary Adult', memberType: 'adult', accessEndsOn: '2099-06-15',
+    })).statusCode).toBe(400)
+    expect((await call('POST', '/api/persons', kevin, {
+      name: 'Already Expired', memberType: 'caregiver', accessEndsOn: '2020-01-01',
+    })).statusCode).toBe(400)
+    expect((await call('POST', '/api/persons', kevin, {
+      name: 'Ambiguous', memberType: 'caregiver', accessEndsOn: '2099-06-15', accessExpiresAt: '2099-06-16T05:00:00.000Z',
+    })).statusCode).toBe(400)
+    expect((await call('POST', '/api/persons', kevin, {
+      name: 'Bad Visibility', memberType: 'guest', showOnKiosk: 'yes',
+    })).statusCode).toBe(400)
+  })
+
+  it('enforces guest read-only access centrally while preserving reads', async () => {
+    const created = JSON.parse((await call('POST', '/api/persons', kevin, {
+      name: 'Read Only', memberType: 'guest',
+    })).body).person
+    const { query } = await import('../src/platform/db')
+    await query(
+      `insert into identities (household_id, person_id, provider, auth0_user_id)
+       values ($1,$2,'password','dev|readonly-guest')`,
+      [kevinHouseholdId, created.id]
+    )
+    const guestToken = mint('dev|readonly-guest')
+    expect((await call('GET', '/api/persons', guestToken)).statusCode).toBe(200)
+
+    // Credential recovery remains available, but other /api/account mutations
+    // are shared-person writes and must be denied before their route executes.
+    const beforeProfile = await query<{ name: string; color_hex: string | null }>(
+      `select name, color_hex from persons where id = $1`,
+      [created.id]
+    )
+    expect((await call('PUT', '/api/account/profile', guestToken, {
+      name: 'Guest changed shared profile', colorHex: '#ff0088',
+    })).statusCode).toBe(403)
+    expect((await query<{ name: string; color_hex: string | null }>(
+      `select name, color_hex from persons where id = $1`,
+      [created.id]
+    )).rows).toEqual(beforeProfile.rows)
+    // This fixture intentionally has no account, so reaching these handlers
+    // yields their validation 400 rather than the central guest-policy 403.
+    expect((await call('PUT', '/api/account/password', guestToken, {
+      currentPassword: 'wrong', newPassword: 'long-enough-password',
+    })).statusCode).toBe(400)
+    expect((await call('PUT', '/api/account/email', guestToken, {
+      email: 'guest-new@example.com', currentPassword: 'wrong',
+    })).statusCode).toBe(400)
+
+    // These GET endpoints normally materialize recurring chore instances. A guest
+    // may read already-materialized rows, but a read must never create shared state.
+    const recurring = await call('POST', '/api/chores', kevin, {
+      title: 'Guest materialization probe',
+      rrule: 'FREQ=DAILY',
+    })
+    expect(recurring.statusCode).toBe(201)
+    const choreId = JSON.parse(recurring.body).chore.id
+    expect((await query(`select 1 from chore_instances where chore_id = $1`, [choreId])).rows).toHaveLength(0)
+    expect((await call('GET', '/api/chores/today', guestToken)).statusCode).toBe(200)
+    expect((await call('GET', '/api/chore-instances/today', guestToken)).statusCode).toBe(200)
+    expect((await query(`select 1 from chore_instances where chore_id = $1`, [choreId])).rows).toHaveLength(0)
+
+    // Default currencies and pantry staples are lazily self-healed for ordinary
+    // members. Remove them, then traverse every guest-readable GET chain that uses
+    // those helpers. The guest may see empty/fallback state, but may not reseed it.
+    await call('PATCH', '/api/household/modules', kevin, { pantry: true })
+    await query(`delete from currencies where household_id = $1`, [kevinHouseholdId])
+    await query(`delete from pantry_staples where household_id = $1`, [kevinHouseholdId])
+    try {
+      const pureReadPaths = [
+        '/api/currencies',
+        '/api/balances',
+        '/api/family/overview',
+        `/api/persons/${created.id}/overview`,
+        '/api/chores/today',
+        '/api/pantry-staples',
+        '/api/pantry/cookable',
+        '/api/pantry/for-recipe/00000000-0000-0000-0000-000000000000',
+      ]
+      for (const path of pureReadPaths) {
+        expect((await call('GET', path, guestToken)).statusCode, path).toBe(200)
+      }
+      expect((await query(`select 1 from currencies where household_id = $1`, [kevinHouseholdId])).rows).toHaveLength(0)
+      expect((await query(`select 1 from pantry_staples where household_id = $1`, [kevinHouseholdId])).rows).toHaveLength(0)
+    } finally {
+      // Preserve this shared integration fixture for tests that follow.
+      await call('GET', '/api/currencies', kevin)
+      await call('GET', '/api/pantry-staples', kevin)
+      await call('PATCH', '/api/household/modules', kevin, { pantry: false })
+    }
+
+    expect((await call('POST', `/api/persons/${created.id}/saving-toward`, guestToken, {
+      rewardId: null,
+    })).statusCode).toBe(403)
+  })
+
+  it('rejects requests after a temporary membership expires', async () => {
+    const { query } = await import('../src/platform/db')
+    const p = await query<{ id: string }>(
+      `insert into persons (household_id, name, member_type, access_expires_at)
+       values ($1,'Expired Helper','caregiver',now() - interval '1 minute') returning id`,
+      [kevinHouseholdId]
+    )
+    await query(
+      `insert into identities (household_id, person_id, provider, auth0_user_id)
+       values ($1,$2,'password','dev|expired-helper')`,
+      [kevinHouseholdId, p.rows[0].id]
+    )
+    const denied = await call('GET', '/api/persons', mint('dev|expired-helper'))
+    expect(denied.statusCode).toBe(401)
+    expect(JSON.parse(denied.body)).toMatchObject({ error: 'membership_inactive' })
+  })
+
   it('forbids a non-admin member from adding people (403)', async () => {
     await seedNonAdmin('dev|teen', kevinHouseholdId)
     const res = await call('POST', '/api/persons', mint('dev|teen'), {
@@ -265,6 +518,107 @@ describe('GET / PATCH /api/persons/:id', () => {
     await query(`update persons set color_hex = 'person-3' where id = $1`, [targetId])
     expect((await call('PATCH', `/api/persons/${targetId}`, kevin, { colorHex: 'person-4' })).statusCode).toBe(400)
     await query(`update persons set color_hex = '#111111' where id = $1`, [targetId])
+  })
+
+  it('clears temporary access expiration when changing to a permanent role', async () => {
+    const created = JSON.parse((await call('POST', '/api/persons', kevin, {
+      name: 'Morgan', memberType: 'caregiver', accessEndsOn: '2099-06-15',
+    })).body).person
+    const updated = await call('PATCH', `/api/persons/${created.id}`, kevin, { memberType: 'adult' })
+    expect(updated.statusCode).toBe(200)
+    expect(JSON.parse(updated.body).person).toMatchObject({ memberType: 'adult', accessEndsOn: null, accessExpiresAt: null })
+  })
+
+  it('locks the household before an access-window update to avoid a timezone-update deadlock', async () => {
+    const created = JSON.parse((await call('POST', '/api/persons', kevin, {
+      name: 'Concurrent Morgan', memberType: 'caregiver', accessEndsOn: '2099-06-15',
+    })).body).person
+    const blocker = new Client({ connectionString: pg.getConnectionUri() })
+    const timezoneClient = new Client({ connectionString: pg.getConnectionUri() })
+    let pendingPersonUpdate: Promise<unknown> | undefined
+    let pendingTimezoneUpdate: Promise<QueryResult> | undefined
+    try {
+      await Promise.all([blocker.connect(), timezoneClient.connect()])
+      await blocker.query(`set statement_timeout = '10s'`)
+      await timezoneClient.query(`set statement_timeout = '10s'`)
+      const timezonePid = (await timezoneClient.query<{ pid: number }>(`select pg_backend_pid() as pid`)).rows[0].pid
+
+      // Hold the child row so the production transaction remains in flight after
+      // its explicit parent query has acquired the household SHARE lock.
+      await blocker.query('begin')
+      await blocker.query(`select id from persons where id = $1 for update`, [created.id])
+      const { updatePerson } = await import('../src/modules/persons/persons')
+      pendingPersonUpdate = updatePerson(kevinHouseholdId, created.id, { accessEndsOn: '2099-06-20' })
+
+      let personUpdateIsWaiting = false
+      for (let attempt = 0; attempt < 200; attempt++) {
+        await blocker.query(`select pg_stat_clear_snapshot()`)
+        const activity = await blocker.query<{ waiting: boolean }>(
+          `select exists (
+             select 1 from pg_stat_activity
+              where datname = current_database()
+                and pid <> pg_backend_pid()
+                and state = 'active'
+                and query ilike '%update persons%'
+                and wait_event_type = 'Lock'
+           ) as waiting`
+        )
+        if (activity.rows[0].waiting) {
+          personUpdateIsWaiting = true
+          break
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      expect(personUpdateIsWaiting).toBe(true)
+
+      pendingTimezoneUpdate = timezoneClient.query(
+        `update households set timezone = 'Pacific/Honolulu' where id = $1`,
+        [kevinHouseholdId]
+      )
+      let timezoneUpdateIsWaiting = false
+      for (let attempt = 0; attempt < 200; attempt++) {
+        const activity = await blocker.query<{ wait_event_type: string | null }>(
+          `select wait_event_type from pg_stat_activity where pid = $1`,
+          [timezonePid]
+        )
+        if (activity.rows[0]?.wait_event_type === 'Lock') {
+          timezoneUpdateIsWaiting = true
+          break
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      expect(timezoneUpdateIsWaiting).toBe(true)
+
+      await blocker.query('commit')
+      await Promise.all([pendingPersonUpdate, pendingTimezoneUpdate])
+      pendingPersonUpdate = undefined
+      pendingTimezoneUpdate = undefined
+
+      const { query } = await import('../src/platform/db')
+      const final = await query<{ access_ends_on: string; access_expires_at: Date }>(
+        `select access_ends_on, access_expires_at from persons where id = $1`,
+        [created.id]
+      )
+      expect(final.rows[0].access_ends_on).toBe('2099-06-20')
+      expect(final.rows[0].access_expires_at.toISOString()).toBe('2099-06-21T10:00:00.000Z')
+    } finally {
+      await blocker.query('rollback').catch(() => {})
+      await Promise.allSettled([pendingPersonUpdate, pendingTimezoneUpdate].filter(Boolean))
+      await Promise.all([blocker.end().catch(() => {}), timezoneClient.end().catch(() => {})])
+      const { query } = await import('../src/platform/db')
+      await query(`update households set timezone = 'America/Chicago' where id = $1`, [kevinHouseholdId])
+    }
+  }, 30_000)
+
+  it('rejects an expiration on an existing permanent role', async () => {
+    expect((await call('PATCH', `/api/persons/${targetId}`, kevin, {
+      accessEndsOn: '2099-06-15',
+    })).statusCode).toBe(400)
+  })
+
+  it('keeps the household owner an adult admin', async () => {
+    expect((await call('PATCH', `/api/persons/${kevinOwnerId}`, kevin, { memberType: 'caregiver' })).statusCode).toBe(409)
+    expect((await call('PATCH', `/api/persons/${kevinOwnerId}`, kevin, { isAdmin: false })).statusCode).toBe(409)
   })
 
   it('404s for an unknown or non-uuid id', async () => {

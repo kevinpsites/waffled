@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client } from 'pg'
+import { DateTime } from 'luxon'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 
@@ -29,6 +30,7 @@ function call(method: string, path: string, token?: string, body?: unknown) {
 }
 
 const kevin = mint('dev|kevin')
+const guest = mint('dev|goal-calendar-guest')
 let householdId = ''
 let kevinId = ''
 let kellyId = ''
@@ -73,6 +75,20 @@ beforeAll(async () => {
     cl.query(
       `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1,$2,'password','dev|kevin',true)`,
       [householdId, kevinId]
+    )
+  )
+  const guestPerson = await withClient((cl) =>
+    cl.query<{ id: string }>(
+      `insert into persons (household_id, name, member_type)
+       values ($1, 'Goal Calendar Guest', 'guest') returning id`,
+      [householdId]
+    )
+  )
+  await withClient((cl) =>
+    cl.query(
+      `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified)
+       values ($1,$2,'password','dev|goal-calendar-guest',true)`,
+      [householdId, guestPerson.rows[0].id]
     )
   )
   const k = await call('POST', '/api/persons', kevin, { name: 'Kelly', memberType: 'adult' })
@@ -213,11 +229,15 @@ describe('calendar → goal recap', () => {
 
   it('habit confirm respects once-a-day (two events, one log)', async () => {
     const goalId = await makeGoal({ title: 'Habit', goalType: 'habit', unit: null, habitPeriod: 'day', habitTargetPerPeriod: 1, trackingMode: 'each_tracks' })
-    const e1 = await linkedEvent(goalId, 30, [kevinId], 26)
-    const e2 = await linkedEvent(goalId, 30, [kevinId], 25) // same day, later
+    // Relative 25/26-hour offsets straddle midnight when this runs after 1 AM.
+    const yesterdayNoon = DateTime.now().setZone('America/Chicago').minus({ days: 1 }).startOf('day').plus({ hours: 12 })
+    const hoursAgo = (Date.now() - yesterdayNoon.toMillis()) / 3600_000
+    const e1 = await linkedEvent(goalId, 30, [kevinId], hoursAgo)
+    const e2 = await linkedEvent(goalId, 30, [kevinId], hoursAgo - 1)
     const items = await recap(goalId)
     expect(items.length).toBe(2)
     expect(items.every((i) => i.suggestedAmount === 1)).toBe(true)
+    expect(new Set(items.map((i) => i.occurrenceDate)).size).toBe(1)
 
     const statuses: string[] = []
     for (const it of items) {
@@ -460,6 +480,38 @@ describe('calendar → goal suggestions (Phase B)', () => {
     await makeGoal({ title: 'Reading hours', category: 'intellectual' })
     const eventId = await untaggedEvent('Library trip', [kevinId, kellyId])
     expect((await suggestions()).find((s) => s.eventId === eventId)).toBeFalsy()
+  })
+
+  it('keeps a guest suggestion GET out of the persistence-bearing LLM fallback', async () => {
+    await makeGoal({ title: 'Unrelated austere objective', category: 'other' })
+    const eventId = await untaggedEvent('Zorblax rendezvous', [kevinId], 18)
+    await withClient((cl) =>
+      cl.query(
+        `update households
+            set settings = coalesce(settings, '{}'::jsonb)
+              || jsonb_build_object('ai', jsonb_build_object('provider', 'ollama', 'model', 'test'))
+          where id = $1`,
+        [householdId]
+      )
+    )
+    try {
+      const response = await call('GET', '/api/goal-calendar/suggestions', guest)
+      expect(response.statusCode).toBe(200)
+      const seen = await withClient((cl) =>
+        cl.query(`select 1 from event_llm_seen where household_id=$1 and event_id=$2`, [householdId, eventId])
+      )
+      expect(seen.rows).toHaveLength(0)
+    } finally {
+      await withClient((cl) =>
+        cl.query(
+          `update households
+              set settings = coalesce(settings, '{}'::jsonb)
+                || jsonb_build_object('ai', jsonb_build_object('provider', 'heuristic', 'model', null))
+            where id = $1`,
+          [householdId]
+        )
+      )
+    }
   })
 
   it("never suggests Waffled's own meal reminders (a thaw reminder is not an activity)", async () => {

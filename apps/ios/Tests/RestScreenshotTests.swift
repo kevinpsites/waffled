@@ -40,7 +40,7 @@ final class RestScreenshotTests: XCTestCase {
         ]
         let sync = SyncManager(initialMembers: members)
         await sync.loadIdentity(fetchCurrentPerson: {
-            .init(id: "parent", memberType: "adult", isAdmin: true, capabilities: [])
+            .init(id: "parent", memberType: "adult", isAdmin: true, accessExpiry: .null, capabilities: [])
         }, fetchModules: { .init(modules: ["pantry": false, "rhythms": false, "familyNight": false], rewards: true) })
         let today = Agenda.todayKey(sync.householdTz)
         let photo = WaffledAPI.Photo(id: "photo", imageUrl: nil, caption: "Lake afternoon", emoji: "🏞️", colorHex: "#82B5C3", memory: "Summer days", takenAt: nil, isFavorite: true, reactions: [:], uploadedBy: nil, createdAt: "2026-09-01T12:00:00Z")

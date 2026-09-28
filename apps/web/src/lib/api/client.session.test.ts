@@ -1,5 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { apiGet, setSession, getAccessToken, isKioskMode } from './client'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { waitFor } from '@testing-library/react'
+import { apiGet, currentIdentityScope, currentKioskDeviceLease, setSession, setKioskDevice, getAccessToken, isKioskMode } from './client'
+import { registerPrincipalTransitionHandler } from '../powersync/principal-transition'
 
 // A session the server can no longer honour has to END, not sit there failing.
 //
@@ -17,10 +19,23 @@ const json = (status: number, body: unknown): Response =>
   ({ ok: status < 400, status, json: async () => body, clone() { return this } }) as unknown as Response
 
 describe('a session whose household is gone', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     localStorage.clear()
-    setSession('access-tok', 'refresh-tok')
+    const request = async <T>(name: string, options: LockOptions, callback: (lock: Lock) => T | PromiseLike<T>): Promise<T> =>
+      callback({ name, mode: options.mode ?? 'exclusive' } as Lock)
+    vi.stubGlobal('navigator', { onLine: true, locks: { request } })
+    registerPrincipalTransitionHandler(async (request) => {
+      if (currentIdentityScope() !== request.expectedIdentityScope ||
+          (request.stillCurrent && !request.stillCurrent())) return 'stale'
+      request.beginIsolation()
+      request.commitCredentials()
+      request.finishIsolation()
+      return 'completed'
+    })
+    await setSession('access-tok', 'refresh-tok')
   })
+
+  afterEach(() => vi.unstubAllGlobals())
 
   it('signs out when the server says the household is gone', async () => {
     globalThis.fetch = vi.fn(async () =>
@@ -28,7 +43,7 @@ describe('a session whose household is gone', () => {
     ) as unknown as typeof fetch
 
     await expect(apiGet('/api/persons')).rejects.toThrow()
-    expect(getAccessToken()).toBeUndefined()
+    await waitFor(() => expect(getAccessToken()).toBeUndefined())
   })
 
   it('tells the AuthGate, so the login screen actually appears', async () => {
@@ -37,7 +52,7 @@ describe('a session whose household is gone', () => {
     globalThis.fetch = vi.fn(async () => json(403, { error: 'NoHousehold', message: 'gone' })) as unknown as typeof fetch
 
     await expect(apiGet('/api/persons')).rejects.toThrow()
-    expect(seen.length).toBeGreaterThan(0)
+    await waitFor(() => expect(seen.length).toBeGreaterThan(0))
   })
 
   // THE REGRESSION THIS MUST NOT CAUSE. A kid without `chore.manage` gets a 403 all day
@@ -73,16 +88,25 @@ describe('a session whose household is gone', () => {
     expect(getAccessToken()).toBe('access-tok')
   })
 
+  it('does not end a replacement session when an old household response arrives', async () => {
+    let reply!: (response: Response) => void
+    globalThis.fetch = vi.fn(() => new Promise<Response>((resolve) => { reply = resolve })) as unknown as typeof fetch
+    const pending = apiGet('/api/persons').catch((error) => error)
+    await setSession('replacement-access', 'replacement-refresh')
+    reply(json(403, { error: 'NoHousehold', message: 'gone' }))
+    expect(await pending).toBeInstanceOf(Error)
+    expect(getAccessToken()).toBe('replacement-access')
+  })
+
   // On a paired tablet the session belongs to the claimed PROFILE, so the device stays
   // paired and the picker comes back — the same rule the 401 path follows.
   it('drops a kiosk browser to the profile picker, still paired', async () => {
-    localStorage.setItem('waffled.kiosk.mode', '1')
-    localStorage.setItem('waffled.kiosk.deviceSecret', 'device-secret')
+    await setKioskDevice('device-secret', 'device-id')
     globalThis.fetch = vi.fn(async () => json(403, { error: 'NoHousehold', message: 'gone' })) as unknown as typeof fetch
 
     await expect(apiGet('/api/persons')).rejects.toThrow()
-    expect(getAccessToken()).toBeUndefined()
+    await waitFor(() => expect(getAccessToken()).toBeUndefined())
     expect(isKioskMode()).toBe(true)
-    expect(localStorage.getItem('waffled.kiosk.deviceSecret')).toBe('device-secret')
+    expect(currentKioskDeviceLease()?.deviceSecret).toBe('device-secret')
   })
 })

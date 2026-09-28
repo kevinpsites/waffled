@@ -50,21 +50,46 @@ final class ConnectionTransitionQueue {
     }
 }
 
-/// Narrow lifecycle seam for the transition-race tests, which suspend teardown without
-/// mocking PowerSync's large protocol surface.
+/// Small deterministic seam for principal-transition tests.
 struct SyncConnectionLifecycle: Sendable {
     let stop: @MainActor @Sendable (_ clearLocal: Bool) async -> Bool
     let start: @MainActor @Sendable () async -> Bool
-    let applyConfiguration: @MainActor @Sendable (
-        _ rawBaseURL: String?, _ rawDevToken: String?
-    ) -> Void
+    let pendingUploadCount: @MainActor @Sendable () async -> Int?
+
+    let applyConfiguration: @MainActor @Sendable (String?, String?) -> Void
+
+    init(
+        stop: @escaping @MainActor @Sendable (_ clearLocal: Bool) async -> Bool,
+        start: @escaping @MainActor @Sendable () async -> Bool,
+        pendingUploadCount: @escaping @MainActor @Sendable () async -> Int? = { 0 },
+        applyConfiguration: @escaping @MainActor @Sendable (String?, String?) -> Void = { _, _ in }
+    ) {
+        self.stop = stop
+        self.start = start
+        self.pendingUploadCount = pendingUploadCount
+        self.applyConfiguration = applyConfiguration
+    }
 }
 
-/// Owns the PowerSync database lifecycle and surfaces live state to SwiftUI.
+/// Owns the PowerSync database lifecycle and surfaces live, observable state to
+/// SwiftUI: connection status, the synced family (watched query), row counts, and
+/// the pending-upload queue depth. This is the Phase 1 de-risk in one place.
 @MainActor
 @Observable
 final class SyncManager {
     enum Status: String { case idle, connecting, connected, offline }
+    enum PrincipalExitPolicy: Equatable, Sendable {
+        case requireNoPendingUploads
+        case discardAuthorized
+        case securityCritical
+    }
+    enum PrincipalExitResult: Equatable, Sendable {
+        case completed
+        case pendingUploads(Int)
+        case purgeFailed
+        case credentialAdoptionFailed
+        case transitionInProgress
+    }
     enum ConnectionUpdateResult: Equatable, Sendable {
         case updated
         case invalidURL
@@ -147,6 +172,31 @@ final class SyncManager {
     /// The logged-in person — id plus role & capabilities, so management controls only show
     /// where the server would allow the action.
     private(set) var currentPerson: WaffledAPI.CurrentPerson? { didSet { rebuildEventIndex() } }
+    private struct IdentityLoadContext: Equatable, Sendable {
+        let identityScope: String?
+        let apiBaseURL: String
+
+        static var current: IdentityLoadContext {
+            IdentityLoadContext(
+                identityScope: AppConfig.currentIdentityScope,
+                apiBaseURL: AppConfig.apiBaseURL
+            )
+        }
+    }
+    /// Admission ticket for either a local SQLite mutation or a REST mutation. The
+    /// shared active counter lets account transitions freeze new work, then drain work
+    /// already admitted for A before installing B. Multi-step REST flows retain one
+    /// ticket through every await so their later requests cannot silently migrate.
+    private struct PrincipalMutationLease: Equatable, Sendable {
+        let context: IdentityLoadContext
+    }
+    private struct IdentityLoadFlight {
+        let id: UUID
+        let context: IdentityLoadContext
+        let task: Task<Void, Never>
+    }
+    private var identityLoadFlight: IdentityLoadFlight?
+    /// The logged-in person's id (convenience; nil until identity loads).
     /// Tracked separately: a canceled task may already have installed `currentPerson`, and
     /// its replacement must still finish the module read.
     private var identityModulesScope: RestDataScopeKey?
@@ -154,28 +204,111 @@ final class SyncManager {
     private var moduleLoadGeneration = 0
     private var appliedModuleLoadGeneration = 0
     var currentPersonId: String? { currentPerson?.id }
+    // AppConfig is the session-scoped authority for local writes. `currentPerson`
+    // may still describe the old connection briefly after a server/token change,
+    // whereas AppConfig is cleared synchronously at that boundary.
+    private var effectiveMemberType: String? { AppConfig.currentMemberType }
+    var isReadOnlyGuest: Bool { effectiveMemberType == "guest" }
     func loadIdentity() async {
+        guard IdentityLoadContext.current.identityScope != nil,
+              !AppConfig.bearerToken.isEmpty else { return }
         let api = api
-        await loadIdentity(
-            fetchCurrentPerson: { try await api.currentPerson() },
-            fetchModules: { try await api.householdModules() }
-        )
+        await loadIdentity(fetchCurrentPerson: currentPersonRequest,
+                           fetchModules: { try await api.householdModules() })
     }
 
-    /// Injectable overload keeps the principal-boundary race deterministic in tests; both
-    /// responses must belong to the scope that initiated the request.
     func loadIdentity(
         fetchCurrentPerson: @escaping @Sendable () async throws -> WaffledAPI.CurrentPerson?,
         fetchModules: @escaping @Sendable () async throws -> WaffledAPI.HouseholdModules
     ) async {
         let requestedScope = restDataScopeKey
-        if currentPerson == nil {
-            let person = try? await fetchCurrentPerson()
-            guard !Task.isCancelled, requestedScope == restDataScopeKey else { return }
-            currentPerson = person
+        while currentPerson == nil {
+            if let flight = identityLoadFlight {
+                await flight.task.value
+                if identityLoadFlight?.id == flight.id { identityLoadFlight = nil }
+                // A B-context caller that arrived while A was suspended must not
+                // mistake joining A for loading B. Loop whenever the active identity
+                // moved while the joined flight was running.
+                guard requestedScope == restDataScopeKey else { return }
+                if IdentityLoadContext.current == flight.context { return }
+                continue
+            }
+
+            let context = IdentityLoadContext.current
+            let id = UUID()
+            let task = Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.loadIdentityOnce(context: context, flightID: id,
+                                            requestedScope: requestedScope,
+                                            fetchCurrentPerson: fetchCurrentPerson,
+                                            fetchModules: fetchModules)
+            }
+            identityLoadFlight = IdentityLoadFlight(id: id, context: context, task: task)
+            await withTaskCancellationHandler {
+                await task.value
+            } onCancel: { task.cancel() }
+            if identityLoadFlight?.id == id { identityLoadFlight = nil }
+            guard requestedScope == restDataScopeKey else { return }
+            if IdentityLoadContext.current == context { return }
         }
-        guard identityModulesScope != requestedScope else { return }
+        guard requestedScope == restDataScopeKey,
+              identityModulesScope != requestedScope else { return }
         await reloadModules(requestedScope: requestedScope, fetch: fetchModules)
+    }
+
+    private func loadIdentityOnce(
+        context: IdentityLoadContext, flightID: UUID, requestedScope: RestDataScopeKey,
+        fetchCurrentPerson: @escaping @Sendable () async throws -> WaffledAPI.CurrentPerson?,
+        fetchModules: @escaping @Sendable () async throws -> WaffledAPI.HouseholdModules
+    ) async {
+        guard currentPerson == nil, IdentityLoadContext.current == context else { return }
+        // Keep the last trusted role through a transient identity failure. Clearing it
+        // here briefly reopened local writes for guests; a real sign-out/session swap
+        // still clears it explicitly before the next account is used.
+        guard let person = try? await fetchCurrentPerson() else { return }
+        // The request may have been suspended across a login, household switch, or
+        // kiosk profile claim. Never install the old response into the new session.
+        guard !Task.isCancelled, requestedScope == restDataScopeKey,
+              IdentityLoadContext.current == context,
+              identityLoadFlight?.id == flightID else { return }
+
+        // Close admission before publishing a same-scope role/deadline change. Any
+        // local writer admitted under the previous policy finishes first; after the
+        // drain there is no window where an adult-authorized writer can enqueue after
+        // the guest/expired boundary became effective.
+        identityPolicyWritesFrozen = true
+        await waitForLocalWritesToDrain()
+        guard !Task.isCancelled, requestedScope == restDataScopeKey,
+              IdentityLoadContext.current == context,
+              identityLoadFlight?.id == flightID else {
+            identityPolicyWritesFrozen = false
+            return
+        }
+        AppConfig.setCurrentAccess(memberType: person.memberType, accessExpiry: person.accessExpiry)
+        currentPerson = person
+        identityPolicyWritesFrozen = !Self.localMutationAllowed(
+            memberType: person.memberType,
+            accessExpiresAt: person.accessExpiresAt.flatMap(AppConfig.parseAccessInstant)
+        )
+        await reloadModules(requestedScope: requestedScope, fetch: fetchModules)
+    }
+
+    /// Only a role understood by this client may enqueue an offline mutation. The
+    /// server remains authoritative for each role's finer-grained capabilities.
+    nonisolated static func localMutationAllowed(
+        memberType: String?,
+        accessExpiresAt: Date? = nil,
+        now: Date = Date()
+    ) -> Bool {
+        guard !AppConfig.accessIsExpired(
+            memberType: memberType,
+            accessExpiresAt: accessExpiresAt,
+            now: now
+        ) else { return false }
+        switch memberType {
+        case "adult", "caregiver", "teen", "kid": return true
+        default: return false
+        }
     }
 
     // MARK: optional modules
@@ -224,11 +357,13 @@ final class SyncManager {
         requestedScope: RestDataScopeKey,
         fetch: @escaping @Sendable () async throws -> WaffledAPI.HouseholdModules
     ) async {
+        let context = IdentityLoadContext.current
         moduleLoadGeneration &+= 1
         let generation = moduleLoadGeneration
         guard let m = try? await fetch(),
               !Task.isCancelled,
               requestedScope == restDataScopeKey,
+              IdentityLoadContext.current == context,
               generation > appliedModuleLoadGeneration else { return }
         appliedModuleLoadGeneration = generation
         moduleFlags = m.modules
@@ -241,8 +376,9 @@ final class SyncManager {
         modulesRev += 1
     }
 
-    /// Whether the signed-in person holds a capability — mirrors the web `can()`: admins
-    /// implicitly have everything. "chore.manage"/"chore.approve"/"reward.manage"/"reward.approve".
+    /// Whether the signed-in person holds a capability — mirrors the web `can()`:
+    /// admins implicitly have everything; otherwise it must be in their granted set.
+    /// Server-defined household capabilities such as chore, reward, and goal management.
     func can(_ capability: String) -> Bool {
         guard let p = currentPerson else { return false }
         return p.isAdmin || p.capabilities.contains(capability)
@@ -283,12 +419,14 @@ final class SyncManager {
     private func replaceCurrencies(
         fetch: @escaping @Sendable () async throws -> [WaffledAPI.Currency]
     ) async {
+        let context = IdentityLoadContext.current
         currencyLoadGeneration &+= 1
         let generation = currencyLoadGeneration
         let requestedScope = restDataScopeKey
         guard let fresh = try? await fetch(),
               !Task.isCancelled,
               requestedScope == restDataScopeKey,
+              IdentityLoadContext.current == context,
               generation > appliedCurrencyLoadGeneration else { return }
         appliedCurrencyLoadGeneration = generation
         currencies = fresh
@@ -296,7 +434,8 @@ final class SyncManager {
 
     private let db: PowerSyncDatabaseProtocol
     private let connector = WaffledConnector()
-    private let api = WaffledAPI()
+    private let api: WaffledAPI
+    private let currentPersonRequest: @MainActor @Sendable () async throws -> WaffledAPI.CurrentPerson?
     static let iso8601 = ISO8601DateFormatter()
     private var started = false
     private var watchTask: Task<Void, Never>?
@@ -304,51 +443,99 @@ final class SyncManager {
     private var statusTask: Task<Void, Never>?
     private let connectionTransitions = ConnectionTransitionQueue()
     private let testConnectionLifecycle: SyncConnectionLifecycle?
+    private let principalArtifactsCleanup: @MainActor @Sendable () async -> Void
+    private var localWritesFrozen = false
+    private var identityPolicyWritesFrozen = false
+    private var activeLocalWrites = 0
+    private var localWriteDrainWaiters: [CheckedContinuation<Void, Never>] = []
+    private var replicaIdentityScope: String?
+    private static let replicaIdentityScopeKey = "waffled.syncReplicaIdentityScope"
 
-    init(testConnectionLifecycle: SyncConnectionLifecycle? = nil, initialMembers: [SyncedMember] = [],
-         initialEvents: [SyncedEvent] = []) {
+    private static var storedReplicaIdentityScope: String? {
+        UserDefaults.standard.string(forKey: replicaIdentityScopeKey)
+    }
+
+    private static func storeReplicaIdentityScope(_ scope: String?) {
+        if let scope { UserDefaults.standard.set(scope, forKey: replicaIdentityScopeKey) }
+        else { UserDefaults.standard.removeObject(forKey: replicaIdentityScopeKey) }
+    }
+
+    init(
+        testConnectionLifecycle: SyncConnectionLifecycle? = nil,
+        api: WaffledAPI = WaffledAPI(),
+        currentPersonRequest: (@MainActor @Sendable () async throws -> WaffledAPI.CurrentPerson?)? = nil,
+        principalArtifactsCleanup: @escaping @MainActor @Sendable () async -> Void = {},
+        initialMembers: [SyncedMember] = [],
+        initialEvents: [SyncedEvent] = []
+    ) {
         self.testConnectionLifecycle = testConnectionLifecycle
+        self.api = api
+        self.currentPersonRequest = currentPersonRequest ?? { try await api.currentPerson() }
+        self.principalArtifactsCleanup = principalArtifactsCleanup
+        // The SQLite file survives SyncManager/process instances. Its owner therefore
+        // comes from durable metadata, never from whichever token/server happens to be
+        // configured during this initializer.
+        replicaIdentityScope = Self.storedReplicaIdentityScope
+        db = PowerSyncDatabase(schema: SyncSchema.schema, dbFilename: "waffled.sqlite")
         self.members = initialMembers
         self.allEvents = initialEvents
-        db = PowerSyncDatabase(schema: SyncSchema.schema, dbFilename: "waffled.sqlite")
-        // `didSet` doesn't run from init.
         if !initialEvents.isEmpty { rebuildEventIndex() }
     }
 
     /// Stand up watchers once, then connect. Safe to call on every app launch.
     func start() async {
+        let mustClearUnknownReplica = replicaIdentityScope != AppConfig.currentIdentityScope
         await connectionTransitions.run(
-            preempting: false,
-            busyResult: (),
-            supersededResult: ()
+            preempting: false, busyResult: (), supersededResult: (),
+            prepare: { [weak self] in
+                if mustClearUnknownReplica { self?.localWritesFrozen = true }
+            }
         ) { [weak self] epoch in
-            await self?.performStart(epoch: epoch)
+            guard let self else { return }
+            // Missing metadata is also untrusted when a principal is present (upgrade,
+            // interrupted settings write, or crash). Clearing an empty/new database is
+            // harmless; connecting a stale database as the new server is not.
+            if self.replicaIdentityScope != AppConfig.currentIdentityScope {
+                guard await self.stopSync(clearLocal: true, epoch: epoch),
+                      self.connectionTransitions.isCurrent(epoch) else {
+                    AuthTokens.requirePrincipalIsolation()
+                    NotificationCenter.default.post(name: .waffledAuthExpired, object: nil)
+                    return
+                }
+            }
+            await self.performStart(epoch: epoch)
         }
     }
 
     private func performStart(epoch: ConnectionTransitionQueue.Epoch) async {
-        guard connectionTransitions.isCurrent(epoch) else { return }
+        guard connectionTransitions.isCurrent(epoch), !started else { return }
+        localWritesFrozen = false
         guard !started else { return }
         started = true
-
         if let testConnectionLifecycle {
             let didStart = await testConnectionLifecycle.start()
             guard connectionTransitions.isCurrent(epoch), started else { return }
-            if !didStart {
+            guard didStart else {
                 status = .offline
                 lastError = "Couldn’t start the sync connection."
                 started = false
+                return
             }
+            replicaIdentityScope = AppConfig.currentIdentityScope
+            Self.storeReplicaIdentityScope(replicaIdentityScope)
             return
         }
-
-        let openError = await openDatabase()   // serialize before concurrent access
+        let openError = await openDatabase()
         guard connectionTransitions.isCurrent(epoch), started else { return }
         lastError = openError
         watchMembers()
         watchEvents()
         observeStatus()
         await connect(epoch: epoch)
+        if connectionTransitions.isCurrent(epoch) {
+            replicaIdentityScope = AppConfig.currentIdentityScope
+            Self.storeReplicaIdentityScope(replicaIdentityScope)
+        }
     }
 
     /// Force a single, serialized database open before any watches or the sync connection.
@@ -364,25 +551,69 @@ final class SyncManager {
         return failure.map { "Couldn't open the local database: \($0)" }
     }
 
-    /// Reconnect transport without changing credentials; config changes go through
-    /// `updateConnection`, which stops the old connection first.
+    /// Reconnect transport under the same principal. Drain admitted writes and keep
+    /// pending uploads until the server has accepted them.
     @discardableResult
     func reconnect() async -> Bool {
         await connectionTransitions.run(
-            preempting: false,
-            busyResult: false,
-            supersededResult: false
+            preempting: false, busyResult: false, supersededResult: false,
+            prepare: { [weak self] in self?.localWritesFrozen = true }
         ) { [weak self] epoch in
             guard let self else { return false }
-            guard self.pendingUploads == 0 else {
-                let n = self.pendingUploads
-                self.lastError = "Wait for \(n) pending change\(n == 1 ? "" : "s") to sync before reconnecting."
+            await self.waitForLocalWritesToDrain()
+            guard await self.pendingUploadBlock(policy: .requireNoPendingUploads, epoch: epoch) == nil else {
+                self.unfreezeLocalWrites(ifCurrent: epoch)
                 return false
             }
-            guard await self.stopSync(clearLocal: false, epoch: epoch),
+            let clearLocal = self.replicaIdentityScope != AppConfig.currentIdentityScope
+            guard await self.stopSync(clearLocal: clearLocal, epoch: epoch),
                   self.connectionTransitions.isCurrent(epoch) else { return false }
             await self.performStart(epoch: epoch)
+            if self.testConnectionLifecycle == nil { await self.loadIdentity() }
             return self.connectionTransitions.isCurrent(epoch)
+        }
+    }
+
+    /// Purge the old replica and principal artifacts before installing a replacement.
+    @discardableResult
+    func reauthenticate(
+        expectedIdentityScope: String?,
+        policy: PrincipalExitPolicy,
+        adoptCredentials: @escaping @MainActor () -> Bool
+    ) async -> PrincipalExitResult {
+        await connectionTransitions.run(
+            preempting: false,
+            busyResult: .transitionInProgress,
+            supersededResult: .transitionInProgress,
+            prepare: { [weak self] in self?.localWritesFrozen = true }
+        ) { [weak self] epoch in
+            guard let self else { return .transitionInProgress }
+            guard AppConfig.currentIdentityScope == expectedIdentityScope else {
+                self.unfreezeLocalWrites(ifCurrent: epoch)
+                return .transitionInProgress
+            }
+            await self.waitForLocalWritesToDrain()
+            guard self.connectionTransitions.isCurrent(epoch),
+                  AppConfig.currentIdentityScope == expectedIdentityScope else {
+                return .transitionInProgress
+            }
+            if let blocked = await self.pendingUploadBlock(policy: policy, epoch: epoch) {
+                if case .pendingUploads = blocked { self.unfreezeLocalWrites(ifCurrent: epoch) }
+                return blocked
+            }
+            guard await self.stopSync(clearLocal: true, epoch: epoch),
+                  self.connectionTransitions.isCurrent(epoch),
+                  AppConfig.currentIdentityScope == expectedIdentityScope else {
+                return .purgeFailed
+            }
+            // The old replica is already gone, but the replacement must not connect
+            // unless its entire session envelope committed atomically. Returning a
+            // distinct failure lets Session release the signed-out gate immediately
+            // after completing that already-successful isolation boundary.
+            guard adoptCredentials() else { return .credentialAdoptionFailed }
+            await self.performStart(epoch: epoch)
+            if self.testConnectionLifecycle == nil { await self.loadIdentity() }
+            return self.connectionTransitions.isCurrent(epoch) ? .completed : .transitionInProgress
         }
     }
 
@@ -396,7 +627,8 @@ final class SyncManager {
         await connectionTransitions.run(
             preempting: false,
             busyResult: .transitionInProgress,
-            supersededResult: .transitionInProgress
+            supersededResult: .transitionInProgress,
+            prepare: { [weak self] in self?.localWritesFrozen = true }
         ) { [weak self] epoch in
             guard let self else { return .transitionInProgress }
 
@@ -408,13 +640,19 @@ final class SyncManager {
                 } else if let normalized = AppConfig.normalizedApiBaseURL(trimmed) {
                     normalizedBaseURL = normalized
                 } else {
+                    self.unfreezeLocalWrites(ifCurrent: epoch)
                     return .invalidURL
                 }
             } else {
                 normalizedBaseURL = nil
             }
 
-            guard self.pendingUploads == 0 else { return .pendingUploads(self.pendingUploads) }
+            await self.waitForLocalWritesToDrain()
+            if let blocked = await self.pendingUploadBlock(policy: .requireNoPendingUploads, epoch: epoch) {
+                self.unfreezeLocalWrites(ifCurrent: epoch)
+                if case let .pendingUploads(count) = blocked { return .pendingUploads(count) }
+                return self.connectionTransitions.isCurrent(epoch) ? .teardownFailed : .transitionInProgress
+            }
 
             let normalizedToken = rawDevToken?.trimmingCharacters(in: .whitespacesAndNewlines)
             let serverChanged = normalizedBaseURL.map { $0 != AppConfig.apiBaseURL } ?? false
@@ -443,60 +681,194 @@ final class SyncManager {
         }
     }
 
-    /// Re-scope the live sync after the active session changed (a kiosk profile claim): tear
-    /// the PowerSync session down and stand it back up against whatever token `AppConfig` now
-    /// reports. `clearLocal` wipes the mirror, which a HOUSEHOLD change needs — the local
-    /// SQLite is one shared file, so a plain disconnect can leave the old rows visible.
+    /// Scope-bound adapter for callers holding a REST response from before a transition.
     @discardableResult
     func reauthenticate(
         expectedScope: RestDataScopeKey,
-        clearLocal: Bool = false,
         adoptCredentials: (() -> Void)? = nil
     ) async -> Bool {
-        await connectionTransitions.run(
-            preempting: false,
-            busyResult: false,
-            supersededResult: false
-        ) { [weak self] epoch in
-            guard let self, self.restDataScopeKey == expectedScope else { return false }
-                // Stop with the old credentials installed; rotate scope only after teardown.
-            guard await self.stopSync(clearLocal: clearLocal, epoch: epoch),
-                  self.connectionTransitions.isCurrent(epoch),
-                  self.restDataScopeKey == expectedScope else { return false }
-            self.invalidateRestDataScope()
+        guard restDataScopeKey == expectedScope else { return false }
+        return await reauthenticate(expectedIdentityScope: AppConfig.currentIdentityScope,
+                                    policy: .requireNoPendingUploads) {
             adoptCredentials?()
-            await self.performStart(epoch: epoch)
-            return self.connectionTransitions.isCurrent(epoch)
-        }
+            return true
+        } == .completed
     }
 
-    /// Tear down the sync session on sign-out: stop the live queries, disconnect, drop the
-    /// observable state and reset so the next `start()` runs fresh.
-    ///
-    /// `disconnect()`, not `disconnectAndClear()`: clearing the mirror is heavy and isn't
-    /// needed when PowerSync re-scopes its buckets on the next login. A HOUSEHOLD switch
-    /// passes `clearLocal: true`.
+    /// End a principal only after draining writers and purging its local footprint.
     @discardableResult
-    func signOut(clearLocal: Bool = false) async -> Bool {
-        await connectionTransitions.run(
+    func signOut(
+        policy: PrincipalExitPolicy,
+        expectedIdentityScope: String? = nil
+    ) async -> PrincipalExitResult {
+        if let expectedIdentityScope,
+           AppConfig.currentIdentityScope != expectedIdentityScope {
+            return .transitionInProgress
+        }
+        return await connectionTransitions.run(
             preempting: true,
-            busyResult: false,
-            supersededResult: false,
-            // Invalidate REST-backed screens before the first suspension point.
-            prepare: { [weak self] in self?.invalidateRestDataScope() }
+            busyResult: .transitionInProgress,
+            supersededResult: .transitionInProgress,
+            prepare: { [weak self] in
+                self?.localWritesFrozen = true
+                if policy == .securityCritical { self?.invalidateRestDataScope() }
+            }
         ) { [weak self] epoch in
-            guard let self else { return false }
-            return await self.stopSync(clearLocal: clearLocal, epoch: epoch)
+            guard let self else { return .transitionInProgress }
+            await self.waitForLocalWritesToDrain()
+            guard self.connectionTransitions.isCurrent(epoch) else { return .transitionInProgress }
+            if let expectedIdentityScope,
+               AppConfig.currentIdentityScope != expectedIdentityScope {
+                return .transitionInProgress
+            }
+            if let blocked = await self.pendingUploadBlock(policy: policy, epoch: epoch) {
+                if case .pendingUploads = blocked { self.unfreezeLocalWrites(ifCurrent: epoch) }
+                return blocked
+            }
+            guard await self.stopSync(clearLocal: true, epoch: epoch),
+                  self.connectionTransitions.isCurrent(epoch) else {
+                return .purgeFailed
+            }
+            if let expectedIdentityScope,
+               AppConfig.currentIdentityScope != expectedIdentityScope {
+                return .transitionInProgress
+            }
+            return .completed
         }
     }
 
-    /// Stop PowerSync without deciding whether credentials changed — shared by sign-out and
-    /// the connection-settings handoff above.
+    /// Mandatory isolation for an expired/revoked principal. Unlike ordinary sign-out,
+    /// this must delete the shared on-device replica: the next login or kiosk profile
+    /// can belong to a different household/person, and must never inherit rows from the
+    /// expired one. Failure is reported to `Session`, which keeps its gate closed.
+    func isolateExpiredPrincipal() async -> Bool {
+        await signOut(
+            policy: .securityCritical,
+            expectedIdentityScope: AppConfig.currentIdentityScope
+        ) == .completed
+    }
+
+    private func clearPrincipalState() {
+        invalidateRestDataScope()
+        members = []; allEvents = []
+        personCount = 0; eventCount = 0; pendingUploads = 0
+        lastSyncedAt = nil; lastError = nil
+        currentPerson = nil; currencies = []
+        moduleFlags = [:]
+        rewardsSubEnabled = true
+        eventStyle = .solid
+        familyColorHex = EventPalette.defaultFamilyHex
+        householdTz = .current
+        householdWeekStart = nil
+        HouseholdWeekStartStore.clear()
+        status = .idle
+        started = false
+        replicaIdentityScope = nil
+        identityPolicyWritesFrozen = false
+        Self.storeReplicaIdentityScope(nil)
+    }
+
+    /// Freeze/drain is followed by an authoritative SQLite queue read on every
+    /// principal boundary. Even discard/security exits perform the read: this closes
+    /// the cached-zero race and gives teardown one exact ordering point after writers.
+    private func pendingUploadBlock(
+        policy: PrincipalExitPolicy,
+        epoch: ConnectionTransitionQueue.Epoch
+    ) async -> PrincipalExitResult? {
+        guard let count = await exactPendingUploadCount(),
+              connectionTransitions.isCurrent(epoch) else {
+            lastError = "Couldn’t verify whether offline changes are still waiting."
+            return .purgeFailed
+        }
+        pendingUploads = count
+        if policy == .requireNoPendingUploads, count > 0 { return .pendingUploads(count) }
+        return nil
+    }
+
+    private func exactPendingUploadCount() async -> Int? {
+        if let testConnectionLifecycle { return await testConnectionLifecycle.pendingUploadCount() }
+        return try? await db.getOptional(
+            sql: "SELECT count(*) AS n FROM ps_crud", parameters: [],
+            mapper: { try $0.getInt(name: "n") }
+        )
+    }
+
+    private func beginLocalWrite() -> Bool {
+        guard !localWritesFrozen, !identityPolicyWritesFrozen else {
+            lastError = "Finish switching accounts before making another offline change."
+            return false
+        }
+        activeLocalWrites += 1
+        return true
+    }
+
+    private func beginPrincipalMutation() -> PrincipalMutationLease? {
+        guard beginLocalWrite() else { return nil }
+        let context = IdentityLoadContext.current
+        guard context.identityScope != nil,
+              !AppConfig.bearerToken.isEmpty,
+              mutationAllowed() else {
+            finishLocalWrite()
+            return nil
+        }
+        return PrincipalMutationLease(context: context)
+    }
+
+    private func principalMutationIsCurrent(_ lease: PrincipalMutationLease) -> Bool {
+        !AppConfig.principalIsolationRequired &&
+            IdentityLoadContext.current == lease.context &&
+            !AppConfig.bearerToken.isEmpty
+    }
+
+    private func finishPrincipalMutation(_ lease: PrincipalMutationLease) {
+        _ = lease
+        finishLocalWrite()
+    }
+
+    private func finishLocalWrite() {
+        activeLocalWrites -= 1
+        guard activeLocalWrites == 0 else { return }
+        let waiters = localWriteDrainWaiters
+        localWriteDrainWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
+
+    private func waitForLocalWritesToDrain() async {
+        guard activeLocalWrites > 0 else { return }
+        await withCheckedContinuation { localWriteDrainWaiters.append($0) }
+    }
+
+    private func unfreezeLocalWrites(ifCurrent epoch: ConnectionTransitionQueue.Epoch) {
+        if connectionTransitions.isCurrent(epoch) { localWritesFrozen = false }
+    }
+
+    func withLocalWriteLeaseForTesting(
+        _ operation: @escaping @MainActor () async -> Void
+    ) async -> Bool {
+        guard beginLocalWrite() else { return false }
+        defer { finishLocalWrite() }
+        await operation()
+        return true
+    }
+
+    func seedPrincipalMetadataForTesting() {
+        moduleFlags = [WaffledModule.pantry.rawValue: true]
+        rewardsSubEnabled = false
+        eventStyle = .tinted
+        familyColorHex = "#123456"
+        householdTz = TimeZone(identifier: "Pacific/Honolulu")!
+        householdWeekStart = .monday
+        HouseholdWeekStartStore.save(.monday)
+    }
+
+    static func setReplicaIdentityScopeForTesting(_ scope: String?) {
+        storeReplicaIdentityScope(scope)
+    }
+
     private func stopSync(
         clearLocal: Bool,
         epoch: ConnectionTransitionQueue.Epoch
     ) async -> Bool {
-        // Stop consuming the live queries BEFORE disconnecting, or a watcher races teardown.
         watchTask?.cancel(); eventsTask?.cancel(); statusTask?.cancel()
         watchTask = nil; eventsTask = nil; statusTask = nil
         let stopped: Bool
@@ -510,24 +882,48 @@ final class SyncManager {
                 stopped = false
             }
         } else {
-            try? await db.disconnect()
-            stopped = true
+            do {
+                try await db.disconnect()
+                stopped = true
+            } catch {
+                stopped = false
+            }
         }
-        // A newer account-exit transition owns all observable cleanup.
         guard connectionTransitions.isCurrent(epoch) else { return false }
-
-        members = []; allEvents = []
-        personCount = 0; eventCount = 0; pendingUploads = 0
-        lastSyncedAt = nil
-        lastError = stopped ? nil : "Couldn’t clear the previous account’s local data."
-        status = stopped ? .idle : .offline
-        started = false
+        if stopped {
+            if clearLocal {
+                // Notifications, badges, and pending deep links are part of the old
+                // principal's local footprint. Await their removal after the replica
+                // is gone and before any signed-out/replacement gate can reopen.
+                await principalArtifactsCleanup()
+                guard connectionTransitions.isCurrent(epoch) else { return false }
+                clearPrincipalState()
+            } else {
+                members = []; allEvents = []
+                personCount = 0; eventCount = 0; pendingUploads = 0
+                lastSyncedAt = nil
+                currentPerson = nil; currencies = []
+                status = .idle
+                started = false
+            }
+            lastError = nil
+        } else {
+            // Observable rows are dropped even on failure; the Session remains on the
+            // neutral gate and local writes stay frozen until a retry succeeds.
+            members = []; allEvents = []
+            currentPerson = nil; currencies = []
+            lastError = "Couldn’t clear the previous account’s local data."
+            status = .offline
+            started = false
+        }
         return stopped
     }
 
     /// Synchronous half of credential teardown: no database work, so the privacy boundary is
     /// immediate and race-testable.
     func invalidateRestDataScope() {
+        identityLoadFlight?.task.cancel()
+        identityLoadFlight = nil
         restDataScope = RestDataScope()
         currentPerson = nil
         identityModulesScope = nil
@@ -560,6 +956,9 @@ final class SyncManager {
 
     /// Insert an event locally: commits to SQLite immediately and PowerSync queues it.
     func addTestEvent() async {
+        guard beginLocalWrite() else { return }
+        defer { finishLocalWrite() }
+        guard mutationAllowed() else { return }
         guard let owner = try? await db.getOptional(
             sql: "SELECT id, household_id FROM persons ORDER BY sort_order, name LIMIT 1",
             parameters: [],
@@ -621,9 +1020,16 @@ final class SyncManager {
     /// Bumps the affected surface's rev (events down-sync through PowerSync instead).
     func commitMutate(verb: String, targetKind: String?, targetId: String,
                       args: [String: JSONValue], meta: [String: JSONValue]?) async -> (ok: Bool, message: String) {
+        guard let lease = beginPrincipalMutation() else {
+            return (false, mutationUnavailableMessage)
+        }
+        defer { finishPrincipalMutation(lease) }
         do {
             let message = try await api.commitMutate(verb: verb, targetKind: targetKind,
                                                      targetId: targetId, args: args, meta: meta)
+            guard principalMutationIsCurrent(lease) else {
+                return (false, mutationUnavailableMessage)
+            }
             refreshAfterMutate(targetKind)
             return (true, message)
         } catch let e as WaffledAPI.CaptureCommitError {
@@ -650,8 +1056,10 @@ final class SyncManager {
     /// server-side calendar routing and the Google push; the phone never talks to Google.
     func commitEvent(title: String, startsAtISO: String, allDay: Bool, personName: String?,
                      rrule: String? = nil, recurrenceEndAt: String? = nil) async -> Bool {
-        // Route through the same path the editor uses so the capture also writes the
-        // `event_participants` row — otherwise the person is never shown as a participant.
+        guard mutationAllowed() else { return false }
+        // Resolve the named assignee to a person id and route through the same path the
+        // editor uses, so the capture also writes the `event_participants` row (not just
+        // `person_id`) — otherwise the person never shows up as a participant.
         let personId = personName.flatMap { name in
             members.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }?.id
         }
@@ -661,13 +1069,12 @@ final class SyncManager {
         // A recurring capture goes through REST so the server materializes the
         // occurrences (the local mirror can't expand a rule); PowerSync down-syncs them.
         if let rrule, !rrule.isEmpty {
-            do {
+            return await restCommit {
                 _ = try await api.createEvent(
                     title: title, startsAtISO: startsAtISO, endsAtISO: ends, allDay: allDay,
                     location: nil, personIds: personId.map { [$0] } ?? [], goalId: nil, goalStepId: nil,
                     calendarId: nil, timezone: householdTz.identifier, rrule: rrule, recurrenceEndAt: recurrenceEndAt)
-                return true
-            } catch { lastError = String(describing: error); return false }
+            }
         }
         return await createCalendarEvent(
             title: title, startsAtISO: startsAtISO, endsAtISO: ends, allDay: allDay,
@@ -703,6 +1110,9 @@ final class SyncManager {
     func createCalendarEvent(title: String, startsAtISO: String, endsAtISO: String?,
                              allDay: Bool, location: String?, personIds: [String],
                              calendarId: String?, isCountdown: Bool = false) async -> Bool {
+        guard beginLocalWrite() else { return false }
+        defer { finishLocalWrite() }
+        guard mutationAllowed() else { return false }
         guard let hh = await householdRowId() else { lastError = "No household synced yet."; return false }
         let id = UUID().uuidString.lowercased()
         do {
@@ -722,6 +1132,9 @@ final class SyncManager {
 
     func updateEvent(id: String, title: String, startsAtISO: String, endsAtISO: String?,
                      allDay: Bool, location: String?, personIds: [String], isCountdown: Bool = false) async -> Bool {
+        guard beginLocalWrite() else { return false }
+        defer { finishLocalWrite() }
+        guard mutationAllowed() else { return false }
         guard let hh = await householdRowId() else { lastError = "No household synced yet."; return false }
         do {
             try await db.execute(
@@ -734,6 +1147,9 @@ final class SyncManager {
     }
 
     func deleteEvent(id: String) async -> Bool {
+        guard beginLocalWrite() else { return false }
+        defer { finishLocalWrite() }
+        guard mutationAllowed() else { return false }
         do {
             try await db.execute(sql: "DELETE FROM event_participants WHERE event_id = ?", parameters: [id])
             try await db.execute(sql: "DELETE FROM events WHERE id = ?", parameters: [id])
@@ -749,7 +1165,23 @@ final class SyncManager {
         return ok
     }
 
-    /// Fold an optional quantity into the grocery label; whitespace-only is dropped.
+    /// Commit one user action's grocery additions under a single principal writer
+    /// lease. This prevents a household transition from splitting the batch between
+    /// the source and replacement accounts.
+    func commitGroceries(names: [String]) async -> Bool {
+        guard !names.isEmpty else { return true }
+        let ok = await restCommit {
+            let scopedAPI = try api.boundToCurrentPrincipal()
+            for name in names {
+                _ = try await scopedAPI.addGroceryItem(name: name)
+            }
+        }
+        if ok { groceryRev += 1 }
+        return ok
+    }
+
+    /// Fold an optional quantity into the grocery label ("milk" + "2" → "milk (2)"),
+    /// matching the web kiosk. An empty/whitespace quantity is dropped.
     nonisolated static func groceryLabel(name: String, quantity: String?) -> String {
         guard let q = quantity?.trimmingCharacters(in: .whitespaces), !q.isEmpty else { return name }
         return "\(name) (\(q))"
@@ -770,16 +1202,23 @@ final class SyncManager {
     /// Commit a captured meal via REST. Best-effort title match to a known recipe (exact,
     /// then contains) so the slot links it; otherwise planned as a one-off.
     func commitMeal(title: String, date: String?, mealType: String) async -> Bool {
+        guard let lease = beginPrincipalMutation() else { return false }
+        defer { finishPrincipalMutation(lease) }
         let day = date ?? localToday()
         let recipeId = await matchRecipe(title)
-        let ok = await restCommit {
+        guard principalMutationIsCurrent(lease) else { return false }
+        do {
             try await api.planMeal(
                 date: day, mealType: mealType,
                 recipeId: recipeId, title: recipeId == nil ? title : nil
             )
+            guard principalMutationIsCurrent(lease) else { return false }
+            mealsRev += 1
+            return true
+        } catch {
+            lastError = String(describing: error)
+            return false
         }
-        if ok { mealsRev += 1 }
-        return ok
     }
 
     /// Commit a captured countdown via REST. `date` must be YYYY-MM-DD.
@@ -860,13 +1299,38 @@ final class SyncManager {
     /// Execute one step of a planner apply. The sheets hand over a `MealPlanApply`, so which
     /// nights are written and which weeks rebuilt is decided (and tested) in one place.
     func perform(_ op: MealPlanApply.Op) async {
-        switch op {
-        case let .set(date, mealType, recipeId, title):
-            _ = await setMealPlan(date: date, mealType: mealType, recipeId: recipeId, title: title)
-        case let .clear(date, mealType):
-            _ = await clearMealPlan(date: date, mealType: mealType)
-        case let .rebuild(weekStart):
-            await rebuildGroceryFromWeek(weekStart: weekStart)
+        _ = await perform([op])
+    }
+
+    /// Apply a whole generated plan under one originating-principal lease. A sheet can
+    /// contain many writes and grocery rebuilds; allowing a transition between loop
+    /// iterations would let the remainder of A's plan start as valid B requests.
+    @discardableResult
+    func perform(_ operations: [MealPlanApply.Op]) async -> Bool {
+        guard let lease = beginPrincipalMutation() else { return false }
+        defer { finishPrincipalMutation(lease) }
+        do {
+            for op in operations {
+                guard principalMutationIsCurrent(lease) else { return false }
+                switch op {
+                case let .set(date, mealType, recipeId, title):
+                    try await api.planMeal(
+                        date: date, mealType: mealType,
+                        recipeId: recipeId, title: title
+                    )
+                    mealsRev += 1
+                case let .clear(date, mealType):
+                    try await api.clearMeal(date: date, mealType: mealType)
+                    mealsRev += 1
+                case let .rebuild(weekStart):
+                    _ = try await api.rebuildGrocery(weekStart: weekStart)
+                    groceryRev += 1
+                }
+            }
+            return principalMutationIsCurrent(lease)
+        } catch {
+            lastError = String(describing: error)
+            return false
         }
     }
 
@@ -881,8 +1345,13 @@ final class SyncManager {
     /// Bumps `rewardsRev`. Returns false on refusal; the reason surfaces via `lastError`.
     @discardableResult
     func giveReward(rewardId: String, personId: String) async -> Bool {
+        guard let lease = beginPrincipalMutation() else { return false }
+        defer { finishPrincipalMutation(lease) }
         do {
-            _ = try await api.redeemReward(rewardId: rewardId, personId: personId)
+            let redemption = try await api.redeemReward(rewardId: rewardId, personId: personId)
+            guard principalMutationIsCurrent(lease) else { return false }
+            _ = try await api.approveRedemption(id: redemption.id)
+            guard principalMutationIsCurrent(lease) else { return false }
             rewardsRev += 1
             return true
         } catch {
@@ -912,6 +1381,62 @@ final class SyncManager {
         let ok = await restCommit { _ = try await api.denyRedemption(id: id) }
         if ok { rewardsRev += 1 }
         return ok
+    }
+
+    /// Cancel a pending request (no balance mutation has happened yet).
+    func cancelRedemption(id: String) async throws {
+        guard let lease = beginPrincipalMutation() else {
+            throw WaffledAPI.APIError.superseded
+        }
+        defer { finishPrincipalMutation(lease) }
+        do {
+            try await api.cancelRedemption(id: id)
+            guard principalMutationIsCurrent(lease) else {
+                throw WaffledAPI.APIError.superseded
+            }
+            rewardsRev += 1
+        } catch {
+            lastError = String(describing: error)
+            throw error
+        }
+    }
+
+    /// Refund an approved redemption through a linked compensating entry.
+    func refundRedemption(id: String, reason: String, idempotencyKey: String) async throws {
+        guard let lease = beginPrincipalMutation() else {
+            throw WaffledAPI.APIError.superseded
+        }
+        defer { finishPrincipalMutation(lease) }
+        do {
+            try await api.refundRedemption(id: id, reason: reason, idempotencyKey: idempotencyKey)
+            guard principalMutationIsCurrent(lease) else {
+                throw WaffledAPI.APIError.superseded
+            }
+            rewardsRev += 1
+        } catch {
+            lastError = String(describing: error)
+            throw error
+        }
+    }
+
+    /// Reverse a ledger entry and optionally replace it with the corrected amount.
+    func correctLedgerEntry(id: String, reason: String, replacementAmount: Int?, idempotencyKey: String) async throws {
+        guard let lease = beginPrincipalMutation() else {
+            throw WaffledAPI.APIError.superseded
+        }
+        defer { finishPrincipalMutation(lease) }
+        do {
+            try await api.correctLedgerEntry(id: id, reason: reason,
+                                             replacementAmount: replacementAmount,
+                                             idempotencyKey: idempotencyKey)
+            guard principalMutationIsCurrent(lease) else {
+                throw WaffledAPI.APIError.superseded
+            }
+            rewardsRev += 1
+        } catch {
+            lastError = String(describing: error)
+            throw error
+        }
     }
 
     /// Approve a chore completion that was awaiting a parent's OK (awards its stars).
@@ -1007,8 +1532,15 @@ final class SyncManager {
 
     /// Trade a person's balance through a conversion N times; bumps `rewardsRev`.
     func applyConversion(id: String, personId: String, times: Int) async -> (ok: Bool, error: String?) {
+        guard let lease = beginPrincipalMutation() else {
+            return (false, mutationUnavailableMessage)
+        }
+        defer { finishPrincipalMutation(lease) }
         do {
             let r = try await api.applyConversion(id: id, personId: personId, times: times)
+            guard principalMutationIsCurrent(lease) else {
+                return (false, mutationUnavailableMessage)
+            }
             if r.ok { rewardsRev += 1 }
             return (r.ok, r.error)
         } catch {
@@ -1038,20 +1570,25 @@ final class SyncManager {
 
     /// Commit a captured "add X to <list>" intent: resolve the named list, add the item.
     func commitListItem(item: String, listName: String?, quantity: String?) async -> Bool {
+        guard let lease = beginPrincipalMutation() else { return false }
+        defer { finishPrincipalMutation(lease) }
         do {
             let lists = try await api.listSummaries()
+            guard principalMutationIsCurrent(lease) else { return false }
             var target = listName.flatMap { name in
                 lists.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
             }
             // Web parity: an unmatched (but named) list is created on the fly.
             if target == nil, let name = listName?.trimmingCharacters(in: .whitespaces), !name.isEmpty {
                 target = try await api.addList(name: name, emoji: nil)
+                guard principalMutationIsCurrent(lease) else { return false }
             }
             guard let target else {
                 lastError = "No matching list."
                 return false
             }
             try await api.addListItem(listId: target.id, name: item, quantity: quantity)
+            guard principalMutationIsCurrent(lease) else { return false }
             listsRev += 1
             return true
         } catch { lastError = String(describing: error); return false }
@@ -1080,13 +1617,41 @@ final class SyncManager {
 
     /// Run a REST capture commit, surfacing failure via `lastError` and returning false.
     private func restCommit(_ op: () async throws -> Void) async -> Bool {
+        guard let lease = beginPrincipalMutation() else { return false }
+        defer { finishPrincipalMutation(lease) }
         do {
             try await op()
+            guard principalMutationIsCurrent(lease) else {
+                lastError = mutationUnavailableMessage
+                return false
+            }
             return true
         } catch {
+            if let apiError = error as? WaffledAPI.APIError,
+               case .superseded = apiError {
+                lastError = mutationUnavailableMessage
+                return false
+            }
             lastError = String(describing: error)
             return false
         }
+    }
+
+    private func mutationAllowed() -> Bool {
+        guard Self.localMutationAllowed(
+            memberType: effectiveMemberType,
+            accessExpiresAt: AppConfig.currentAccessExpiresAt
+        ) else {
+            lastError = mutationUnavailableMessage
+            return false
+        }
+        return true
+    }
+
+    private var mutationUnavailableMessage: String {
+        AppConfig.currentAccessIsExpired
+            ? "Household access has expired."
+            : (isReadOnlyGuest ? "Guest access is read-only." : "Household access is still loading. Try again.")
     }
 
     /// The person a captured name resolves to (for the preview chip + routing hint).
@@ -1095,10 +1660,12 @@ final class SyncManager {
         return members.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
     }
 
-    /// Whether the person is an adult — gates the approval surfaces (server-gated too).
+    /// Whether the signed-in person can operate adult-style approval surfaces. Caregivers
+    /// may approve routine work; guests and children remain server-gated.
     var isParent: Bool {
         guard let id = currentPersonId else { return false }
-        return members.first { $0.id == id }?.memberType == "adult"
+        let role = members.first { $0.id == id }?.memberType
+        return role == "adult" || role == "caregiver"
     }
 
     // MARK: live state

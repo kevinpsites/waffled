@@ -127,12 +127,16 @@ describe('admin CLI', () => {
     expect(after.rows[0].n).toBe(1)
   })
 
-  it('make-admin / revoke-admin toggles is_admin', async () => {
+  it('make-admin promotes to a permanent adult membership before toggling is_admin', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     await run('make-admin', '--email', 'wally@example.com')
-    expect((await query(`select is_admin from persons where id = $1`, [memberId])).rows[0].is_admin).toBe(true)
+    expect((await query(
+      `select is_admin, member_type, access_expires_at from persons where id = $1`,
+      [memberId]
+    )).rows[0]).toMatchObject({ is_admin: true, member_type: 'adult', access_expires_at: null })
     await run('revoke-admin', '--person', memberId)
-    expect((await query(`select is_admin from persons where id = $1`, [memberId])).rows[0].is_admin).toBe(false)
+    expect((await query(`select is_admin, member_type from persons where id = $1`, [memberId])).rows[0])
+      .toMatchObject({ is_admin: false, member_type: 'adult' })
     log.mockRestore()
   })
 

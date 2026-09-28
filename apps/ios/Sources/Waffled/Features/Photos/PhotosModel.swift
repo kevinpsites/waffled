@@ -33,6 +33,14 @@ final class PhotosModel {
     }
 
     func load() async {
+        await load(fetching: fetchPhotos)
+    }
+
+    private func load(using operationAPI: WaffledAPI) async {
+        await load(fetching: { try await operationAPI.photos() })
+    }
+
+    private func load(fetching fetchPhotos: @escaping FetchPhotos) async {
         loadGeneration &+= 1
         let generation = loadGeneration
         photosD.beginLoading()
@@ -52,24 +60,26 @@ final class PhotosModel {
     /// Patches each over the existing per-photo endpoint, then reloads. Returns false
     /// if any one failed (the wall still reloads to reflect whatever did land).
     func move(_ ids: Set<String>, toAlbum album: String?) async -> Bool {
+        guard let operationAPI = try? api.boundToCurrentPrincipal() else { return false }
         let value: JSONValue = (album?.trimmingCharacters(in: .whitespaces).isEmpty == false)
             ? .string(album!) : .null
         var ok = true
         for id in ids {
-            do { _ = try await api.updatePhoto(id: id, ["memory": value]) }
+            do { _ = try await operationAPI.updatePhoto(id: id, ["memory": value]) }
             catch { ok = false }
         }
-        await load()
+        await load(using: operationAPI)
         return ok
     }
 
     /// Soft-delete the given photos, then reload. Returns false if any one failed.
     func delete(_ ids: Set<String>) async -> Bool {
+        guard let operationAPI = try? api.boundToCurrentPrincipal() else { return false }
         var ok = true
         for id in ids {
-            do { try await api.deletePhoto(id: id) } catch { ok = false }
+            do { try await operationAPI.deletePhoto(id: id) } catch { ok = false }
         }
-        await load()
+        await load(using: operationAPI)
         return ok
     }
 }

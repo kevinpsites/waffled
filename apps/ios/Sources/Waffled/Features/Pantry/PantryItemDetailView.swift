@@ -274,11 +274,12 @@ struct PantryItemDetailView: View {
         uploading = true
         Task {
             defer { uploading = false; photoPick = nil }
-            guard let data = try? await pick.loadTransferable(type: Data.self),
+            guard let scopedAPI = try? WaffledAPI().boundToCurrentPrincipal(),
+                  let data = try? await pick.loadTransferable(type: Data.self),
                   let img = UIImage(data: data),
-                  let up = try? await WaffledAPI().uploadImage(img),
+                  let up = try? await scopedAPI.uploadImage(img),
                   let item,
-                  let updated = try? await WaffledAPI().pantryUpdate(id: item.id, ["imageUrl": .string(up.url)])
+                  let updated = try? await scopedAPI.pantryUpdate(id: item.id, ["imageUrl": .string(up.url)])
             else { return }
             model.replace(updated)
         }

@@ -6,7 +6,8 @@ description: The family-hub permission & attribution model — gate, attribute, 
 Waffled is a *family* hub, not an enterprise tool. The goal is a warm shared space where
 everyone — including kids — can participate, with just enough control where it actually
 matters. So we deliberately **do not** gate every action behind a role. Instead we sort
-every write by what it actually does.
+every write by what it actually does. The exception is the **guest** role: it is a hard
+read-only view for visitors who should not change shared household data.
 
 ## The rule we apply to every action
 
@@ -32,33 +33,53 @@ rationales:
 ## How gating works
 
 Gating is a **per-role capability grid**, not a hard-coded "admins only". `member_type`
-(adult / teen / kid) carries the authorization; `is_admin` (the household owner) is always
-a superuser. Capabilities default conservatively — **adult = on, teen/kid = off** — and the
-owner can flip any cell per household in **Settings → Family & People**. The matrix lives in
-`households.settings.permissions` (deep-merged over the defaults, no migration to add more).
+(adult / caregiver / guest / teen / kid) carries the authorization; `is_admin` is always
+a superuser and is only valid for adults. Capabilities default conservatively: **adult =
+all**, **caregiver = manage/approve chores and approve rewards**, **teen/kid = none**, and
+**guest = hard read-only**. An admin can flip non-guest cells per household in **Settings →
+Family & People**. The matrix lives in `households.settings.permissions` (deep-merged over
+the defaults, no migration to add more).
 
 | Capability | What it gates |
 | --- | --- |
 | `chore.manage` | Create chores for *others*, edit/delete chores |
 | `chore.approve` | Approve/reject completed chores |
-| `reward.manage` | Manage the rewards catalog, currencies, conversions; redeem or convert *for others* |
-| `reward.approve` | Approve/deny redemptions |
+| `reward.manage` | Manage the rewards catalog, currencies, conversions |
+| `reward.approve` | Approve/deny redemptions; redeem or convert balances for another person |
+| `reward.grant` | Give a person an ad-hoc spot award |
+| `reward.correct` | Reverse/replace settled reward activity or refund a redemption |
 | `goal.manage` | Log progress *for others*, edit/delete shared or others' goals, manage goal lists |
+| `planning.manage` | Choose which household lists Weekly Planning asks about; adults have it by default |
 
 Clients never "show, then 403". `/api/household` returns the caller's resolved
 `capabilities`, and the UI renders capable affordances only.
 
 ### Carve-outs — you can always act on your own stuff
 
-Gating never blocks acting on *yourself*. These are always allowed regardless of role:
+Except for a read-only guest, gating never blocks acting on *yourself*. These are always
+allowed for adult, caregiver, teen, and kid members:
 
 - **Chores** — complete/claim any chore; create a chore for *yourself* or *up-for-grabs*
   (assigning it to someone else needs `chore.manage`).
-- **Rewards** — redeem a reward for yourself; convert your own balance.
+- **Rewards** — request a reward for yourself; convert your own balance. A pending
+  redemption needs someone other than the balance owner with `reward.approve` to approve it.
+  A parent can both request and approve a child’s reward, including when they are the
+  only adult. Nobody, including an admin, may approve a pending reward for their own
+  balance. Denial remains available to anyone with approval rights. Catalog managers
+  can still change a reward’s approval policy for future requests; this is not an
+  immutable separation-of-duties control.
+  A requester may cancel their own pending request.
 - **Goals** — log progress *for yourself* (or a family/shared log); create a *personal* goal
   (one with no other participants); tick a checklist step (it's self-attributed); create a
   goal list. Logging attributed to **another person**, or editing/deleting a goal that isn't
   your own sole-participant goal, needs `goal.manage`.
+
+### Guest account maintenance
+
+Guests can update their own login email or password, accept an invitation, and switch
+households. Their shared profile name/avatar and all household content remain read-only.
+Client write controls and offline edits are blocked; older queued guest uploads are
+acknowledged without changing shared data so they cannot block the sync queue.
 
 ## How attribution works
 
@@ -74,10 +95,11 @@ Collaborative surfaces record the actor and surface it ambiently — no approval
 
 ## What we intentionally left open
 
-Recipes (any member can add/edit), meal planning, requesting/viewing — these are
+Recipes (any non-guest member can add/edit), meal planning, requesting/viewing — these are
 collaborative and carry no per-person stakes, so they're open by design. If a family wants
 more control here, the right escape hatch is a **single soft household toggle**, not a
-per-role matrix (see below). We have not built one.
+per-role matrix (see below). We have not built one. Guests remain read-only across these
+surfaces because that role is intended for observation, not collaboration.
 
 ## Not committed — a possible future toggle
 

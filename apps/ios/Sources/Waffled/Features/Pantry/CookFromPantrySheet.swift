@@ -347,8 +347,9 @@ struct CookFromPantrySheet: View {
     }
 
     private func addMissing(_ rec: WaffledAPI.CookMainRecipe) async {
-        for name in rec.missing { _ = await sync.commitGrocery(name: name, quantity: nil) }
-        added.insert(rec.recipeId)
+        if await sync.commitGroceries(names: rec.missing) {
+            added.insert(rec.recipeId)
+        }
     }
 
     private func tapPlan(_ m: WaffledAPI.PantryItem) {

@@ -131,6 +131,35 @@ private func familyNightView(_ config: WaffledAPI.FamilyNightConfig) -> WaffledA
         #expect(!model.busySchedule)
     }
 
+    @Test func queuedFamilyNightScheduleStopsWhenPrincipalChanges() async {
+        var identity = "first-household"
+        var requests = 0
+        var suspended: CheckedContinuation<WaffledAPI.FamilyNightConfig, any Error>?
+        let original = familyNightConfig()
+        let model = FamilyNightSettingsModel(
+            fetch: { familyNightView(original) },
+            setConfig: { _ in
+                requests += 1
+                if requests == 1 {
+                    return try await withCheckedThrowingContinuation { suspended = $0 }
+                }
+                return original
+            },
+            schedule: { "event-1" },
+            unschedule: {},
+            identityScope: { identity }
+        )
+        await model.load()
+        let first = Task { await model.setTime("19:30") }
+        while suspended == nil { await Task.yield() }
+        await model.setTime("20:00")
+        identity = "replacement-household"
+        suspended?.resume(throwing: AdminSettingsFailure.rejected)
+        await first.value
+        #expect(requests == 1)
+        #expect(!model.busySchedule)
+    }
+
     @Test func failedFamilyNightCalendarToggleRollsBack() async {
         let original = familyNightConfig(eventId: nil)
         let model = FamilyNightSettingsModel(

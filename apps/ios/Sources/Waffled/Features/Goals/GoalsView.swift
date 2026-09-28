@@ -72,8 +72,9 @@ final class GoalsModel {
     /// Push today's Apple Health total for EVERY health-linked goal, not just the visible
     /// list. iPhone-only, best-effort; the server upsert is idempotent.
     func syncHealth() async {
-        guard HealthKitBridge.shared.isAvailable else { return }
-        let all = (try? await api.goalsIn(listId: nil)) ?? []
+        guard HealthKitBridge.shared.isAvailable,
+              let scopedAPI = try? api.boundToCurrentPrincipal() else { return }
+        let all = (try? await scopedAPI.goalsIn(listId: nil)) ?? []
         let linked = all.compactMap { g -> (id: String, metric: HealthKitBridge.Metric, start: Date?)? in
             HealthKitBridge.Metric(key: g.healthMetric).map { (g.id, $0, HealthKitBridge.parseTimestamp(g.createdAt)) }
         }
@@ -85,10 +86,16 @@ final class GoalsModel {
         var didSync = false
         for l in linked {
             let days = HealthKitBridge.daysToSync(syncedThrough: HealthSyncMark.get(l.id, l.metric), today: today, notBefore: l.start)
-            for d in days {
-                if await HealthKitBridge.pushDay(api, goalId: l.id, metric: l.metric, day: d.day, key: d.key) { didSync = true }
+            do {
+                for d in days {
+                    if try await HealthKitBridge.pushDay(scopedAPI, goalId: l.id, metric: l.metric, day: d.day, key: d.key) { didSync = true }
+                }
+                HealthSyncMark.set(l.id, l.metric, today)
+            } catch {
+                // Leave this goal's watermark where it was. Replaying already-posted
+                // days is safe because the server upsert is idempotent.
+                return
             }
-            HealthSyncMark.set(l.id, l.metric, today)
         }
         if didSync { await loadGoals() }
     }
@@ -2504,13 +2511,19 @@ final class GoalDetailModel {
 
     func syncHealth() async {
         guard HealthKitBridge.shared.isAvailable,
-              let m = HealthKitBridge.Metric(key: detail?.healthMetric ?? goal.healthMetric) else { return }
+              let m = HealthKitBridge.Metric(key: detail?.healthMetric ?? goal.healthMetric),
+              let scopedAPI = try? api.boundToCurrentPrincipal() else { return }
         try? await HealthKitBridge.shared.requestReadAuthorization()
         let today = Date()
         let start = HealthKitBridge.parseTimestamp(detail?.createdAt ?? goal.createdAt)
         var didSync = false
-        for d in HealthKitBridge.daysToSync(syncedThrough: HealthSyncMark.get(goal.id, m), today: today, notBefore: start) {
-            if await HealthKitBridge.pushDay(api, goalId: goal.id, metric: m, day: d.day, key: d.key) { didSync = true }
+        do {
+            for d in HealthKitBridge.daysToSync(syncedThrough: HealthSyncMark.get(goal.id, m), today: today, notBefore: start) {
+                if try await HealthKitBridge.pushDay(scopedAPI, goalId: goal.id, metric: m, day: d.day, key: d.key) { didSync = true }
+            }
+        } catch {
+            // Do not skip failed days by advancing the durable watermark.
+            return
         }
         HealthSyncMark.set(goal.id, m, today)
         if didSync { await load() }

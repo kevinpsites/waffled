@@ -13,14 +13,19 @@ import { pantryHitsForNames } from '../pantry/presence'
 import { formatAmount, normalizeQuantity, parseQuantity, plainQuantity } from './quantity'
 import type { ListRow, ListItemRow, CreateListInput, PatchItemInput } from './lists.types'
 
-export async function getOrCreateGroceryList(tenant: Tenant): Promise<ListRow> {
+export async function findGroceryList(householdId: string): Promise<ListRow | null> {
   const found = await query<ListRow>(
     `select * from lists
        where household_id = $1 and list_type = 'grocery' and deleted_at is null
        order by created_at limit 1`,
-    [tenant.householdId]
+    [householdId]
   )
-  if (found.rows[0]) return found.rows[0]
+  return found.rows[0] ?? null
+}
+
+export async function getOrCreateGroceryList(tenant: Tenant): Promise<ListRow> {
+  const found = await findGroceryList(tenant.householdId)
+  if (found) return found
   const created = await query<ListRow>(
     `insert into lists (household_id, name, emoji, list_type, is_auto_built, created_by)
      values ($1, 'Grocery', '🛒', 'grocery', false, $2)
@@ -1035,8 +1040,11 @@ const MEAL_ORDER: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, 
 // color, so items can show per-meal dots) + the pantry staples. Powers the
 // grocery view. Colors are stable per recipe so a dish keeps one dot color even
 // when it's planned in more than one slot.
-export async function groceryBoard(tenant: Tenant, weekStart: string) {
-  const list = await getOrCreateGroceryList(tenant)
+export async function groceryBoard(tenant: Tenant, weekStart: string, createIfMissing = true) {
+  const list = createIfMissing
+    ? await getOrCreateGroceryList(tenant)
+    : await findGroceryList(tenant.householdId)
+  if (!list) return null
   const weekEnd = isoAddDays(weekStart, 6)
   // the two board queries are independent — fetch them in one round-trip
   const [mealRows, itemRows] = await Promise.all([

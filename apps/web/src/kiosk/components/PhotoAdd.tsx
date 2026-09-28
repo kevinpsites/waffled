@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
-import { api, uploadImage } from '../../lib/api'
+import { uploadImage } from '../../lib/api'
+import { apiSendForIdentity, currentIdentityScope } from '../../lib/api/client'
 import { AlbumPicker } from './AlbumPicker'
 
 // Add-photos overlay. The hero is a big drag-and-drop / click-to-browse zone that
@@ -48,6 +49,7 @@ export function PhotoAdd({
   async function onPickFiles(fileList: FileList | File[] | null | undefined) {
     const files = Array.from(fileList ?? [])
     if (!files.length) return
+    const identityScope = currentIdentityScope()
     const room = MAX - items.length
     const take = files.slice(0, Math.max(0, room))
     const dropped = files.length - take.length
@@ -56,7 +58,7 @@ export function PhotoAdd({
     await Promise.all(
       take.map(async (file) => {
         try {
-          const { key, url } = await uploadImage(file)
+          const { key, url } = await uploadImage(file, identityScope)
           setItems((prev) => [...prev, { key, previewUrl: url, caption: '', isFavorite: false, album: sharedAlbum }])
         } catch (e) {
           setUploadErr(e instanceof Error ? e.message : 'A photo failed to upload — please try again.')
@@ -91,14 +93,20 @@ export function PhotoAdd({
   async function add() {
     if (!items.length || saving || uploading > 0) return
     setSaving(true)
+    const identityScope = currentIdentityScope()
     try {
       for (const it of items) {
-        await api.createPhoto({
-          storageKey: it.key,
-          caption: it.caption.trim(),
-          memory: it.album.trim() || null,
-          isFavorite: it.isFavorite,
-        })
+        await apiSendForIdentity<{ photo: { id: string } }>(
+          identityScope,
+          'POST',
+          '/api/photos',
+          {
+            storageKey: it.key,
+            caption: it.caption.trim(),
+            memory: it.album.trim() || null,
+            isFavorite: it.isFavorite,
+          }
+        )
       }
       onAdded()
       onClose()

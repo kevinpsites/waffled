@@ -17,6 +17,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Done ✅
 
+- **Private native account transitions** — iPhone sign-out, household changes, and shared
+  iPad profile switching clear the local calendar mirror, reminders, and Cook Mode state
+  before opening another account. Pending offline edits require an explicit discard on
+  manual switches; automatic idle return waits behind a private screen. Upgraded installs
+  verify the same boundary before showing login or the profile picker.
+
 - **iPhone calendar: Month → Week → Day** — the phone Calendar tab rebuilt from the design
   handoff: a full-height month grid with ISO week numbers and up to four titles a day, a
   horizontal week card rail (tap an event to edit it), and a pushed Day timeline with overlap
@@ -84,7 +90,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   prune sessions, regenerate the PowerSync key) that run in-container with no login required.
 - **Identity** — built-in email/password auth (rotating refresh), backend-mediated **OIDC
   SSO** (invite-gated, admin-configured), member management (grant logins), **role-based
-  permissions** (per-role capability grid for managing/approving chores, rewards & goals —
+  permissions** (adult/caregiver/guest/teen/kid; optional expiry for temporary roles;
+  hard read-only guests; per-role capability grid for managing/approving chores, rewards & goals —
   see the [permission model](./permissions.md): *gate what touches currency or someone
   else's record; attribute collaborative actions; leave the rest open*).
 - **Kiosk** — device pairing, profile picker, optional PINs, idle screensaver.
@@ -99,8 +106,11 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   **overdue · since …** badge, per-chore `rollover` toggle), up-for-grabs claim,
   drag-to-reassign, parent approval, **photo-proof on completion**, streaks, append-only
   stars ledger.
-- **Rewards & economy** — catalog → redeem → approve → debit, multi-currency, conversions
-  ("Trade"), saving-toward jar/bar.
+- **Rewards & economy** — catalog → redeem → independent approval → debit, multi-currency, conversions
+  (acting on another balance requires reward-approval rights)
+  ("Trade"), saving-toward jar/bar. Spending, conversions and chore undo share a
+  balance lock; an undo cannot remove already-spent rewards. Append-only corrections and refunds retain original entries,
+  require reasons and use idempotent retries.
 - **Goals** — types (count/total/habit/checklist), shared vs each-tracks, create/edit/
   detail read-model, person + family overview, **calendar → goal** auto-count (single
   and recurring events) with learned suggestions and **per-goal ignored words**, **swappable data views** on the goal-detail
@@ -195,7 +205,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   Web/Kiosk — Today, Calendar (incl. **recurring events** — create, per-occurrence edit/
   delete scope, end condition, and a live "now" line on the time grids), Chores (incl.
   **photo-proof**), Rewards, Goals, Lists, Meals, Photos, AI capture, **role-based permission
-  gating** + the permissions matrix editor, native sign-in (password + OIDC), offline-first
+  gating** + the permissions matrix editor, caregiver/guest temporary access with read-only
+  guest guards, native sign-in (password + OIDC), offline-first
   calendar over PowerSync, and local event notifications (Snooze/View). The iPad also has the
   **family-display screensaver** (idle
   photo slideshow · clock · weather · next event · night-dim). The newer modules reached
