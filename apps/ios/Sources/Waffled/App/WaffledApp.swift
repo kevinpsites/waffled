@@ -17,6 +17,9 @@ struct WaffledApp: App {
     @State private var cook: CookSessionStore
     /// Cold-launch splash (bouncing logo on cream). Shown once per launch, then faded.
     @State private var showSplash = true
+    @State private var principalDataReady = false
+    @State private var bootstrapBusy = false
+    @State private var bootstrapFailed = false
 
     init() {
         let notifications = NotificationManager()
@@ -43,12 +46,16 @@ struct WaffledApp: App {
                 // KioskGate wraps the auth gate: a shared-kiosk iPad with nobody claimed in
                 // shows the profile picker INSTEAD of the login screen. On iPhone (and a
                 // single-login iPad) it's a transparent passthrough.
-                KioskGate {
-                    AuthGate {
-                        RootView()
-                            .id(sync.restDataScopeKey)
-                            .task { await sync.start() }   // connect PowerSync once signed in
+                if principalDataReady {
+                    KioskGate {
+                        AuthGate {
+                            RootView()
+                                .id(sync.restDataScopeKey)
+                                .task { await sync.start() }   // connect PowerSync once signed in
+                        }
                     }
+                } else {
+                    principalBootstrapGate
                 }
                 if showSplash {
                     SplashView()
@@ -69,13 +76,7 @@ struct WaffledApp: App {
             .environment(theme)
             .tint(WF.primary)
             .preferredColorScheme(theme.colorScheme)   // light / dark / follow-device (Settings → Appearance)
-            .task { await session.bootstrap() }    // read the Keychain / probe auth status
-            // One coordinator owns an expired credential boundary. Session gates the
-            // login UI until SyncManager has invalidated REST state and disconnected,
-            // avoiding two unordered notification observers racing a new login.
-            .onReceive(NotificationCenter.default.publisher(for: .waffledAuthExpired)) { _ in
-                Task { await session.signOut(sync: sync) }
-            }
+            .task { await bootstrap() }
             .task {
                 // Headless-verification rotation (see DemoHooks.forceOrientation). The
                 // request is a preference the system can ignore while the scene is still
@@ -98,6 +99,54 @@ struct WaffledApp: App {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var principalBootstrapGate: some View {
+        if bootstrapBusy || !bootstrapFailed {
+            SplashView()
+        } else {
+            ZStack {
+                WF.canvas.ignoresSafeArea()
+                VStack(spacing: 16) {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 42, weight: .semibold)).foregroundStyle(WF.primary)
+                    Text("Finishing a private-data update")
+                        .font(.system(size: 20, weight: .bold)).foregroundStyle(WF.ink)
+                    Text("Waffled couldn’t safely clear data left by the previous session. No account or profile is available until that cleanup succeeds.")
+                        .font(.system(size: 14)).foregroundStyle(WF.ink2)
+                        .multilineTextAlignment(.center)
+                    Button("Try again") { Task { await bootstrap() } }
+                        .buttonStyle(.borderedProminent)
+                }
+                .padding(28).frame(maxWidth: 520)
+            }
+        }
+    }
+
+    private func bootstrap() async {
+        guard !bootstrapBusy else { return }
+        bootstrapBusy = true
+        bootstrapFailed = false
+        principalDataReady = await PrincipalBootstrap.prepare(sync: sync, session: session)
+        bootstrapFailed = !principalDataReady
+        bootstrapBusy = false
+    }
+}
+
+/// The launch gate owns legacy data cleanup before either login or kiosk profile
+/// selection can mount. Existing expiry coordination remains Session's responsibility.
+@MainActor
+enum PrincipalBootstrap {
+    static func prepare(sync: SyncManager, session: Session) async -> Bool {
+        let sessionWillIsolate = AppConfig.principalIsolationRequired
+            || AppConfig.currentAccessIsExpired || DemoHooks.resetAuth
+        if !AppConfig.hasUsableToken && !sessionWillIsolate {
+            let result = await sync.signOut(policy: .securityCritical)
+            guard result == .completed else { return false }
+        }
+        await session.bootstrap()
+        return session.phase != .loading && !AppConfig.principalIsolationRequired
     }
 }
 

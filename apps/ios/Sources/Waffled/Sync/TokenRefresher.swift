@@ -113,7 +113,7 @@ actor TokenRefresher {
         return .refreshed(access: pair.accessToken, refresh: pair.refreshToken)
     }
 
-    private static func expire(_ lease: AuthTokens.RefreshLease) async {
+    static func expire(_ lease: AuthTokens.RefreshLease) async {
         // Login/profile adoption also runs on the main actor. Recheck and clear in
         // one non-suspending block so a stale 401 cannot notify listeners after a
         // replacement session has won the race.

@@ -210,15 +210,26 @@ final class SyncManager {
     private var effectiveMemberType: String? { AppConfig.currentMemberType }
     var isReadOnlyGuest: Bool { effectiveMemberType == "guest" }
     func loadIdentity() async {
+        guard IdentityLoadContext.current.identityScope != nil,
+              !AppConfig.bearerToken.isEmpty else { return }
+        let api = api
+        await loadIdentity(fetchCurrentPerson: currentPersonRequest,
+                           fetchModules: { try await api.householdModules() })
+    }
+
+    func loadIdentity(
+        fetchCurrentPerson: @escaping @Sendable () async throws -> WaffledAPI.CurrentPerson?,
+        fetchModules: @escaping @Sendable () async throws -> WaffledAPI.HouseholdModules
+    ) async {
+        let requestedScope = restDataScopeKey
         while currentPerson == nil {
-            guard IdentityLoadContext.current.identityScope != nil,
-                  !AppConfig.bearerToken.isEmpty else { return }
             if let flight = identityLoadFlight {
                 await flight.task.value
                 if identityLoadFlight?.id == flight.id { identityLoadFlight = nil }
                 // A B-context caller that arrived while A was suspended must not
                 // mistake joining A for loading B. Loop whenever the active identity
                 // moved while the joined flight was running.
+                guard requestedScope == restDataScopeKey else { return }
                 if IdentityLoadContext.current == flight.context { return }
                 continue
             }
@@ -227,24 +238,38 @@ final class SyncManager {
             let id = UUID()
             let task = Task { @MainActor [weak self] in
                 guard let self else { return }
-                await self.loadIdentityOnce(context: context, flightID: id)
+                await self.loadIdentityOnce(context: context, flightID: id,
+                                            requestedScope: requestedScope,
+                                            fetchCurrentPerson: fetchCurrentPerson,
+                                            fetchModules: fetchModules)
             }
             identityLoadFlight = IdentityLoadFlight(id: id, context: context, task: task)
-            await task.value
+            await withTaskCancellationHandler {
+                await task.value
+            } onCancel: { task.cancel() }
             if identityLoadFlight?.id == id { identityLoadFlight = nil }
+            guard requestedScope == restDataScopeKey else { return }
             if IdentityLoadContext.current == context { return }
         }
+        guard requestedScope == restDataScopeKey,
+              identityModulesScope != requestedScope else { return }
+        await reloadModules(requestedScope: requestedScope, fetch: fetchModules)
     }
 
-    private func loadIdentityOnce(context: IdentityLoadContext, flightID: UUID) async {
+    private func loadIdentityOnce(
+        context: IdentityLoadContext, flightID: UUID, requestedScope: RestDataScopeKey,
+        fetchCurrentPerson: @escaping @Sendable () async throws -> WaffledAPI.CurrentPerson?,
+        fetchModules: @escaping @Sendable () async throws -> WaffledAPI.HouseholdModules
+    ) async {
         guard currentPerson == nil, IdentityLoadContext.current == context else { return }
         // Keep the last trusted role through a transient identity failure. Clearing it
         // here briefly reopened local writes for guests; a real sign-out/session swap
         // still clears it explicitly before the next account is used.
-        guard let person = try? await currentPersonRequest() else { return }
+        guard let person = try? await fetchCurrentPerson() else { return }
         // The request may have been suspended across a login, household switch, or
         // kiosk profile claim. Never install the old response into the new session.
-        guard IdentityLoadContext.current == context,
+        guard !Task.isCancelled, requestedScope == restDataScopeKey,
+              IdentityLoadContext.current == context,
               identityLoadFlight?.id == flightID else { return }
 
         // Close admission before publishing a same-scope role/deadline change. Any
@@ -253,7 +278,8 @@ final class SyncManager {
         // the guest/expired boundary became effective.
         identityPolicyWritesFrozen = true
         await waitForLocalWritesToDrain()
-        guard IdentityLoadContext.current == context,
+        guard !Task.isCancelled, requestedScope == restDataScopeKey,
+              IdentityLoadContext.current == context,
               identityLoadFlight?.id == flightID else {
             identityPolicyWritesFrozen = false
             return
@@ -264,7 +290,7 @@ final class SyncManager {
             memberType: person.memberType,
             accessExpiresAt: person.accessExpiresAt.flatMap(AppConfig.parseAccessInstant)
         )
-        await reloadModules()
+        await reloadModules(requestedScope: requestedScope, fetch: fetchModules)
     }
 
     /// Only a role understood by this client may enqueue an offline mutation. The
@@ -331,11 +357,13 @@ final class SyncManager {
         requestedScope: RestDataScopeKey,
         fetch: @escaping @Sendable () async throws -> WaffledAPI.HouseholdModules
     ) async {
+        let context = IdentityLoadContext.current
         moduleLoadGeneration &+= 1
         let generation = moduleLoadGeneration
         guard let m = try? await fetch(),
               !Task.isCancelled,
               requestedScope == restDataScopeKey,
+              IdentityLoadContext.current == context,
               generation > appliedModuleLoadGeneration else { return }
         appliedModuleLoadGeneration = generation
         moduleFlags = m.modules
@@ -391,12 +419,14 @@ final class SyncManager {
     private func replaceCurrencies(
         fetch: @escaping @Sendable () async throws -> [WaffledAPI.Currency]
     ) async {
+        let context = IdentityLoadContext.current
         currencyLoadGeneration &+= 1
         let generation = currencyLoadGeneration
         let requestedScope = restDataScopeKey
         guard let fresh = try? await fetch(),
               !Task.isCancelled,
               requestedScope == restDataScopeKey,
+              IdentityLoadContext.current == context,
               generation > appliedCurrencyLoadGeneration else { return }
         appliedCurrencyLoadGeneration = generation
         currencies = fresh
@@ -521,32 +551,30 @@ final class SyncManager {
         return failure.map { "Couldn't open the local database: \($0)" }
     }
 
-    /// (Re)connect with fresh credentials — used by the Settings "Reconnect" button
-    /// after pasting a token or changing the API URL.
-    func reconnect() async {
-        let nextIdentityScope = AppConfig.currentIdentityScope
-        let mustClearReplica = replicaIdentityScope != nextIdentityScope
+    /// Reconnect transport under the same principal. Drain admitted writes and keep
+    /// pending uploads until the server has accepted them.
+    @discardableResult
+    func reconnect() async -> Bool {
         await connectionTransitions.run(
-            preempting: false, busyResult: (), supersededResult: ()
+            preempting: false, busyResult: false, supersededResult: false,
+            prepare: { [weak self] in self?.localWritesFrozen = true }
         ) { [weak self] epoch in
-            guard let self else { return }
-            guard await self.stopSync(clearLocal: mustClearReplica, epoch: epoch),
-                  self.connectionTransitions.isCurrent(epoch) else { return }
+            guard let self else { return false }
+            await self.waitForLocalWritesToDrain()
+            guard await self.pendingUploadBlock(policy: .requireNoPendingUploads, epoch: epoch) == nil else {
+                self.unfreezeLocalWrites(ifCurrent: epoch)
+                return false
+            }
+            let clearLocal = self.replicaIdentityScope != AppConfig.currentIdentityScope
+            guard await self.stopSync(clearLocal: clearLocal, epoch: epoch),
+                  self.connectionTransitions.isCurrent(epoch) else { return false }
             await self.performStart(epoch: epoch)
-            await self.loadIdentity()
+            if self.testConnectionLifecycle == nil { await self.loadIdentity() }
+            return self.connectionTransitions.isCurrent(epoch)
         }
     }
 
-    /// Re-scope the live sync after the active session changed — a kiosk profile claim
-    /// swaps in a different person's token. Tears the PowerSync session down and stands
-    /// it back up against whatever token `AppConfig` now reports, the same path a fresh
-    /// launch takes. `signOut()` resets `started`, so `start()` runs clean.
-    /// `clearLocal` wipes the on-device mirror as part of the teardown — needed when the
-    /// *household* changes (not just the person), because the local SQLite is one shared
-    /// file: a plain disconnect can leave the previous household's rows visible (and the
-    /// `households LIMIT 1` write path picking the wrong one) until PowerSync reconciles
-    /// buckets. The kiosk person-switch keeps the default (`false`): same household, so
-    /// the cheap disconnect is correct.
+    /// Purge the old replica and principal artifacts before installing a replacement.
     @discardableResult
     func reauthenticate(
         expectedIdentityScope: String?,
@@ -599,7 +627,8 @@ final class SyncManager {
         await connectionTransitions.run(
             preempting: false,
             busyResult: .transitionInProgress,
-            supersededResult: .transitionInProgress
+            supersededResult: .transitionInProgress,
+            prepare: { [weak self] in self?.localWritesFrozen = true }
         ) { [weak self] epoch in
             guard let self else { return .transitionInProgress }
 
@@ -611,13 +640,19 @@ final class SyncManager {
                 } else if let normalized = AppConfig.normalizedApiBaseURL(trimmed) {
                     normalizedBaseURL = normalized
                 } else {
+                    self.unfreezeLocalWrites(ifCurrent: epoch)
                     return .invalidURL
                 }
             } else {
                 normalizedBaseURL = nil
             }
 
-            guard self.pendingUploads == 0 else { return .pendingUploads(self.pendingUploads) }
+            await self.waitForLocalWritesToDrain()
+            if let blocked = await self.pendingUploadBlock(policy: .requireNoPendingUploads, epoch: epoch) {
+                self.unfreezeLocalWrites(ifCurrent: epoch)
+                if case let .pendingUploads(count) = blocked { return .pendingUploads(count) }
+                return self.connectionTransitions.isCurrent(epoch) ? .teardownFailed : .transitionInProgress
+            }
 
             let normalizedToken = rawDevToken?.trimmingCharacters(in: .whitespacesAndNewlines)
             let serverChanged = normalizedBaseURL.map { $0 != AppConfig.apiBaseURL } ?? false
@@ -646,42 +681,21 @@ final class SyncManager {
         }
     }
 
-    /// Re-scope the live sync after the active session changed (a kiosk profile claim): tear
-    /// the PowerSync session down and stand it back up against whatever token `AppConfig` now
-    /// reports. `clearLocal` wipes the mirror, which a HOUSEHOLD change needs — the local
-    /// SQLite is one shared file, so a plain disconnect can leave the old rows visible.
+    /// Scope-bound adapter for callers holding a REST response from before a transition.
     @discardableResult
     func reauthenticate(
         expectedScope: RestDataScopeKey,
-        clearLocal: Bool = false,
         adoptCredentials: (() -> Void)? = nil
     ) async -> Bool {
-        await connectionTransitions.run(
-            preempting: false,
-            busyResult: false,
-            supersededResult: false
-        ) { [weak self] epoch in
-            guard let self, self.restDataScopeKey == expectedScope else { return false }
-                // Stop with the old credentials installed; rotate scope only after teardown.
-            guard await self.stopSync(clearLocal: clearLocal, epoch: epoch),
-                  self.connectionTransitions.isCurrent(epoch),
-                  self.restDataScopeKey == expectedScope else { return false }
-            self.invalidateRestDataScope()
+        guard restDataScopeKey == expectedScope else { return false }
+        return await reauthenticate(expectedIdentityScope: AppConfig.currentIdentityScope,
+                                    policy: .requireNoPendingUploads) {
             adoptCredentials?()
-            await self.performStart(epoch: epoch)
-            return self.connectionTransitions.isCurrent(epoch)
-        }
+            return true
+        } == .completed
     }
 
-    /// Tear down the sync session on sign-out: stop the live queries, disconnect, drop the
-    /// observable state and reset so the next `start()` runs fresh.
-    ///
-    /// By default we `disconnect()` (not `disconnectAndClear()`): clearing the local
-    /// mirror is heavy work to run during teardown and isn't needed for plain sign-out
-    /// or a same-household person-switch — on the next login PowerSync re-scopes its
-    /// buckets to the new token, the same as the web. Keeping teardown light also avoids
-    /// a memory/Keychain spike at sign-out. A **household switch** passes `clearLocal:
-    /// true` so the previous household's rows can't linger in the shared SQLite file.
+    /// End a principal only after draining writers and purging its local footprint.
     @discardableResult
     func signOut(
         policy: PrincipalExitPolicy,
@@ -695,7 +709,10 @@ final class SyncManager {
             preempting: true,
             busyResult: .transitionInProgress,
             supersededResult: .transitionInProgress,
-            prepare: { [weak self] in self?.localWritesFrozen = true }
+            prepare: { [weak self] in
+                self?.localWritesFrozen = true
+                if policy == .securityCritical { self?.invalidateRestDataScope() }
+            }
         ) { [weak self] epoch in
             guard let self else { return .transitionInProgress }
             await self.waitForLocalWritesToDrain()
@@ -732,6 +749,7 @@ final class SyncManager {
     }
 
     private func clearPrincipalState() {
+        invalidateRestDataScope()
         members = []; allEvents = []
         personCount = 0; eventCount = 0; pendingUploads = 0
         lastSyncedAt = nil; lastError = nil
@@ -878,6 +896,7 @@ final class SyncManager {
                 // principal's local footprint. Await their removal after the replica
                 // is gone and before any signed-out/replacement gate can reopen.
                 await principalArtifactsCleanup()
+                guard connectionTransitions.isCurrent(epoch) else { return false }
                 clearPrincipalState()
             } else {
                 members = []; allEvents = []
@@ -903,6 +922,8 @@ final class SyncManager {
     /// Synchronous half of credential teardown: no database work, so the privacy boundary is
     /// immediate and race-testable.
     func invalidateRestDataScope() {
+        identityLoadFlight?.task.cancel()
+        identityLoadFlight = nil
         restDataScope = RestDataScope()
         currentPerson = nil
         identityModulesScope = nil

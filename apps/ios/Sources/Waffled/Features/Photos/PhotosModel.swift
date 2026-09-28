@@ -40,7 +40,7 @@ final class PhotosModel {
         await load(fetching: { try await operationAPI.photos() })
     }
 
-    private func load(fetching fetchPhotos: FetchPhotos) async {
+    private func load(fetching fetchPhotos: @escaping FetchPhotos) async {
         loadGeneration &+= 1
         let generation = loadGeneration
         photosD.beginLoading()

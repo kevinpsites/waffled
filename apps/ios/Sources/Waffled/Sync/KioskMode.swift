@@ -81,7 +81,10 @@ final class KioskMode {
 
     /// Turn this signed-in admin's iPad into a shared kiosk in one tap (promote), then
     /// drop their personal session so the picker takes over. Returns an error string.
-    func enableViaPromote(label: String?, sync: SyncManager, session: Session) async -> String? {
+    func enableViaPromote(
+        label: String?, sync: SyncManager, session: Session,
+        policy: SyncManager.PrincipalExitPolicy = .requireNoPendingUploads
+    ) async -> String? {
         let requestBaseURL = AppConfig.apiBaseURL
         let sourceScope = AppConfig.currentIdentityScope
         let sourceDevice = KioskDeviceStore.snapshot()
@@ -91,7 +94,7 @@ final class KioskMode {
                 baseURL: requestBaseURL, identityScope: sourceScope, device: sourceDevice
             ) else { return "This kiosk setup was superseded. Try again." }
             principalTransitionInProgress = true
-            let result = await session.signOut(sync: sync, policy: .securityCritical)
+            let result = await session.signOut(sync: sync, policy: policy)
             guard result == .completed else {
                 if result != .purgeFailed { principalTransitionInProgress = false }
                 return "Couldn’t safely clear the previous account’s local data."
@@ -269,15 +272,25 @@ final class KioskMode {
 
     /// Idle-return / manual switch: drop the current person and show the picker again,
     /// keeping the device paired.
-    func returnToPicker(sync: SyncManager, session: Session) async {
-        principalTransitionInProgress = true
-        let result = await session.signOut(sync: sync, policy: .requireNoPendingUploads)
+    @discardableResult
+    func returnToPicker(
+        sync: SyncManager,
+        session: Session,
+        policy: SyncManager.PrincipalExitPolicy = .requireNoPendingUploads
+    ) async -> SyncManager.PrincipalExitResult {
+        // Keep the requesting UI mounted until a manual transition is accepted so
+        // queued uploads can produce its explicit discard confirmation.
+        let result = await session.signOut(sync: sync, policy: policy)
         if result == .completed {
-            hasProfile = false
-            principalTransitionInProgress = false
-        } else if result != .purgeFailed {
-            principalTransitionInProgress = false
+            completeProfileSignOut()
         }
+        return result
+    }
+
+    /// Only expose the picker after the previous principal's isolation completed.
+    func completeProfileSignOut() {
+        hasProfile = false
+        principalTransitionInProgress = false
     }
 
     /// The device pairing was rejected by the server (revoked or unknown — e.g. an admin
@@ -308,10 +321,13 @@ final class KioskMode {
     /// Fully un-kiosk this iPad: forget the device identity and the person session,
     /// returning to the normal login screen (admin-confirmed in Settings).
     @discardableResult
-    func unpair(sync: SyncManager, session: Session) async -> Bool {
+    func unpair(
+        sync: SyncManager, session: Session,
+        policy: SyncManager.PrincipalExitPolicy = .requireNoPendingUploads
+    ) async -> Bool {
         let expectedDevice = KioskDeviceStore.snapshot()
         principalTransitionInProgress = true
-        let result = await session.signOut(sync: sync, policy: .requireNoPendingUploads)
+        let result = await session.signOut(sync: sync, policy: policy)
         guard result == .completed else {
             if result != .purgeFailed { principalTransitionInProgress = false }
             return false

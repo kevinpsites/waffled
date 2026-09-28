@@ -74,9 +74,14 @@ final class FamilyNightSettingsModel {
     private func persistPendingSchedule() async {
         guard !busySchedule else { return }
         busySchedule = true
-        defer { busySchedule = false }
+        let scope = identityScope()
+        defer {
+            busySchedule = false
+            if identityScope() != scope { pendingSchedule = nil }
+        }
 
         while let requested = pendingSchedule {
+            guard identityScope() == scope else { return }
             pendingSchedule = nil
             errorMessage = nil
             do {
@@ -84,6 +89,7 @@ final class FamilyNightSettingsModel {
                     "dayOfWeek": .int(requested.day),
                     "time": .string(requested.time),
                 ])
+                guard identityScope() == scope else { return }
                 confirmedDayOfWeek = confirmed.dayOfWeek
                 confirmedTime = confirmed.time
 

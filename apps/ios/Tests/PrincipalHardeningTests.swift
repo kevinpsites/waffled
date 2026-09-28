@@ -97,6 +97,37 @@ struct PrincipalHardeningTests {
         )
     }
 
+    @Test("missing-household responses request coordinated isolation without deleting tokens")
+    func missingHouseholdUsesCoordinatedIsolation() async {
+        cleanupAuth(); defer { cleanupAuth() }
+        #expect(AuthTokens.save(access: "A-access", refresh: "A-refresh", memberType: "adult"))
+        let calls = HTTPRequestRecorder()
+        let api = WaffledAPI(
+            transport: { (Data(#"{"error":"NoHousehold"}"#.utf8), httpResponse($0, status: 403)) },
+            expireSession: { _ in await calls.recordRefresh() }
+        )
+        _ = try? await api.currentPerson()
+        #expect(await calls.refreshes() == 1)
+        #expect(AuthTokens.refreshToken == "A-refresh")
+    }
+
+    @Test("a queued old expiration cannot isolate the replacement principal")
+    func queuedExpirationRejectsOldLease() async {
+        cleanupAuth(); defer { cleanupAuth() }
+        #expect(AuthTokens.save(access: "A-access", refresh: "A-refresh", memberType: "adult"))
+        let oldLease = AuthTokens.refreshLease()!
+        var purges = 0
+        let session = Session(initialPhase: .authed, isolateExpiredPrincipal: {
+            purges += 1
+            return true
+        })
+        #expect(AuthTokens.save(access: "B-access", refresh: "B-refresh", memberType: "adult"))
+        await session.handleExpiry(lease: oldLease)
+        #expect(purges == 0)
+        #expect(session.phase == .authed)
+        #expect(AuthTokens.refreshToken == "B-refresh")
+    }
+
     @Test("replacement credentials remain uninstalled until writer drain and purge")
     func replacementWaitsForWriterAndPurge() async {
         cleanupAuth(); defer { cleanupAuth() }

@@ -54,6 +54,7 @@ struct WaffledAPI: Sendable {
 
     private let transport: Transport
     private let refreshSession: @Sendable (AuthTokens.RefreshLease) async -> Bool
+    private let expireSession: @Sendable (AuthTokens.RefreshLease) async -> Void
     private let kioskToken: @Sendable (KioskDeviceStore.Snapshot) async throws -> String
     private let freshKioskToken: @Sendable (KioskDeviceStore.Snapshot) async throws -> String
     private let responseChecked: @Sendable () -> Void
@@ -64,6 +65,9 @@ struct WaffledAPI: Sendable {
         transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
         refreshSession: @escaping @Sendable (AuthTokens.RefreshLease) async -> Bool = {
             await TokenRefresher.shared.refresh(ifCurrent: $0)
+        },
+        expireSession: @escaping @Sendable (AuthTokens.RefreshLease) async -> Void = {
+            await TokenRefresher.expire($0)
         },
         kioskToken: @escaping @Sendable (KioskDeviceStore.Snapshot) async throws -> String = {
             try await KioskDeviceAuth.shared.token(for: $0)
@@ -76,6 +80,7 @@ struct WaffledAPI: Sendable {
     ) {
         self.transport = transport
         self.refreshSession = refreshSession
+        self.expireSession = expireSession
         self.kioskToken = kioskToken
         self.freshKioskToken = freshKioskToken
         self.responseChecked = responseChecked
@@ -4732,6 +4737,12 @@ struct WaffledAPI: Sendable {
         let binding = ResponseBinding(context: context)
         let (data, resp) = try await transport(req)
         guard context.isCurrent else { throw APIError.superseded }
+        if (resp as? HTTPURLResponse)?.statusCode == 403,
+           Self.errorCode(data) == "NoHousehold", let lease = context.refreshLease {
+            // The coordinator purges the old principal before clearing credentials.
+            await expireSession(lease)
+            return (data, resp, binding)
+        }
         guard (resp as? HTTPURLResponse)?.statusCode == 401,
               let lease = context.refreshLease,
               await refreshSession(lease) else {

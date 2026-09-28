@@ -134,13 +134,9 @@ final class NotificationManager {
         delegate.manager = self
         center.delegate = delegate
         center.setNotificationCategories([Self.reminderCategory()])
-        // A dead refresh token signs us out — drop any reminders for the old session.
-        NotificationCenter.default.addObserver(forName: .waffledAuthExpired, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in await self?.clearPrincipalArtifacts() }
-        }
-        NotificationCenter.default.addObserver(forName: .waffledPrincipalIsolated, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in await self?.clearPrincipalArtifacts() }
-        }
+        // Session owns principal exits and awaits this manager's cleanup through
+        // SyncManager. Independent observers could run after a replacement signs in.
+
     }
 
     /// Snooze + View actions shown when a reminder is expanded/long-pressed.

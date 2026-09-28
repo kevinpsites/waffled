@@ -37,8 +37,9 @@ final class Session {
         self.now = now
         self.api = api
         // A dead refresh token (caught mid-request) drops us back to login.
-        NotificationCenter.default.addObserver(forName: .waffledAuthExpired, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in await self?.handleExpiry() }
+        NotificationCenter.default.addObserver(forName: .waffledAuthExpired, object: nil, queue: .main) { [weak self] notification in
+            let lease = notification.object as? AuthTokens.RefreshLease
+            Task { @MainActor in await self?.handleExpiry(lease: lease) }
         }
         NotificationCenter.default.addObserver(forName: .waffledAccessPolicyChanged, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.handleAccessPolicyChanged() }
@@ -161,9 +162,9 @@ final class Session {
         }
     }
 
-    /// Return to login immediately, then revoke + re-probe in the background. Clearing
-    /// the Keychain and flipping `phase` first makes sign-out feel instant and tears
-    /// down the authed UI before any network work (no waiting on a slow revoke).
+    /// Purge the principal before deleting credentials, then revoke in the background.
+    /// Manual exits keep their confirmation/error view mounted while queued uploads
+    /// are checked; mandatory expiration uses the neutral gate.
     @discardableResult
     func signOut(
         sync: SyncManager,
@@ -173,7 +174,8 @@ final class Session {
         let refresh = AuthTokens.refreshToken
         let sourceBaseURL = AppConfig.apiBaseURL
         let sourceScope = AppConfig.currentIdentityScope
-        phase = .loading
+        // Keep manual confirmation/error surfaces mounted through the exact queue check.
+        if policy == .securityCritical { phase = .loading }
         let result = await sync.signOut(policy: policy, expectedIdentityScope: sourceScope)
         switch result {
         case .completed:
@@ -215,7 +217,7 @@ final class Session {
                 ? "This temporary access has already expired."
                 : "The server returned incomplete access details."
         }
-        phase = .loading
+        if policy == .securityCritical || phase != .authed { phase = .loading }
         var persisted = false
         var adoptedIdentityScope: String?
         let result = await sync.reauthenticate(
@@ -339,7 +341,12 @@ final class Session {
         status = try? await api.authStatus()
     }
 
-    private func handleExpiry() async {
+    func handleExpiry(lease: AuthTokens.RefreshLease?) async {
+        if let lease {
+            guard AuthTokens.isCurrent(lease) else { return }
+        } else {
+            guard AppConfig.principalIsolationRequired else { return }
+        }
         guard phase == .authed || AppConfig.principalIsolationRequired else { return }
         AuthTokens.requirePrincipalIsolation()
         await isolateExpiredAccess()
