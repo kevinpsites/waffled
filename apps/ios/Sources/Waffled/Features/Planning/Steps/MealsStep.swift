@@ -205,7 +205,10 @@ struct MealsStepView: View {
                 if let dinner = row.dinner {
                     // NEVER `AsyncImage` in a list — `CachedImage` serves a decoded hit
                     // synchronously, which keeps seven of these from re-decoding per tick.
-                    CachedImage(dinner.imageUrl, contentMode: .fill) {
+                    CachedImage(dinner.imageUrl, contentMode: .fill, refreshURL: {
+                        guard let id = dinner.recipeId else { return nil }
+                        return try await MediaURL.recipe(id)
+                    }) {
                         WaffledEmojiTile(emoji: dinner.emoji ?? row.fallbackEmoji, size: 22, frame: 44)
                     }
                     .frame(width: 44, height: 44)
