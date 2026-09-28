@@ -215,7 +215,10 @@ export function EventModal({
   // The event's start, used for the default weekly day and monthly nth-weekday.
   const startDate = new Date(`${form.day}T${form.time || '12:00'}`)
   const weekday = weekdayCode(startDate)
-  const baseRrule = buildRrule(repeat, startDate)
+  // The ordinal is dropped so it is re-read from the start date: this modal's monthly
+  // option IS "whichever week the start date falls in" (it has no ordinal picker, unlike
+  // RhythmModal), so a parsed one would outlive a move to another week.
+  const baseRrule = buildRrule({ ...repeat, monthlyOrdinal: undefined }, startDate)
   // COUNT lives in the rule; an end date is passed separately as recurrenceEndAt.
   const rrule = baseRrule && endMode === 'after' && count > 0 ? `${baseRrule};COUNT=${count}` : baseRrule
   const recurrenceEndAt = endMode === 'on' && until ? toIso(until, '23:59') : null
