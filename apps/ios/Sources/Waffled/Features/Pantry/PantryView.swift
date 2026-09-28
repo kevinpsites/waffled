@@ -321,7 +321,7 @@ struct PantryView: View {
     }
 
     private func thumb(_ item: WaffledAPI.PantryItem) -> some View {
-        CachedImage(item.imageUrl) { Text(PantryFood.emoji(for: item.name)).font(.system(size: 21)) }
+        CachedImage(item.imageUrl, refreshURL: { try await MediaURL.pantry(item.id) }) { Text(PantryFood.emoji(for: item.name)).font(.system(size: 21)) }
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 

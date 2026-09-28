@@ -7,6 +7,7 @@ import { query } from '../../platform/db'
 import { tenantRoute } from '../../platform/route-guards'
 import { moduleEnabled } from '../../platform/modules'
 import { AuthError } from '../../platform/auth'
+import { mediaKeyBelongsToHousehold, mediaUrl } from '../../platform/storage'
 import type { Tenant } from '../households/households'
 import { lookupBarcode } from './off'
 import { cookableRecipes, recipesUsingItem, pantryMatchesForRecipe, type ConsumeMode } from './cook'
@@ -38,6 +39,7 @@ interface PantryRow {
   barcode: string | null
   brand: string | null
   image_url: string | null
+  storage_key: string | null
   quantity_text: string | null
   serving_basis: string | null
   nutrition: Record<string, number> | null
@@ -52,7 +54,7 @@ interface PantryRow {
 }
 
 const RETURNING = `id, name, amount, unit, location, expires_on::text as expires_on, note, used_up_at::text as used_up_at,
-  barcode, brand, image_url, quantity_text, serving_basis, nutrition, allergens, traces, dietary, source, low_at, is_meal,
+  barcode, brand, image_url, storage_key, quantity_text, serving_basis, nutrition, allergens, traces, dietary, source, low_at, is_meal,
   added_on::text as added_on, created_at::text as created_at`
 
 // Amounts are free text ("2", "0.5", "a pinch"), so the places that do arithmetic on
@@ -76,7 +78,7 @@ function present(r: PantryRow) {
     // OFF snapshot (null when the item was added manually without a lookup).
     barcode: r.barcode,
     brand: r.brand,
-    imageUrl: r.image_url,
+    imageUrl: mediaUrl(r.storage_key) ?? r.image_url,
     quantityText: r.quantity_text,
     servingBasis: r.serving_basis,
     nutrition: r.nutrition,
@@ -94,14 +96,38 @@ function present(r: PantryRow) {
 // Pull the OFF snapshot fields off a request body (shared by create + update). Each
 // is optional; arrays/objects are stored as-is, blanks become null.
 type OffPatch = { col: string; val: unknown }
-function offPatches(b: Record<string, unknown>, opts: { includeUnset?: boolean } = {}): OffPatch[] {
+function offPatches(householdId: string, b: Record<string, unknown>, opts: { includeUnset?: boolean } = {}): OffPatch[] {
   const out: OffPatch[] = []
   const strField = (key: string, col: string) => {
     if (key in b || opts.includeUnset) out.push({ col, val: b[key] != null && String(b[key]).trim() ? String(b[key]).trim() : null })
   }
   strField('barcode', 'barcode')
   strField('brand', 'brand')
-  strField('imageUrl', 'image_url')
+  if ('storageKey' in b || 'imageUrl' in b) {
+    let key = b.storageKey ?? null
+    let external = typeof b.imageUrl === 'string' ? b.imageUrl.trim() || null : null
+    // Compatibility with old clients that PATCH the upload URL instead of its key.
+    // Only our default/configured media prefix is interpreted as a local upload.
+    if (!('storageKey' in b) && external) {
+      const prefixes = ['/media', (process.env.MEDIA_BASE_URL || '/media').replace(/\/$/, '')]
+      let path = external
+      if (/^https?:\/\//.test(path)) {
+        try { path = new URL(path).pathname + new URL(path).search } catch { /* ordinary external URL */ }
+      }
+      for (const prefix of prefixes) {
+        const candidate = external.startsWith(prefix + '/') ? external : path
+        if (candidate.startsWith(prefix + '/')) {
+          key = candidate.slice(prefix.length + 1).split('?')[0]
+          break
+        }
+      }
+    }
+    if (key !== null && (typeof key !== 'string' || !mediaKeyBelongsToHousehold(key, householdId))) {
+      throw new AuthError('storageKey must identify an upload in this household', 400)
+    }
+    if (key) external = null
+    out.push({ col: 'storage_key', val: key }, { col: 'image_url', val: external })
+  }
   strField('quantityText', 'quantity_text')
   strField('servingBasis', 'serving_basis')
   if ('nutrition' in b) out.push({ col: 'nutrition', val: b.nutrition && typeof b.nutrition === 'object' ? JSON.stringify(b.nutrition) : null })
@@ -128,7 +154,7 @@ async function insertItem(householdId: string, b: Record<string, unknown>): Prom
   if (b.lowAt != null && b.lowAt !== '' && Number.isFinite(Number(b.lowAt))) { cols.push('low_at'); vals.push(Number(b.lowAt)) }
   if (typeof b.isMeal === 'boolean') { cols.push('is_meal'); vals.push(b.isMeal) }
   if (b.addedOn && DATE_RE.test(String(b.addedOn))) { cols.push('added_on'); vals.push(String(b.addedOn)) }
-  for (const p of offPatches(b)) { cols.push(p.col); vals.push(p.val) }
+  for (const p of offPatches(householdId, b)) { cols.push(p.col); vals.push(p.val) }
   const placeholders = vals.map((_, idx) => `$${idx + 1}${cols[idx] === 'nutrition' ? '::jsonb' : ''}`)
   const { rows } = await query<PantryRow>(
     `insert into pantry_items (${cols.join(', ')}) values (${placeholders.join(', ')}) returning ${RETURNING}`,
@@ -234,8 +260,8 @@ export function registerPantryRoutes(api: Api): void {
     // once, recall that so a re-scan prefills their own entry instead of an empty
     // "name it" card. Scoped to the household (never leaks a name to other tenants).
     if (!product) {
-      const prior = await query<{ name: string; brand: string | null; image_url: string | null; quantity_text: string | null }>(
-        `select name, brand, image_url, quantity_text from pantry_items
+      const prior = await query<{ name: string; brand: string | null; image_url: string | null; storage_key: string | null; quantity_text: string | null }>(
+        `select name, brand, image_url, storage_key, quantity_text from pantry_items
          where household_id = $1 and barcode = $2 and deleted_at is null
          order by updated_at desc limit 1`,
         [tenant.householdId, barcode]
@@ -245,7 +271,7 @@ export function registerPantryRoutes(api: Api): void {
         return {
           found: true,
           product: {
-            barcode, name: p.name, brand: p.brand, imageUrl: p.image_url, quantityText: p.quantity_text,
+            barcode, name: p.name, brand: p.brand, imageUrl: mediaUrl(p.storage_key) ?? p.image_url, quantityText: p.quantity_text,
             servingBasis: null, nutrition: {}, allergens: [], traces: [], dietary: [],
             nutriscore: null, nova: null, source: 'manual', fetchedAt: new Date().toISOString(),
           },
@@ -404,7 +430,7 @@ export function registerPantryRoutes(api: Api): void {
     if (typeof b.isMeal === 'boolean') set('is_meal', b.isMeal)
     if (b.addedOn && DATE_RE.test(String(b.addedOn))) set('added_on', String(b.addedOn))
     // OFF snapshot edits (relink a barcode, replace the photo, refresh nutrition).
-    for (const p of offPatches(b)) {
+    for (const p of offPatches(tenant.householdId, b)) {
       if (p.col === 'nutrition') { cols.push(`nutrition = $${i++}::jsonb`); vals.push(p.val) }
       else set(p.col, p.val)
     }

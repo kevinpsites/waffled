@@ -1,3 +1,5 @@
+import { MediaImage } from './components/MediaImage'
+import { refreshProofImage } from '../lib/api/media-recovery'
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { avTint } from './components/Avatar'
 import { useSearchParams } from 'react-router'
@@ -2176,7 +2178,7 @@ function ChoreProofsDrawer({
                   {list.map((p) => (
                     <div className="proof-cell" key={p.instanceId}>
                       <button type="button" className="proof-thumb" onClick={() => setEnlarge(p)} title="View larger">
-                        {p.proofUrl && <img src={p.proofUrl} alt={`Proof for ${p.choreTitle}`} />}
+                        {p.proofUrl && <MediaImage src={p.proofUrl} refresh={() => refreshProofImage(p.instanceId)} alt={`Proof for ${p.choreTitle}`} />}
                       </button>
                       <div className="proof-meta">
                         <div className="proof-title">{p.emoji ? `${p.emoji} ` : ''}{p.choreTitle}</div>
@@ -2202,7 +2204,7 @@ function ChoreProofsDrawer({
               <div className="cpm-title">{enlarge.emoji ? `${enlarge.emoji} ` : ''}{enlarge.choreTitle}</div>
               <div className="cpm-sub">{enlarge.personName ?? '—'}{fmtProofDate(enlarge.completedAt) ? ` · ${fmtProofDate(enlarge.completedAt)}` : ''}</div>
             </div></div>
-            <div className="cpm-stage">{enlarge.proofUrl && <img src={enlarge.proofUrl} alt={`Proof for ${enlarge.choreTitle}`} />}</div>
+            <div className="cpm-stage">{enlarge.proofUrl && <MediaImage showRetry src={enlarge.proofUrl} refresh={() => refreshProofImage(enlarge.instanceId)} alt={`Proof for ${enlarge.choreTitle}`} />}</div>
             <div className="cpm-actions">
               <button type="button" className="pill" disabled={busy === enlarge.instanceId} onClick={() => { del(enlarge.instanceId); setEnlarge(null) }}>🗑 Delete</button>
             </div>
@@ -3165,7 +3167,7 @@ function DisplayKioskPanel() {
   const dirtyRef = useRef(false)
   const wx = useWeather()
   const { events } = useEventsToday()
-  const { photos } = usePhotos()
+  const { photos, refetch: refetchPhotos } = usePhotos()
   const { household } = useHousehold()
   const nextEvent = events.find((e) => new Date(e.startsAt).getTime() > Date.now()) ?? null
   // Distinct album names (a photo's `memory`), for the "Specific album" picker.
@@ -3348,6 +3350,7 @@ function DisplayKioskPanel() {
           nextEvent={nextEvent}
           timezone={household?.timezone}
           intervalSeconds={cfg.photoInterval}
+          onMediaExpired={refetchPhotos}
           onWake={() => setPreview(false)}
         />
       )}

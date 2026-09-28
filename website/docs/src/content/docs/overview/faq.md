@@ -118,7 +118,7 @@ areas (chores, lists, meals…) are online REST for now. See [Mobile app](/featu
 
 ### How are backups handled?
 Nightly, out of the box, either way. On Docker a backup sidecar dumps Postgres; point it at a
-host folder and/or an S3-compatible bucket, and optionally include media. Restore is
+host folder and/or an S3-compatible bucket, and include media by default. Restore is
 `./waffled restore <file>`. See [Backup & restore](/operations/backup/). The Mac app backs up
 at 3:00 AM into its own folder (or on demand with **Back up now**) and restores with one
 command; copying backups off the Mac is up to you. See

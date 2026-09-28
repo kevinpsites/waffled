@@ -358,7 +358,7 @@ struct RecipesLibraryView: View {
 
     private func recentTileLabel(_ r: WaffledAPI.RecipeSummary) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            CachedImage(r.imageUrl, contentMode: .fill) {
+            CachedImage(r.imageUrl, contentMode: .fill, refreshURL: { try await MediaURL.recipe(r.id) }) {
                 RecipeGradient.forCategory(r.category)
                     .overlay(Text(r.emoji ?? RecipeGradient.emoji(r.category)).font(.system(size: 26)))
             }
@@ -426,7 +426,7 @@ struct RecipeCard: View {
             ZStack(alignment: .topTrailing) {
                 // CachedImage, never AsyncImage: cards live in a LazyVGrid, so AsyncImage would
                 // re-fetch on every scroll/keystroke.
-                CachedImage(recipe.imageUrl, contentMode: .fill) {
+                CachedImage(recipe.imageUrl, contentMode: .fill, refreshURL: { try await MediaURL.recipe(recipe.id) }) {
                     RecipeGradient.forCategory(recipe.category)
                         .overlay(Text(recipe.emoji ?? RecipeGradient.emoji(recipe.category)).font(.system(size: 42)))
                 }

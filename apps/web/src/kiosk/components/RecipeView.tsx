@@ -1,3 +1,5 @@
+import { MediaImage } from './MediaImage'
+import { refreshRecipeImage } from '../../lib/api/media-recovery'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { mealBuilderApi, mealsApi, pantryApi, useRecipe, useRecordRecipeView, type RecipeIngredient, type RecipeMatch, type RecipeOverrides, type RecipeStep } from '../../lib/api'
@@ -379,7 +381,7 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
         <div className="rd-left">
           <div className="rd-hero">
             {recipe.imageUrl ? (
-              <img src={recipe.imageUrl} alt={recipe.title} />
+              <MediaImage showRetry src={recipe.imageUrl} refresh={() => refreshRecipeImage(recipe.id)} alt={recipe.title} />
             ) : (
               <span className="rd-hero-emoji">{recipe.emoji ?? '🍽️'}</span>
             )}

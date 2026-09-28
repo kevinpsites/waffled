@@ -80,6 +80,75 @@ enum MediaURL {
         let joined = raw.hasPrefix("/") ? base + raw : base + "/" + raw
         return URL(string: joined)
     }
+
+    static func isSigned(_ url: URL) -> Bool {
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        return url.path.hasPrefix("/media/") && items.contains { $0.name == "sig" }
+            && items.contains { $0.name == "expires" }
+    }
+
+    // Reload the owning resource using its normal authenticated API. Deleted media
+    // yields nil, and no route re-signs arbitrary caller-provided storage keys.
+    static func photo(_ id: String) async throws -> URL? {
+        resolve(try await WaffledAPI().photo(id: id).imageUrl)
+    }
+
+    static func recipe(_ id: String) async throws -> URL? {
+        resolve(try await WaffledAPI().recipeDetail(id: id).recipe.imageUrl)
+    }
+
+    static func proof(_ id: String, date: String?) async throws -> URL? {
+        if let date {
+            return resolve(try await WaffledAPI().choreInstances(date: date).first { $0.id == id }?.proofUrl)
+        }
+        // Legacy approval payloads can omit dueOn. The approval resource spans dates.
+        return resolve(try await WaffledAPI().awaitingChores().first { $0.id == id }?.proofUrl)
+    }
+
+    static func storedProof(_ id: String) async throws -> URL? {
+        resolve(try await WaffledAPI().storedProofs().first { $0.id == id }?.proofUrl)
+    }
+
+    static func pantry(_ id: String) async throws -> URL? {
+        resolve(try await WaffledAPI().pantryList().items.first { $0.id == id }?.imageUrl)
+    }
+
+    /// A signed media URL is a short-lived bearer credential, but its decoded bytes are
+    /// still the same image. Keep signature rotation out of the in-memory cache key so
+    /// refreshing credentials does not force another download and decode.
+    static func cacheKey(for url: URL) -> NSURL {
+        guard var parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let items = parts.queryItems,
+              items.contains(where: { $0.name == "expires" }),
+              items.contains(where: { $0.name == "sig" }) else {
+            return url as NSURL
+        }
+        let retained = items.filter { $0.name != "expires" && $0.name != "sig" }
+        parts.queryItems = retained.isEmpty ? nil : retained
+        return (parts.url ?? url) as NSURL
+    }
+
+    /// Refresh signed media credentials halfway through the shortest remaining lifetime.
+    /// External/unsigned images use the ordinary kiosk poll cadence. The five-second
+    /// floor avoids a tight loop when a URL is already expired or nearly expired.
+    static func refreshDelaySeconds(
+        for urls: [String],
+        now: Date = Date(),
+        fallback: Int = 900
+    ) -> Int {
+        let safeFallback = max(5, fallback)
+        let nowSeconds = Int64(now.timeIntervalSince1970.rounded(.down))
+        let remaining = urls.compactMap { raw -> Int64? in
+            guard let parts = URLComponents(string: raw),
+                  let items = parts.queryItems,
+                  items.contains(where: { $0.name == "sig" && !($0.value ?? "").isEmpty }),
+                  let rawExpiry = items.first(where: { $0.name == "expires" })?.value,
+                  let expiry = Int64(rawExpiry) else { return nil }
+            return expiry - nowSeconds
+        }
+        guard let shortest = remaining.min() else { return safeFallback }
+        return max(5, min(safeFallback, Int(shortest / 2)))
+    }
 }
 
 extension WaffledAPI {

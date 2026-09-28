@@ -7,7 +7,7 @@ create table backup_runs (
   id           uuid primary key default gen_random_uuid(),
   started_at   timestamptz not null default now(),
   finished_at  timestamptz,
-  status       text not null default 'running',   -- running | success | failed
+  status       text not null default 'running',   -- running | success | partial | failed
   kind         text not null default 'database',  -- database | media
   destination  text not null default 'local',     -- local | s3 | local+s3
   file_name    text,

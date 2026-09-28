@@ -1,3 +1,5 @@
+import { MediaImage } from './components/MediaImage'
+import { refreshProofImage } from '../lib/api/media-recovery'
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { Icon, Check } from './icons'
@@ -357,7 +359,7 @@ export function Tasks() {
                           // Photo chores review in the modal (where Approve/Reject live)
                           // — keeps the narrow column from getting cramped.
                           <button type="button" className="chore-review" title="Review photo proof" aria-label={`Review photo proof for ${i.choreTitle}`} onClick={() => setReview(i)}>
-                            <img src={i.proofUrl} alt={`Proof for ${i.choreTitle}`} />
+                            <MediaImage src={i.proofUrl} refresh={() => refreshProofImage(i.id, i.dueOn)} alt={`Proof for ${i.choreTitle}`} />
                             <span className="chore-review-badge" aria-hidden>🔍</span>
                           </button>
                         ) : (

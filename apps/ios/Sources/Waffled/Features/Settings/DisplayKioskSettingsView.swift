@@ -125,6 +125,7 @@ struct DisplayKioskSettingsView: View {
                 photos: cfg.map { WaffledAPI.screensaverPhotos(previewPhotos, $0) } ?? previewPhotos,
                 weather: previewWeather, nextEvent: nextEvent, timezone: sync.householdTz,
                 dimmed: false, interval: cfg?.photoInterval ?? 8, bare: false, motion: motion,
+                onMediaExpired: { Task { await load() } },
                 onWake: { showPreview = false })
         }
         // Debounced auto-save — echoing the server's normalized cfg back into state

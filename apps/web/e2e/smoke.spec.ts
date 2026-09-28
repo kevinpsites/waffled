@@ -134,3 +134,60 @@ test('never stores authenticated API responses in Cache Storage', async ({ page 
   })
   expect(cachedUrls.filter((url) => new URL(url).pathname.startsWith('/api/'))).toEqual([])
 })
+
+// Exercise the shipped grid and detail components with real browser image errors.
+// The route mocks stand in for an expired bearer URL and its authenticated parent read.
+test('photo grid and detail recover expired media through the owning resource', async ({ page }, testInfo) => {
+  const expires = Math.floor(Date.now() / 1000) + 600
+  const staleURL = `/media/test-family/photo.png?expires=${expires}&sig=stale`
+  const freshURL = `/media/test-family/photo.png?expires=${expires + 1}&sig=fresh`
+  const photo = {
+    id: 'photo-1', imageUrl: staleURL, caption: 'Media recovery check', emoji: null,
+    colorHex: '#4f7f73', memory: null, takenAt: null, isFavorite: false,
+    reactions: {}, uploadedBy: null, createdAt: '2026-09-01T12:00:00Z',
+  }
+  let parentReads = 0
+  await page.route('**/api/photos', route => route.fulfill({ json: { photos: [photo] } }))
+  await page.route('**/api/photos/photo-1', async route => {
+    expect(route.request().headers().authorization).toBe('Bearer test-access')
+    parentReads += 1
+    await route.fulfill({ json: { photo: { ...photo, imageUrl: freshURL } } })
+  })
+  await page.route('**/media/test-family/photo.png?**', async route => {
+    if (new URL(route.request().url()).searchParams.get('sig') === 'stale') {
+      await route.fulfill({ status: 403, body: 'Expired media URL' })
+    } else {
+      await route.fulfill({ contentType: 'image/png', body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64') })
+    }
+  })
+
+  await signIn(page)
+  // Run under the shipped worker: media must bypass its public-asset cache so
+  // expiration reaches the server, just as authenticated API requests do.
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null)
+  await page.getByRole('link', { name: 'Photos', exact: true }).click()
+  const gridImage = page.locator('.ph-tile img').first()
+  await expect(gridImage).toHaveAttribute('src', freshURL)
+  await expect.poll(() => gridImage.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(1)
+  // The featured photo and its grid tile each recover their own image.
+  await expect(page.locator('.ph-banner-tile img')).toHaveAttribute('src', freshURL)
+  await expect(page.locator('img[src*="/media/test-family/"]')).toHaveCount(2)
+  expect(parentReads).toBe(2)
+
+  await gridImage.click()
+  const detailImage = page.locator('.pd-stage img')
+  await expect(detailImage).toHaveAttribute('src', freshURL)
+  await expect.poll(() => detailImage.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(1)
+  expect(parentReads).toBe(3)
+  const cachedMedia = await page.evaluate(async () => {
+    const urls: string[] = []
+    for (const name of await caches.keys()) {
+      const cache = await caches.open(name)
+      urls.push(...(await cache.keys()).map(request => request.url))
+    }
+    return urls.filter(url => new URL(url).pathname.startsWith('/media/'))
+  })
+  expect(cachedMedia).toEqual([])
+  await page.screenshot({ path: testInfo.outputPath('photo-media-recovery.png'), fullPage: true })
+})

@@ -1,4 +1,4 @@
-# Waffled backup sidecar — scheduled Postgres (and optional media) backups, local + S3.
+# Waffled backup sidecar — scheduled Postgres and media backups, local + S3.
 #
 # Based on the same postgres major as the DB so `pg_dump` matches the server exactly
 # (a mismatched pg_dump refuses to dump a newer server). Adds:

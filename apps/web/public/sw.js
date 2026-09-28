@@ -10,6 +10,7 @@
 //                        their names across builds, so cache-first would pin whatever
 //                        the display saw first (see below)
 //   • GET /api/*        → straight to network (never persisted by this worker)
+//   • GET /media/*      → straight to network (the server must check link expiry)
 //   • everything else   → straight to network
 // API requests are never cached because their responses contain household data
 // scoped by authorization headers, while Cache Storage keys requests by URL.
@@ -144,6 +145,15 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
       .then((names) => Promise.all(names.filter((n) => !keep.has(n)).map((n) => caches.delete(n))))
+      .then(async () => {
+        // Older workers treated uploaded images as public, unhashed assets. The
+        // build stamp can stay unchanged for a worker-only fix, so also remove
+        // those entries from this build's surviving cache before taking control.
+        const assets = await caches.open(ASSETS)
+        const requests = await assets.keys()
+        await Promise.all(requests.filter((r) => new URL(r.url).pathname.startsWith('/media/'))
+          .map((r) => assets.delete(r)))
+      })
       .then(() => self.clients.claim())
   )
 })
@@ -218,7 +228,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return
-  if (url.pathname.startsWith('/api/')) return
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/media/')) return
 
   if (request.mode === 'navigate') {
     event.respondWith(networkFirstShell(request))

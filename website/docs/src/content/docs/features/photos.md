@@ -47,3 +47,7 @@ Photos and the screensaver are **core — never gated**. There's no module toggl
 - 📱 **iPhone is deliberately lean** — it gets the wall, upload, and a chrome-free "Play", but not the ambient clock/weather/event overlay. Reach for [Kiosk & display](/features/kiosk/) on a tablet for the full frame.
 - 🎞️ **Ken-Burns slow-zoom is iOS-only** — the web screensaver crossfades without the zoom.
 - 🚧 **Shared-album import** (Google Photos / iCloud) is planned — for now, upload lands photos directly.
+
+Expired uploaded-photo links refresh automatically in the photo wall, detail view
+and slideshow. Web tiles retain their layout if recovery fails; open the detail
+view for an explicit retry.

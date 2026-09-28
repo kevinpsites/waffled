@@ -1,3 +1,5 @@
+import { MediaImage } from './MediaImage'
+import { refreshPhotoImage } from '../../lib/api/media-recovery'
 import { useState } from 'react'
 import { api, type Photo } from '../../lib/api'
 import { AlbumPicker } from './AlbumPicker'
@@ -106,7 +108,7 @@ export function PhotoDetail({
 
           <div className="photo-detail">
             <div className="pd-stage" style={{ background: bg }}>
-              {photo.imageUrl ? <img src={photo.imageUrl} alt={photo.caption} /> : photo.emoji ?? '🏖️'}
+              {photo.imageUrl ? <MediaImage showRetry src={photo.imageUrl} refresh={() => refreshPhotoImage(photo.id)} alt={photo.caption} /> : photo.emoji ?? '🏖️'}
               <div className="pd-stage-cap">
                 {photo.caption && <div className="wf-serif">{photo.caption}</div>}
                 <div className="pd-stage-sub">
