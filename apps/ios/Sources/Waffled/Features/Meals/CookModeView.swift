@@ -843,10 +843,29 @@ private struct AddTimerControl: View {
 /// timer so the alarm still reaches the cook if they've left the app. The notification
 /// is cancelled the moment its timer fires in-app (or is paused/dismissed) to avoid a
 /// double alert.
+struct TimerNotificationDelivery: Sendable {
+    let schedule: @MainActor @Sendable (UNNotificationRequest) -> Void
+    let cancel: @MainActor @Sendable (String) -> Void
+
+    static let live = TimerNotificationDelivery(
+        schedule: { UNUserNotificationCenter.current().add($0) },
+        cancel: {
+            let center = UNUserNotificationCenter.current()
+            center.removePendingNotificationRequests(withIdentifiers: [$0])
+            center.removeDeliveredNotifications(withIdentifiers: [$0])
+        }
+    )
+}
+
 @MainActor
 final class TimerAlarm {
     private var player: AVAudioPlayer?
     private let center = UNUserNotificationCenter.current()
+    private let notifications: TimerNotificationDelivery
+
+    init(notifications: TimerNotificationDelivery = .live) {
+        self.notifications = notifications
+    }
 
     /// Ask once for permission and pre-load the looping chime so `start()` is instant.
     func prepare() async {
@@ -897,12 +916,11 @@ final class TimerAlarm {
         c.threadIdentifier = "waffled-cook-timers"
         c.userInfo = link.userInfo(timerId: id)
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
-        center.add(UNNotificationRequest(identifier: id, content: c, trigger: trigger))
+        notifications.schedule(UNNotificationRequest(identifier: id, content: c, trigger: trigger))
     }
 
     func cancelNotification(_ id: String) {
-        center.removePendingNotificationRequests(withIdentifiers: [id])
-        center.removeDeliveredNotifications(withIdentifiers: [id])
+        notifications.cancel(id)
     }
 
     /// A short, looping-friendly system sound shipped with iOS.
