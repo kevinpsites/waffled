@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   grids/details, and stored-proof screens refresh their owning resource and retry;
   failed web tiles keep their layout. The iPad display keeps links fresh during night dimming.
 
-- **Media trouble no longer hides a usable database backup.** Uploaded media is included when
+- **Media trouble no longer hides a usable database backup.** Docker backups include uploaded media when
   `BACKUP_INCLUDE_MEDIA` is omitted, matching the documented default. A missing media mount,
   failed archive, or failed offsite media upload now records a visible partial/degraded run while
   preserving the successful database dump; database dump or database-upload failures still fail
