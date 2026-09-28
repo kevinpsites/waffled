@@ -12,7 +12,7 @@ Kiosk is the ambient-hub half of Waffled — the same web app, running fullscree
 - 🔗 **Device pairing** — pair with an admin code or a one-tap "use this device"; on iPad, promote a device to kiosk and pair by code in one move. Single-login mode (no pairing) stays the **default**.
 - 👥 **Profile picker** — a per-profile picker where claiming a profile mints a **real per-person session** (the device-token model), so each person gets their own scoped view.
 - 🔒 **Optional per-person PIN** — 4–8 digits, throttled — a wrong code shows "**N tries left**" (401), and too many trips a short lockout (429, ~30s window).
-- 🔁 **Switch & return** — switch profile at any time, and an idle timeout returns the device to the picker on its own.
+- 🔁 **Switch & return** — switch profile at any time, and an idle timeout returns the device to the picker on its own. Native iPad clears the previous profile’s offline calendar and reminders before showing another profile. Manual switches warn about unsynced edits; idle return waits behind a private lock screen until they upload.
 - 🚪 **Exit / un-pair without signing in** — leave kiosk mode or un-pair the device without needing a login, so a shared tablet is never stuck.
 - ☀️ **Keep-awake while displaying** — the screen stays on while it's acting as the hub.
 - 🖼️ **Ambient screensaver** — idle auto-start after N minutes, a photo slideshow with crossfade, chrome (clock · date · weather · next event · album), scheduled night dimming, and a live Preview. See [Photos & screensaver](/features/photos/).
