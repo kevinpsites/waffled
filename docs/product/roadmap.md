@@ -87,6 +87,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   permissions** (per-role capability grid for managing/approving chores, rewards & goals —
   see the [permission model](./permissions.md): *gate what touches currency or someone
   else's record; attribute collaborative actions; leave the rest open*).
+- **OAuth callback protection** — Google/Outlook connections and OIDC sign-in share a
+  same-origin / exact-native-callback allowlist, consume state even on provider errors,
+  and return controlled, non-cacheable results with referrer disclosure disabled.
 - **Kiosk** — device pairing, profile picker, optional PINs, idle screensaver.
 - **Today** — live cards + customizable per-user / family layouts.
 - **Calendar** — native events, Month/Week/Day/Agenda, create/edit/delete, participants,

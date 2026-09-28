@@ -266,7 +266,7 @@ export function registerOidcRoutes(api: Api): void {
         redirectTo,
         400,
         'Sign-in failed',
-        q.error_description || q.error,
+        'Your identity provider did not complete sign-in. Please try again.',
         'provider_error'
       )
     }
@@ -339,7 +339,7 @@ export function registerOidcRoutes(api: Api): void {
       const handoff = randomUUID()
       await query(`insert into auth_handoffs (code, person_id, subject) values ($1, $2, $3)`, [handoff, tenant.personId, subject])
       const dest = appCallbackUrl(req, redirectTo, handoff)
-      res.redirect(dest)
+      secureOAuthResult(res).redirect(dest)
     } catch (err) {
       console.error('oidc callback failed', err)
       return failSignIn(req, res, redirectTo, 502, 'Sign-in failed', 'Could not complete sign-in. Please try again.', 'sign_in_failed')
@@ -537,7 +537,7 @@ function failSignIn(
 ): void {
   if (isNativeRedirect(redirectTo)) {
     const sep = redirectTo!.includes('?') ? '&' : '?'
-    res.redirect(`${redirectTo}${sep}error=${encodeURIComponent(errorCode)}&error_description=${encodeURIComponent(message)}`)
+    secureOAuthResult(res).redirect(`${redirectTo}${sep}error=${encodeURIComponent(errorCode)}&error_description=${encodeURIComponent(message)}`)
     return
   }
   secureOAuthResult(res).status(status).html(resultPage(title, message, appOrigin(req, redirectTo)))

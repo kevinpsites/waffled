@@ -107,6 +107,17 @@ un-import them; delete them yourself if that's what you want. To withdraw the gr
 side as well, remove Waffled at
 [myaccount.google.com/permissions](https://myaccount.google.com/permissions).
 
+## Safe returns after connecting
+
+Calendar connections return only to the same Waffled web origin or the native
+`waffled://calendar-connected` callback. Behind a reverse proxy, set `PUBLIC_BASE_URL` to the
+exact web address people use (scheme, hostname and port). A different return origin, embedded
+credentials or a URL fragment is rejected before opening the consent page.
+
+If you cancel consent or the connection link expires, start a new connection from Settings.
+Each link is single-use, including unsuccessful attempts. Waffled shows a controlled message
+and marks the result non-cacheable; provider error details stay on the provider's own pages.
+
 ## Troubleshooting
 
 - **`invalid_grant` / sync stopped** — the stored refresh token expired or was revoked. Reconnect
