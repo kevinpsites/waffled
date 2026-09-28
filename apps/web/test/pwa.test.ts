@@ -32,11 +32,12 @@ async function loadWorker(served: Served = {}, options: WorkerOptions = {}) {
   const listeners = new Map<string, (event: unknown) => void>()
   // One cache object per name, so a test can assert what landed in the assets cache
   // specifically rather than in whichever cache was opened last.
-  const caches_ = new Map<string, { add: ReturnType<typeof vi.fn>; put: ReturnType<typeof vi.fn>; match: ReturnType<typeof vi.fn> }>()
+  const caches_ = new Map<string, { add: ReturnType<typeof vi.fn>; put: ReturnType<typeof vi.fn>; match: ReturnType<typeof vi.fn>; keys: ReturnType<typeof vi.fn>; delete: ReturnType<typeof vi.fn> }>()
   const cacheFor = (name: string) => {
     let c = caches_.get(name)
     if (!c) {
-      c = { add: vi.fn(async () => undefined), put: vi.fn(), match: vi.fn(async () => undefined) }
+      c = { add: vi.fn(async () => undefined), put: vi.fn(), match: vi.fn(async () => undefined),
+        keys: vi.fn(async () => []), delete: vi.fn(async () => true) }
       caches_.set(name, c)
     }
     return c
@@ -102,6 +103,35 @@ async function install(listeners: Map<string, (event: unknown) => void>) {
 }
 
 describe('service worker request privacy', () => {
+  it.each(['photo.png?expires=1&sig=expired', 'proof.jpg', 'image.webp?expires=9999999999&sig=valid'])
+  ('leaves uploaded media on the network path: %s', async path => {
+    const { listeners, cacheStorage, fetchMock } = await loadWorker()
+    const respondWith = vi.fn()
+    listeners.get('fetch')?.({
+      request: { method: 'GET', mode: 'no-cors', url: `https://waffled.test/media/family/${path}` },
+      respondWith,
+      waitUntil: vi.fn(),
+    })
+
+    expect(respondWith).not.toHaveBeenCalled()
+    expect(cacheStorage.open).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('removes uploaded media retained in this build’s cache by the older worker', async () => {
+    const { listeners, cacheFor } = await loadWorker()
+    const assets = cacheFor('waffled-dev-assets')
+    const media = { url: 'https://waffled.test/media/family/photo.png?expires=1&sig=expired' }
+    const icon = { url: 'https://waffled.test/logo.png' }
+    assets.keys.mockResolvedValue([media, icon])
+    let activation: Promise<unknown> | undefined
+    listeners.get('activate')?.({ waitUntil: (promise: Promise<unknown>) => { activation = promise } })
+    await activation
+
+    expect(assets.delete).toHaveBeenCalledWith(media)
+    expect(assets.delete).not.toHaveBeenCalledWith(icon)
+  })
+
   it('does not intercept or cache authenticated API reads', async () => {
     const { listeners } = await loadWorker()
     const respondWith = vi.fn()

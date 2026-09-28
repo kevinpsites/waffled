@@ -36,7 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Uploaded family media now uses expiring bearer URLs.** The API validates image bytes and
   storage keys, signs each local-media URL, and the shipped Caddy route verifies that signature
   before serving a file. Web and iOS displays refresh credentials before expiry, reuse decoded
-  images by their stable storage path, and fetch fresh parent data after a rejected URL. These
+  images by their stable storage path, and fetch fresh parent data after a rejected URL. The web
+  service worker leaves media on the network path and removes previously persisted uploads. These
   URLs reduce the lifetime of a leaked link; they do not add per-viewer or per-household
   authorization while the link remains valid.
 

@@ -163,11 +163,15 @@ test('photo grid and detail recover expired media through the owning resource', 
   })
 
   await signIn(page)
+  // Run under the shipped worker: media must bypass its public-asset cache so
+  // expiration reaches the server, just as authenticated API requests do.
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null)
   await page.getByRole('link', { name: 'Photos', exact: true }).click()
   const gridImage = page.locator('.ph-tile img').first()
   await expect(gridImage).toHaveAttribute('src', freshURL)
   await expect.poll(() => gridImage.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(1)
   // The featured photo and its grid tile each recover their own image.
+  await expect(page.locator('.ph-banner-tile img')).toHaveAttribute('src', freshURL)
   await expect(page.locator('img[src*="/media/test-family/"]')).toHaveCount(2)
   expect(parentReads).toBe(2)
 
@@ -176,5 +180,14 @@ test('photo grid and detail recover expired media through the owning resource', 
   await expect(detailImage).toHaveAttribute('src', freshURL)
   await expect.poll(() => detailImage.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(1)
   expect(parentReads).toBe(3)
+  const cachedMedia = await page.evaluate(async () => {
+    const urls: string[] = []
+    for (const name of await caches.keys()) {
+      const cache = await caches.open(name)
+      urls.push(...(await cache.keys()).map(request => request.url))
+    }
+    return urls.filter(url => new URL(url).pathname.startsWith('/media/'))
+  })
+  expect(cachedMedia).toEqual([])
   await page.screenshot({ path: testInfo.outputPath('photo-media-recovery.png'), fullPage: true })
 })
