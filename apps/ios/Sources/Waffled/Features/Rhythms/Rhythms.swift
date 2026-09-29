@@ -1002,6 +1002,32 @@ struct RhythmForm {
     /// the sane default and was previously the ONLY option — so a rhythm you wanted on
     /// Wednesdays had to be anchored on a Wednesday.
     var byday: [String] = []
+    /// Weeks of the month a mark-off rhythm lands in, e.g. `[1, 3]` for the 1st and 3rd.
+    /// Empty is the ordinary shape, whose clock restarts from the tap; any week makes the
+    /// schedule fixed instead, so marking off late stops shifting everything after it.
+    /// Only offered on a monthly completion rhythm.
+    var gridWeeks: [Int] = []
+    /// The weeks the picker offers. Four, not five: a fifth is missing from most months,
+    /// so a slot there would vanish and the one before it would quietly stretch.
+    static let gridWeekChoices = [1, 2, 3, 4]
+
+    /// "1st", "2nd" … as the household says them.
+    static func gridWeekLabel(_ week: Int) -> String {
+        switch week {
+        case 1: return "1st"
+        case 2: return "2nd"
+        case 3: return "3rd"
+        default: return "\(week)th"
+        }
+    }
+
+    /// The days those weeks begin on — a week is its first day, so the 3rd week is day 15.
+    /// Nil unless this is a monthly mark-off rhythm with weeks actually chosen.
+    var gridDays: [Int]? {
+        guard shape == .completion, unit == .months, !gridWeeks.isEmpty else { return nil }
+        return gridWeeks.sorted().map { ($0 - 1) * 7 + 1 }
+    }
+
     /// For "the Nth <weekday> of the month": one of `monthlyOrdinals`. Only read when
     /// `monthlyMode == .nthWeekday`.
     var monthlyOrdinal = 1
@@ -1184,11 +1210,17 @@ struct RhythmForm {
         // server's shape constraint rejects a row carrying both.
         switch shape {
         case .completion:
-            // 09:00 on the day, not the instant the sheet happened to be open. A due date
-            // is a day; the hour it carries shouldn't be whatever o'clock someone tapped +.
-            let day = calendar.startOfDay(for: firstDue(now: now, calendar: calendar))
-            body["nextDueAt"] = .string(RhythmFormat.isoInstant(
-                calendar.date(bySettingHour: 9, minute: 0, second: 0, of: day) ?? day))
+            if let gridDays {
+                // The weeks ARE the schedule: nothing left to seed, and the server works
+                // out which slot is already open.
+                body["gridDays"] = .array(gridDays.map { .int($0) })
+            } else {
+                // 09:00 on the day, not the instant the sheet happened to be open. A due date
+                // is a day; the hour it carries shouldn't be whatever o'clock someone tapped +.
+                let day = calendar.startOfDay(for: firstDue(now: now, calendar: calendar))
+                body["nextDueAt"] = .string(RhythmFormat.isoInstant(
+                    calendar.date(bySettingHour: 9, minute: 0, second: 0, of: day) ?? day))
+            }
         case .scheduling:
             body["startsOn"] = .string(RhythmFormat.ymd(periodAnchor(now: now, calendar: calendar), calendar: calendar))
             body["autoSchedule"] = .bool(autoSchedule)

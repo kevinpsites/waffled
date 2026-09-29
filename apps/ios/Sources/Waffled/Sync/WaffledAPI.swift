@@ -4001,6 +4001,10 @@ struct WaffledAPI: Sendable {
         /// night, in the first week of the month" needs them separated. Optional so an
         /// older server still decodes.
         let bookWithin: String?
+        /// Days of the month a mark-off rhythm's slots start on, e.g. `[1, 15]` for the
+        /// 1st and 3rd week. Nil is the ordinary shape, whose clock restarts from the tap.
+        /// Optional so an older server still decodes.
+        let gridDays: [Int]?
         /// Postgres interval text, clamped server-side to the whole of `every` on a booking
         /// rhythm and to half of it on one you mark done. Measured back from the booking
         /// window's end, so with a window it may reach back before the window opens.

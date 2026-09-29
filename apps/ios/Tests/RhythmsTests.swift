@@ -44,12 +44,14 @@ private func rhythm(
     hasSeries: Bool? = nil,
     bookedAt: String? = nil,
     bookedAllDay: Bool? = nil,
-    suggestedOn: String? = nil
+    suggestedOn: String? = nil,
+    gridDays: [Int]? = nil
 ) -> WaffledAPI.Rhythm {
     WaffledAPI.Rhythm(
         id: id, title: title, emoji: emoji, notes: notes, personId: personId,
         satisfiedBy: satisfiedBy, every: every, startsOn: startsOn,
-        autoSchedule: autoSchedule, rrule: rrule, bookWithin: bookWithin, leadTime: leadTime,
+        autoSchedule: autoSchedule, rrule: rrule, bookWithin: bookWithin, gridDays: gridDays,
+        leadTime: leadTime,
         lastCompletedAt: lastCompletedAt, nextDueAt: nextDueAt, isActive: isActive,
         currentPeriodStart: currentPeriodStart, currentPeriodEnd: currentPeriodEnd,
         // Without a window the server sends these as the same date, so a fixture naming
@@ -690,6 +692,43 @@ struct RhythmEditorTests {
         let body = form.createBody(calendar: utcCal)
         #expect(body["startsOn"] == .string("2026-09-01"))
         #expect(body["rrule"] == .string("FREQ=MONTHLY;BYDAY=3SA"))
+    }
+
+    // "Clean the floors in the 1st and 3rd week of the month": marking it off is the
+    // outcome, but the schedule is fixed, so being late must not shift what comes after.
+    @Test("Weeks of the month go out as the days they begin on, instead of a due date")
+    func gridWeeksBecomeDays() {
+        var form = RhythmForm()
+        form.title = "Floors"
+        form.shape = .completion
+        form.count = 1
+        form.unit = .months
+        form.gridWeeks = [1, 3]
+
+        let body = form.createBody(calendar: utcCal)
+        #expect(body["gridDays"] == .array([.int(1), .int(15)]))
+        // The weeks ARE the schedule; there is no first due date left to seed.
+        #expect(body["nextDueAt"] == nil)
+    }
+
+    @Test("A mark-off rhythm with no weeks chosen still measures from the tap")
+    func noGridKeepsTheDueDate() {
+        var form = RhythmForm()
+        form.title = "Air filter"
+        form.shape = .completion
+        form.count = 3
+        form.unit = .months
+
+        let body = form.createBody(calendar: utcCal)
+        #expect(body["gridDays"] == nil)
+        #expect(body["nextDueAt"] != nil)
+    }
+
+    @Test("The week picker stops at the fourth week")
+    func gridWeeksStopAtTheFourth() {
+        // A fifth week is missing from most months, so a slot there would vanish and the
+        // one before it would quietly stretch — the same reason the API caps a day at 28.
+        #expect(RhythmForm.gridWeekChoices == [1, 2, 3, 4])
     }
 
     @Test("The monthly picker stops at the fourth weekday")

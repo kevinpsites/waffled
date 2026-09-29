@@ -502,10 +502,42 @@ struct RhythmEditorSheet: View {
         // The anchors are create-only: see the note at the top of this file.
         if isNew {
             if form.shape == .completion {
-                WaffledFieldCard(title: "First one due") {
-                    DatePicker("First one due", selection: dueBinding, displayedComponents: [.date])
-                        .datePickerStyle(.compact)
-                        .labelsHidden()
+                if form.unit == .months {
+                    WaffledFieldCard(title: "Set weeks of the month") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(spacing: 8) {
+                                ForEach(RhythmForm.gridWeekChoices, id: \.self) { week in
+                                    let on = form.gridWeeks.contains(week)
+                                    Button {
+                                        if on { form.gridWeeks.removeAll { $0 == week } }
+                                        else { form.gridWeeks.append(week) }
+                                    } label: {
+                                        Text(RhythmForm.gridWeekLabel(week))
+                                            .font(.system(size: 14, weight: .bold))
+                                            .frame(maxWidth: .infinity, minHeight: 36)
+                                            .background(on ? WF.primary : WF.panel, in: Capsule())
+                                            .foregroundStyle(on ? .white : WF.ink)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel(RhythmForm.gridWeekLabel(week))
+                                    .accessibilityAddTraits(on ? [.isSelected] : [])
+                                }
+                            }
+                            Text(form.gridDays == nil
+                                 ? "Leave these off and the clock restarts whenever you mark it done."
+                                 : "One at a time, on the weeks you picked. Miss one and it asks until the next opens, then lets it go — marking off late never shifts the rest.")
+                                .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+
+                if form.gridDays == nil {
+                    WaffledFieldCard(title: "First one due") {
+                        DatePicker("First one due", selection: dueBinding, displayedComponents: [.date])
+                            .datePickerStyle(.compact)
+                            .labelsHidden()
+                    }
                 }
             } else {
                 WaffledFieldCard(title: "First period starts") {
