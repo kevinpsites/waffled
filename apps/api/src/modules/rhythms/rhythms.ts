@@ -702,6 +702,12 @@ export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Pr
       'only a completion rhythm can sit on a grid of days; a scheduling rhythm takes its periods from its anchor'
     )
   }
+  // The days repeat every month by definition, so any other cadence is a second answer to
+  // the question the grid already settles — and every surface would read the cadence back
+  // ("every 3 months") over a rhythm that actually fires twice a month.
+  if (gridDays && !/^\s*1\s+(month|mon|mons|months)\s*$/i.test(every)) {
+    throw new InvalidReferenceError('a rhythm on a grid of days repeats monthly — send every as "1 month"')
+  }
 
   // The runway defaults to the WINDOW when there is one, rather than to the flat
   // fortnight. "Book it in the first week" means being asked during that week — all of
@@ -937,7 +943,11 @@ export async function completeRhythm(
           )
      insert into rhythm_completions (household_id, rhythm_id, person_id, completed_at, notes, period_start)
      select $1, $2, $3, stamp.at, $5, slot.d from stamp, slot
-      where not exists (select 1 from upd)`,
+      where not exists (select 1 from upd)
+     -- Two devices tapping one slot at once both find no row to fold into and both
+     -- insert; without this the second raises 23505 and the whole tap 500s. skipPeriod
+     -- already guards the identical key this way.
+     on conflict (rhythm_id, period_start) where period_start is not null do nothing`,
       [householdId, id, personId, completedAt, notes]
     )
     const { rows } = await client.query<Row>(
@@ -1136,13 +1146,20 @@ export async function listAttention(householdId: string, horizon: string): Promi
      select r.id, r.title, r.emoji, r.notes, r.person_id, r.satisfied_by, r.every::text as every,
             r.starts_on, r.auto_schedule, r.rrule, r.book_within::text as book_within, r.grid_days, r.lead_time::text as lead_time,
             r.last_completed_at, r.next_due_at, r.is_active,
-            r.next_due_at as due_at,
+            -- On a grid the deadline is the slot's end, not the day it opened: the card
+            -- counts toward "2 days left", the same thing the register says. Reading
+            -- next_due_at here made a rhythm created this morning say "1 day late".
+            case when r.grid_days is not null
+                 then (${gridSlot('(now() at time zone hh.timezone)::date', 'end')}::timestamp at time zone hh.timezone)
+                 else r.next_due_at end as due_at,
             -- Late means LATE, so it is measured against now and nothing else. It used to
             -- be measured against the window's far edge, which made the answer depend on
             -- how far ahead the caller happened to be looking: the weekly planner asks a
             -- week out, so everything due this week came back late, and both clients sort
             -- those first, paint them red and label them "N days late".
-            (r.next_due_at < now()) as overdue
+            -- An open slot is never late: asking for the whole slot IS the design, so
+            -- calling it late would name the feature's own behaviour a failure.
+            (r.grid_days is null and r.next_due_at < now()) as overdue
        from rhythms r, hh
       where r.household_id = $1
         and r.deleted_at is null and r.is_active

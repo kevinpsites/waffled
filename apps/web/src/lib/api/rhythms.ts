@@ -597,11 +597,27 @@ export function bookedWhen(bookedAt: string, allDay: boolean | null): string {
   return `${date}, ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
 }
 
+/**
+ * "1st & 3rd week" — which weeks a grid rhythm lands in, for a row that would otherwise
+ * read "Every month" about something that happens twice a month. Null when there is no
+ * grid, so callers can fall back to the cadence alone.
+ */
+export function gridLabel(gridDays?: number[] | null): string | null {
+  if (!gridDays?.length) return null
+  const ord = ['', '1st', '2nd', '3rd', '4th']
+  const weeks = [...gridDays].sort((a, b) => a - b).map((d) => ord[Math.floor((d - 1) / 7) + 1] ?? `${d}th`)
+  const last = weeks.pop()
+  return `${weeks.length ? `${weeks.join(', ')} & ` : ''}${last} week`
+}
+
 export function countdown(
   r: RhythmWithPeriod,
   urgency: Urgency,
   now: Date = new Date(),
 ): RhythmCountdown | null {
+  // A settled grid slot is done for the rest of its run — the countdown would otherwise
+  // keep falling toward the slot's end, which reads as a deadline still to come.
+  if (onGrid(r) && r.satisfied) return { num: 'Done', unit: 'this week', tone: 'done' }
   if (r.satisfiedBy === 'scheduling' && r.satisfied) {
     // Settled, but not necessarily booked. A skip settles a period and has no time and
     // never will, so the server hands back `satisfied` with a null `bookedAt` — and

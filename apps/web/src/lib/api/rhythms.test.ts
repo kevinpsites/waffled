@@ -1,7 +1,7 @@
 import {
   formatInterval, cadenceLabel, dueLabel, periodLabel, splitCadence, intervalDays,
   nudgePlan, nudgeExplainer, urgencyOf, countdown, periodProgress, daysToGo,
-  addCadence, consequence, pushOut, asksAhead, dayHintLabel,
+  addCadence, consequence, pushOut, asksAhead, dayHintLabel, gridLabel,
   type AttentionItem, type RhythmWithPeriod,
 } from './rhythms'
 
@@ -328,6 +328,16 @@ describe('dayHintLabel', () => {
   })
 })
 
+describe('gridLabel', () => {
+  it('names the weeks, so a row does not read "Every month" about a twice-monthly thing', () => {
+    expect(gridLabel([1, 15])).toBe('1st & 3rd week')
+    expect(gridLabel([1])).toBe('1st week')
+    expect(gridLabel([1, 8, 15])).toBe('1st, 2nd & 3rd week')
+    expect(gridLabel(null)).toBeNull()
+    expect(gridLabel([])).toBeNull()
+  })
+})
+
 describe('countdown', () => {
   it('keeps an ask about a period that has not started out of the late colour', () => {
     // Asked three weeks ahead of date-night week: it is on the list, but nothing is late.
@@ -341,6 +351,17 @@ describe('countdown', () => {
   it('counts overdue days up, so the worst row reads loudest', () => {
     const r = rhythm({ nextDueAt: at(8, 14), satisfied: false })
     expect(countdown(r, 'now', NOW)).toEqual({ num: '6', unit: 'days late', tone: 'late' })
+  })
+
+  it('says a closed grid slot is done, instead of counting down to its end', () => {
+    // Marked off on the 15th, looked at on the 20th: the slot is settled, and the server
+    // says so. Counting "12 days left" would read as a deadline still coming.
+    const r = rhythm({
+      satisfiedBy: 'completion', satisfied: true, gridDays: [1, 15],
+      nextDueAt: at(9, 1), currentPeriodStart: '2026-08-15', currentPeriodEnd: '2026-09-01',
+      currentWindowEnd: '2026-09-01',
+    })
+    expect(countdown(r, 'steady', NOW)).toEqual({ num: 'Done', unit: 'this week', tone: 'done' })
   })
 
   it('counts an open grid slot down, because the whole slot is the asking window', () => {

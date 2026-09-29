@@ -7,7 +7,7 @@ import {
   asksAhead,
   bookedWhen,
   cadenceLabel,
-  dayHintLabel,
+  dayHintLabel, gridLabel, onGrid,
   countdown,
   daysToGo,
   periodProgress,
@@ -147,7 +147,9 @@ function RhythmRow({
   const showAction = !paused && (urgency === 'now' || urgency === 'soon' || doneToday)
   // An early ask about a period that has not started is on the list, but not loud.
   const primary = urgency === 'now' && !(scheduling && asksAhead(rhythm.currentPeriodStart))
+    && !(onGrid(rhythm) && rhythm.satisfied)
   const hint = scheduling && !rhythm.autoSchedule ? dayHintLabel(rhythm.rrule) : null
+  const weeks = gridLabel(rhythm.gridDays)
 
   useEffect(() => {
     if (!menu) return
@@ -197,6 +199,9 @@ function RhythmRow({
         </div>
         <div className="rhy-meta">
           {capitalize(cadenceLabel(rhythm.every))}
+          {/* Which weeks, or the row reads "Every month" about something that happens
+              twice a month — the cadence alone cannot say it. */}
+          {weeks ? ` · ${weeks}` : ''}
           {hint ? ` · ${hint}` : ''}
           {/* A paused rhythm says only that it is paused. Its period state is still
               computed by the list, but nothing nudges about it and nothing can be done

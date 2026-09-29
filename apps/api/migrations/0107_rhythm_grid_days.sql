@@ -19,7 +19,9 @@ alter table rhythms add column grid_days smallint[];
 alter table rhythms add constraint rhythms_grid_days_are_days_of_a_month check (
   grid_days is null
   or (satisfied_by = 'completion'
-      and array_length(grid_days, 1) between 1 and 28
+      -- coalesce: array_length('{}') is NULL, and a CHECK only rejects FALSE, so the
+      -- empty array would slip through and leave every slot bound NULL.
+      and coalesce(array_length(grid_days, 1), 0) between 1 and 28
       and grid_days <@ '{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28}'::smallint[])
 );
 

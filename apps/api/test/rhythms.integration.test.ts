@@ -2138,6 +2138,20 @@ describe('a completion rhythm on a fixed grid', () => {
     await call('DELETE', `/api/rhythms/${id}`, kevin)
   })
 
+  it('tells the Today card the slot is open, not that it is late', async () => {
+    const today = await householdToday()
+    const id = idOf(await create())
+    const items = JSON.parse((await call('GET', `/api/rhythms/attention?to=${today}`, kevin)).body).items
+    const item = items.find((i: { rhythm: { id: string } }) => i.rhythm.id === id)
+    // The card renders `overdue` as red "N days late". A slot that opened on the 15th and
+    // asks until the next one opens is doing its job, so it must not be reported late —
+    // the register says "days left" about the very same rhythm.
+    expect(item.overdue).toBe(false)
+    // And it counts toward the slot's end, the deadline a person is actually working to.
+    expect(item.dueAt.slice(0, 10)).toBe(slot(today).end)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
   it('goes quiet for the rest of the slot once it is marked off', async () => {
     const today = await householdToday()
     const id = idOf(await create())

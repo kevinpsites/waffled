@@ -626,9 +626,10 @@ export function RhythmModal({
                                   type="button"
                                   style={chipStyle(on, true)}
                                   aria-pressed={on}
-                                  onClick={() =>
+                                  onClick={() => {
+                                    setCount('1')
                                     setGridWeeks((w) => (on ? w.filter((x) => x !== week) : [...w, week].sort((a, b) => a - b)))
-                                  }
+                                  }}
                                 >
                                   {label}
                                 </button>

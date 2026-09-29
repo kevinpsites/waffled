@@ -425,6 +425,19 @@ enum RhythmFormat {
     /// the asking window, so days run down to the next slot instead of up from a due date.
     /// Calling an open slot "14 days late" would name the design — keep asking until the
     /// next opens — as a failure.
+    /// "1st & 3rd week" — the weeks a grid rhythm lands in. Nil without a grid, so a
+    /// caller falls back to the cadence alone.
+    static func gridLabel(_ gridDays: [Int]?) -> String? {
+        guard let gridDays, !gridDays.isEmpty else { return nil }
+        let names = ["", "1st", "2nd", "3rd", "4th"]
+        var weeks = gridDays.sorted().map { d -> String in
+            let w = (d - 1) / 7 + 1
+            return w < names.count ? names[w] : "\(d)th"
+        }
+        let last = weeks.removeLast()
+        return weeks.isEmpty ? "\(last) week" : "\(weeks.joined(separator: ", ")) & \(last) week"
+    }
+
     static func onGrid(_ r: WaffledAPI.Rhythm) -> Bool {
         r.satisfiedBy == .completion && !(r.gridDays ?? []).isEmpty
     }
@@ -450,6 +463,8 @@ enum RhythmFormat {
                         now: Date = Date(), calendar: Calendar = Cal.current) -> Urgency {
         if !r.isActive { return .paused }
         if attention != nil { return .now }
+        // A settled slot is steady for the rest of its run, like a booked period.
+        if onGrid(r), r.satisfied == true { return .steady }
         if r.satisfiedBy == .scheduling, r.satisfied == true { return .steady }
         guard let days = daysToGo(r, now: now, calendar: calendar) else { return .steady }
         if days < 0 { return .now }
@@ -491,6 +506,9 @@ enum RhythmFormat {
     /// the wait rather than its exact length.
     static func countdown(_ r: WaffledAPI.Rhythm, urgency: Urgency, now: Date = Date(),
                           calendar: Calendar = Cal.current) -> Countdown? {
+        if onGrid(r), r.satisfied == true {
+            return Countdown(number: "Done", unit: "this week", tone: .done)
+        }
         if r.satisfiedBy == .scheduling, r.satisfied == true {
             // Settled, but not necessarily booked: a skip settles a period and has no
             // time, so saying "Booked" there claims the very calendar entry that skipping
@@ -901,6 +919,9 @@ final class RhythmsModel {
         var out: [String: String] = [:]
         for r in rhythms {
             var parts = [RhythmFormat.sentence(RhythmFormat.cadenceLabel(r.every))]
+            // Which weeks, or the row reads "Every month" about something that happens
+            // twice a month — the cadence alone cannot say it.
+            if let weeks = RhythmFormat.gridLabel(r.gridDays) { parts.append(weeks) }
             // A hand-booked rhythm's which-day hint belongs with the cadence it refines.
             if r.satisfiedBy == .scheduling, !r.autoSchedule, let hint = RhythmFormat.dayHintLabel(r.rrule) {
                 parts.append(hint)
@@ -987,6 +1008,11 @@ struct RhythmForm {
 
     /// nil when creating; the rhythm's id when editing.
     let editingId: String?
+    /// The weeks an EXISTING grid rhythm sits on, for the edit sheet to state. The picker
+    /// itself is create-only, like every other anchor, so this is read, never written.
+    private(set) var editingGridDays: [Int]?
+    /// "1st & 3rd week", or nil when this is not a grid rhythm.
+    var editingGridLabel: String? { RhythmFormat.gridLabel(editingGridDays) }
     /// Fixed at creation — the server refuses to change a live rhythm's shape.
     ///
     /// Completion, matching web: the same blank form used to make two different rhythms
@@ -1068,6 +1094,7 @@ struct RhythmForm {
     /// parser the labels use, so "7 days" comes back as "every 1 week" rather than 7 days.
     init(editing r: WaffledAPI.Rhythm, calendar: Calendar = Cal.current) {
         editingId = r.id
+        editingGridDays = r.gridDays
         shape = r.satisfiedBy
         title = r.title
         emoji = r.emoji ?? ""

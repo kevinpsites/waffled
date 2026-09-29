@@ -736,6 +736,25 @@ struct RhythmEditorTests {
         #expect(c?.tone == .near)
     }
 
+    @Test("The weeks a grid sits on are named, not left as \"every month\"")
+    func gridLabelNamesTheWeeks() {
+        #expect(RhythmFormat.gridLabel([1, 15]) == "1st & 3rd week")
+        #expect(RhythmFormat.gridLabel([1]) == "1st week")
+        #expect(RhythmFormat.gridLabel([1, 8, 15]) == "1st, 2nd & 3rd week")
+        #expect(RhythmFormat.gridLabel(nil) == nil)
+        #expect(RhythmFormat.gridLabel([]) == nil)
+    }
+
+    @Test("A settled grid slot reads as done, not as a countdown to its end")
+    func settledGridSlotReadsDone() {
+        let r = rhythm(satisfiedBy: .completion, nextDueAt: "2026-09-01T09:00:00Z",
+                       currentPeriodStart: "2026-08-15", currentPeriodEnd: "2026-09-01",
+                       satisfied: true, gridDays: [1, 15])
+        let c = RhythmFormat.countdown(r, urgency: .steady, now: at("2026-08-20T12:00:00"), calendar: utcCal)
+        #expect(c?.number == "Done")
+        #expect(c?.tone == .done)
+    }
+
     @Test("The week picker stops at the fourth week")
     func gridWeeksStopAtTheFourth() {
         // A fifth week is missing from most months, so a slot there would vanish and the
