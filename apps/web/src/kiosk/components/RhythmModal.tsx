@@ -5,7 +5,7 @@ import {
 } from '../../lib/api'
 import { ConfirmDialog } from './ConfirmDialog'
 import { buildRrule, describeRrule, monthlyModeLabel, weekdayCode, MONTHLY_ORDINALS, NO_REPEAT, type CustomUnit, type MonthlyMode } from './recurrence'
-import { WeekdayChips } from './WeekdayChips'
+import { WeekdayChips, chipStyle } from './WeekdayChips'
 
 // Create a rhythm by saying it as a sentence:
 //
@@ -80,6 +80,11 @@ const chev = (
   <svg className="rhy-chev" viewBox="0 0 24 24" aria-hidden><path d="M6 9l6 6 6-6" /></svg>
 )
 
+// Weeks of a month, as the household says them. Four, not five: a fifth week is missing
+// from most months, and a slot there would vanish — the same reason the API caps a grid
+// day at 28.
+const WEEK_CHIPS = ['1st', '2nd', '3rd', '4th']
+
 export function RhythmModal({
   rhythm,
   onClose,
@@ -137,6 +142,11 @@ export function RhythmModal({
   const [autoSchedule, setAutoSchedule] = useState(false)
   // 'any' only means something on a rhythm booked by hand: no day suggested at all.
   const [monthlyMode, setMonthlyMode] = useState<MonthlyMode | 'any'>('any')
+  // Weeks of the month a mark-off rhythm sits on. Empty is the ordinary shape, whose
+  // clock restarts from the tap; any week makes the schedule fixed instead, so being late
+  // stops shifting everything after it. A week is its first day: the 3rd week is day 15.
+  const [gridWeeks, setGridWeeks] = useState<number[]>([])
+  const [gridSet, setGridSet] = useState(false)
   // Which nth weekday, picked outright rather than inferred from the start date — "the
   // third Saturday" is the thing people mean, and hunting a calendar for one is not it.
   const [monthlyOrdinal, setMonthlyOrdinal] = useState(1)
@@ -174,6 +184,13 @@ export function RhythmModal({
   // just chose instead of falling back on "period", which was fairly answered with "what
   // period? I'm scheduling it every week."
   const cycleNoun = n === 1 ? `each ${unit.replace(/s$/, '')}` : `every ${n} ${unit}`
+
+  // A week is its first day, so the 1st and 3rd weeks are days 1 and 15. Only a monthly
+  // mark-off rhythm can carry one; anything else leaves it null and keeps its old shape.
+  const gridDays =
+    shape === 'completion' && unit === 'months' && gridSet && gridWeeks.length
+      ? gridWeeks.map((w) => (w - 1) * 7 + 1)
+      : null
 
   const booksItself = editing ? !!rhythm?.autoSchedule : autoSchedule
   const windowNum = Math.max(0, Math.round(Number(windowDays) || 0))
@@ -320,7 +337,11 @@ export function RhythmModal({
         // A completion rhythm has no period grid and a scheduling one has no due
         // date; the server's shape constraint rejects a row carrying both.
         ...(shape === 'completion'
-          ? { nextDueAt: new Date(`${firstDue}T09:00`).toISOString() }
+          ? gridDays
+            // The weeks are the schedule; there is no first due date to pick, and the
+            // server derives the slot that is already open.
+            ? { gridDays }
+            : { nextDueAt: new Date(`${firstDue}T09:00`).toISOString() }
           : {
               startsOn: periodAnchor,
               autoSchedule,
@@ -573,10 +594,55 @@ export function RhythmModal({
 
               {/* The anchors are create-only: see the note at the top of this file. */}
               {editing ? null : shape === 'completion' ? (
-                <label className="field">
-                  <span>First one due</span>
-                  <input type="date" value={firstDue} onChange={(e) => setNextDue(e.target.value)} />
-                </label>
+                <>
+                  {unit === 'months' ? (
+                    <div style={{ marginBottom: 10 }}>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        style={{ padding: '4px 0', fontSize: 13 }}
+                        onClick={() => setGridSet((v) => !v)}
+                      >
+                        {gridSet ? '✓ Set weeks of the month' : 'Set weeks of the month'}
+                      </button>
+                      {gridSet ? (
+                        <>
+                          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                            {WEEK_CHIPS.map((label, i) => {
+                              const week = i + 1
+                              const on = gridWeeks.includes(week)
+                              return (
+                                <button
+                                  key={week}
+                                  type="button"
+                                  style={chipStyle(on, true)}
+                                  aria-pressed={on}
+                                  onClick={() =>
+                                    setGridWeeks((w) => (on ? w.filter((x) => x !== week) : [...w, week].sort((a, b) => a - b)))
+                                  }
+                                >
+                                  {label}
+                                </button>
+                              )
+                            })}
+                          </div>
+                          <p className="tiny" style={{ margin: '6px 0 0', color: 'var(--ink-2)' }}>
+                            {gridDays
+                              ? 'One at a time, on the weeks you picked. Miss one and it asks until the next opens, then lets it go — marking off late never shifts the rest.'
+                              : 'Pick the weeks it should land in.'}
+                          </p>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {gridDays ? null : (
+                    <label className="field">
+                      <span>First one due</span>
+                      <input type="date" value={firstDue} onChange={(e) => setNextDue(e.target.value)} />
+                    </label>
+                  )}
+                </>
               ) : (
                 <>
                   <label className="field">

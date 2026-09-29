@@ -40,6 +40,11 @@ export interface Rhythm {
    */
   bookWithin: string | null
   /**
+   * Days of the month a mark-off rhythm's slots start on, or null for the ordinary shape
+   * whose clock restarts from the tap. `[1, 15]` is the 1st and 3rd week.
+   */
+  gridDays?: number[] | null
+  /**
    * Postgres interval text, clamped server-side to the whole of `every` on a booking rhythm
    * and to half of it on one you mark done. Measured back from the booking window's end, so
    * with a window it may reach back before the window opens.

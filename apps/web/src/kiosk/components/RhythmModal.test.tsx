@@ -488,4 +488,33 @@ describe('the history a completion rhythm keeps', () => {
     await screen.findByRole('dialog')
     expect(calls.some((c) => c.url.includes('/completions'))).toBe(false)
   })
+
+  // "Clean the floors in the 1st and 3rd week" — set weeks instead of a clock that
+  // restarts from the tap. The weeks are the schedule, so there is no due date to pick.
+  it('sends the chosen weeks of the month as a grid, and no due date', async () => {
+    const dlg = openCreate()
+    fireEvent.change(within(dlg).getByLabelText('What'), { target: { value: 'Floors' } })
+    fireEvent.change(within(dlg).getByLabelText('Unit'), { target: { value: 'months' } })
+    fireEvent.click(moreOptions())
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Set weeks of the month' }))
+    fireEvent.click(within(dlg).getByRole('button', { name: '1st' }))
+    fireEvent.click(within(dlg).getByRole('button', { name: '3rd' }))
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Add rhythm' }))
+
+    await waitFor(() => expect(posts()).toHaveLength(1))
+    expect(posts()[0].body).toMatchObject({ satisfiedBy: 'completion', gridDays: [1, 15] })
+    expect(posts()[0].body).not.toHaveProperty('nextDueAt')
+  })
+
+  // Off by default: an ordinary completion rhythm still measures from when you did it.
+  it('leaves the grid off unless weeks are chosen', async () => {
+    const dlg = openCreate()
+    fireEvent.change(within(dlg).getByLabelText('What'), { target: { value: 'Air filter' } })
+    fireEvent.change(within(dlg).getByLabelText('Unit'), { target: { value: 'months' } })
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Add rhythm' }))
+
+    await waitFor(() => expect(posts()).toHaveLength(1))
+    expect(posts()[0].body).not.toHaveProperty('gridDays')
+    expect(posts()[0].body).toHaveProperty('nextDueAt')
+  })
 })
