@@ -1,10 +1,11 @@
 # Build & publish the Waffled runtime images to GitHub Container Registry (GHCR).
 #
-# Produces three multi-arch (amd64 + arm64) images that the compose stack can pull
+# Produces four multi-arch (amd64 + arm64) images that the compose stack can pull
 # instead of building from source:
 #   ghcr.io/kevinpsites/waffled-api     (apps/api/Dockerfile)
-#   ghcr.io/kevinpsites/waffled-caddy   (infra/compose/caddy/Dockerfile — bakes the web SPA)
+#   ghcr.io/kevinpsites/waffled-caddy   (infra/compose/caddy/Dockerfile — web SPA + Caddyfile)
 #   ghcr.io/kevinpsites/waffled-backup  (infra/compose/backup/Dockerfile — backup sidecar)
+#   ghcr.io/kevinpsites/waffled-powersync (infra/compose/powersync/Dockerfile — sync rules)
 #
 # To run from these instead of building locally, set in infra/compose/.env:
 #   WAFFLED_API_IMAGE=ghcr.io/kevinpsites/waffled-api:latest
@@ -52,6 +53,9 @@ jobs:
           - name: backup
             context: infra/compose/backup
             dockerfile: infra/compose/backup/Dockerfile
+          - name: powersync
+            context: infra/compose/powersync
+            dockerfile: infra/compose/powersync/Dockerfile
         platform:
           - { name: linux/amd64, runner: ubuntu-latest }
           - { name: linux/arm64, runner: ubuntu-24.04-arm }
@@ -126,7 +130,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [api, caddy, backup]
+        image: [api, caddy, backup, powersync]
     steps:
       - name: Download digests
         uses: actions/download-artifact@v4

@@ -109,9 +109,10 @@ are expected to follow the `CODE_OF_CONDUCT.md`.
   browser toolchain. Separate jobs cover migration hygiene, CLI tests,
   typechecking, web tests, API integration tests, and API Docker E2E.
 - **`.github/workflows/publish-images.yml`** runs **only on `v*` tags** (or
-  manual dispatch). It builds three multi-arch (amd64 + arm64) GHCR images —
-  `waffled-api`, `waffled-caddy` (which bakes the web SPA), and `waffled-backup`
-  — and cuts a GitHub Release.
+  manual dispatch). It builds four multi-arch (amd64 + arm64) GHCR images —
+  `waffled-api`, `waffled-caddy` (which bakes the web SPA and the Caddyfile),
+  `waffled-backup`, and `waffled-powersync` (the sync rules on the pinned sync
+  engine) — and cuts a GitHub Release.
 - **`.github/workflows/native-runtime.yml`** runs on PRs and on push to `main` when they touch
   `apps/runtime`, `apps/mac`, `infra/native/bundle`, `infra/compose` or the migrations: the Go checks, the
   runtime integration suite against a freshly built bundle, and the Mac app's tests on macOS.
