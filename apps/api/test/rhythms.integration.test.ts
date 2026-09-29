@@ -55,6 +55,21 @@ async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
   }
 }
 
+// The household's own date, not the runner's: period maths is done in its timezone.
+const householdToday = (): Promise<string> =>
+  withClient(async (c) => (await c.query(`select (now() at time zone 'America/Chicago')::date::text as d`)).rows[0].d)
+const plus = (date: string, n: number) =>
+  new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
+
+// The first of a month relative to today. Rhythm fixtures derive their dates from this
+// rather than naming a calendar month: a hardcoded one passes until real time reaches it
+// and then fails for good, because a suggested day that has gone by is nulled out.
+const firstOfMonth = async (monthsOut: number) => {
+  const d = new Date(`${(await householdToday()).slice(0, 7)}-01T00:00:00Z`)
+  d.setUTCMonth(d.getUTCMonth() + monthsOut)
+  return d.toISOString().slice(0, 10)
+}
+
 beforeAll(async () => {
   pg = await new PostgreSqlContainer('postgres:16').start()
   url = pg.getConnectionUri()
@@ -1757,26 +1772,27 @@ describe('a booking window narrower than the period', () => {
     await call('DELETE', `/api/rhythms/${id}`, kevin)
   })
 
-  it('clamps the runway to the window instead of to half the period', async () => {
-    // Unclamped, a 30-day runway on a 7-day window opens three weeks before the period it
-    // belongs to even starts — inside the PREVIOUS period, asking about the wrong one.
-    const id = await makeRhythm({ title: 'Greedy runway', bookWithin: '7 days', leadTime: '30 days' })
-    const res = await call('GET', '/api/rhythms', kevin)
-    const row = JSON.parse(res.body).rhythms.find((r: { id: string }) => r.id === id)
-    expect(row.leadTime).toMatch(/7 days/)
-    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  it('lets the runway reach back past the window, up to the whole cycle', async () => {
+    // "Ask me three weeks before date-night week" is a runway longer than the week it points
+    // at. Only one longer than the cycle is refused: that one would never close.
+    const ahead = await makeRhythm({ title: 'Plan ahead', bookWithin: '7 days', leadTime: '21 days' })
+    const greedy = await makeRhythm({ title: 'Greedy runway', bookWithin: '7 days', leadTime: '40 days' })
+    const rows = JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms
+    expect(rows.find((r: { id: string }) => r.id === ahead).leadTime).toMatch(/21 days/)
+    expect(rows.find((r: { id: string }) => r.id === greedy).leadTime).toMatch(/1 mon/)
+    await call('DELETE', `/api/rhythms/${ahead}`, kevin)
+    await call('DELETE', `/api/rhythms/${greedy}`, kevin)
   })
 
-  it('re-clamps the runway when the window is narrowed in place', async () => {
-    // Unlike the cadence, a window can be edited: it moves no boundary and re-keys no
-    // skip. But it does bound the runway, so the clamp has to be re-applied against the
-    // window as it will be AFTER the edit.
+  it('keeps the runway when the window is narrowed in place, and still caps it at the cycle', async () => {
     const id = await makeRhythm({ title: 'Narrowing', bookWithin: '14 days', leadTime: '14 days' })
     const patch = await call('PATCH', `/api/rhythms/${id}`, kevin, { bookWithin: '3 days' })
     expect(patch.statusCode).toBe(200)
     const row = JSON.parse(patch.body).rhythm
     expect(row.bookWithin).toMatch(/3 days/)
-    expect(row.leadTime).toMatch(/3 days/)
+    expect(row.leadTime).toMatch(/14 days/)
+    const widened = await call('PATCH', `/api/rhythms/${id}`, kevin, { leadTime: '45 days' })
+    expect(JSON.parse(widened.body).rhythm.leadTime).toMatch(/1 mon/)
     await call('DELETE', `/api/rhythms/${id}`, kevin)
   })
 
@@ -1846,16 +1862,29 @@ describe('a booking window narrower than the period', () => {
     await call('DELETE', `/api/rhythms/${id}`, kevin)
   })
 
-  it('stays quiet in the period before the window it belongs to', async () => {
-    // The runway opens at window_end − lead_time, and lead_time is capped at the window's
-    // width, so the earliest it can open is exactly period_start. If it opened any earlier
-    // it would land inside the PREVIOUS period, and the two would be asking at once —
-    // about different periods, in one list, with no way for a reader to tell them apart.
+  it('stays quiet before its period when the runway is only the window', async () => {
     const id = await makeRhythm({ title: 'Quiet until it starts', bookWithin: '7 days', leadTime: '7 days' })
     // The last day of the period before the one starting 2027-03-01.
     expect(await unscheduledIds('2027-02-28')).not.toContain(id)
     // ...and the first day of its own.
     expect(await unscheduledIds('2027-03-01')).toContain(id)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('asks ahead about the coming period once a longer runway opens', async () => {
+    // Date night in the first week, asked about three weeks out: September's window closes
+    // on the 8th, so a 21-day runway opens Aug 18 — long after August's own window shut.
+    const id = await makeRhythm({ title: 'Date night ahead', bookWithin: '7 days', leadTime: '21 days' })
+    expect(await unscheduledIds('2027-08-17')).not.toContain(id)
+    const res = await call('GET', '/api/rhythms/attention?to=2027-08-18', kevin)
+    const item = JSON.parse(res.body).items.find((i: { rhythm: { id: string } }) => i.rhythm.id === id)
+    expect(item?.periodStart).toBe('2027-09-01')
+    expect(item?.windowEnd).toBe('2027-09-08')
+    const booked = await call('POST', `/api/rhythms/${id}/schedule`, kevin, {
+      startsAt: '2027-09-03T23:00:00Z', periodStart: '2027-09-01',
+    })
+    expect(booked.statusCode).toBe(201)
+    expect(await unscheduledIds('2027-08-18')).not.toContain(id)
     await call('DELETE', `/api/rhythms/${id}`, kevin)
   })
 
@@ -1918,5 +1947,246 @@ describe('a booking window narrower than the period', () => {
       nextDueAt: '2027-01-01T09:00:00Z', bookWithin: '7 days',
     })
     expect(res.statusCode).toBe(400)
+  })
+})
+
+describe('the period a scheduling rhythm is asking about', () => {
+  // The register tiles to the household's real today, so these anchor relative to it.
+  async function listed(body: Record<string, unknown>) {
+    const res = await call('POST', '/api/rhythms', kevin, { satisfiedBy: 'scheduling', ...body })
+    expect(res.statusCode).toBe(201)
+    const id = JSON.parse(res.body).rhythm.id
+    const list = await call('GET', '/api/rhythms', kevin)
+    const row = JSON.parse(list.body).rhythms.find((r: { id: string }) => r.id === id)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+    return row
+  }
+
+  it('moves on to the next period the day after its booking window closes', async () => {
+    const today = await householdToday()
+    const row = await listed({ title: 'Closed window', every: '14 days', startsOn: plus(today, -10), bookWithin: '3 days' })
+    expect(row.currentPeriodStart).toBe(plus(today, 4))
+    expect(row.currentWindowEnd).toBe(plus(today, 7))
+    expect(row.currentPeriodEnd).toBe(plus(today, 18))
+  })
+
+  it('stays on the period containing today while its window is still open', async () => {
+    const today = await householdToday()
+    const row = await listed({ title: 'Open window', every: '14 days', startsOn: plus(today, -1), bookWithin: '3 days' })
+    expect(row.currentPeriodStart).toBe(plus(today, -1))
+  })
+
+  it('reports the first period of a rhythm whose anchor is still ahead', async () => {
+    const today = await householdToday()
+    const row = await listed({ title: 'Not started', every: '1 month', startsOn: plus(today, 20) })
+    expect(row.currentPeriodStart).toBe(plus(today, 20))
+  })
+})
+
+describe('a which-day hint on a rhythm booked by hand', () => {
+  const create = (body: Record<string, unknown>) =>
+    call('POST', '/api/rhythms', kevin, { satisfiedBy: 'scheduling', every: '1 month', autoSchedule: false, ...body })
+  const idOf = (res: RunResult): string => JSON.parse(res.body).rhythm.id
+  const rowOf = async (id: string) =>
+    JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms.find((r: { id: string }) => r.id === id)
+  const nthSaturday = (date: string, nth: number) => {
+    const first = new Date(`${date.slice(0, 7)}-01T00:00:00Z`)
+    const offset = (6 - first.getUTCDay() + 7) % 7
+    return new Date(first.getTime() + (offset + (nth - 1) * 7) * 86_400_000).toISOString().slice(0, 10)
+  }
+  const patchRule = (id: string, rrule: string | null) => call('PATCH', `/api/rhythms/${id}`, kevin, { rrule })
+
+  it('keeps the hint without booking anything, and suggests that day for the period', async () => {
+    // Anchored a month out, not in the past: a current-month period would put the hinted
+    // day behind today for the back third of every month, and it would be nulled out.
+    const res = await create({ title: 'Family outing by hand', startsOn: await firstOfMonth(1), rrule: 'FREQ=MONTHLY;BYDAY=3SA' })
+    expect(res.statusCode).toBe(201)
+    const id = idOf(res)
+    const row = await rowOf(id)
+    expect(row.rrule).toBe('FREQ=MONTHLY;BYDAY=3SA')
+    expect(row.autoSchedule).toBe(false)
+    expect(row.hasSeries).toBe(false)
+    expect(row.suggestedOn).toBe(nthSaturday(row.currentPeriodStart, 3))
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('suggests the hinted day on the attention item, and still counts a booking on another day', async () => {
+    // A period half a year out, reached by asking attention for a date inside it. Both ends
+    // are the first of a month, so the period grid lines up whenever this runs.
+    const periodStart = await firstOfMonth(6)
+    const saturday = nthSaturday(periodStart, 1)
+    // Any other day inside the 7-day window. The first Saturday is one of days 1–7, so the
+    // offset it takes is the one to avoid.
+    const otherDay = plus(periodStart, saturday === plus(periodStart, 3) ? 2 : 3)
+    const id = idOf(await create({
+      title: 'Date night on a Saturday', startsOn: await firstOfMonth(-6), bookWithin: '7 days', leadTime: '7 days',
+      rrule: 'FREQ=MONTHLY;BYDAY=1SA',
+    }))
+    const items = async () =>
+      JSON.parse((await call('GET', `/api/rhythms/attention?to=${plus(periodStart, 2)}`, kevin)).body).items
+    const item = (await items()).find((i: { rhythm: { id: string } }) => i.rhythm.id === id)
+    expect(item.suggestedOn).toBe(saturday)
+    // A hint, not a rule: another day inside the window settles the period all the same.
+    const booked = await call('POST', `/api/rhythms/${id}/schedule`, kevin, {
+      startsAt: `${otherDay}T23:00:00Z`, periodStart,
+    })
+    expect(booked.statusCode).toBe(201)
+    expect((await items()).map((i: { rhythm: { id: string } }) => i.rhythm.id)).not.toContain(id)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('refuses a hint that would leave a period with no such day', async () => {
+    const res = await create({ title: 'Anchored mid-month', startsOn: '2026-09-19', rrule: 'FREQ=MONTHLY;BYDAY=3SA' })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).message).toMatch(/first of the month/i)
+  })
+
+  it('refuses a hint that can never land inside the booking window', async () => {
+    const res = await create({ title: 'Third Saturday, first week', startsOn: '2026-01-01', bookWithin: '7 days', rrule: 'FREQ=MONTHLY;BYDAY=3SA' })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('edits the hint in place, re-checked against the anchor and the window', async () => {
+    const id = idOf(await create({ title: 'Editable hint', startsOn: '2026-01-01', bookWithin: '14 days' }))
+    expect((await patchRule(id, 'FREQ=MONTHLY;BYDAY=1SA')).statusCode).toBe(200)
+    expect((await rowOf(id)).rrule).toBe('FREQ=MONTHLY;BYDAY=1SA')
+    expect((await patchRule(id, 'FREQ=MONTHLY;BYDAY=3SA')).statusCode).toBe(400)
+    expect((await patchRule(id, 'FREQ=MONTHLY;BYDAY=2SA')).statusCode).toBe(200)
+    // Narrowing the window under the hint is checked the same way.
+    expect((await call('PATCH', `/api/rhythms/${id}`, kevin, { bookWithin: '7 days' })).statusCode).toBe(400)
+    const cleared = await patchRule(id, null)
+    expect(cleared.statusCode).toBe(200)
+    expect(JSON.parse(cleared.body).rhythm.rrule).toBeNull()
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('refuses a hint on a completion rhythm, and a rule change on one that books itself', async () => {
+    const completion = await call('POST', '/api/rhythms', kevin, {
+      title: 'Filter', satisfiedBy: 'completion', every: '3 months', nextDueAt: '2027-01-01T09:00:00Z',
+    })
+    expect((await patchRule(idOf(completion), 'FREQ=MONTHLY;BYDAY=1SA')).statusCode).toBe(400)
+    const auto = await create({ title: 'Outing, auto', startsOn: '2026-09-01', autoSchedule: true, rrule: 'FREQ=MONTHLY;BYDAY=3SA' })
+    expect(auto.statusCode).toBe(201)
+    expect((await patchRule(idOf(auto), 'FREQ=MONTHLY;BYDAY=1SA')).statusCode).toBe(400)
+    await call('DELETE', `/api/rhythms/${idOf(completion)}`, kevin)
+    await call('DELETE', `/api/rhythms/${idOf(auto)}`, kevin)
+  })
+
+  it('never suggests a day that has already gone by this period', async () => {
+    const today = await householdToday()
+    // A week that began three days ago. A daily hint's first slot is behind us, so today is the day.
+    const daily = idOf(await create({ title: 'Daily hint', every: '7 days', startsOn: plus(today, -3), rrule: 'FREQ=DAILY' }))
+    expect((await rowOf(daily)).suggestedOn).toBe(today)
+    // A weekly hint whose only day this week was two days ago suggests nothing rather than a day gone by.
+    const code = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'][new Date(`${plus(today, -2)}T00:00:00Z`).getUTCDay()]
+    const weekly = idOf(await create({
+      title: 'Gone by', every: '7 days', startsOn: plus(today, -3), rrule: `FREQ=WEEKLY;BYDAY=${code}`,
+    }))
+    expect((await rowOf(weekly)).suggestedOn).toBeNull()
+    const items = JSON.parse((await call('GET', `/api/rhythms/attention?to=${today}`, kevin)).body).items
+    expect(items.find((i: { rhythm: { id: string } }) => i.rhythm.id === weekly)?.suggestedOn).toBeNull()
+    await call('DELETE', `/api/rhythms/${daily}`, kevin)
+    await call('DELETE', `/api/rhythms/${weekly}`, kevin)
+  })
+})
+
+// The third household case from the rhythms brief: "clean the floors in the 1st and 3rd
+// week of the month", done by marking it off. It needs the cross of the two shapes — a
+// fixed grid of periods, like scheduling, closed by a check-off, like completion.
+describe('a completion rhythm on a fixed grid', () => {
+  const create = (body: Record<string, unknown> = {}) =>
+    call('POST', '/api/rhythms', kevin, {
+      title: 'Floors', satisfiedBy: 'completion', every: '1 month', gridDays: [1, 15], ...body,
+    })
+  const idOf = (res: RunResult): string => JSON.parse(res.body).rhythm.id
+  const rowOf = async (id: string) =>
+    JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms.find((r: { id: string }) => r.id === id)
+  // Which slot today sits in, and where it ends — derived, never a named month.
+  const slot = (today: string) => {
+    const month = today.slice(0, 7)
+    const day = Number(today.slice(8, 10))
+    const next = new Date(`${month}-01T00:00:00Z`)
+    next.setUTCMonth(next.getUTCMonth() + 1)
+    return day >= 15
+      ? { start: `${month}-15`, end: next.toISOString().slice(0, 10) }
+      : { start: `${month}-01`, end: `${month}-15` }
+  }
+
+  it('reports the slot containing today, and the next one as its end', async () => {
+    const today = await householdToday()
+    const res = await create()
+    expect(res.statusCode).toBe(201)
+    const id = idOf(res)
+    const row = await rowOf(id)
+    expect(row.gridDays).toEqual([1, 15])
+    expect(row.currentPeriodStart).toBe(slot(today).start)
+    expect(row.currentPeriodEnd).toBe(slot(today).end)
+    expect(row.satisfied).toBe(false)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('marking it off closes the slot that is open, not a window measured from the tap', async () => {
+    const today = await householdToday()
+    const id = idOf(await create())
+    expect((await call('POST', `/api/rhythms/${id}/complete`, kevin, {})).statusCode).toBe(200)
+    const row = await rowOf(id)
+    // Still the same slot — settled, not rolled forward early.
+    expect(row.currentPeriodStart).toBe(slot(today).start)
+    expect(row.satisfied).toBe(true)
+    // The clock did NOT restart from the tap: the next one is the grid's next day.
+    expect(row.nextDueAt.slice(0, 10)).toBe(slot(today).end)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('tells the Today card the slot is open, not that it is late', async () => {
+    const today = await householdToday()
+    const id = idOf(await create())
+    const items = JSON.parse((await call('GET', `/api/rhythms/attention?to=${today}`, kevin)).body).items
+    const item = items.find((i: { rhythm: { id: string } }) => i.rhythm.id === id)
+    // The card renders `overdue` as red "N days late". A slot that opened on the 15th and
+    // asks until the next one opens is doing its job, so it must not be reported late —
+    // the register says "days left" about the very same rhythm.
+    expect(item.overdue).toBe(false)
+    // And it counts toward the slot's end, the deadline a person is actually working to.
+    expect(item.dueAt.slice(0, 10)).toBe(slot(today).end)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('goes quiet for the rest of the slot once it is marked off', async () => {
+    const today = await householdToday()
+    const id = idOf(await create())
+    const asking = async () => {
+      const items = JSON.parse((await call('GET', `/api/rhythms/attention?to=${today}`, kevin)).body).items
+      return items.some((i: { rhythm: { id: string } }) => i.rhythm.id === id)
+    }
+    expect(await asking()).toBe(true)
+    await call('POST', `/api/rhythms/${id}/complete`, kevin, {})
+    // The runway would otherwise re-open it immediately: marking off moves next_due_at to
+    // the next slot, which a 14-day runway reaches back past. A settled slot is silent.
+    expect(await asking()).toBe(false)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('records one completion per slot, however many times it is tapped', async () => {
+    const id = idOf(await create())
+    expect((await call('POST', `/api/rhythms/${id}/complete`, kevin, {})).statusCode).toBe(200)
+    expect((await call('POST', `/api/rhythms/${id}/complete`, kevin, {})).statusCode).toBe(200)
+    const history = JSON.parse((await call('GET', `/api/rhythms/${id}/completions`, kevin)).body)
+    expect(history.total).toBe(1)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('leaves an ordinary completion rhythm measuring from the tap', async () => {
+    const id = idOf(await call('POST', '/api/rhythms', kevin, {
+      title: 'Filter, no grid', satisfiedBy: 'completion', every: '3 months',
+      nextDueAt: '2027-01-01T09:00:00Z',
+    }))
+    const row = await rowOf(id)
+    expect(row.gridDays).toBeNull()
+    expect(row.currentPeriodStart).toBeNull()
+    await call('POST', `/api/rhythms/${id}/complete`, kevin, {})
+    // Measured from now, not from a grid.
+    expect((await rowOf(id)).nextDueAt.slice(0, 4)).not.toBe('2027')
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
   })
 })

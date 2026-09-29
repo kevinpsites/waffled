@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { WEEKDAYS } from './recurrence'
 
 const WEEKDAY_LABELS: Record<string, string> = {
@@ -19,6 +20,27 @@ const WEEKDAY_LABELS: Record<string, string> = {
  *
  * An empty selection falls back to the anchor date's own weekday, matching `buildRrule`.
  */
+/**
+ * The pill a chip row is made of. Exported so a row asking a DIFFERENT question — which
+ * weeks of the month a rhythm lands in — looks identical to this one instead of being a
+ * second, slightly-off chip style in the same form.
+ */
+export function chipStyle(on: boolean, wide = false): CSSProperties {
+  return {
+    minWidth: 36,
+    height: 36,
+    padding: wide ? '0 14px' : 0,
+    borderRadius: 999,
+    border: `1.5px solid ${on ? 'var(--primary)' : 'transparent'}`,
+    background: on ? 'var(--primary)' : 'var(--card-2)',
+    color: on ? 'var(--on-accent)' : 'var(--ink)',
+    font: 'inherit',
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: 'pointer',
+  }
+}
+
 export function WeekdayChips({
   value,
   weekday,
@@ -48,18 +70,7 @@ export function WeekdayChips({
               const base = value.length ? value : [weekday]
               onChange(base.includes(d) ? base.filter((x) => x !== d) : [...base, d])
             }}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 999,
-              border: `1.5px solid ${on ? 'var(--primary)' : 'transparent'}`,
-              background: on ? 'var(--primary)' : 'var(--card-2)',
-              color: on ? 'var(--on-accent)' : 'var(--ink)',
-              font: 'inherit',
-              fontSize: 14,
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
+            style={chipStyle(on)}
           >
             {WEEKDAY_LABELS[d]}
           </button>

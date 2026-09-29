@@ -256,4 +256,27 @@ describe('EventModal', () => {
       rrule: 'FREQ=WEEKLY;BYDAY=MO',
     })
   })
+
+  // The monthly weekday option is labelled off the start date ("On the fourth Tuesday"),
+  // so the rule it saves has to follow that date when the event moves to another week.
+  it('re-reads the nth weekday from the start date when a monthly series moves week', async () => {
+    const patched: unknown[] = []
+    mockEventApi(patched, [])
+    const monthly = {
+      ...sampleEvent,
+      rrule: 'FREQ=MONTHLY;BYDAY=2TU', // 2026-06-09 is the 2nd Tuesday of June
+      seriesId: 'e1',
+      occurrenceStart: '2026-06-09T22:00:00Z',
+    }
+    renderModal(<EventModal event={monthly} onClose={vi.fn()} onSaved={vi.fn()} />)
+
+    // Move it to the 4th Tuesday of the same month.
+    fireEvent.click(screen.getByRole('button', { name: 'Start date' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Jun 23, 2026' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'All events' }))
+    await waitFor(() => expect(patched).toHaveLength(1))
+    expect((patched[0] as { rrule: string }).rrule).toBe('FREQ=MONTHLY;BYDAY=4TU')
+  })
 })

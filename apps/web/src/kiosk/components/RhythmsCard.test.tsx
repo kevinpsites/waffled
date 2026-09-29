@@ -106,6 +106,17 @@ describe('RhythmsCard', () => {
     await waitFor(() => expect(calls.some((c) => c.url.endsWith('/api/rhythms/r-filter/complete') && c.method === 'POST')).toBe(true))
   })
 
+  it('names the day a hand-booked rhythm suggests', async () => {
+    const byHand = { ...temple, id: 'r-hand', title: 'Family outing', every: '1 mon', rrule: 'FREQ=MONTHLY;BYDAY=3SA' }
+    mockAttention([{
+      kind: 'unscheduled', rhythm: byHand, periodStart: '2026-08-01', periodEnd: '2026-09-01',
+      windowEnd: '2026-09-01', hasSeries: false, suggestedOn: '2026-08-15',
+    }])
+    render()
+    expect(await screen.findByText('Family outing')).toBeInTheDocument()
+    expect(statusLine(/the third saturday/i)).toBeInTheDocument()
+  })
+
   // A failed FIRST load is quiet — "nothing needs attention" is a claim, and a dropped
   // connection is no evidence for it. A failed REFETCH is a different thing entirely: we
   // already have rows that were true a moment ago, and throwing them away deletes a card

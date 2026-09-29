@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 import {
-  rhythmsApi, useRhythmAttention, useRhythms, cadenceLabel, dueLabel, periodLabel,
+  rhythmsApi, useRhythmAttention, useRhythms, cadenceLabel, dayHintLabel, dueLabel, periodLabel,
   type AttentionItem,
 } from '../../lib/api'
 import { BookRhythmModal } from './BookRhythmModal'
@@ -112,6 +112,7 @@ function UnscheduledRow({
   // The window's end, not the period's — the deadline the person is working against.
   // Equal to the period's end on every rhythm without a booking window.
   const left = daysLeft(item.windowEnd)
+  const hint = item.rhythm.autoSchedule ? null : dayHintLabel(item.rhythm.rrule)
 
   async function skip() {
     if (busy) return
@@ -137,6 +138,7 @@ function UnscheduledRow({
             anomaly, the explanation is worth the words. */}
         <div className="rhy-sub tiny muted">
           <span className={left <= 1 ? 'rhy-late' : ''}>{periodLabel(item.windowEnd)}</span>
+          {hint ? ` · ${hint}` : ''}
           {series ? ' · the series needs putting back' : ''}
         </div>
         {failed && (
