@@ -343,6 +343,17 @@ describe('countdown', () => {
     expect(countdown(r, 'now', NOW)).toEqual({ num: '6', unit: 'days late', tone: 'late' })
   })
 
+  it('counts an open grid slot down, because the whole slot is the asking window', () => {
+    // A slot that opened on the 15th is asking until the next one opens, by design — so
+    // "14 days late" would call the feature's own behaviour a failure. It has days LEFT.
+    const r = rhythm({
+      satisfiedBy: 'completion', satisfied: false, gridDays: [1, 15],
+      nextDueAt: at(8, 15), currentPeriodStart: '2026-08-15', currentPeriodEnd: '2026-09-01',
+      currentWindowEnd: '2026-09-01',
+    })
+    expect(countdown(r, 'now', NOW)).toEqual({ num: '12', unit: 'days left', tone: 'near' })
+  })
+
   it('speaks days near, weeks next, months far — a "213 days" countdown anchors nothing', () => {
     expect(countdown(rhythm({ nextDueAt: at(8, 25) }), 'soon', NOW)?.num).toBe('5')
     expect(countdown(rhythm({ nextDueAt: at(8, 25) }), 'soon', NOW)?.unit).toBe('days')

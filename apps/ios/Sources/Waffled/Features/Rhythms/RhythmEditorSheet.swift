@@ -318,6 +318,13 @@ struct RhythmEditorSheet: View {
         let lands = Text(RhythmFormat.dayMonth(plan.landsOn)).bold()
         let nudge = Text(RhythmFormat.dayMonth(plan.nudgeFrom)).bold()
         if form.shape == .completion {
+            // A grid makes the opposite promise: the schedule is fixed, so a date derived
+            // from `every` would state the very behaviour setting weeks turns off.
+            if form.gridDays != nil {
+                return Text("Asks in the weeks you picked, one at a time. Miss one and it keeps asking "
+                            + "until the next opens, then lets it go — doing it late never shifts the "
+                            + "ones after it.")
+            }
             return Text("Next one lands around ") + lands + Text(". It’ll be on your Today card from ")
                 + nudge + Text(". If you do it late the next one moves with it — misses never stack up.")
         }

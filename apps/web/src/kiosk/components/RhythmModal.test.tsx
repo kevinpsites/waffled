@@ -506,6 +506,23 @@ describe('the history a completion rhythm keeps', () => {
     expect(posts()[0].body).not.toHaveProperty('nextDueAt')
   })
 
+  // The card above the form promises what the rhythm will do. On a grid it must not keep
+  // promising the rolling shape's behaviour — "the next one moves with it" is the exact
+  // thing setting weeks turns off.
+  it('stops promising that a late one moves the next when weeks are set', async () => {
+    const dlg = openCreate()
+    fireEvent.change(within(dlg).getByLabelText('What'), { target: { value: 'Floors' } })
+    fireEvent.change(within(dlg).getByLabelText('Unit'), { target: { value: 'months' } })
+    fireEvent.click(moreOptions())
+    expect(within(dlg).getByText(/misses never stack up/i)).toBeInTheDocument()
+
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Set weeks of the month' }))
+    fireEvent.click(within(dlg).getByRole('button', { name: '1st' }))
+    expect(within(dlg).queryByText(/the next one moves with it/i)).toBeNull()
+    expect(within(dlg).queryByText(/misses never stack up/i)).toBeNull()
+    expect(within(dlg).getByText(/never shifts the ones after it/i)).toBeInTheDocument()
+  })
+
   // Off by default: an ordinary completion rhythm still measures from when you did it.
   it('leaves the grid off unless weeks are chosen', async () => {
     const dlg = openCreate()

@@ -483,11 +483,23 @@ function asMoment(value: string): Date {
  * the closing of the booking window if it gets scheduled. null when there is nothing to
  * count toward, which the callers render as no countdown rather than as a zero.
  */
+/**
+ * A completion rhythm whose slots are fixed rather than measured from the last tap.
+ *
+ * It borrows the SCHEDULING framing everywhere a deadline is shown: the whole slot is the
+ * asking window, so days run down to the next slot rather than up from a due date. Calling
+ * an open slot "14 days late" would name the feature's own behaviour — keep asking until
+ * the next one opens — as a failure.
+ */
+export function onGrid(r: { satisfiedBy: string; gridDays?: number[] | null }): boolean {
+  return r.satisfiedBy === 'completion' && !!r.gridDays?.length
+}
+
 export function daysToGo(r: RhythmWithPeriod, now: Date = new Date()): number | null {
   // The WINDOW's end on a scheduling rhythm — the deadline a person is actually working
   // against. "12 days left" beside a picker that refuses day 8 reads as a broken picker.
   // Equal to the period's end whenever there is no window, which is most rhythms.
-  const target = r.satisfiedBy === 'scheduling' ? r.currentWindowEnd : r.nextDueAt
+  const target = r.satisfiedBy === 'scheduling' || onGrid(r) ? r.currentWindowEnd : r.nextDueAt
   if (!target) return null
   const d = asMoment(target)
   return Number.isNaN(d.getTime()) ? null : dayDiff(d, now)
@@ -602,10 +614,10 @@ export function countdown(
   if (days === null) return null
   const tone: RhythmCountdown['tone'] = urgency === 'now' ? 'late' : urgency === 'soon' ? 'near' : 'soft'
 
-  if (r.satisfiedBy === 'scheduling') {
+  if (r.satisfiedBy === 'scheduling' || onGrid(r)) {
     // Always about the window, never about follow-through. An early ask about a period
     // that has not started is on the list, but nothing about it is late.
-    const t = tone === 'late' && asksAhead(r.currentPeriodStart, now) ? 'near' : tone
+    const t = tone === 'late' && (onGrid(r) || asksAhead(r.currentPeriodStart, now)) ? 'near' : tone
     if (days <= 0) return { num: 'Today', unit: 'last day', tone: t }
     return { num: String(days), unit: days === 1 ? 'day left' : 'days left', tone: t }
   }
@@ -638,7 +650,7 @@ export function countdown(
 export function periodProgress(r: RhythmWithPeriod, now: Date = new Date()): number | null {
   let start: Date
   let end: Date
-  if (r.satisfiedBy === 'scheduling') {
+  if (r.satisfiedBy === 'scheduling' || onGrid(r)) {
     if (!r.currentPeriodStart || !r.currentWindowEnd) return null
     start = asMoment(r.currentPeriodStart)
     // The bar fills toward the moment bookings stop counting, not the next boundary —

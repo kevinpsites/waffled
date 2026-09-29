@@ -420,12 +420,21 @@ enum RhythmFormat {
 
     /// Whole days until the thing this rhythm is counting towards — its due date, or the
     /// day its booking window closes. Negative means it has already gone past.
+    /// A rhythm you mark off whose slots are fixed rather than measured from the last tap.
+    /// It borrows the scheduling framing wherever a deadline is shown: the whole slot is
+    /// the asking window, so days run down to the next slot instead of up from a due date.
+    /// Calling an open slot "14 days late" would name the design — keep asking until the
+    /// next opens — as a failure.
+    static func onGrid(_ r: WaffledAPI.Rhythm) -> Bool {
+        r.satisfiedBy == .completion && !(r.gridDays ?? []).isEmpty
+    }
+
     static func daysToGo(_ r: WaffledAPI.Rhythm, now: Date = Date(),
                          calendar: Calendar = Cal.current) -> Int? {
         // The WINDOW's end on a scheduling rhythm — the deadline a person is working
         // against. "12 days left" beside a picker that refuses day 8 reads as a broken
         // picker. Equal to the period's end on every rhythm without a window.
-        let target = r.satisfiedBy == .scheduling ? r.windowEnd : r.nextDueAt
+        let target = r.satisfiedBy == .scheduling || onGrid(r) ? r.windowEnd : r.nextDueAt
         guard let target, let date = moment(target, calendar) else { return nil }
         return dayDiff(date, now, calendar)
     }
@@ -497,10 +506,12 @@ enum RhythmFormat {
         }
         guard let days = daysToGo(r, now: now, calendar: calendar) else { return nil }
         let tone: Countdown.Tone = urgency == .now ? .late : (urgency == .soon ? .near : .soft)
-        if r.satisfiedBy == .scheduling {
+        if r.satisfiedBy == .scheduling || onGrid(r) {
             // An early ask about a period that has not started is on the list, not late.
+            // Nor is an open grid slot: asking for the whole slot IS the design.
             let t: Countdown.Tone = tone == .late
-                && asksAhead(periodStart: r.currentPeriodStart, now: now, calendar: calendar) ? .near : tone
+                && (onGrid(r)
+                    || asksAhead(periodStart: r.currentPeriodStart, now: now, calendar: calendar)) ? .near : tone
             if days <= 0 { return Countdown(number: "Today", unit: "last day", tone: t) }
             return Countdown(number: "\(days)", unit: days == 1 ? "day left" : "days left", tone: t)
         }

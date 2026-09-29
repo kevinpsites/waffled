@@ -724,6 +724,18 @@ struct RhythmEditorTests {
         #expect(body["nextDueAt"] != nil)
     }
 
+    @Test("An open grid slot counts down, it is not reported late")
+    func gridSlotCountsDown() {
+        // The slot opened on the 15th and asks until the next opens — by design. Counting
+        // up from its start would call the feature's own behaviour a failure.
+        let r = rhythm(satisfiedBy: .completion, nextDueAt: "2026-08-15T09:00:00Z",
+                       currentPeriodStart: "2026-08-15", currentPeriodEnd: "2026-09-01",
+                       gridDays: [1, 15])
+        let c = RhythmFormat.countdown(r, urgency: .now, now: at("2026-08-20T12:00:00"), calendar: utcCal)
+        #expect(c?.unit == "days left")
+        #expect(c?.tone == .near)
+    }
+
     @Test("The week picker stops at the fourth week")
     func gridWeeksStopAtTheFourth() {
         // A fifth week is missing from most months, so a slot there would vanish and the

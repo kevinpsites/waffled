@@ -502,7 +502,16 @@ export function RhythmModal({
                 )}
               </span>
               <div>
-                {shape === 'completion' ? (
+                {shape === 'completion' && gridDays ? (
+                  // A grid makes the opposite promise to the rolling shape: the schedule is
+                  // fixed, so naming a date derived from `every` would state the very
+                  // behaviour that setting weeks turns off.
+                  <>
+                    Asks in the weeks you picked, one at a time. Miss one and it keeps asking
+                    until the next opens, then lets it go — doing it late never shifts the ones
+                    after it.
+                  </>
+                ) : shape === 'completion' ? (
                   <>
                     Next one lands around <b>{dayMonth(plan.landsOn)}</b>. It'll be on your Today
                     card from <b>{dayMonth(plan.nudgeFrom)}</b>. If you do it late the next one
