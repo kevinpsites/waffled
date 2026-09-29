@@ -140,14 +140,41 @@ every completion rather than over the returned page.
 
 **Phase 6 — asking ahead, and which day. Built 2026-09-15 on API, web, iPhone and iPad.**
 Found by walking three household cases through the model; one PR, one commit per step, each
-step test-first. The case walk and decisions below are kept as the record of why; the floors
-case is still parked.
+step test-first. The case walk and decisions below are kept as the record of why. The floors
+case followed in Phase 7.
 
 | Case | Today |
 |---|---|
 | Date night in the first week of the month; done once it is booked | Expressible (`every 1 month`, anchored on the 1st, `book_within 7 days`), but the runway is capped at the window, so the first ask is on the 1st with a week left. Nothing can ask in late August about September: both queries only tile the period containing today, and every client passes today as the horizon. |
 | Family outing on the third Saturday, planned by hand | A hand-booked rhythm has no idea which day. Anchored on Sep 19 it tiles 19th→19th, and `[Oct 19, Nov 19)` holds no third Saturday. The first-of-month anchor fix exists only on the auto-schedule path, and booking defaults to today. |
-| Floors in the 1st and 3rd week, checked off | Not expressible: fixed periods close only on an event, and "I did it" belongs to the rolling shape. **Parked**: it needs a product call on periods that close on a check-off, and a schema change. Not in this phase. |
+| Floors in the 1st and 3rd week, checked off | Not expressible: fixed periods close only on an event, and "I did it" belongs to the rolling shape. Parked at the time for a product call on periods that close on a check-off, plus a schema change. **Answered and built in Phase 7.** |
+
+**Phase 7 — the floors case: a check-off on a fixed grid. Built 2026-09-29.**
+The parked case, unblocked by the household answering how it should behave: a missed week
+keeps asking until the next opens and is then gone; one slot asks at a time; whichever is
+open is the one a tick records. So the slots must **partition** the month, which is what
+makes all three answers the same rule rather than three behaviours.
+
+`rhythms.grid_days smallint[]` holds the days a slot starts on — a week is its first day, so
+the 1st and 3rd weeks are `{1,15}` — and `rhythm_completions.period_start` records which slot
+a tick closed, unique per slot exactly as `rhythm_skips` is keyed. Decisions:
+
+- **Not a third `satisfied_by`.** The enum stays two-valued, so no client learns a new shape,
+  and `next_due_at` stays populated — an app that has not updated still reads an ordinary
+  completion rhythm rather than an unknown one. The grid is a nullable opt-in column, so
+  every existing rhythm keeps its boundaries by construction; the proof is that all 114
+  existing rhythms tests passed unedited.
+- **Days of the month, not an rrule.** A `BYMONTHDAY`-shaped list expands in plain SQL
+  (`generate_series` over months × the days), so the slot maths joins `askingPeriodStart` in
+  the query `listRhythms` and `listAttention` already share. An rrule grid would have meant
+  an expander Postgres does not have, or moving period maths into JS — and the comment on
+  that function exists because the register and the Today card naming different periods is a
+  bug we have already had.
+- **The fold becomes per-slot.** "One completion per day" would insert a second row for a
+  week-1 and a week-2 tap of the same slot, and the unique index would refuse it.
+- **Capped at day 28.** The 29th to 31st are missing from some months, so a slot there would
+  vanish and the one before it would silently stretch — the same reason the weekday picker
+  stops at a fourth.
 
 Decisions, settled here so they are not relitigated mid-build:
 

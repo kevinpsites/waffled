@@ -111,6 +111,29 @@ stacking up missed ones.
 Pick this for maintenance: the air filter, the car's oil, toothbrush heads,
 smoke-detector batteries. These are exactly the items a calendar grid gets wrong.
 
+#### Set weeks of the month
+
+Some things you mark off still belong on a **fixed** schedule — "clean the floors in the
+1st and 3rd week of the month" should stay in those weeks however late you get to it. On a
+monthly rhythm, **Set weeks of the month** turns the sliding clock into a fixed one: pick
+**1st**, **2nd**, **3rd** or **4th** and those weeks become the schedule.
+
+Once weeks are set there is no **First one due** to pick — the weeks *are* the schedule,
+and Waffled starts you in whichever one is open now. Then:
+
+- **One at a time.** The weeks you pick divide the month up, so only ever one of them is
+  asking.
+- **Miss one and it keeps asking** until the next one opens — and then it lets it go. There
+  is no pile of missed weeks to clear.
+- **Marking off late still counts for the week that's open.** Tick it in week 2 and you've
+  closed week 1, because week 1 is the one still asking.
+- **Being late never shifts the rest.** That's the difference from the ordinary shape:
+  here the next one is the next week you picked, not four weeks from the day you did it.
+
+The picker stops at the **4th** week for the same reason the day picker stops at a fourth
+weekday: most months have no fifth one, so a slot there would simply disappear in most
+months.
+
 ## Setting one up
 
 **Rhythms → New rhythm.** You say it as a sentence and everything else has a sane default:

@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Put a rhythm you mark off on set weeks of the month.** *Clean the floors in the 1st and
+  3rd week* is now sayable: pick the weeks on a monthly rhythm and they become the schedule,
+  instead of the clock restarting whenever you last did it. One week asks at a time, a missed
+  one keeps asking until the next opens and is then let go, and marking off late still counts
+  for the week that is open — so being late never shifts everything after it. On web, iPhone
+  and iPad.
 - **Suggest a day for a rhythm you book yourself.** A rhythm you put on the calendar by hand
   can now carry a day — *the third Saturday* for a monthly family outing, *Saturdays* for a
   weekly one. Its row and the Today card name the day, and **Book a time** opens on it; a
