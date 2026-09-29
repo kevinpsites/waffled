@@ -77,7 +77,31 @@ We keep an **exact** pin rather than a floating tag: migrations are forward-only
       target can never name a missing image. `--version X.Y.Z` pins a specific release;
       moving backwards is refused (forward-only migrations). The checkout fast-forwards to
       the tag (or checks it out on a detached HEAD); a checkout *ahead* of the release stops
-      the upgrade, since pinning it to older images is the mismatch this fixes.
+      the upgrade, since pinning it to older images is the mismatch this fixes — except on
+      the transition hop described below.
+- [x] **The transition hop from ≤0.15.1 is handled.** Those releases fast-forward the
+      branch to its tip *before* handing the upgrade to the new `./waffled`, so on that one
+      hop the checkout is legitimately ahead of the tag being installed. Once `main` moves
+      past the new tag — i.e. after the next merge — refusing would fail the first upgrade
+      of every existing install. So when `WAFFLED_UPGRADE_REEXEC` is set,
+      `update_repo_for_upgrade` moves the checkout *back* onto the tag instead of refusing:
+      the old script's `--ff-only` pull having succeeded proves none of the operator's own
+      commits sit on top, so nothing is lost. Without that flag the refusal stands, so a
+      developer on genuinely newer work is still protected.
+
+      Two consequences, both accepted deliberately:
+
+      - **In the window between this change merging and its release being cut** the newest
+        release still equals the pin, so there is nothing newer to move to. Moving back onto
+        that older tag would strand the install on the older `./waffled`, whose
+        detached-HEAD path never reaches the next release — so that case keeps refusing,
+        leaving the checkout on `main` with a script new enough to work once the release
+        lands. Keep the merge→release window short.
+      - **The hop makes two checkout moves** (the old script's pull, then this move back)
+        under the single permitted re-exec, so `main`'s `./waffled` finishes the upgrade
+        against a release tree. That is the benign direction — a newer script driving an
+        older tree, where the 0.7.0→0.8.0 breakage was the reverse — and it happens only
+        on this one transition: every later upgrade starts detached at a tag and moves once.
 - [x] **The caddy image bakes the Caddyfile** (`COPY` into `/etc/caddy/Caddyfile`). The
       compose mount stays for now and shadows it with identical content.
 - [x] **Publish `waffled-powersync`** — `FROM journeyapps/powersync-service:<pinned>` +

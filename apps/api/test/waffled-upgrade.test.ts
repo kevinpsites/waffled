@@ -131,7 +131,7 @@ describe('waffled upgrade safety', () => {
     const run = (env: string) => runShell(`
       ${gitStub}
       ${env}
-      output="$(update_repo_for_upgrade 0.16.0 2>&1)"
+      output="$(update_repo_for_upgrade 0.16.0 "\${PIN-0.15.1}" 2>&1)"
       code=$?
       printf 'exit=%s\\n%s\\n--calls--\\n' "$code" "$output"
       cat "$calls"
@@ -170,6 +170,43 @@ describe('waffled upgrade safety', () => {
       expect(result).toContain('ahead of v0.16.0')
       expect(result).toContain('No images were changed')
       expect(result).not.toContain('merge --ff-only')
+    })
+
+    // The previous release's upgrade fast-forwards the branch before handing over, so on
+    // that one hop "ahead" is its pull rather than the operator's work — and its --ff-only
+    // proves nothing local sits on top. Refusing here would fail every existing install's
+    // first upgrade onto a release whose tag main has already moved past.
+    it('moves back onto the release when the handover left the checkout ahead', () => {
+      const result = run('TAG_IN_HEAD=0 HEAD_IN_TAG=1 WAFFLED_UPGRADE_REEXEC=1')
+
+      expect(result).toContain('exit=0')
+      expect(result).toContain('checkout --quiet v0.16.0')
+      expect(result).toContain('back onto v0.16.0')
+    })
+
+    // Between this change merging and its release being cut, the newest release equals the
+    // pin, so there is nothing to move forward to — and landing on that older tag would
+    // strand the install on a ./waffled whose detached path can never reach the next one.
+    it('still refuses when the handover left nothing newer to move to', () => {
+      const result = run('TAG_IN_HEAD=0 HEAD_IN_TAG=1 WAFFLED_UPGRADE_REEXEC=1 PIN=0.16.0')
+
+      expect(result).toContain('exit=1')
+      expect(result).toContain('ahead of v0.16.0')
+      expect(result).not.toContain('checkout --quiet')
+    })
+
+    it('refuses, without arithmetic noise, when the pin cannot be compared', () => {
+      const result = run('TAG_IN_HEAD=0 HEAD_IN_TAG=1 WAFFLED_UPGRADE_REEXEC=1 PIN=latest')
+
+      expect(result).toContain('exit=1')
+      expect(result).not.toContain('integer expression')
+    })
+
+    it('reports blocked local changes when moving back off the branch tip', () => {
+      const result = run('TAG_IN_HEAD=0 HEAD_IN_TAG=1 WAFFLED_UPGRADE_REEXEC=1 MOVE_EXIT=1')
+
+      expect(result).toContain('exit=1')
+      expect(result).toContain('No images were changed')
     })
 
     it('aborts before any image change when the tag cannot be fetched', () => {

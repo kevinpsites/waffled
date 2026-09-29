@@ -36,7 +36,9 @@ That does the whole thing, in order:
    *ahead* of the newest release stops it too — its compose file and `./waffled` expect
    newer images than any published release ships, so there is nothing safe to pin. Run
    `./waffled up --build` to run that checkout from source, or `git checkout` the tag you
-   want.
+   want. The one exception is your first upgrade from a release older than 0.16.0: those
+   versions advanced your branch before handing over, so upgrade recognises its own handover
+   and moves you back onto the tag instead of stopping.
 2. **Takes a database backup** (via the running backup sidecar) as your rollback point,
    *before* changing the version pin or images. If the backup service is unavailable or
    the backup fails, the upgrade stops.

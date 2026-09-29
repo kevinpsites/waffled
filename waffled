@@ -305,13 +305,15 @@ latest_release_version() {
   printf '%s\n' "$version"
 }
 
+is_semver() { printf '%s' "${1:-}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; }
+
 # Migrations are forward-only, so the images must never be older than the schema they
 # meet. A pin that isn't a plain version (unset, `latest`, a custom tag) gives nothing to
 # compare against — say so rather than passing silently, because the caller then moves the
 # pin wherever it was told.
 check_upgrade_target() {
   local target="$1" current="${2:-}"
-  if ! printf '%s' "$current" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+  if ! is_semver "$current"; then
     echo "${c_ylw}⚠ WAFFLED_VERSION is ${current:-unset}, so upgrade can't tell whether $target moves forward.${c_reset} Migrations are forward-only: check $target isn't older than what you're running."
     return 0
   fi
@@ -322,11 +324,16 @@ check_upgrade_target() {
   fi
 }
 
+repo_move_blocked() {
+  echo "${c_red}✗ Couldn't move this checkout to $1 — local changes are probably in the way.${c_reset}"
+  echo "Commit or discard them (customizations belong in .env or an --override file), then re-run './waffled upgrade'. No images were changed."
+}
+
 # Put the checkout ON the release tag, never on a branch tip: the compose file, the
 # mounted configs and ./waffled must match the images, and `main` between a merge and
 # its tag is not that pair (docs/product/upgrade-simplification-plan.md §2).
 update_repo_for_upgrade() {
-  local tag="v$1" branch
+  local tag="v$1" pin="${2:-}" branch
   git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1 || return 0
 
   echo "${c_dim}Moving the checkout to ${tag}…${c_reset}"
@@ -337,6 +344,18 @@ update_repo_for_upgrade() {
   fi
   [ "$(git -C "$ROOT" rev-parse HEAD)" = "$(git -C "$ROOT" rev-parse "$tag^{commit}")" ] && return 0
   if git -C "$ROOT" merge-base --is-ancestor "$tag" HEAD; then
+    # Releases up to 0.15.1 fast-forward the branch to its tip and only then hand the
+    # upgrade to the new ./waffled, so on that one hop "ahead" is their pull rather than
+    # the operator's work — and their --ff-only having succeeded proves nothing local sits
+    # on top. Land on the tag the images match. Still refuse when nothing newer exists to
+    # move to: the tag would carry an older ./waffled, whose detached-HEAD path can never
+    # reach the next release (docs/product/upgrade-simplification-plan.md §5).
+    if [ -n "${WAFFLED_UPGRADE_REEXEC:-}" ] && is_semver "$pin" && version_is_newer "$1" "$pin"; then
+      echo "${c_dim}The previous version advanced this checkout past ${tag} — moving it back onto ${tag}…${c_reset}"
+      git -C "$ROOT" checkout --quiet "$tag" && return 0
+      repo_move_blocked "$tag"
+      return 1
+    fi
     echo "${c_red}✗ This checkout is ahead of $tag, the release being installed.${c_reset}"
     echo "Its compose file, configs and ./waffled expect newer images than $tag ships, which is the mismatch this command exists to prevent."
     echo "Run './waffled up --build' to run this checkout from source, or 'git checkout $tag' to drop back to the release. No images were changed."
@@ -353,8 +372,7 @@ update_repo_for_upgrade() {
   else
     git -C "$ROOT" checkout --quiet "$tag" && return 0
   fi
-  echo "${c_red}✗ Couldn't move this checkout to $tag — local changes are probably in the way.${c_reset}"
-  echo "Commit or discard them (customizations belong in .env or an --override file), then re-run './waffled upgrade'. No images were changed."
+  repo_move_blocked "$tag"
   return 1
 }
 
@@ -1170,9 +1188,10 @@ case "$cmd" in
     ensure_powersync_url_env
     ensure_google_callback_env
     [ "$pinned" -eq 1 ] || target="$(latest_release_version)" || exit 1
-    check_upgrade_target "$target" "$(env_val WAFFLED_VERSION)" || exit 1
+    pin_before="$(env_val WAFFLED_VERSION)"
+    check_upgrade_target "$target" "$pin_before" || exit 1
     script_before="$(script_checksum)"
-    update_repo_for_upgrade "$target" || exit 1
+    update_repo_for_upgrade "$target" "$pin_before" || exit 1
     # If the move replaced this script, restart the upgrade under the new copy NOW —
     # before the backup/pin/pull — so ensure_env and compose logic match the new tree.
     # The resolved version rides along, so the new copy targets the same release; every
