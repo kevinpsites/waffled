@@ -2138,6 +2138,21 @@ describe('a completion rhythm on a fixed grid', () => {
     await call('DELETE', `/api/rhythms/${id}`, kevin)
   })
 
+  it('goes quiet for the rest of the slot once it is marked off', async () => {
+    const today = await householdToday()
+    const id = idOf(await create())
+    const asking = async () => {
+      const items = JSON.parse((await call('GET', `/api/rhythms/attention?to=${today}`, kevin)).body).items
+      return items.some((i: { rhythm: { id: string } }) => i.rhythm.id === id)
+    }
+    expect(await asking()).toBe(true)
+    await call('POST', `/api/rhythms/${id}/complete`, kevin, {})
+    // The runway would otherwise re-open it immediately: marking off moves next_due_at to
+    // the next slot, which a 14-day runway reaches back past. A settled slot is silent.
+    expect(await asking()).toBe(false)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
   it('records one completion per slot, however many times it is tapped', async () => {
     const id = idOf(await create())
     expect((await call('POST', `/api/rhythms/${id}/complete`, kevin, {})).statusCode).toBe(200)

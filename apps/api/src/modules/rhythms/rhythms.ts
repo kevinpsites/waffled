@@ -1152,7 +1152,16 @@ export async function listAttention(householdId: string, horizon: string): Promi
         -- (Etc/UTC in the shipped image) and against the START of that day — the only day
         -- boundary in this module that wasn't the household's. For a household behind UTC
         -- that hid a rhythm for its whole first day.
-        and (r.next_due_at - r.lead_time) < ((($2::date + 1)::timestamp) at time zone hh.timezone)`,
+        and (r.next_due_at - r.lead_time) < ((($2::date + 1)::timestamp) at time zone hh.timezone)
+        -- A settled slot is silent for the rest of its run. On a grid, marking off moves
+        -- next_due_at to the NEXT slot, which the runway above reaches back past — so the
+        -- thing you just did would reappear the moment you did it. The grid answers
+        -- "handled?" from the slot itself, the way a booking does, not from a due date.
+        and not (r.grid_days is not null and exists (
+              select 1 from rhythm_completions c
+               where c.rhythm_id = r.id
+                 and c.period_start = ${gridSlot('(now() at time zone hh.timezone)::date', 'start')}
+            ))`,
     [householdId, to]
   )
   for (const r of due.rows) {
