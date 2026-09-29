@@ -2089,3 +2089,75 @@ describe('a which-day hint on a rhythm booked by hand', () => {
     await call('DELETE', `/api/rhythms/${weekly}`, kevin)
   })
 })
+
+// The third household case from the rhythms brief: "clean the floors in the 1st and 3rd
+// week of the month", done by marking it off. It needs the cross of the two shapes — a
+// fixed grid of periods, like scheduling, closed by a check-off, like completion.
+describe('a completion rhythm on a fixed grid', () => {
+  const create = (body: Record<string, unknown> = {}) =>
+    call('POST', '/api/rhythms', kevin, {
+      title: 'Floors', satisfiedBy: 'completion', every: '1 month', gridDays: [1, 15], ...body,
+    })
+  const idOf = (res: RunResult): string => JSON.parse(res.body).rhythm.id
+  const rowOf = async (id: string) =>
+    JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms.find((r: { id: string }) => r.id === id)
+  // Which slot today sits in, and where it ends — derived, never a named month.
+  const slot = (today: string) => {
+    const month = today.slice(0, 7)
+    const day = Number(today.slice(8, 10))
+    const next = new Date(`${month}-01T00:00:00Z`)
+    next.setUTCMonth(next.getUTCMonth() + 1)
+    return day >= 15
+      ? { start: `${month}-15`, end: next.toISOString().slice(0, 10) }
+      : { start: `${month}-01`, end: `${month}-15` }
+  }
+
+  it('reports the slot containing today, and the next one as its end', async () => {
+    const today = await householdToday()
+    const res = await create()
+    expect(res.statusCode).toBe(201)
+    const id = idOf(res)
+    const row = await rowOf(id)
+    expect(row.gridDays).toEqual([1, 15])
+    expect(row.currentPeriodStart).toBe(slot(today).start)
+    expect(row.currentPeriodEnd).toBe(slot(today).end)
+    expect(row.satisfied).toBe(false)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('marking it off closes the slot that is open, not a window measured from the tap', async () => {
+    const today = await householdToday()
+    const id = idOf(await create())
+    expect((await call('POST', `/api/rhythms/${id}/complete`, kevin, {})).statusCode).toBe(200)
+    const row = await rowOf(id)
+    // Still the same slot — settled, not rolled forward early.
+    expect(row.currentPeriodStart).toBe(slot(today).start)
+    expect(row.satisfied).toBe(true)
+    // The clock did NOT restart from the tap: the next one is the grid's next day.
+    expect(row.nextDueAt.slice(0, 10)).toBe(slot(today).end)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('records one completion per slot, however many times it is tapped', async () => {
+    const id = idOf(await create())
+    expect((await call('POST', `/api/rhythms/${id}/complete`, kevin, {})).statusCode).toBe(200)
+    expect((await call('POST', `/api/rhythms/${id}/complete`, kevin, {})).statusCode).toBe(200)
+    const history = JSON.parse((await call('GET', `/api/rhythms/${id}/completions`, kevin)).body)
+    expect(history.total).toBe(1)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('leaves an ordinary completion rhythm measuring from the tap', async () => {
+    const id = idOf(await call('POST', '/api/rhythms', kevin, {
+      title: 'Filter, no grid', satisfiedBy: 'completion', every: '3 months',
+      nextDueAt: '2027-01-01T09:00:00Z',
+    }))
+    const row = await rowOf(id)
+    expect(row.gridDays).toBeNull()
+    expect(row.currentPeriodStart).toBeNull()
+    await call('POST', `/api/rhythms/${id}/complete`, kevin, {})
+    // Measured from now, not from a grid.
+    expect((await rowOf(id)).nextDueAt.slice(0, 4)).not.toBe('2027')
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+})

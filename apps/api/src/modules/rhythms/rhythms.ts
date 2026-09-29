@@ -37,6 +37,16 @@ export interface Rhythm {
    * month" is `every: '1 month', bookWithin: '7 days'`.
    */
   bookWithin: string | null
+  /**
+   * Days of the month a completion rhythm's periods start on, or null for the ordinary
+   * shape whose clock restarts from the tap.
+   *
+   * A grid partitions the month — each slot runs until the next day in the list — so one
+   * slot is open at a time, missing one lets it nag until the next opens, and then it is
+   * gone. "Clean the floors in the 1st and 3rd week" is `[1, 15]`. Marking off records
+   * WHICH slot it closed, which is the part `lastCompletedAt` alone cannot say.
+   */
+  gridDays: number[] | null
   leadTime: string
   lastCompletedAt: string | null
   nextDueAt: string | null
@@ -106,6 +116,7 @@ interface Row {
   auto_schedule: boolean
   rrule: string | null
   book_within: string | null
+  grid_days: number[] | null
   lead_time: string
   last_completed_at: Date | null
   next_due_at: Date | null
@@ -144,6 +155,7 @@ function toRhythm(r: Row): Rhythm {
     autoSchedule: r.auto_schedule,
     rrule: r.rrule,
     bookWithin: r.book_within == null ? null : intervalText(r.book_within),
+    gridDays: r.grid_days ?? null,
     leadTime: intervalText(r.lead_time),
     lastCompletedAt: r.last_completed_at ? r.last_completed_at.toISOString() : null,
     nextDueAt: r.next_due_at ? r.next_due_at.toISOString() : null,
@@ -153,7 +165,7 @@ function toRhythm(r: Row): Rhythm {
 
 const SELECT = `
   select id, title, emoji, notes, person_id, satisfied_by, every::text as every,
-         starts_on, auto_schedule, rrule, book_within::text as book_within, lead_time::text as lead_time,
+         starts_on, auto_schedule, rrule, book_within::text as book_within, grid_days, lead_time::text as lead_time,
          last_completed_at, next_due_at, is_active
     from rhythms`
 
@@ -183,6 +195,41 @@ function askingPeriodStart(today: string): string {
           end`
 }
 
+// The slot a grid rhythm is in as of `today`. Its days of the month, tiled across the
+// months either side, partition time into periods running from one day in the list to the
+// next — so `start` is the open slot and `end` is the next day, which is where it stops.
+// Three months of candidates is enough for any grid: the neighbours cover a `today` that
+// sits before the first day of its own month or after the last. Expects the rhythm `r`.
+function gridSlot(today: string, bound: 'start' | 'end'): string {
+  const agg = bound === 'start' ? 'max' : 'min'
+  const cmp = bound === 'start' ? '<=' : '>'
+  return `(select ${agg}(g.d)
+             from (select make_date(extract(year from m)::int, extract(month from m)::int, dd::int)::date as d
+                     from generate_series(date_trunc('month', ${today}::timestamp) - interval '1 month',
+                                          date_trunc('month', ${today}::timestamp) + interval '1 month',
+                                          interval '1 month') m,
+                          unnest(r.grid_days) dd) g
+            where g.d ${cmp} ${today})`
+}
+
+// Days of the month a grid rhythm's slots start on. Sorted and de-duplicated so the
+// stored array is the canonical form of what was asked for, and capped at 28 for the same
+// reason the monthly day picker stops at a fourth weekday: a 29th to 31st is missing from
+// some months, so that slot would vanish and the one before it would quietly stretch.
+function parseGridDays(v: unknown): number[] | null {
+  if (v == null) return null
+  if (!Array.isArray(v) || v.length === 0) {
+    throw new InvalidReferenceError('gridDays must be a non-empty array of days of the month')
+  }
+  const days = v.map((d) => (typeof d === 'number' ? d : Number.NaN))
+  if (days.some((d) => !Number.isInteger(d) || d < 1 || d > 28)) {
+    throw new InvalidReferenceError(
+      'gridDays must be whole numbers from 1 to 28 — a 29th to 31st is missing from some months, so a slot there would disappear'
+    )
+  }
+  return [...new Set(days)].sort((a, b) => a - b)
+}
+
 export async function listRhythms(householdId: string): Promise<RhythmWithPeriod[]> {
   const { rows } = await query<Row & {
     period_start: string | null
@@ -201,20 +248,27 @@ export async function listRhythms(householdId: string): Promise<RhythmWithPeriod
                 -- Tiled to the household's OWN today: against a bare now() the grid rolls
                 -- over at UTC midnight, mid-evening for a household west of UTC.
                 ${askingPeriodStart('(now() at time zone hh.timezone)::date')}
+              when r.grid_days is not null then
+                ${gridSlot('(now() at time zone hh.timezone)::date', 'start')}
               end as period_start,
+              case when r.grid_days is not null then
+                ${gridSlot('(now() at time zone hh.timezone)::date', 'end')}
+              end as grid_end,
               hh.timezone as tz
          from rhythms r, hh
         where r.household_id = $1 and r.deleted_at is null
      )
      select b.id, b.title, b.emoji, b.notes, b.person_id, b.satisfied_by, b.every::text as every,
-            b.starts_on, b.auto_schedule, b.rrule, b.book_within::text as book_within, b.lead_time::text as lead_time,
+            b.starts_on, b.auto_schedule, b.rrule, b.book_within::text as book_within, b.grid_days, b.lead_time::text as lead_time,
             b.last_completed_at, b.next_due_at, b.is_active,
             b.period_start, b.tz,
-            case when b.period_start is not null then (b.period_start + b.every)::date end as period_end,
+            case when b.grid_days is not null then b.grid_end
+                 when b.period_start is not null then (b.period_start + b.every)::date end as period_end,
             -- Where the period stops accepting bookings. book_within is null on every
             -- rhythm that predates it, and coalescing to every is what makes those
             -- byte-for-byte unchanged: the window is the period, as it always was.
-            case when b.period_start is not null
+            case when b.grid_days is not null then b.grid_end
+                 when b.period_start is not null
                  then (b.period_start + coalesce(b.book_within, b.every))::date end as window_end,
             bk.starts_at as booked_at,
             bk.all_day as booked_all_day,
@@ -231,6 +285,13 @@ export async function listRhythms(householdId: string): Promise<RhythmWithPeriod
                       or (e.recurrence_end_at > now() and e.recurrence_end_at >= e.starts_at))
             ) as has_series,
             case
+              -- On a grid, settled means a check-off recorded against THIS slot. Being
+              -- late does not move the slot, so "not yet due" would answer a different
+              -- question than "did we do this one?".
+              when b.grid_days is not null then exists (
+                select 1 from rhythm_completions c
+                 where c.rhythm_id = b.id and c.period_start = b.period_start
+              )
               -- Completion shape has no period grid at all: its clock restarts from
               -- whenever you actually did it, so "handled" just means not yet due.
               when b.satisfied_by = 'completion' then b.next_due_at > now()
@@ -317,6 +378,8 @@ export interface CreateRhythmInput {
   rrule?: unknown
   /** scheduling only: how much of each period a booking counts in. Null = the whole one. */
   bookWithin?: unknown
+  /** completion only: days of the month its slots start on, e.g. [1, 15]. */
+  gridDays?: unknown
   leadTime?: unknown
   nextDueAt?: unknown
 }
@@ -631,6 +694,15 @@ export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Pr
     await assertWindowFitsCadence(bookWithin, every)
   }
 
+  // completion only: a scheduling rhythm already gets its periods from starts_on, and two
+  // grids on one row is a period question with two answers.
+  const gridDays = parseGridDays(input.gridDays)
+  if (gridDays && satisfiedBy !== 'completion') {
+    throw new InvalidReferenceError(
+      'only a completion rhythm can sit on a grid of days; a scheduling rhythm takes its periods from its anchor'
+    )
+  }
+
   // The runway defaults to the WINDOW when there is one, rather than to the flat
   // fortnight. "Book it in the first week" means being asked during that week — all of
   // it — and a 14-day default trimmed to the window's width would happen to be right at
@@ -641,19 +713,37 @@ export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Pr
   await assertUsableLeadTime(leadTime)
 
   if (satisfiedBy === 'completion') {
-    // A never-done item still needs a first due date, so the caller seeds it.
+    // A grid seeds its own first due date: the slot that is open now. There is nothing for
+    // the caller to pick, since the days ARE the schedule.
     const nextDueAt = typeof input.nextDueAt === 'string' ? input.nextDueAt : null
-    if (!nextDueAt) throw new InvalidReferenceError('nextDueAt is required for a completion rhythm')
-    if (Number.isNaN(Date.parse(nextDueAt))) {
+    if (!nextDueAt && !gridDays) throw new InvalidReferenceError('nextDueAt is required for a completion rhythm')
+    if (nextDueAt && Number.isNaN(Date.parse(nextDueAt))) {
       throw new InvalidReferenceError('nextDueAt must be an ISO timestamp')
     }
     const { rows } = await query<Row>(
-      `insert into rhythms (household_id, title, emoji, notes, person_id, satisfied_by, every, lead_time, next_due_at)
-       values ($1,$2,$3,$4,$5,'completion',$6::interval,least($7::interval, $6::interval / 2),$8::timestamptz)
+      `with hh as (select timezone from households where id = $1),
+            slot as (
+              select max(g.d) as d
+                from hh,
+                     (select make_date(extract(year from m)::int, extract(month from m)::int, dd::int)::date as d
+                        from hh,
+                             generate_series(
+                               date_trunc('month', (now() at time zone hh.timezone)::date::timestamp) - interval '1 month',
+                               date_trunc('month', (now() at time zone hh.timezone)::date::timestamp) + interval '1 month',
+                               interval '1 month') m,
+                             unnest(coalesce($9::smallint[], '{}'::smallint[])) dd) g
+               where g.d <= (select (now() at time zone hh.timezone)::date from hh)
+            )
+       insert into rhythms (household_id, title, emoji, notes, person_id, satisfied_by, every, lead_time, next_due_at, grid_days)
+       select $1,$2,$3,$4,$5,'completion',$6::interval,least($7::interval, $6::interval / 2),
+              -- Due when the open slot opened, so an untouched grid rhythm reads as due now.
+              coalesce($8::timestamptz, (slot.d::timestamp at time zone hh.timezone)),
+              $9::smallint[]
+         from hh, slot
        returning id, title, emoji, notes, person_id, satisfied_by, every::text as every,
-                 starts_on, auto_schedule, rrule, book_within::text as book_within, lead_time::text as lead_time,
-                 last_completed_at, next_due_at, is_active`,
-      [householdId, title, str(input.emoji), str(input.notes), personId, every, leadTime, nextDueAt]
+                 starts_on, auto_schedule, rrule, book_within::text as book_within, grid_days,
+                 lead_time::text as lead_time, last_completed_at, next_due_at, is_active`,
+      [householdId, title, str(input.emoji), str(input.notes), personId, every, leadTime, nextDueAt, gridDays]
     )
     return toRhythm(rows[0])
   }
@@ -713,7 +803,7 @@ export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Pr
      values ($1,$2,$3,$4,$5,'scheduling',$6::interval,
              least($7::interval, $6::interval),$8::date,$9,$10,$11::interval)
      returning id, title, emoji, notes, person_id, satisfied_by, every::text as every,
-               starts_on, auto_schedule, rrule, book_within::text as book_within, lead_time::text as lead_time,
+               starts_on, auto_schedule, rrule, book_within::text as book_within, grid_days, lead_time::text as lead_time,
                last_completed_at, next_due_at, is_active`,
     [householdId, title, str(input.emoji), str(input.notes), personId, every, leadTime, startsOn, autoSchedule, rrule, bookWithin]
   )
@@ -808,6 +898,22 @@ export async function completeRhythm(
     await client.query(
     `with stamp as (select coalesce($4::timestamptz, now()) as at),
           zone as (select timezone from households where id = $1),
+          -- The slot this tap closes, for a rhythm on a grid: the one open on the day of
+          -- the tap. Null for every other rhythm, which is what keeps the fold below on
+          -- its original same-day rule. Marking off late is the point — a tap in week two
+          -- settles week one's slot, because that is the slot still open.
+          slot as (
+            select max(g.d) as d
+              from rhythms r, zone, stamp,
+                   lateral (select make_date(extract(year from m)::int, extract(month from m)::int, dd::int)::date as d
+                              from generate_series(
+                                     date_trunc('month', (stamp.at at time zone zone.timezone)::date::timestamp) - interval '1 month',
+                                     date_trunc('month', (stamp.at at time zone zone.timezone)::date::timestamp) + interval '1 month',
+                                     interval '1 month') m,
+                                   unnest(coalesce(r.grid_days, '{}'::smallint[])) dd) g
+             where r.household_id = $1 and r.id = $2
+               and g.d <= (stamp.at at time zone zone.timezone)::date
+          ),
           upd as (
             update rhythm_completions c
                set completed_at = stamp.at,
@@ -820,24 +926,43 @@ export async function completeRhythm(
                    -- not a flat refusal to change.
                    person_id = coalesce(c.person_id, $3),
                    notes = coalesce($5, c.notes)
-              from stamp, zone
+              from stamp, zone, slot
              where c.household_id = $1 and c.rhythm_id = $2
-               and (c.completed_at at time zone zone.timezone)::date
-                   = (stamp.at at time zone zone.timezone)::date
+               -- On a grid the unit is the SLOT, not the day: two taps a week apart still
+               -- settle one period, and the unique index would refuse the second row.
+               and case when slot.d is not null then c.period_start = slot.d
+                        else (c.completed_at at time zone zone.timezone)::date
+                             = (stamp.at at time zone zone.timezone)::date end
             returning c.id
           )
-     insert into rhythm_completions (household_id, rhythm_id, person_id, completed_at, notes)
-     select $1, $2, $3, stamp.at, $5 from stamp
+     insert into rhythm_completions (household_id, rhythm_id, person_id, completed_at, notes, period_start)
+     select $1, $2, $3, stamp.at, $5, slot.d from stamp, slot
       where not exists (select 1 from upd)`,
       [householdId, id, personId, completedAt, notes]
     )
     const { rows } = await client.query<Row>(
-      `update rhythms
+      `update rhythms r
           set last_completed_at = coalesce($3::timestamptz, now()),
-              next_due_at = coalesce($3::timestamptz, now()) + every
-        where household_id = $1 and id = $2 and deleted_at is null
+              -- A grid does not restart from the tap: the next thing owed is the next slot,
+              -- so being late never shifts the schedule. Everything else keeps measuring
+              -- from when it was actually done.
+              next_due_at = case when r.grid_days is null then coalesce($3::timestamptz, now()) + r.every
+                else (
+                  select min(g.d)::timestamp at time zone h.timezone
+                    from households h,
+                         lateral (select make_date(extract(year from m)::int, extract(month from m)::int, dd::int)::date as d
+                                    from generate_series(
+                                           date_trunc('month', (coalesce($3::timestamptz, now()) at time zone h.timezone)::date::timestamp) - interval '1 month',
+                                           date_trunc('month', (coalesce($3::timestamptz, now()) at time zone h.timezone)::date::timestamp) + interval '1 month',
+                                           interval '1 month') m,
+                                         unnest(r.grid_days) dd) g
+                   where h.id = $1
+                     and g.d > (coalesce($3::timestamptz, now()) at time zone h.timezone)::date
+                   group by h.timezone
+                ) end
+        where r.household_id = $1 and r.id = $2 and r.deleted_at is null
         returning id, title, emoji, notes, person_id, satisfied_by, every::text as every,
-                  starts_on, auto_schedule, rrule, book_within::text as book_within, lead_time::text as lead_time,
+                  starts_on, auto_schedule, rrule, book_within::text as book_within, grid_days, lead_time::text as lead_time,
                   last_completed_at, next_due_at, is_active`,
       [householdId, id, completedAt]
     )
@@ -1009,7 +1134,7 @@ export async function listAttention(householdId: string, horizon: string): Promi
   const due = await query<Row & { due_at: Date; overdue: boolean }>(
     `with hh as (select timezone from households where id = $1)
      select r.id, r.title, r.emoji, r.notes, r.person_id, r.satisfied_by, r.every::text as every,
-            r.starts_on, r.auto_schedule, r.rrule, r.book_within::text as book_within, r.lead_time::text as lead_time,
+            r.starts_on, r.auto_schedule, r.rrule, r.book_within::text as book_within, r.grid_days, r.lead_time::text as lead_time,
             r.last_completed_at, r.next_due_at, r.is_active,
             r.next_due_at as due_at,
             -- Late means LATE, so it is measured against now and nothing else. It used to
@@ -1057,7 +1182,7 @@ export async function listAttention(householdId: string, horizon: string): Promi
           and r.satisfied_by = 'scheduling'
      )
      select p.id, p.title, p.emoji, p.notes, p.person_id, p.satisfied_by, p.every::text as every,
-            p.starts_on, p.auto_schedule, p.rrule, p.book_within::text as book_within, p.lead_time::text as lead_time,
+            p.starts_on, p.auto_schedule, p.rrule, p.book_within::text as book_within, p.grid_days, p.lead_time::text as lead_time,
             p.last_completed_at, p.next_due_at, p.is_active,
             p.period_start, p.tz, (p.period_start + p.every)::date as period_end,
             (p.period_start + coalesce(p.book_within, p.every))::date as window_end,
@@ -1317,7 +1442,7 @@ export async function updateRhythm(
        updated_at = now()
      where household_id = $1 and id = $2 and deleted_at is null
      returning id, title, emoji, notes, person_id, satisfied_by, every::text as every,
-               starts_on, auto_schedule, rrule, book_within::text as book_within, lead_time::text as lead_time,
+               starts_on, auto_schedule, rrule, book_within::text as book_within, grid_days, lead_time::text as lead_time,
                last_completed_at, next_due_at, is_active`,
     [
       householdId,
