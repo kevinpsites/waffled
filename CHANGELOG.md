@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and capture spending controls use the same permission. Disabled currencies cannot fund new
   redemptions; earn-only currencies still accept spot awards.
 
+### Security
+
+- **Refresh API security dependencies.** Update gRPC and brace-expansion to patched
+  versions addressing certificate validation, error-message disclosure, and denial-of-service
+  advisories.
+
 ## [0.15.1] - 2026-09-15
 
 ### Added
