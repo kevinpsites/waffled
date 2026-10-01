@@ -22,8 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Reward activity stays inside your family.** People and currencies are checked against
   the household, and redeeming or converting another person’s balance requires reward-approval
   rights. A pending reward must be approved by someone other than its balance owner; a parent
-  can request and approve a child’s reward, including in a single-adult household. Web and
-  iOS spending controls use the same permission. Disabled currencies cannot fund new
+  can request and approve a child’s reward, including in a single-adult household. Web, iOS,
+  and capture spending controls use the same permission. Disabled currencies cannot fund new
   redemptions; earn-only currencies still accept spot awards.
 
 ## [0.15.1] - 2026-09-15

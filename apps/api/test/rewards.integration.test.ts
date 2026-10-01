@@ -750,6 +750,43 @@ describe('review: ledger authority and independent approval', () => {
     })
   })
 
+  it.each([true, false])('capture lets an approve-only teen redeem for a sibling (pending=%s)', async (requiresApproval) => {
+    const sub = `dev|capture-approver-${requiresApproval}`
+    const teenId = await addMember('Capture approver teen', 'teen', false, sub)
+    const siblingName = `Capture approved sibling ${requiresApproval}`
+    const siblingId = await addMember(siblingName, 'kid', false, `${sub}-sibling`)
+    await grantStars(siblingId, 10)
+    const created = await call('POST', '/api/rewards', kevin, { title: 'Capture approval rights', cost: 2, requiresApproval })
+    expect(created.statusCode).toBe(201)
+    const reward = JSON.parse(created.body).reward
+
+    await withTeenPermissions({ 'reward.manage': false, 'reward.approve': true }, async () => {
+      const result = await call('POST', '/api/capture/commit', mint(sub), {
+        verb: 'redeem', targetKind: 'reward', targetId: reward.id, args: { personName: siblingName },
+      })
+      expect(result.statusCode).toBe(200)
+      expect(JSON.parse(result.body)).toMatchObject({ ok: true, message: expect.stringContaining(siblingName) })
+      const stored = await withClient((c) => c.query(
+        `select r.person_id, r.requested_by, r.status, r.ledger_id,
+                l.person_id as ledger_person_id, l.amount, l.created_by
+           from reward_redemptions r left join ledger_entries l on l.id=r.ledger_id
+          where r.household_id=$1 and r.reward_id=$2`,
+        [householdId, reward.id]
+      ))
+      expect(stored.rows).toEqual([{
+        person_id: siblingId,
+        requested_by: teenId,
+        status: requiresApproval ? 'pending' : 'approved',
+        ledger_id: requiresApproval ? null : expect.any(String),
+        ledger_person_id: requiresApproval ? null : siblingId,
+        amount: requiresApproval ? null : -2,
+        created_by: requiresApproval ? null : teenId,
+      }])
+      expect(await starsOf(siblingId)).toBe(requiresApproval ? 10 : 8)
+      expect(await starsOf(teenId)).toBe(0)
+    })
+  })
+
   it('rejects PATCH to a local earn-only currency', async () => {
     const currency = JSON.parse((await call('POST', '/api/currencies', kevin, { label: 'Earn only review', spendable: false })).body).currency
     const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Keep spendable', cost: 1 })).body).reward
