@@ -36,9 +36,13 @@ final class CookSessionStore {
     /// second; `dishTimers(_:)` slices it when a single dish is what's wanted.
     var timers: [CookTimer] = []
     /// The in-app chime + local-notification scheduler. One instance for the session.
-    let alarm = TimerAlarm()
+    let alarm: TimerAlarm
 
     private let api = WaffledAPI()
+
+    init(alarm: TimerAlarm? = nil) {
+        self.alarm = alarm ?? TimerAlarm()
+    }
 
     /// A live session ⇒ present Cook Mode. Bound to the root `.fullScreenCover`.
     var isActive: Bool { session != nil }

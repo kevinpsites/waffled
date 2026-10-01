@@ -19,6 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Reward activity stays inside your family.** People and currencies are checked against
+  the household, and redeeming or converting another person’s balance requires reward-approval
+  rights. A pending reward must be approved by someone other than its balance owner; a parent
+  can request and approve a child’s reward, including in a single-adult household. Web, iOS,
+  and capture spending controls use the same permission. Disabled currencies cannot fund new
+  redemptions; earn-only currencies still accept spot awards.
+
+### Security
+
+- **Refresh API security dependencies.** Update gRPC and brace-expansion to patched
+  versions addressing certificate validation, error-message disclosure, and denial-of-service
+  advisories.
+
 ## [0.15.1] - 2026-09-15
 
 ### Added

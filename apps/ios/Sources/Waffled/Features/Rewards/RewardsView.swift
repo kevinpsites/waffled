@@ -98,7 +98,7 @@ struct SavingTowardCard: View {
     let symbol: String?
     let canPick: Bool
     /// Same rule as the shop tile: your own jar is yours to spend, someone else's needs
-    /// reward.manage. Without this the card offered a Redeem the server would refuse.
+    /// reward.approve. Without this the card offered a Redeem the server would refuse.
     let canRedeem: Bool
     let onChange: () -> Void
     let onRedeem: () -> Void
@@ -825,9 +825,9 @@ struct RewardShopView: View {
     }
 
     /// Spending your own balance is yours to decide; spending someone else's needs
-    /// reward.manage — the same rule the server enforces, so the shop never offers a
+    /// reward.approve — the same rule the server enforces, so the shop never offers a
     /// button that would come back 403.
-    private var maySpend: Bool { canManage || personId == sync.currentPersonId }
+    private var maySpend: Bool { sync.can("reward.approve") || personId.lowercased() == sync.currentPersonId?.lowercased() }
 
     private var shopFirstName: String {
         (overview?.person.name).flatMap { $0.split(separator: " ").first.map(String.init) } ?? "them"

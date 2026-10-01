@@ -1555,9 +1555,13 @@ describe('when a booked period is actually booked', () => {
   })
 
   it('carries the time and all-day flag of the event that settles it', async () => {
+    const before = await row()
+    expect(before.currentPeriodStart).toBeTruthy()
+    // UTC can already be in the next month; book inside the household's current period.
     const start = await withClient(async (c) => {
       const { rows } = await c.query<{ s: Date }>(
-        `select (date_trunc('month', now()) + interval '9 days 14 hours') as s`
+        `select (($1::date + interval '9 days 14 hours') at time zone 'America/Chicago') as s`,
+        [before.currentPeriodStart]
       )
       return rows[0]!.s.toISOString()
     })

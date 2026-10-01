@@ -1,11 +1,7 @@
-// Rewards' capture target — the Tier 2 "mutate verb" resolver/applier for the reward
-// shop. Registered into the capture registry from registerRewardRoutes so /api/capture/
-// resolve + /api/capture/commit can turn a spoken noun phrase ("the ice cream reward")
-// into one rewards row and redeem it. Commit routes through requestRedemption — the
-// SAME service fn POST /api/rewards/:id/redeem uses — so the parent-approval gate and
-// the balance guard can never diverge from the route. Authorization is NOT part of that
-// shared fn, though: the route's reward.manage check is mirrored below on purpose, and
-// any future rule about *who may redeem for whom* has to be added in both places.
+// Rewards' capture target resolves spoken reward names and redeems the chosen item.
+// Commit shares requestRedemption with POST /api/rewards/:id/redeem, keeping the
+// approval and balance guards consistent. The service also enforces reward.approve
+// when spending another person's balance; catalog permission is not required.
 import { rewardsEnabled } from '../../platform/modules'
 import {
   registerCaptureTarget,
@@ -17,7 +13,6 @@ import {
   type MutateCommand,
 } from '../capture/capture-resolvers'
 import { rankCandidates, type Candidate, type RankRow } from '../capture/candidate-match'
-import { assertSelfOrCapability } from '../../platform/permissions'
 import { listRewards, requestRedemption } from './rewards'
 
 const rewardCaptureTarget: CaptureTarget = {
@@ -54,12 +49,6 @@ const rewardCaptureTarget: CaptureTarget = {
       personId = person.id
       forName = person.name
     }
-
-    // Spending your own balance is yours to decide; spending someone else's is a parent
-    // action — the same check POST /api/rewards/:id/redeem makes. requestRedemption
-    // deliberately does NOT enforce it (the caller owns authorization), so naming a
-    // sibling here would otherwise walk straight around the route's gate.
-    await assertSelfOrCapability(ctx.tenant, ctx.personId, personId, 'reward.manage')
 
     const red = await requestRedemption(ctx.tenant, cmd.targetId, personId)
     if (red === null) throw httpError(404, 'That reward is gone.')

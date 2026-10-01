@@ -73,8 +73,8 @@ beforeEach(() => {
 
 describe('Reward Shop', () => {
   it('locks a reward the active kid can’t afford (progress, no Get) and offers Get on affordable ones', async () => {
-    // reward.manage: the caller (Kevin) is spending Wally's wallet, not his own.
-    mockApi(me(['reward.manage']))
+    // Approval authority permits spending Wally's wallet without catalog access.
+    mockApi(me(['reward.approve']))
     renderShop()
     await settled()
 
@@ -113,7 +113,7 @@ describe('Reward Shop', () => {
   })
 
   it('redeeming an affordable reward opens the celebration for the active kid', async () => {
-    mockApi(me(['reward.manage']))
+    mockApi(me(['reward.approve']))
     renderShop()
     await settled()
     const ice = within(shopGrid()).getByText('Ice cream')
@@ -130,7 +130,7 @@ describe('Reward Shop', () => {
     expect(screen.getByRole('button', { name: /back to shop/i })).toBeInTheDocument()
   })
 
-  it('offers no "Get it" on someone else’s wallet without reward.manage', async () => {
+  it('offers no "Get it" on someone else’s wallet without reward.approve', async () => {
     // Spending another member's balance is a parent action (the server 403s), so the
     // shop must not offer it. reward.grant is given for the same load-order reason as
     // the test below: the "Award stars" button proves /api/household landed and was
@@ -143,6 +143,24 @@ describe('Reward Shop', () => {
     const iceTile = ice.closest('.shop-tile') as HTMLElement
     expect(within(iceTile).queryByRole('button', { name: /get it/i })).not.toBeInTheDocument()
     expect(within(iceTile).getByText(/ask a parent to redeem for wally/i)).toBeInTheDocument()
+  })
+
+  it('allows catalog editing without allowing spending another member’s wallet', async () => {
+    mockApi(me(['reward.manage']))
+    renderShop()
+    await settled()
+    expect(await screen.findByRole('button', { name: /add reward/i })).toBeInTheDocument()
+    const iceTile = within(shopGrid()).getByText('Ice cream').closest('.shop-tile') as HTMLElement
+    expect(within(iceTile).queryByRole('button', { name: /get it/i })).not.toBeInTheDocument()
+    expect(within(iceTile).getByText(/ask a parent to redeem for wally/i)).toBeInTheDocument()
+  })
+
+  it('allows spending your own wallet without catalog or approval rights', async () => {
+    mockApi({ ...me([]), id: 'p1', name: 'Wally', memberType: 'kid' })
+    renderShop()
+    await settled()
+    const iceTile = within(shopGrid()).getByText('Ice cream').closest('.shop-tile') as HTMLElement
+    expect(within(iceTile).getByRole('button', { name: /get it/i })).toBeInTheDocument()
   })
 
   it('shows the parent "Award stars" button (reward.grant) and it opens SpotAwardModal', async () => {
