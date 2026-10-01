@@ -44,3 +44,11 @@ Rewards is a **sub-toggle of chores** (`settings.chores.rewards`, default **on**
 Archived people’s pending redemptions remain visible and can be denied. This uses
 soft archive; a hard-deleted person’s orphaned redemption is deliberately excluded
 by the household/person join and requires operator repair.
+
+Redemptions, conversions and chore undo serialize against the same person’s balance.
+Undoing a completed chore removes its earned reward only when that balance can cover
+it; otherwise restore the spent balance first. The chore and its proof remain intact
+on refusal. Archived members’ completed chores can also be undone when their balance covers
+the reversal. Conversions require both currencies to remain active in the household;
+only the currency being spent must be spendable. An earn-only currency may receive
+the credit.

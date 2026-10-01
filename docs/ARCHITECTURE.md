@@ -116,3 +116,13 @@ both device layouts and the four read-state scenarios.
 - PowerSync bucket storage: reuse Postgres vs add MongoDB (depends on version).
 - Tailnet TLS method: `tailscale serve` in front of Caddy vs the Caddy-Tailscale plugin.
 - Per-module schema grows as each feature lands.
+
+## Reward ledger concurrency
+
+Debits take the owning operation row before the person mutex, then currency rows in
+key order. The full order is advisory → redemption/chore instance → existing ledger
+entry → person (`FOR NO KEY UPDATE`) → currencies (`FOR SHARE`). Paths skip stages
+they do not need and never acquire them in reverse. Chore undo holds its instance
+and person locks while checking the balance; refusal preserves completion and proof.
+Proof deletion happens after commit. Conversions lock both active, spendable currencies
+until their paired ledger writes commit. Positive-only grants can proceed concurrently.

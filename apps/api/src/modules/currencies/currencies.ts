@@ -3,12 +3,13 @@
 // families can rename it or run several. The ledger stays the source of truth;
 // this is presentation + the set of currencies chores/rewards can use.
 import createAPI, { type Request, type Response } from 'lambda-api'
-import type { QueryResultRow } from 'pg'
+import type { PoolClient, QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { requireTenant, requireAdmin, type Tenant } from '../households/households'
 import { tenantRoute, adminRoute } from '../../platform/route-guards'
 import { assertPersonInHousehold } from '../../platform/household-refs'
 import { requireCapability } from '../../platform/permissions'
+import { lockLedgerSubject, lockLedgerCurrencies } from '../../platform/ledger-lock'
 
 type Api = ReturnType<typeof createAPI>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -87,12 +88,21 @@ export interface CreateCurrencyInput {
   isDefault?: boolean
 }
 
+// Match conversion lock order before a default change writes multiple currencies.
+async function lockCurrencyCatalog(client: PoolClient, householdId: string): Promise<void> {
+  await client.query(
+    `select key from currencies where household_id=$1 and deleted_at is null order by key for update`,
+    [householdId]
+  )
+}
+
 export async function createCurrency(tenant: Tenant, input: CreateCurrencyInput): Promise<CurrencyRow> {
   await ensureDefaultCurrency(tenant.householdId)
   const client = await getPool().connect()
   try {
     await client.query('begin')
     if (input.isDefault) {
+      await lockCurrencyCatalog(client, tenant.householdId)
       await client.query(`update currencies set is_default=false where household_id=$1 and deleted_at is null`, [tenant.householdId])
     }
     const key = await uniqueKey(tenant.householdId, input.label)
@@ -130,6 +140,7 @@ export async function updateCurrency(householdId: string, id: string, patch: Rec
     await client.query('begin')
     // Promoting a new default demotes the others first (one default per household).
     if (patch.isDefault === true) {
+      await lockCurrencyCatalog(client, householdId)
       await client.query(`update currencies set is_default=false where household_id=$1 and deleted_at is null`, [householdId])
     }
     const sets: string[] = []
@@ -250,12 +261,17 @@ export async function applyConversion(
   const client = await getPool().connect()
   try {
     await client.query('begin')
+    await lockLedgerSubject(client, tenant.householdId, personId)
     const cur = await client.query<ConversionRow>(
       `select * from currency_conversions where household_id=$1 and id=$2 and deleted_at is null`,
       [tenant.householdId, id]
     )
     const conv = cur.rows[0]
     if (!conv) { await client.query('rollback'); return { ok: false, error: 'conversion not found' } }
+    if (!(await lockLedgerCurrencies(client, tenant.householdId, [conv.from_currency, conv.to_currency], [conv.from_currency]))) {
+      await client.query('rollback')
+      return { ok: false, error: 'conversion currency is no longer available' }
+    }
     const debit = conv.from_amount * n
     const credit = conv.to_amount * n
     const bal = await client.query<{ balance: string | null }>(

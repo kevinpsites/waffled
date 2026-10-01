@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Reward spending and chore undo share one balance check.** Redemptions, currency
+  conversions and chore reward reversals lock the family member’s balance and recheck
+  it before debiting. Undo is refused when the balance cannot cover the reversal,
+  keeping the completed chore and its proof intact. Archived members’ chore rewards can
+  still be reversed when funded. Conversions may credit an active earn-only currency,
+  and currency-default changes acquire locks in the same order as conversions.
+
 - **Reward activity stays inside your family.** People and currencies are checked against
   the household, and redeeming or converting another person’s balance requires reward-approval
   rights. A pending reward must be approved by someone other than its balance owner; a parent
