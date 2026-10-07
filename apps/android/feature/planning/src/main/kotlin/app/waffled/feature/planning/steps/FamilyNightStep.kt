@@ -199,7 +199,9 @@ private fun Gathering(
                 value = board.theme.orEmpty(),
                 placeholder = "optional — \"pizza and the new Lego set\"",
                 limit = 120,
-                disabled = locked,
+                // Skipped only, never busy: disabling a focused field drops its focus
+                // mid-write, and the commit guard would then discard the typed words.
+                disabled = board.isSkipped,
             ) { save(FamilyNightBodies.setTheme(board.date, it)) }
 
             state.rows.forEach { row -> PartRow(row, board, locked, save) }
@@ -236,7 +238,7 @@ private fun PartRow(row: FamilyNightPartRow, board: PlanningFamilyNightBoard, lo
             value = part.detail.orEmpty(),
             placeholder = row.detailHint,
             limit = 200,
-            disabled = locked,
+            disabled = board.isSkipped,
             description = row.detailDescription,
         ) { save(FamilyNightBodies.setDetail(board.date, part.partId, it)) }
     }
