@@ -49,6 +49,9 @@ import java.time.ZoneOffset
 /** An emoji field holds at most one glyph plus a variation selector. */
 private const val MAX_EMOJI_LENGTH = 2
 
+private const val SAVED_BUT_STALE =
+    "Saved, but this screen couldn't refresh. It will catch up on the next successful refresh."
+
 /**
  * Add a standalone countdown — "what are you counting down to", an optional emoji, a date.
  *
@@ -59,7 +62,7 @@ private const val MAX_EMOJI_LENGTH = 2
 @Composable
 fun AddCountdownSheet(
     onDismiss: () -> Unit,
-    onAdd: suspend (title: String, date: String, emoji: String?) -> Unit,
+    onAdd: suspend (title: String, date: String, emoji: String?) -> CountdownsModel.MutationOutcome,
 ) {
     CountdownSheet(
         heading = "Add countdown",
@@ -86,7 +89,7 @@ fun AddCountdownSheet(
 fun EditCountdownSheet(
     countdown: CalendarApi.Countdown,
     onDismiss: () -> Unit,
-    onSave: suspend (title: String, date: String, emoji: String?) -> Unit,
+    onSave: suspend (title: String, date: String, emoji: String?) -> CountdownsModel.MutationOutcome,
     onRemove: suspend () -> Unit,
 ) {
     CountdownSheet(
@@ -131,7 +134,7 @@ private fun CountdownSheet(
     initial: CountdownDraft,
     errorHeading: String,
     onDismiss: () -> Unit,
-    onConfirm: suspend (CountdownDraft) -> Unit,
+    onConfirm: suspend (CountdownDraft) -> CountdownsModel.MutationOutcome,
     onRemove: (suspend () -> Unit)? = null,
     /** Earliest day the picker offers, or null when any day is legitimate. */
     minDate: LocalDate? = null,
@@ -143,6 +146,7 @@ private fun CountdownSheet(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var pickingDate by remember { mutableStateOf(false) }
+    var savedNotice by remember { mutableStateOf<String?>(null) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -194,14 +198,33 @@ private fun CountdownSheet(
                 }
             }
 
+            savedNotice?.let { DismissibleErrorBanner(message = it, onDismiss = onDismiss) }
+
             WaffledPrimaryCTA(
-                label = if (busy) busyLabel else confirmLabel,
+                label = when {
+                    savedNotice != null -> "Done"
+                    busy -> busyLabel
+                    else -> confirmLabel
+                },
                 onClick = {
+                    // Already saved: the only safe action left is to close, never to resend.
+                    if (savedNotice != null) {
+                        onDismiss()
+                        return@WaffledPrimaryCTA
+                    }
                     busy = true
                     error = null
                     scope.launch {
                         runCatching { onConfirm(draft) }
-                            .onSuccess { onDismiss() }
+                            .onSuccess { outcome ->
+                                when (outcome) {
+                                    CountdownsModel.MutationOutcome.Refreshed -> onDismiss()
+                                    CountdownsModel.MutationOutcome.SavedButRefreshFailed -> {
+                                        savedNotice = SAVED_BUT_STALE
+                                        busy = false
+                                    }
+                                }
+                            }
                             .onFailure { failure ->
                                 error = (failure as? WaffledApiException)?.userMessage ?: errorHeading
                                 busy = false
@@ -212,7 +235,7 @@ private fun CountdownSheet(
                 isDisabled = !draft.canSave,
             )
 
-            if (onRemove != null) {
+            if (onRemove != null && savedNotice == null) {
                 TextButton(
                     onClick = {
                         busy = true
@@ -220,8 +243,9 @@ private fun CountdownSheet(
                         scope.launch {
                             runCatching { onRemove() }
                                 .onSuccess { onDismiss() }
-                                .onFailure {
-                                    error = "Couldn't remove this countdown. Check your connection and try again."
+                                .onFailure { failure ->
+                                    error = (failure as? WaffledApiException)?.userMessage
+                                        ?: "Couldn't remove this countdown. Check your connection and try again."
                                     busy = false
                                 }
                         }

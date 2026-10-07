@@ -67,6 +67,26 @@ class CalendarApiTest {
     }
 
     @Test
+    fun aRhythmOrUnknownSourceDecodesWithoutEmptyingTheList() = runTest {
+        // A strict source enum would fail the WHOLE list the day the server grows a kind,
+        // as it did with 'rhythm'.
+        harness.enqueueJson(
+            """
+            {"countdowns":[
+              {"id":"rhythm:7f1c","title":"Air filter","date":"2026-08-15","daysLeft":3,"source":"rhythm"},
+              {"id":"x1","title":"Future","date":"2026-08-20","daysLeft":8,"source":"something-new"},
+              {"id":"c1","title":"Beach trip","date":"2026-08-21","daysLeft":9,"source":"standalone"}
+            ],"sleeps":false}
+            """.trimIndent(),
+        )
+
+        val items = api.countdowns().countdowns
+
+        assertEquals(listOf("rhythm:7f1c", "x1", "c1"), items.map { it.id })
+        assertEquals(listOf(false, false, true), items.map { it.isStandalone })
+    }
+
+    @Test
     fun anOlderServerWithoutABirthdayHorizonStillDecodes() = runTest {
         // A server a version behind omits the key entirely. Failing to decode here reads to
         // the user as "couldn't reach server", which is a misleading way to say "your
