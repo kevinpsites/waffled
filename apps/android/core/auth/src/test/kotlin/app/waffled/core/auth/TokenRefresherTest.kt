@@ -111,8 +111,9 @@ class TokenRefresherTest {
         backend.started.await()
         tokens.save(TokenPair("other-access", "other-refresh")) // a new sign-in lands
         backend.release.complete(Unit)
-        inFlight.await()
 
+        // Handing back the NEW pair would replay the old principal's request under it.
+        assertNull(inFlight.await())
         assertEquals(TokenPair("other-access", "other-refresh"), tokens.load())
     }
 

@@ -94,10 +94,10 @@ class TokenRefresher(
             return@withLock null
         }
 
-        // A sign-out or adopt landed while the call was in flight: that session wins, and
-        // this outcome (rotation or rejection) belonged to the one it replaced.
-        val now = store.load()
-        if (now != current) return@withLock now
+        // A sign-out or adopt landed while the call was in flight (only this lock rotates):
+        // that session wins, and this outcome belonged to the one it replaced. Null, not the
+        // new pair, so the old principal's request is never replayed under it.
+        if (store.load() != current) return@withLock null
 
         if (rotated == null) {
             // The refresh token is dead. Don't leave it on disk to be retried.
