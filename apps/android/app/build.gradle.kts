@@ -61,6 +61,10 @@ dependencies {
     implementation(project(":feature:calendar"))
     implementation(project(":feature:lists"))
     implementation(project(":feature:goalcharts"))
+    implementation(project(":feature:goals"))
+    implementation(project(":feature:meals"))
+    implementation(project(":feature:recipes"))
+    implementation(project(":feature:pantry"))
 
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)
