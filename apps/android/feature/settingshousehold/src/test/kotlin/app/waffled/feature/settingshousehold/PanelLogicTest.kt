@@ -192,6 +192,18 @@ class PanelLogicTest {
         assertEquals("abcd", PantrySettingsLogic.clampIcon("abcdef"))
     }
 
+    // ---- Landing rows ----
+
+    @Test
+    fun landingRowsMatchIosGates() {
+        val p = HouseholdSettingsPanels
+        assertEquals(listOf("notifications", "calendars", "meals", "pantry", "display", "ai"), p.all.map { it.id })
+        assertFalse(p.notifications.adminOnly)
+        assertTrue(p.all.filter { it.id != "notifications" }.all { it.adminOnly })
+        assertEquals(app.waffled.core.model.WaffledModule.Pantry, p.pantry.module)
+        assertEquals("System", p.ai.section)
+    }
+
     // ---- Display & Kiosk ----
 
     @Test
