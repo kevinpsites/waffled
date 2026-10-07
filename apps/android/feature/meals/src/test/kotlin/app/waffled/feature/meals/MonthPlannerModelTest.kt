@@ -1,5 +1,6 @@
 package app.waffled.feature.meals
 
+import app.waffled.core.model.HouseholdWeekStart
 import app.waffled.core.network.WaffledHttp
 import app.waffled.core.testing.ApiTestHarness
 import io.ktor.client.HttpClient
@@ -26,6 +27,7 @@ class MonthPlannerModelTest {
 
     private val harness = ApiTestHarness()
     private lateinit var client: HttpClient
+    private var firstDay: HouseholdWeekStart? = HouseholdWeekStart.Sunday
     private lateinit var model: MonthPlannerModel
 
     @Before
@@ -36,6 +38,7 @@ class MonthPlannerModelTest {
             api = MealsApi(client, harness.tokens),
             zone = ZoneId.of("UTC"),
             locale = Locale.US,
+            firstDay = { firstDay },
             // Pinned so the fixture month can't rot as the real date moves on.
             today = { LocalDate.parse("2026-09-15") },
         )
@@ -224,5 +227,14 @@ class MonthPlannerModelTest {
         model.load()
 
         assertEquals("Tacos", dinner("2026-09-02"))
+    }
+
+    @Test
+    fun `a monday household's month grid and headings start on monday`() = runTest {
+        firstDay = HouseholdWeekStart.Monday
+        assertEquals(listOf("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"), model.weekdaySymbols)
+        loadMonth()
+        assertContains(harness.takeRequest().path.orEmpty(), "start=2026-08-31")
+        assertEquals(LocalDate.parse("2026-08-31"), model.cells(model.entries.value).first().date)
     }
 }

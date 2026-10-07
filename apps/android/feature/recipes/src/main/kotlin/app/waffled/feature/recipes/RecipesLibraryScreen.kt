@@ -93,7 +93,10 @@ fun RecipesLibraryScreen(
      * flattens it into itself, silently renumbering every dish it already has.
      */
     excludeMealId: String? = null,
-    /** Browse mode: the "＋ New" menu. Null hides it (the picker has nothing to create). */
+    /**
+     * Browse mode: the "＋ New" menu; null hides an entry. In pick mode these are ignored —
+     * the picker hosts the editor / builder itself and hands the result straight back.
+     */
     onNewRecipe: (() -> Unit)? = null,
     onNewMeal: (() -> Unit)? = null,
     /** Seed the library pre-filtered — the "Cook from your pantry" and "🆕 New" deep-links. */
@@ -112,6 +115,11 @@ fun RecipesLibraryScreen(
     }
     var recentScope by remember { mutableStateOf(RecentRecipeScope.Me) }
     val picking = onPickRecipe != null
+    val offer = LibraryNewOffer.of(canPickMeal = !picking || onPickMeal != null)
+    // Pick mode creates in place rather than navigating: a plan sheet behind the picker
+    // holds an unsaved draft that navigating away would discard.
+    var creatingForPick by remember { mutableStateOf(false) }
+    var buildingForPick by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { model.load() }
     LaunchedEffect(recentScope) { model.loadRecent(recentScope) }
@@ -153,8 +161,12 @@ fun RecipesLibraryScreen(
                     dietary = model.dietaryValues(),
                     hasMeals = pickableMeals.isNotEmpty(),
                     onFilters = { filters = it },
-                    onNewRecipe = onNewRecipe.takeIf { !picking },
-                    onNewMeal = onNewMeal.takeIf { !picking },
+                    onNewRecipe = if (picking) ({ creatingForPick = true }) else onNewRecipe,
+                    onNewMeal = when {
+                        !picking -> onNewMeal
+                        offer.offersMeal -> ({ buildingForPick = true })
+                        else -> null
+                    },
                 )
             }
             if (filters.any) {
@@ -209,6 +221,73 @@ fun RecipesLibraryScreen(
                 }
             }
         }
+    }
+
+    if (creatingForPick) {
+        PickerFullScreen(onDismiss = { creatingForPick = false }) {
+            RecipeEditorScreen(
+                api = model.api,
+                baseUrl = model.baseUrl,
+                onCancel = { creatingForPick = false },
+                onSaved = { saved ->
+                    creatingForPick = false
+                    scope.launch { model.load() }
+                    onPickRecipe?.invoke(saved)
+                },
+            )
+        }
+    }
+    if (buildingForPick && onPickMeal != null) {
+        PickerFullScreen(onDismiss = { buildingForPick = false }) {
+            PickerMealBuilder(
+                library = model,
+                onCancel = { buildingForPick = false },
+                onUse = { plate ->
+                    buildingForPick = false
+                    scope.launch { model.load() }
+                    onPickMeal(plate)
+                },
+            )
+        }
+    }
+}
+
+/** A full-screen modal over the picker, so creating never navigates away from it. */
+@Composable
+private fun PickerFullScreen(onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(Modifier.fillMaxSize().background(WF.colors.canvas)) { content() }
+    }
+}
+
+/**
+ * The Meal Builder opened from inside a picker: its own role pickers browse the same
+ * library, and "Use this meal" hands the saved plate back to the slot being filled.
+ */
+@Composable
+private fun PickerMealBuilder(library: RecipesModel, onCancel: () -> Unit, onUse: (MealDTO) -> Unit) {
+    val scope = rememberCoroutineScope()
+    val builder = remember { MealBuilderModel(MealBuilderApi.live(library.api)) }
+    var addingTo by remember { mutableStateOf<PlateRole?>(null) }
+    MealBuilderScreen(
+        model = builder,
+        baseUrl = library.baseUrl,
+        onDone = onCancel,
+        onAddDish = { addingTo = it },
+        onUse = onUse,
+    )
+    addingTo?.let { role ->
+        RecipePickerSheet(
+            model = library,
+            title = role.addLabel,
+            onDismiss = { addingTo = null },
+            onPickRecipe = { ref -> scope.launch { builder.addRecipe(ref.id, role) } },
+            onPickMeal = { id, _ -> scope.launch { builder.addSavedMeal(id) } },
+            excludeMealId = builder.mealId,
+        )
     }
 }
 
@@ -333,7 +412,9 @@ private fun LibraryControlsBar(
             active = filters.onlyFavorites,
             onClick = { onFilters(filters.copy(onlyFavorites = !filters.onlyFavorites)) },
         )
-        if (onNewRecipe != null || onNewMeal != null) {
+        if (onNewRecipe != null && onNewMeal == null) {
+            ControlPill(Icons.Filled.Add, "Add", false, onNewRecipe)
+        } else if (onNewRecipe != null || onNewMeal != null) {
             Box {
                 ControlPill(Icons.Filled.Add, "Add", false) { showNew = true }
                 DropdownMenu(

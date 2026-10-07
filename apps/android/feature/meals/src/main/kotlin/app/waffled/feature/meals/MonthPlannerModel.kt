@@ -1,6 +1,7 @@
 package app.waffled.feature.meals
 
 import androidx.compose.runtime.Immutable
+import app.waffled.core.model.HouseholdWeekStart
 import app.waffled.core.network.RefreshBus
 import app.waffled.core.network.RefreshDomain
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,6 +41,8 @@ class MonthPlannerModel(
     val api: MealsApi,
     private val zone: ZoneId = ZoneId.systemDefault(),
     private val locale: Locale = Locale.getDefault(),
+    /** The household's live `week_start` (null until synced, read as Sunday). See [WeekPlannerModel]. */
+    private val firstDay: () -> HouseholdWeekStart?,
     private val refreshBus: RefreshBus? = null,
     private val today: () -> LocalDate = { MealsFormat.today(zone) },
 ) {
@@ -61,15 +64,17 @@ class MonthPlannerModel(
     val monthYearLabel: String get() = MealsFormat.monthYearLabel(_anchor.value, locale)
     val isCurrentMonth: Boolean get() = MealsFormat.monthStart(today()) == monthStart
 
-    /** Su..Sa, matching the Sunday-cut grid. */
-    val weekdaySymbols: List<String> = listOf("Su", "Mo", "Tu", "We", "Th", "Fr", "Sa")
+    private val cut: HouseholdWeekStart get() = firstDay() ?: HouseholdWeekStart.Sunday
+
+    /** The column headings, opening on the household's first day like the grid. */
+    val weekdaySymbols: List<String> get() = MealsFormat.weekdaySymbols(cut)
 
     /** The 42 cells, with their dinners already attached. */
     fun cells(entries: List<WeekEntryDTO>): List<MonthCell> {
         val start = monthStart
         val todayDate = today()
         val byDate = entries.associateBy { it.date }
-        return MealsFormat.monthGridDays(start).map { day ->
+        return MealsFormat.monthGridDays(start, cut).map { day ->
             val key = MealsFormat.ymd(day)
             MonthCell(
                 date = day,
@@ -91,7 +96,7 @@ class MonthPlannerModel(
     suspend fun load() {
         _loading.value = true
         try {
-            val start = MealsFormat.ymd(MealsFormat.monthGridStart(monthStart))
+            val start = MealsFormat.ymd(MealsFormat.monthGridStart(monthStart, cut))
             api.mealsWeekOrNull(start, days = 42)?.let { all ->
                 _entries.value = all.filter { it.mealType == "dinner" }
             }

@@ -532,4 +532,18 @@ class CookSessionStoreTest {
         assertFalse(store.isActive)
         assertTrue(api.cooked.isEmpty())
     }
+
+    @Test
+    fun aTickSurvivesTheProcessAndADishSwitch() {
+        val store = plateStore()
+        store.toggleTick("ing-BBQ Chicken")
+        assertEquals(1, store.tickedCount)
+        store.switchToDish("side")
+        assertEquals(0, store.tickedCount)
+
+        val revived = store()
+        revived.restore()
+        revived.switchToDish("main")
+        assertTrue(revived.isTicked("ing-BBQ Chicken"))
+    }
 }

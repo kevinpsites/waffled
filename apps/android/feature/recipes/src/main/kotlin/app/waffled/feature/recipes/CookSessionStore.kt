@@ -187,6 +187,13 @@ class CookSessionStore(
             mutate { it.withIndex(value) }
         }
 
+    /** Ingredients ticked off as they go in — per dish, like [index]. */
+    fun isTicked(key: String): Boolean = session?.isTicked(key) ?: false
+    fun toggleTick(key: String) {
+        mutate { it.toggleTick(key) }
+    }
+    val tickedCount: Int get() = session?.tickedCount ?: 0
+
     /** One dish's timers — the tab badges and any per-dish view. */
     fun dishTimers(dishId: String): List<CookTimer> = CookSession.timers(timers, dishId)
 

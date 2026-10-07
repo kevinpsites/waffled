@@ -1,5 +1,6 @@
 package app.waffled.feature.meals
 
+import app.waffled.core.model.HouseholdWeekStart
 import app.waffled.core.network.WaffledHttp
 import app.waffled.core.testing.ApiTestHarness
 import io.ktor.client.HttpClient
@@ -27,6 +28,7 @@ class WeekPlannerModelTest {
 
     private val harness = ApiTestHarness()
     private lateinit var client: HttpClient
+    private var firstDay: HouseholdWeekStart? = HouseholdWeekStart.Sunday
     private lateinit var model: WeekPlannerModel
 
     @Before
@@ -37,8 +39,9 @@ class WeekPlannerModelTest {
             api = MealsApi(client, harness.tokens),
             zone = ZoneId.of("UTC"),
             locale = Locale.US,
-            // Pinned so the fixture week can't rot as the real date moves on. Locale.US
-            // cuts the week on Sunday, so this is the week of Sun 2026-07-12.
+            firstDay = { firstDay },
+            // Pinned so the fixture week can't rot as the real date moves on. A Sunday
+            // household, so this is the week of Sun 2026-07-12.
             today = { LocalDate.parse("2026-07-15") },
         )
     }
@@ -196,5 +199,18 @@ class WeekPlannerModelTest {
         val targets = model.moveTargets("2026-07-13", "dinner")
         assertTrue(targets.none { it.date == "2026-07-13" && it.mealType == "dinner" })
         assertEquals("Curry", targets.first { it.date == "2026-07-16" && it.mealType == "dinner" }.occupantTitle)
+    }
+
+    @Test
+    fun `a monday household's week is cut on monday, whatever the device says`() {
+        firstDay = HouseholdWeekStart.Monday
+        assertEquals(LocalDate.parse("2026-07-13"), model.weekStart)
+        assertEquals(LocalDate.parse("2026-07-19"), model.weekDays.last())
+    }
+
+    @Test
+    fun `an unsynced household falls back to a sunday week`() {
+        firstDay = null
+        assertEquals(LocalDate.parse("2026-07-12"), model.weekStart)
     }
 }

@@ -312,13 +312,11 @@ class PlanMonthModel(
     }
 
     /**
-     * The month's nights grouped by the SUNDAY that starts their week, in date order.
-     *
-     * Display grouping only — deliberately not the household cut. See
-     * [MealsFormat.reviewWeekKey].
+     * The month's nights grouped by the household week they fall in, in date order —
+     * the same cut as the planner grid behind the sheet. See [MealsFormat.reviewWeekKey].
      */
     fun weekGroups(cards: List<PlanCardDTO>): List<Pair<String, List<PlanCardDTO>>> =
-        cards.groupBy { MealsFormat.reviewWeekKey(it.date) }
+        cards.groupBy { MealsFormat.reviewWeekKey(it.date, householdWeekStart ?: HouseholdWeekStart.Sunday) }
             .toSortedMap()
             .map { (k, v) -> k to v.sortedBy { it.date } }
 

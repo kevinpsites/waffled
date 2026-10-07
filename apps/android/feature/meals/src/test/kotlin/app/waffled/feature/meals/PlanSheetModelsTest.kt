@@ -51,8 +51,11 @@ class PlanSheetModelsTest {
         weekDays = MealsFormat.weekDays(LocalDate.parse(start)),
     )
 
-    private fun monthModel(start: String = "2026-09-01") = PlanMonthModel(
-        api = api, libraryRecipes = pool, householdWeekStart = HouseholdWeekStart.Sunday,
+    private fun monthModel(
+        start: String = "2026-09-01",
+        firstDay: HouseholdWeekStart? = HouseholdWeekStart.Sunday,
+    ) = PlanMonthModel(
+        api = api, libraryRecipes = pool, householdWeekStart = firstDay,
         familySize = 4, monthStart = start,
     )
 
@@ -309,6 +312,18 @@ class PlanSheetModelsTest {
         val groups = model.weekGroups(model.suggestions.value)
         assertEquals(listOf("2026-08-30", "2026-09-13"), groups.map { it.first })
         assertEquals(listOf("2026-09-02"), groups.first().second.map { it.date })
+    }
+
+    @Test
+    fun `a monday household's review groups by monday weeks`() {
+        val model = monthModel(firstDay = HouseholdWeekStart.Monday)
+        val cards = listOf("2026-09-06", "2026-09-02", "2026-09-07").map {
+            PlanCardDTO(date = it, mealType = "dinner", title = "x")
+        }
+        val groups = model.weekGroups(cards)
+        // Sunday the 6th closes the Aug 31 week; Monday the 7th opens the next.
+        assertEquals(listOf("2026-08-31", "2026-09-07"), groups.map { it.first })
+        assertEquals(listOf("2026-09-02", "2026-09-06"), groups.first().second.map { it.date })
     }
 
     @Test

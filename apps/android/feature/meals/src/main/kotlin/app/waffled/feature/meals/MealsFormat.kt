@@ -1,22 +1,18 @@
 package app.waffled.feature.meals
 
-import java.time.DayOfWeek
+import app.waffled.core.model.HouseholdWeekStart
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.TextStyle
-import java.time.temporal.TemporalAdjusters
-import java.time.temporal.WeekFields
 import java.util.Locale
 
 /**
  * Dates and labels for the planner grids.
  *
- * **These are display grids, never grocery keys.** The week the planner draws is cut on
- * the DEVICE locale's first day (and the month grid on Sunday, matching the web), because
- * that is the week the person looking at the phone expects to see. The grocery list is
- * keyed by the HOUSEHOLD's `week_start` and lives in [GroceryWeeks] — mixing the two is
- * exactly what caused the PlanMonth grocery-rebuild bug. Nothing here may be passed to a
- * `?weekStart=` parameter.
+ * Both grids cut on the HOUSEHOLD's first day, never the device locale: the server keys
+ * the grocery list by that boundary, so a grid cut elsewhere plans a week straddling two
+ * of the household's own. The rebuild keys themselves still come from [GroceryWeeks],
+ * which treats an unsynced household differently (it covers both cuts).
  *
  * Everything is precomputed by the models rather than called from a Composable: date math
  * in a render path is one of the two documented performance traps carried over from iOS.
@@ -26,13 +22,9 @@ object MealsFormat {
     /** Today in the household's timezone — the clock the whole app formats against. */
     fun today(zone: ZoneId): LocalDate = LocalDate.now(zone)
 
-    /**
-     * The first day of [date]'s week under the device locale, stepped by [weekOffset]
-     * weeks. Display only — see the class docs.
-     */
-    fun weekStart(date: LocalDate, weekOffset: Int = 0, locale: Locale = Locale.getDefault()): LocalDate =
-        date.with(TemporalAdjusters.previousOrSame(WeekFields.of(locale).firstDayOfWeek))
-            .plusWeeks(weekOffset.toLong())
+    /** The household's first day of [date]'s week, stepped by [weekOffset] weeks. */
+    fun weekStart(date: LocalDate, firstDay: HouseholdWeekStart, weekOffset: Int = 0): LocalDate =
+        firstDay.weekStart(date).plusWeeks(weekOffset.toLong())
 
     /** The seven days of the week starting at [start]. */
     fun weekDays(start: LocalDate): List<LocalDate> = (0L until 7L).map { start.plusDays(it) }
@@ -40,16 +32,17 @@ object MealsFormat {
     /** The 1st of [date]'s month. */
     fun monthStart(date: LocalDate): LocalDate = date.withDayOfMonth(1)
 
-    /**
-     * The Sunday on or before the 1st — top-left of the 6x7 month grid. Sunday-cut on
-     * purpose: the month grid mirrors the web's, whose weekday header is Su..Sa.
-     */
-    fun monthGridStart(monthStart: LocalDate): LocalDate =
-        monthStart.with(TemporalAdjusters.previousOrSame(DayOfWeek.SUNDAY))
+    /** The household's first day on or before the 1st — top-left of the 6x7 month grid. */
+    fun monthGridStart(monthStart: LocalDate, firstDay: HouseholdWeekStart): LocalDate =
+        firstDay.weekStart(monthStart)
 
     /** The 42 cells of the month grid. */
-    fun monthGridDays(monthStart: LocalDate): List<LocalDate> =
-        monthGridStart(monthStart).let { start -> (0L until 42L).map { start.plusDays(it) } }
+    fun monthGridDays(monthStart: LocalDate, firstDay: HouseholdWeekStart): List<LocalDate> =
+        monthGridStart(monthStart, firstDay).let { start -> (0L until 42L).map { start.plusDays(it) } }
+
+    /** The month grid's two-letter column headings, opening on the household's day. */
+    fun weekdaySymbols(firstDay: HouseholdWeekStart): List<String> =
+        firstDay.rotated(listOf("Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"))
 
     /** `yyyy-MM-dd` — the key every meals endpoint speaks. */
     fun ymd(date: LocalDate): String = date.toString()
@@ -81,17 +74,11 @@ object MealsFormat {
             ?: ymd
 
     /**
-     * The Sunday that starts [ymd]'s week, for GROUPING the month review into weeks.
-     *
-     * Sunday-cut and display-only, deliberately NOT [GroceryWeeks.weekStarts]: this
-     * decides which cards sit under one collapsible header, nothing more. Re-pointing it
-     * at the household cut would change the grouping without changing what is rebuilt,
-     * which is the confusing half of a bug rather than a fix.
+     * The household week [ymd] falls in, for GROUPING the month review under headings that
+     * match the planner grid. Heading only — the rebuild keys are [GroceryWeeks.weekStarts].
      */
-    fun reviewWeekKey(ymd: String): String =
-        runCatching { LocalDate.parse(ymd) }.getOrNull()
-            ?.with(TemporalAdjusters.previousOrSame(DayOfWeek.SUNDAY))?.toString()
-            ?: ymd
+    fun reviewWeekKey(ymd: String, firstDay: HouseholdWeekStart): String =
+        runCatching { LocalDate.parse(ymd) }.getOrNull()?.let { firstDay.weekStart(it).toString() } ?: ymd
 
     /** "Sep 6" — the label on a month-review week header. */
     fun reviewWeekLabel(key: String, locale: Locale = Locale.getDefault()): String =

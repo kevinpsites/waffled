@@ -9,29 +9,56 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * The planner grids' date math.
+ * The planner grids' date math — the Kotlin twin of `PlannerWeekStartTests.swift`.
  *
- * These are DISPLAY grids. The week cut here follows the device locale and the month grid
- * is Sunday-cut like the web's; neither is ever a grocery key. [GroceryWeeks] owns that
- * boundary, and the whole point of keeping them apart is that they legitimately disagree.
+ * Both grids cut on the HOUSEHOLD's first day, never the device locale: the grocery list
+ * is keyed by that boundary, so a grid cut elsewhere plans a week straddling two of the
+ * household's own.
  */
 class MealsFormatTest {
 
-    private val us = Locale.US // week starts Sunday
-    private val gb = Locale.UK // week starts Monday
+    private val mon = HouseholdWeekStart.Monday
+    private val sun = HouseholdWeekStart.Sunday
+    private val midweek = LocalDate.parse("2026-08-19") // a Wednesday
 
     @Test
-    fun `the week grid follows the device locale, not the household`() {
-        val wednesday = LocalDate.parse("2026-08-19")
-        assertEquals(LocalDate.parse("2026-08-16"), MealsFormat.weekStart(wednesday, locale = us))
-        assertEquals(LocalDate.parse("2026-08-17"), MealsFormat.weekStart(wednesday, locale = gb))
+    fun `a monday household's week starts on the monday before`() {
+        assertEquals(LocalDate.parse("2026-08-17"), MealsFormat.weekStart(midweek, mon))
+    }
+
+    @Test
+    fun `a sunday household's week starts on the sunday before`() {
+        assertEquals(LocalDate.parse("2026-08-16"), MealsFormat.weekStart(midweek, sun))
+    }
+
+    @Test
+    fun `a day that is the household's first day is its own week start`() {
+        assertEquals(LocalDate.parse("2026-08-17"), MealsFormat.weekStart(LocalDate.parse("2026-08-17"), mon))
+        assertEquals(LocalDate.parse("2026-08-16"), MealsFormat.weekStart(LocalDate.parse("2026-08-16"), sun))
+    }
+
+    @Test
+    fun `a monday household's sunday belongs to the week that just ended`() {
+        val sunday = LocalDate.parse("2026-08-23")
+        assertEquals(LocalDate.parse("2026-08-17"), MealsFormat.weekStart(sunday, mon))
+        assertEquals(LocalDate.parse("2026-08-23"), MealsFormat.weekStart(sunday, sun))
+    }
+
+    @Test
+    fun `the week grid ignores the device locale`() {
+        val saved = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.UK) // a Monday-first device
+            assertEquals(LocalDate.parse("2026-08-16"), MealsFormat.weekStart(midweek, sun))
+        } finally {
+            Locale.setDefault(saved)
+        }
     }
 
     @Test
     fun `stepping the week grid moves whole weeks`() {
-        val d = LocalDate.parse("2026-08-19")
-        assertEquals(LocalDate.parse("2026-08-23"), MealsFormat.weekStart(d, weekOffset = 1, locale = us))
-        assertEquals(LocalDate.parse("2026-08-09"), MealsFormat.weekStart(d, weekOffset = -1, locale = us))
+        assertEquals(LocalDate.parse("2026-08-23"), MealsFormat.weekStart(midweek, sun, weekOffset = 1))
+        assertEquals(LocalDate.parse("2026-08-09"), MealsFormat.weekStart(midweek, sun, weekOffset = -1))
     }
 
     @Test
@@ -41,40 +68,41 @@ class MealsFormatTest {
         assertEquals(LocalDate.parse("2026-08-22"), days.last())
     }
 
-    /** The month grid is always 42 cells starting on the Sunday on or before the 1st. */
     @Test
-    fun `the month grid starts on the sunday before the first`() {
+    fun `the month grid starts on the household's first day on or before the 1st`() {
         // September 2026 starts on a Tuesday.
         val start = MealsFormat.monthStart(LocalDate.parse("2026-09-17"))
         assertEquals(LocalDate.parse("2026-09-01"), start)
-        assertEquals(LocalDate.parse("2026-08-30"), MealsFormat.monthGridStart(start))
-        val grid = MealsFormat.monthGridDays(start)
+        assertEquals(LocalDate.parse("2026-08-31"), MealsFormat.monthGridStart(start, mon))
+        assertEquals(LocalDate.parse("2026-08-30"), MealsFormat.monthGridStart(start, sun))
+        val grid = MealsFormat.monthGridDays(start, mon)
         assertEquals(42, grid.size)
-        assertEquals(LocalDate.parse("2026-08-30"), grid.first())
+        assertEquals(LocalDate.parse("2026-08-31"), grid.first())
     }
 
-    /** A month that already begins on a Sunday does not gain a blank leading week. */
     @Test
-    fun `a month starting on sunday needs no lead-in`() {
-        val start = MealsFormat.monthStart(LocalDate.parse("2026-11-15")) // Nov 1 2026 is a Sunday
-        assertEquals(start, MealsFormat.monthGridStart(start))
+    fun `a month starting on the household's first day needs no lead-in`() {
+        val nov = MealsFormat.monthStart(LocalDate.parse("2026-11-15")) // Nov 1 2026 is a Sunday
+        assertEquals(nov, MealsFormat.monthGridStart(nov, sun))
+        assertEquals(LocalDate.parse("2026-10-26"), MealsFormat.monthGridStart(nov, mon))
     }
 
-    /**
-     * The month review's week grouping is Sunday-cut and separate from the grocery cut on
-     * purpose — it only decides which cards sit under one header.
-     */
     @Test
-    fun `the review week key groups on sunday regardless of household`() {
-        assertEquals("2026-08-16", MealsFormat.reviewWeekKey("2026-08-17"))
-        assertEquals("2026-08-16", MealsFormat.reviewWeekKey("2026-08-22"))
-        // …and the grocery cut for a Monday household genuinely disagrees.
-        assertEquals(listOf("2026-08-17"), GroceryWeeks.weekStarts(listOf("2026-08-17"), HouseholdWeekStart.Monday))
+    fun `the weekday headings are read from the household's first day`() {
+        assertEquals(listOf("Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"), MealsFormat.weekdaySymbols(sun))
+        assertEquals(listOf("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"), MealsFormat.weekdaySymbols(mon))
+    }
+
+    @Test
+    fun `the review week key groups on the household's week`() {
+        assertEquals("2026-08-16", MealsFormat.reviewWeekKey("2026-08-17", sun))
+        assertEquals("2026-08-17", MealsFormat.reviewWeekKey("2026-08-17", mon))
+        assertEquals("2026-08-17", MealsFormat.reviewWeekKey("2026-08-23", mon))
     }
 
     @Test
     fun `unparseable dates fall back to the raw key rather than throwing`() {
-        assertEquals("not-a-date", MealsFormat.reviewWeekKey("not-a-date"))
+        assertEquals("not-a-date", MealsFormat.reviewWeekKey("not-a-date", sun))
         assertEquals("", MealsFormat.reviewDayLabel(""))
         assertEquals("nope", MealsFormat.reviewWeekLabel("nope"))
     }

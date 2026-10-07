@@ -52,7 +52,7 @@ data class LibraryRow(
  */
 class RecipesModel(
     val api: RecipesApi,
-    private val baseUrl: String,
+    val baseUrl: String,
     private val refreshBus: RefreshBus? = null,
 ) {
 

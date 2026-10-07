@@ -165,4 +165,24 @@ class MealLibraryTest {
     fun aWhitespaceQueryIsNoQueryAtAll() {
         assertEquals(4, entries(LibraryFilters(query = "   ")).size)
     }
+
+    // ---- what the library's ＋ offers (LibraryNewOfferTests) -------------------------
+
+    @Test
+    fun browsingOffersBoth() {
+        assertEquals(LibraryNewOffer.RecipeAndMeal, LibraryNewOffer.of(canPickMeal = true))
+    }
+
+    @Test
+    fun aPickerThatCanTakeAPlateOffersToBuildOne() {
+        assertTrue(LibraryNewOffer.of(canPickMeal = true).offersMeal)
+    }
+
+    @Test
+    fun aPickerThatCannotTakeAPlateOffersOnlyARecipe() {
+        val offer = LibraryNewOffer.of(canPickMeal = false)
+        assertEquals(LibraryNewOffer.RecipeOnly, offer)
+        assertFalse(offer.offersMeal)
+        assertTrue(offer.offersRecipe)
+    }
 }
