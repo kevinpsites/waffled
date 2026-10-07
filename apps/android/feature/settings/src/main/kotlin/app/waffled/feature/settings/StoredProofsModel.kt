@@ -47,6 +47,7 @@ class StoredProofsModel(
         action: suspend () -> Unit,
         apply: (List<SettingsApi.StoredProof>) -> List<SettingsApi.StoredProof>,
     ): Boolean {
+        if (busy) return false
         _state.update { it.copy(busy = true, errorMessage = null) }
         val ok = runCatching { action() }.isSuccess
         _state.update {
