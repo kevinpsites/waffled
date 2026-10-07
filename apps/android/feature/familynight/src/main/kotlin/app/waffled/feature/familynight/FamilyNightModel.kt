@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import java.text.BreakIterator
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -40,6 +41,19 @@ object FamilyNightFormat {
     }
 
     fun hhmm(minutes: Int): String = String.format(Locale.ROOT, "%02d:%02d", minutes / 60, minutes % 60)
+
+    /** The first [count] user-perceived characters — `take` would split an emoji's surrogates. */
+    fun emojiPrefix(s: String, count: Int = 2): String {
+        val breaks = BreakIterator.getCharacterInstance()
+        breaks.setText(s)
+        var end = 0
+        repeat(count) {
+            val next = breaks.next()
+            if (next == BreakIterator.DONE) return s
+            end = next
+        }
+        return s.substring(0, end)
+    }
 }
 
 @Immutable

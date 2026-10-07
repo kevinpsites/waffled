@@ -173,6 +173,13 @@ class FamilyNightApiTest {
     }
 
     @Test
+    fun `the emoji field keeps two characters, not two UTF-16 units`() {
+        assertEquals("🎲🍦", FamilyNightFormat.emojiPrefix("🎲🍦x"))
+        assertEquals("🇺🇸🎲", FamilyNightFormat.emojiPrefix("🇺🇸🎲🍦"))
+        assertEquals("a", FamilyNightFormat.emojiPrefix("a"))
+    }
+
+    @Test
     fun `decoding tolerates a server that omits detail`() {
         val a = WaffledJson.decodeFromString(
             FamilyNightApi.Assignment.serializer(),
