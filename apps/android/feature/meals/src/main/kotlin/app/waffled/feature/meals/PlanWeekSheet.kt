@@ -32,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -90,11 +91,15 @@ fun PlanWeekSheet(
      */
     onApply: (suspend (List<PlanCardDTO>) -> Boolean)? = null,
 ) {
+    // The model outlives recompositions, so it forwards to the host's LATEST hook rather than
+    // capturing the first lambda it saw.
+    val currentOnApply by rememberUpdatedState(onApply)
     val model = remember(start) {
         PlanWeekModel(
             api = api, libraryRecipes = libraryRecipes, householdWeekStart = householdWeekStart,
             familySize = familySize, start = start, weekDays = weekDays,
-            seedUseUp = seedUseUp, mealTypes = mealTypes, initialDays = initialDays, onApply = onApply,
+            seedUseUp = seedUseUp, mealTypes = mealTypes, initialDays = initialDays,
+            onApply = onApply?.let { { cards -> currentOnApply?.invoke(cards) ?: false } },
         )
     }
     val scope = rememberCoroutineScope()
