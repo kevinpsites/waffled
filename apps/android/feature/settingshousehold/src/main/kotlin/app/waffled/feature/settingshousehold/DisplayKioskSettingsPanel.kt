@@ -84,10 +84,13 @@ fun DisplayKioskSettingsPanel(api: SettingsHouseholdApi, isParent: Boolean, modi
         delay(600)
         val normalized = runCatchingIo { api.setDisplayConfig(snapshot) } ?: return@LaunchedEffect
         dirty = false
+        // Outside this effect: assigning cfg restarts it, which would strand the flash on.
+        scope.launch {
+            savedFlash = true
+            delay(1800)
+            savedFlash = false
+        }
         cfg = normalized
-        savedFlash = true
-        delay(1800)
-        savedFlash = false
     }
 
     fun edit(change: (SettingsHouseholdApi.DisplayConfig) -> SettingsHouseholdApi.DisplayConfig) {
