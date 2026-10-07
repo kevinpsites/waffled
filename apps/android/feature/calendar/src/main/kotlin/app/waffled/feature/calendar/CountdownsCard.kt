@@ -57,6 +57,11 @@ fun CountdownsCard(
     model: CountdownsModel,
     modifier: Modifier = Modifier,
     onOpenEvent: (eventId: String) -> Unit = {},
+    /**
+     * Bumped when something that feeds a countdown changed elsewhere on screen — a rhythm
+     * marked done moves its due date, and the chip beside it must not keep the old one.
+     */
+    refreshKey: Any? = null,
 ) {
     val scope = rememberCoroutineScope()
     val items by model.itemsState.collectAsStateWithLifecycle()
@@ -67,7 +72,7 @@ fun CountdownsCard(
     var editing by remember { mutableStateOf<CalendarApi.Countdown?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) { if (!loaded) model.load() }
+    LaunchedEffect(refreshKey) { if (!loaded || refreshKey != null) model.load() }
 
     WaffledCard(modifier = modifier, padding = 15.dp) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
