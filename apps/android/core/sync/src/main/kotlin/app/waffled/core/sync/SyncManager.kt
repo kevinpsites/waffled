@@ -76,6 +76,9 @@ class SyncManager(
      */
     val pendingUploads: StateFlow<Int> = _pendingUploads.asStateFlow()
 
+    /** The last queued write the server refused for good (dropped so the queue drains). */
+    val lastUploadRejection: StateFlow<UploadRejection?> = connector.lastRejection
+
     private val lifecycle = SyncLifecycle(
         open = { openWithRetry() },
         connect = { db -> db.connect(connector) },

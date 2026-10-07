@@ -1,9 +1,12 @@
 package app.waffled.core.auth
 
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import java.security.KeyStore
+import java.security.UnrecoverableKeyException
 import java.util.Base64
+import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -36,8 +39,9 @@ interface TokenCrypto {
  * 26 (our minSdk) and, unlike the Android one, is real on the JVM — so this class stays
  * unit-testable instead of needing a device.
  *
- * Anything unreadable — tampering, or a Keystore key lost to a device restore — is
- * treated as "signed out" and **cleared**, rather than left on disk to fail forever.
+ * A blob that can never decrypt — tampering, or a Keystore key lost to a device restore —
+ * is treated as "signed out" and **cleared**, rather than left on disk to fail forever. A
+ * transient Keystore error reads as null but keeps the blob.
  */
 class EncryptedTokenStore(
     private val prefs: KeyValueStore,
@@ -46,14 +50,23 @@ class EncryptedTokenStore(
 
     override fun load(): TokenPair? {
         val encoded = prefs.getString(KEY) ?: return null
-        return runCatching {
+        return try {
             val plain = crypto.decrypt(Base64.getDecoder().decode(encoded))
             decode(plain)
-        }.getOrElse {
-            // Undecryptable: clear it so we don't retry a dead blob on every launch.
-            clear()
+        } catch (e: Exception) {
+            // Clear only a blob that can never decrypt, so it isn't retried every launch;
+            // a transient Keystore failure keeps it for the next read.
+            if (isPermanent(e)) clear()
             null
         }
+    }
+
+    private fun isPermanent(e: Exception): Boolean = when (e) {
+        // A lost or regenerated key fails the GCM tag; an invalidated one says so.
+        is AEADBadTagException, is KeyPermanentlyInvalidatedException, is UnrecoverableKeyException -> true
+        // Not base64, or an envelope that doesn't parse: corrupt, not busy.
+        is IllegalArgumentException, is IndexOutOfBoundsException -> true
+        else -> false
     }
 
     override fun save(tokens: TokenPair) {

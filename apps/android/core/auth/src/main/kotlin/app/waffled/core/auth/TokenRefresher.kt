@@ -1,5 +1,6 @@
 package app.waffled.core.auth
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -30,9 +31,15 @@ class InMemoryTokenStore : TokenStore {
     override fun clear() { tokens = null }
 }
 
+/** The refresh could not be attempted or answered (offline, 5xx) — the session is NOT over. */
+class RefreshUnavailableException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
 /** The single network call a refresh needs, kept as a seam so this stays unit-testable. */
 interface RefreshBackend {
-    /** `POST /api/auth/refresh`. Returns the rotated pair, or null if it was rejected. */
+    /**
+     * `POST /api/auth/refresh`. Returns the rotated pair, or null if the refresh token was
+     * rejected. Throws [RefreshUnavailableException] when the server couldn't be asked.
+     */
     suspend fun refresh(refreshToken: String): TokenPair?
 }
 
@@ -54,7 +61,8 @@ class TokenRefresher(
     var onAuthExpired: (() -> Unit)? = null
 
     /**
-     * Returns the fresh pair, or null if the session is finished.
+     * Returns the fresh pair, or null when there is none to use right now — the session
+     * ended, or the server couldn't be reached (tokens kept for the next attempt).
      *
      * Pass [failedAccessToken] — the token that actually got the 401. Inside the lock we
      * compare it against what is stored: if they differ, somebody already refreshed and
@@ -77,7 +85,20 @@ class TokenRefresher(
             return@withLock current
         }
 
-        val rotated = backend.refresh(current.refreshToken)
+        val rotated = try {
+            backend.refresh(current.refreshToken)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Offline or a 5xx: keep the tokens, as iOS does; the next 401 tries again.
+            return@withLock null
+        }
+
+        // A sign-out or adopt landed while the call was in flight (only this lock rotates):
+        // that session wins, and this outcome belonged to the one it replaced. Null, not the
+        // new pair, so the old principal's request is never replayed under it.
+        if (store.load() != current) return@withLock null
+
         if (rotated == null) {
             // The refresh token is dead. Don't leave it on disk to be retried.
             store.clear()

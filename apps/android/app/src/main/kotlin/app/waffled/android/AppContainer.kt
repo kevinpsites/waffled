@@ -48,6 +48,8 @@ import app.waffled.feature.rewards.RewardsApi
 import app.waffled.feature.rewards.RewardsModel
 import app.waffled.android.session.HouseholdApi
 import app.waffled.android.session.IdentityStore
+import app.waffled.android.session.MirrorBoundary
+import app.waffled.android.session.SignInAdoption
 import app.waffled.feature.goals.GoalsApi
 import app.waffled.feature.goals.GoalsModel
 import app.waffled.feature.lists.TodayListModel
@@ -83,6 +85,7 @@ import app.waffled.feature.settingshousehold.SettingsHouseholdApi
 import app.waffled.feature.settingshousehold.create
 import java.time.ZoneId
 import io.ktor.client.HttpClient
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -168,7 +171,13 @@ class AppContainer(context: Context) {
             context = context.applicationContext,
             connector = WaffledConnector(KtorSyncBackend(httpClient, auth)),
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-        )
+        ).also { manager ->
+            appScope.launch {
+                manager.lastUploadRejection.collect { r ->
+                    if (r != null) Log.w("WaffledSync", "Dropped a write the server refused (${r.status}): ${r.message}")
+                }
+            }
+        }
     }
 
     /**
@@ -397,10 +406,48 @@ class AppContainer(context: Context) {
     suspend fun adoptHouseholdSession(accessToken: String, refreshToken: String): Boolean {
         val ok = syncManager.rescope(clearLocal = true) { auth.adopt(TokenPair(accessToken, refreshToken)) }
         if (!ok) return false
+        mirrorBoundary.record(currentPrincipal())
         identity.clear()
         newSessionScope()
         identity.load()
         return true
+    }
+
+    // ---- Mirror ownership -----------------------------------------------------------
+
+    val mirrorBoundary: MirrorBoundary by lazy {
+        MirrorBoundary(
+            store = keyValueStore,
+            pendingUploads = { syncManager.pendingUploadCount() },
+            rescope = { clear, adopt -> syncManager.rescope(clear, adopt) },
+        )
+    }
+
+    private fun currentPrincipal(): String? =
+        tokenStore.load()?.let { MirrorBoundary.principalOf(serverAddress.baseUrl(), it.accessToken) }
+
+    /** The shell's sync start: whoever is signed in now is who fills the mirror. */
+    suspend fun startSync() {
+        mirrorBoundary.record(currentPrincipal())
+        syncManager.start()
+    }
+
+    /**
+     * Password sign-in's adopt. A different principal than the mirror's wipes it first;
+     * returns the message to show when that has to be refused.
+     */
+    suspend fun adoptSignIn(tokens: TokenPair): String? {
+        val principal = MirrorBoundary.principalOf(serverAddress.baseUrl(), tokens.accessToken)
+        return when (val result = mirrorBoundary.adopt(principal) { auth.adopt(tokens) }) {
+            SignInAdoption.Adopted -> null
+            is SignInAdoption.PendingUploads -> {
+                val n = result.count
+                "$n change${if (n == 1) "" else "s"} from the previous account " +
+                    "${if (n == 1) "hasn't" else "haven't"} synced yet. Sign in as that account " +
+                    "to finish syncing, then switch."
+            }
+            SignInAdoption.TeardownFailed -> "Couldn't clear the previous account's data from this device. Try again."
+        }
     }
 
     // ---- Session phase -------------------------------------------------------------
@@ -468,6 +515,7 @@ class AppContainer(context: Context) {
             val ok = syncManager.rescope(clearLocal = clear) { auth.adopt(TokenPair(accessToken, refreshToken)) }
             if (!ok) return false
             if (clear) kioskServerChanged = false
+            mirrorBoundary.record(currentPrincipal())
             identity.clear()
             newSessionScope()
             sessionPhase.value = SessionPhase.SignedIn(emptyList())

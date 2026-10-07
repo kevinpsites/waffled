@@ -77,7 +77,7 @@ fun AppShell(
     val saveable = rememberSaveableStateHolder()
 
     // Only the synced tables go through PowerSync; identity + module flags are REST.
-    LaunchedEffect(Unit) { container.syncManager.start() }
+    LaunchedEffect(Unit) { container.startSync() }
     LaunchedEffect(Unit) { container.refreshSurfaces() }
     // Touching it binds reminders to sync once per process.
     LaunchedEffect(Unit) { container.eventReminders }

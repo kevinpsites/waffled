@@ -1,5 +1,6 @@
 package app.waffled.core.sync
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
@@ -9,6 +10,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -30,12 +32,13 @@ class SyncLifecycleTest {
     private class Rig(scope: CoroutineScope) {
         val db = FakeDb()
         var opens = 0
+        var openFails = false
         val states = mutableListOf<SyncState>()
         val resets = mutableListOf<Boolean>()
         val watchers = mutableListOf<Job>()
 
         val lifecycle = SyncLifecycle(
-            open = { opens++; db },
+            open = { opens++; if (openFails) null else db },
             connect = { it.connects++ },
             disconnect = { it.disconnects++ },
             clear = { if (it.failClear) error("locked") else it.clears++ },
@@ -120,10 +123,46 @@ class SyncLifecycleTest {
     }
 
     @Test
-    fun stoppingBeforeAnyStartSucceeds() = runTest {
+    fun aPlainStopBeforeAnyStartSucceedsWithoutOpening() = runTest {
+        val rig = rig()
+        assertTrue(rig.lifecycle.stop())
+        assertEquals(0, rig.opens)
+    }
+
+    @Test
+    fun aClearingStopBeforeAnyStartOpensAndWipesTheMirror() = runTest {
+        // Cold start: the database file still holds the previous scope's rows even
+        // though nothing has opened it yet this process.
         val rig = rig()
         assertTrue(rig.lifecycle.stop(clearLocal = true))
-        assertEquals(0, rig.opens)
+        assertEquals(1, rig.opens)
+        assertEquals(1, rig.db.clears)
+    }
+
+    @Test
+    fun aClearingStopBeforeAnyStartStillRefusesWhileUploadsAreQueued() = runTest {
+        val rig = rig()
+        rig.db.pending = 1
+        assertFalse(rig.lifecycle.stop(clearLocal = true))
+        assertEquals(0, rig.db.clears)
+    }
+
+    @Test
+    fun aClearingStopFailsClosedWhenTheDatabaseCannotOpen() = runTest {
+        val rig = rig()
+        rig.openFails = true
+        assertFalse(rig.lifecycle.stop(clearLocal = true))
+        assertFalse(rig.lifecycle.rescope(clearLocal = true) {})
+    }
+
+    @Test
+    fun pendingUploadsBeforeAnyStartReadTheQueueOnDisk() = runTest {
+        val rig = rig()
+        rig.db.pending = 2
+        assertEquals(2, rig.lifecycle.pendingUploadCount())
+        // Opened once, and the same handle is reused by the next start.
+        rig.lifecycle.start()
+        assertEquals(1, rig.opens)
     }
 
     @Test
@@ -174,5 +213,31 @@ class SyncLifecycleTest {
         rig.lifecycle.start()
         rig.db.pending = 3
         assertEquals(3, rig.lifecycle.pendingUploadCount())
+    }
+
+    @Test
+    fun aRescopeWhoseAdoptThrowsStillRestartsSync() = runTest {
+        val rig = rig()
+        rig.lifecycle.start()
+
+        assertFailsWith<IllegalStateException> {
+            rig.lifecycle.rescope(clearLocal = false) { error("keystore write failed") }
+        }
+
+        // The old session's credentials are still installed; leaving sync stopped would
+        // strand the device offline until a relaunch.
+        assertEquals(2, rig.db.connects)
+    }
+
+    @Test
+    fun aRescopeCancelledDuringAdoptStillRestartsSync() = runTest {
+        val rig = rig()
+        rig.lifecycle.start()
+
+        assertFailsWith<CancellationException> {
+            rig.lifecycle.rescope(clearLocal = false) { throw CancellationException("left") }
+        }
+
+        assertEquals(2, rig.db.connects)
     }
 }
