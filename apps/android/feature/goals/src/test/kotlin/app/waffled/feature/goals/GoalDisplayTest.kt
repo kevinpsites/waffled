@@ -150,6 +150,42 @@ class GoalDisplayTest {
         assertEquals("of 1000 miles", GoalDisplay.targetCaption(total, unit = "miles", fmt = ::goalFmt))
     }
 
+    // ---- milestones: the axis the SERVER used to decide `reached` -----------------
+
+    @Test
+    fun habitMilestonesAreMeasuredInStreakDays() {
+        // A habit's "🔥 7 days" counts days in a row, never lifetime logs.
+        val g = goal("habit", target = 5.0, totalProgress = 99.0, habitPeriod = "week",
+            habitTargetPerPeriod = 5, periodDone = 2.0, streakDays = 3)
+        assertEquals(3.0, GoalDisplay.milestoneAxis(g))
+        assertEquals("4-day streak to go", GoalDisplay.milestoneToGo(g, threshold = 7.0, fmt = ::goalFmt))
+    }
+
+    @Test
+    fun checklistMilestonesAreMeasuredInPercentComplete() {
+        val g = goal("checklist", totalProgress = 3.0, stepTotal = 5, stepDone = 3)
+        assertEquals(60.0, GoalDisplay.milestoneAxis(g))
+        assertEquals("15% to go", GoalDisplay.milestoneToGo(g, threshold = 75.0, fmt = ::goalFmt))
+    }
+
+    @Test
+    fun emptyChecklistIsZeroPercentNotADivideByZero() {
+        assertEquals(0.0, GoalDisplay.milestoneAxis(goal("checklist", stepTotal = 0, stepDone = 0)))
+    }
+
+    @Test
+    fun numericMilestonesStayOnTheCumulativeTotal() {
+        val g = goal("total", target = 1000.0, totalProgress = 312.0)
+        assertEquals(312.0, GoalDisplay.milestoneAxis(g))
+        assertEquals("188 to go", GoalDisplay.milestoneToGo(g, threshold = 500.0, fmt = ::goalFmt))
+    }
+
+    @Test
+    fun aPassedMilestoneNeverReadsNegative() {
+        val g = goal("total", target = 1000.0, totalProgress = 900.0)
+        assertEquals("0 to go", GoalDisplay.milestoneToGo(g, threshold = 500.0, fmt = ::goalFmt))
+    }
+
     @Test
     fun anEachTracksSpotlightSumsEveryonesOwnTarget() {
         val g = goal("habit", target = 5.0, people = 3)

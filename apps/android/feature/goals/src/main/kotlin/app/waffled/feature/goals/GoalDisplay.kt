@@ -80,6 +80,30 @@ object GoalDisplay {
         }
     }
 
+    /**
+     * The value a milestone threshold is measured against — the SAME axis the server used
+     * to decide `reached`: streak days for a habit, percent complete for a checklist, the
+     * cumulative total otherwise.
+     */
+    fun milestoneAxis(g: GoalDisplayable): Double = when (g.goalType) {
+        "habit" -> g.streakDays.toDouble()
+        "checklist" -> {
+            val total = g.stepTotal ?: 0
+            if (total > 0) (g.stepDone ?: 0).toDouble() / total * 100 else 0.0
+        }
+        else -> g.totalProgress
+    }
+
+    /** "4-day streak to go", "15% to go", "188 to go". Never negative. */
+    fun milestoneToGo(g: GoalDisplayable, threshold: Double, fmt: (Double?) -> String): String {
+        val toGo = maxOf(0.0, threshold - milestoneAxis(g))
+        return when (g.goalType) {
+            "habit" -> "${fmt(toGo)}-day streak to go"
+            "checklist" -> "${kotlin.math.ceil(toGo).toInt()}% to go"
+            else -> "${fmt(toGo)} to go"
+        }
+    }
+
     /** "of 5 this week" for a habit, "of 5 steps" for a checklist, "of 1,000 miles" otherwise. */
     fun targetCaption(g: GoalDisplayable, unit: String?, fmt: (Double?) -> String): String {
         val base = "of ${fmt(target(g))}"

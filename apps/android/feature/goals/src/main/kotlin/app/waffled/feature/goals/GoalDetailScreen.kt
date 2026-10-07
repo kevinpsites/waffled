@@ -214,7 +214,7 @@ fun GoalDetailScreen(
             dataView(state.series)
 
             if (!detail?.milestones.isNullOrEmpty()) {
-                MilestoneCard(milestones = detail.milestones, progress = progress)
+                MilestoneCard(milestones = detail.milestones, displayed = model.displayed)
             }
 
             RecentActivityCard(
@@ -492,7 +492,7 @@ private fun DetailCard(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun MilestoneCard(milestones: List<GoalsApi.GoalDetail.Milestone>, progress: Double) {
+private fun MilestoneCard(milestones: List<GoalsApi.GoalDetail.Milestone>, displayed: GoalDisplayable) {
     val firstUnreached = milestones.indexOfFirst { !it.reached }
     DetailCard {
         Text("Milestones", style = WF.type.cardTitle, color = WF.colors.ink)
@@ -528,7 +528,7 @@ private fun MilestoneCard(milestones: List<GoalsApi.GoalDetail.Milestone>, progr
                 Text(
                     text = when {
                         m.reached -> "reached"
-                        isNow -> "${goalFmt(m.threshold - progress)} to go"
+                        isNow -> GoalDisplay.milestoneToGo(displayed, m.threshold, ::goalFmt)
                         else -> m.rewardText?.takeIf { it.isNotBlank() } ?: "—"
                     },
                     style = WF.type.caption,
