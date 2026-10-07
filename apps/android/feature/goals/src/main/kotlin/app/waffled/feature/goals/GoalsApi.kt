@@ -334,8 +334,21 @@ class GoalsApi(
         val goalEmoji: String? = null,
         /** memory | keyword | llm */
         val via: String? = null,
+        /** Title words the person can pick to ignore for this goal; empty from an older server. */
+        val ignoreWords: List<String> = emptyList(),
     ) {
         val id: String get() = eventId
+    }
+
+    /** One goal's ignored suggestion words — the Settings list. */
+    @Serializable
+    data class IgnoreGroup(
+        val goalId: String,
+        val goalTitle: String = "",
+        val goalEmoji: String? = null,
+        val words: List<String> = emptyList(),
+    ) {
+        val id: String get() = goalId
     }
 
     /** A live single-event goal match for the event editor's inline hint. Read-only. */
@@ -362,6 +375,7 @@ class GoalsApi(
     @Serializable private data class RecapEnvelope(val items: List<GoalRecapItem> = emptyList())
     @Serializable private data class SuggestEnvelope(val items: List<GoalSuggestionItem> = emptyList())
     @Serializable private data class SuggestOneEnvelope(val suggestion: GoalSuggestOne? = null)
+    @Serializable private data class IgnoreGroupsEnvelope(val groups: List<IgnoreGroup> = emptyList())
 
     // ---- lists -----------------------------------------------------------------
 
@@ -570,6 +584,33 @@ class GoalsApi(
     suspend fun dismissSuggestion(eventId: String) {
         sendUnit(HttpMethod.Post, "api/goal-calendar/suggestions/dismiss") {
             jsonBody(buildJsonObject { put("eventId", eventId) })
+        }
+    }
+
+    /** Never suggest events containing any of [words] for this goal again. */
+    suspend fun ignoreSuggestionWords(goalId: String, words: List<String>) {
+        sendUnit(HttpMethod.Post, "api/goal-calendar/suggestions/ignore") {
+            jsonBody(
+                buildJsonObject {
+                    put("goalId", goalId)
+                    put("words", stringArray(words))
+                },
+            )
+        }
+    }
+
+    /** The words ignored per goal for calendar suggestions (Settings → AI & Capture). */
+    suspend fun goalSuggestionIgnores(): List<IgnoreGroup> =
+        send<IgnoreGroupsEnvelope>(HttpMethod.Get, "api/goal-calendar/ignores").groups
+
+    suspend fun removeGoalSuggestionIgnore(goalId: String, word: String) {
+        sendUnit(HttpMethod.Post, "api/goal-calendar/ignores/remove") {
+            jsonBody(
+                buildJsonObject {
+                    put("goalId", goalId)
+                    put("word", word)
+                },
+            )
         }
     }
 
