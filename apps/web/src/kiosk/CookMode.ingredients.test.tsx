@@ -66,7 +66,31 @@ const closeAll = () => fireEvent.click(screen.getByRole('button', { name: 'Close
 // A chip and its list row deliberately read the same ("4 cloves garlic"), so every
 // query says which of the two it means.
 const list = () => within(document.querySelector('.modal-card') as HTMLElement)
-const stage = () => within(document.querySelector('.cm-stage') as HTMLElement)
+// The step's ingredients sit in their own column beside the step, as on the iPad.
+const stage = () => within(document.querySelector('.cm-side') as HTMLElement)
+
+describe('CookMode — the step’s ingredients have their own column', () => {
+  it('puts them in a column beside the step, not under the instruction', async () => {
+    mockRecipe([{ stepNumber: 1, instruction: 'Sweat the garlic', ingredients: ['4 cloves garlic'] }])
+    renderCook()
+    await screen.findByText('Sweat the garlic')
+
+    const side = document.querySelector('.cm-side') as HTMLElement
+    expect(side).toBeTruthy()
+    expect(within(side).getByText('Ingredients')).toBeTruthy()
+    expect(within(side).getByRole('checkbox', { name: '4 cloves garlic' })).toBeTruthy()
+    // The instruction's own column no longer carries them.
+    const main = document.querySelector('.cm-stage') as HTMLElement
+    expect(within(main).queryByRole('checkbox')).toBeNull()
+  })
+
+  it('draws no column for a step that names no ingredients', async () => {
+    mockRecipe([{ stepNumber: 1, instruction: 'Preheat the oven' }])
+    renderCook()
+    await screen.findByText('Preheat the oven')
+    expect(document.querySelector('.cm-side')).toBeNull()
+  })
+})
 
 describe('CookMode — ingredients you can tick off', () => {
   it('ticks an ingredient off the full list', async () => {

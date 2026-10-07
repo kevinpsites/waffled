@@ -390,34 +390,36 @@ function CookSession({
       {header}
       <div className="cm-progress"><span style={{ width: `${pct}%` }} /></div>
 
+      {/* The step's ingredients get their own column on the LEFT, as on the iPad
+          (CookModeView.ingredientsSidebar): a full-width row per ingredient whose text wraps,
+          where a pill would cut a long name mid-word. Stacks under the step on a narrow screen. */}
+      <div className={`cm-body${step.ingredients.length > 0 ? ' has-side' : ''}`}>
+      {step.ingredients.length > 0 && (
+        <aside className="cm-side" aria-label="Ingredients for this step">
+          <div className="cm-side-label">Ingredients</div>
+          {step.ingredients.map((ig, k) => {
+            const key = ingredientKey(ig, ingredients)
+            const on = ticked.has(key)
+            return (
+              <button
+                key={k}
+                type="button"
+                role="checkbox"
+                aria-checked={on}
+                className={`cm-side-row ${on ? 'on' : ''}`}
+                onClick={() => onTick(key)}
+              >
+                <span className="cm-ing-box" aria-hidden="true">{on ? CHECK : null}</span>
+                <span className="cm-side-nm">{chipLabel(ig, ingredients)}</span>
+              </button>
+            )
+          })}
+        </aside>
+      )}
+
       <div className="cm-stage">
         <div className="cm-step-n">Step {at + 1}</div>
         <div className="cm-instruction wf-serif">{step.instruction}</div>
-
-        {step.ingredients.length > 0 && (
-          <div className="cm-ings">
-            <div className="cm-ings-label">For this step</div>
-            <div className="cm-ings-row">
-              {step.ingredients.map((ig, k) => {
-                const key = ingredientKey(ig, ingredients)
-                const on = ticked.has(key)
-                return (
-                  <button
-                    key={k}
-                    type="button"
-                    role="checkbox"
-                    aria-checked={on}
-                    className={`cm-ing-chip ${on ? 'on' : ''}`}
-                    onClick={() => onTick(key)}
-                  >
-                    <span className="cm-ing-box" aria-hidden="true">{on ? CHECK : null}</span>
-                    <span>{chipLabel(ig, ingredients)}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
 
         {step.note && <div className="cm-note">📝 {step.note}</div>}
 
@@ -431,6 +433,7 @@ function CookSession({
         ) : (
           <AddTimer key={at} onStart={(secs) => onStartTimer(at, secs)} />
         )}
+      </div>
       </div>
 
       <div className="cm-controls">

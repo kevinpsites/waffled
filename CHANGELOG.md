@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Cook Mode on the web puts each step's ingredients in a column on the left.** It now matches
+  the iPad: each ingredient is its own row you tick off, and long names wrap instead of being
+  cut off. On a phone-width screen the column sits under the step.
+
 ### Fixed
 
 - **Weekly Planning's Horizon scan shows the next four weeks.** It used to show the calendar

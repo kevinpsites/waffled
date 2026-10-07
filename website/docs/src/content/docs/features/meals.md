@@ -17,7 +17,7 @@ Meals is your recipe library and your planner in one — pick what's for dinner 
 - 📋 **Paste-markdown import** — drop in a markdown recipe, and Waffled parses it to fill the editor before you save.
 - 🔀 **Per-recipe overrides** — ingredient substitutions that feed the grocery build, plus per-step and whole-recipe notes.
 - 📝 **Two kinds of notes** — editing a recipe gives you **Recipe notes** (the recipe's own, what a re-import rewrites) and **Your notes** (your household's, kept across re-imports) in separate boxes, so a personal note never ends up in the recipe itself.
-- 👨‍🍳 **Cook mode** — step-by-step with the screen kept awake, a recipe overview to jump between steps and ingredients, and **finish → mark cooked**.
+- 👨‍🍳 **Cook mode** — step-by-step with the screen kept awake, the step's ingredients in a tick-off column on the left (under the step on a phone), a recipe overview to jump between steps and ingredients, and **finish → mark cooked**.
 - ⏲️ **Per-step timers** — set them in the editor; in cook mode they ride along in a floating dock with a looping alarm (and a local-notification fallback). Need one on a timer-less step? Spin up an on-the-spot timer with wheel pickers — it's ephemeral.
 - 🧺 **Auto-built groceries** — the week's dinners become a shopping list that honors your substitutions (see [Lists & groceries](/features/lists/)).
 - ✨ **AI "Plan my week/month"** — draws only from your library, works to a theme, and fills the gaps; **"Try New Recipe"** (a "Try something new" toggle plus "Dishes to try" chips) nudges the plan toward novelty, and AI metadata auto-fill guesses cuisine, protein, vegetables, and tags.
