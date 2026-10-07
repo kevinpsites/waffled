@@ -13,6 +13,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +48,7 @@ fun AppShell(
     var cookShown by remember { mutableStateOf(false) }
     val cook by container.cookStore.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    val saveable = rememberSaveableStateHolder()
 
     // Only the synced tables go through PowerSync; identity + module flags are REST.
     LaunchedEffect(Unit) { container.syncManager.start() }
@@ -89,11 +91,15 @@ fun AppShell(
     ) {
         Box(Modifier.fillMaxSize().statusBarsPadding()) {
             val stack = nav.stackOf(nav.tab)
-            // Keyed so a pushed screen's remembered state never leaks into the next one.
-            key(nav.tab, stack.size, nav.top) {
-                when (val top = nav.top) {
-                    null -> TabRoot(nav.tab, container, actions)
-                    else -> RouteHost(top, container, actions)
+            val top = nav.top
+            // Each tab root and each pushed screen gets its own saveable-state slot, so the
+            // Meals segment, a list's scroll position… survive a push/pop or a tab switch
+            // the way an iOS NavigationStack keeps them. Keyed by the route too, so a new
+            // screen at the same depth never inherits a popped one's state.
+            val slot = if (top == null) "root/${nav.tab}" else "route/${nav.tab}/${stack.size}/$top"
+            key(slot) {
+                saveable.SaveableStateProvider(slot) {
+                    if (top == null) TabRoot(nav.tab, container, actions) else RouteHost(top, container, actions)
                 }
             }
         }
