@@ -20,6 +20,11 @@ import app.waffled.feature.pantry.PantryTodayCard
 import app.waffled.feature.recipes.RecipeSummary
 import app.waffled.feature.today.TodayCards
 import app.waffled.feature.today.TodayScreen
+import app.waffled.feature.family.ApprovalsBanner
+import app.waffled.feature.familynight.FamilyNightCard
+import app.waffled.feature.rhythms.RhythmsTodayCard
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 
 /**
  * The phone home — `feature:today` with every card slot the other features own.
@@ -37,6 +42,8 @@ fun TodayHost(container: AppContainer, actions: ShellActions, modifier: Modifier
     val viewer by container.identity.viewer.collectAsStateWithLifecycle()
     val surfaceRev by container.surfaceRev.collectAsStateWithLifecycle()
     val revisions by container.refreshBus.state.collectAsStateWithLifecycle()
+    val countdownsRev by container.countdownsRev.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
 
     var chorePick by remember { mutableStateOf(container.devicePrefs.todayChorePersonId) }
     val memberIds = remember(members) { members.mapTo(HashSet()) { it.id } }
@@ -52,6 +59,18 @@ fun TodayHost(container: AppContainer, actions: ShellActions, modifier: Modifier
             CountdownsCard(
                 model = container.countdownsModel,
                 onOpenEvent = { actions.selectTab(TAB_CALENDAR) },
+                refreshKey = countdownsRev,
+            )
+        },
+        TodayCards.FAMILY_NIGHT to {
+            FamilyNightCard(container.familyNightModel, refreshKey = surfaceRev)
+        },
+        TodayCards.RHYTHMS to {
+            RhythmsTodayCard(
+                model = container.rhythmsModel,
+                onOpen = { actions.push(AppRoute.Rhythms) },
+                refreshKey = surfaceRev,
+                onChanged = container::bumpCountdowns,
             )
         },
         TodayCards.LISTS to {
@@ -63,7 +82,7 @@ fun TodayHost(container: AppContainer, actions: ShellActions, modifier: Modifier
         },
         TodayCards.PANTRY to {
             PantryTodayCard(
-                model = container.pantryModel,
+                model = container.pantryModel(zone),
                 onOpen = { actions.push(AppRoute.Pantry) },
                 refreshKey = surfaceRev to revisions[RefreshDomain.Pantry],
             )
@@ -94,6 +113,17 @@ fun TodayHost(container: AppContainer, actions: ShellActions, modifier: Modifier
         modifier = modifier,
         refreshBus = container.refreshBus,
         cardContent = cards,
+        approvalsBanner = {
+            ApprovalsBanner(
+                model = container.approvals,
+                me = viewer,
+                onOpen = { actions.push(AppRoute.Approvals) },
+                onRetry = { scope.launch { actions.reloadApprovals() } },
+            )
+        },
+        onCapture = { actions.capture(false) },
+        onDictate = { actions.capture(true) },
+        onOpenPerson = { actions.push(AppRoute.Person(it)) },
         onOpenCalendar = { actions.selectTab(TAB_CALENDAR) },
         onOpenEvent = { actions.selectTab(TAB_CALENDAR) },
         onOpenChores = { actions.push(AppRoute.Chores) },

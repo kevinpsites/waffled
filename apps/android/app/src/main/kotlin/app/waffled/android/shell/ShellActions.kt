@@ -17,6 +17,12 @@ class ShellActions(
     val selectTab: (String) -> Unit,
     /** Start (or resume) a cook session, then raise Cook Mode over everything. */
     val cook: (suspend CookSessionStore.() -> Unit) -> Unit,
+    /** Raise the "Add anything" sheet; true starts dictation on open (the capture bar's mic). */
+    val capture: (autoDictate: Boolean) -> Unit = {},
+    /** Sign out of this device: drops reminders and identity, then returns to login. */
+    val signOut: () -> Unit = {},
+    /** Re-read the shared approvals queue (the banner's retry). */
+    val reloadApprovals: suspend () -> Unit = {},
 )
 
 /** Cross-module placeholders: the feature that opens a thing knows less than the one that shows it. */
