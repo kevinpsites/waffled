@@ -6,6 +6,7 @@ import app.waffled.core.model.WaffledModule
 import com.powersync.DatabaseDriverFactory
 import com.powersync.PowerSyncDatabase
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,8 +41,6 @@ class SyncManager(
     private val connector: WaffledConnector,
     private val scope: CoroutineScope,
 ) {
-    private var database: PowerSyncDatabase? = null
-
     private val _state = MutableStateFlow(SyncState.Idle)
     val state: StateFlow<SyncState> = _state.asStateFlow()
 
@@ -68,34 +67,43 @@ class SyncManager(
     /** Visible events bucketed by local day — precomputed, O(1) to read. */
     val eventsByDay: StateFlow<Map<LocalDate, List<SyncedEvent>>> = derived.byDay
 
+    private val _pendingUploads = MutableStateFlow(0)
+
     /**
-     * Open the local database and start syncing.
+     * Writes still queued for upload (`ps_crud`), refreshed on every sync-status tick.
+     * Readable synchronously for gates like "switch household"; [pendingUploadCount]
+     * re-reads it on demand.
+     */
+    val pendingUploads: StateFlow<Int> = _pendingUploads.asStateFlow()
+
+    private val lifecycle = SyncLifecycle(
+        open = { openWithRetry() },
+        connect = { db -> db.connect(connector) },
+        disconnect = { db -> db.disconnect() },
+        clear = { db -> db.disconnectAndClear() },
+        countPending = { db -> db.get("SELECT count(*) AS n FROM ps_crud") { it.getLong(0) ?: 0L }.toInt() },
+        launchWatchers = { db ->
+            listOf(watchStatus(db), watchEvents(db), watchHousehold(db), watchMembers(db))
+        },
+        onState = { _state.value = it },
+        onReset = ::resetDerivedState,
+    )
+
+    /**
+     * Open the local database and start syncing. A no-op while already started; after a
+     * [stop] it reconnects (reusing the open database) — which is how a new server,
+     * household or session is picked up.
      *
      * Opening can transiently fail with SQLITE_BUSY on a cold start, so it is retried —
      * the same guard the iOS client needs.
      */
-    suspend fun start() {
-        if (database != null) return
-        _state.value = SyncState.Connecting
+    suspend fun start() = lifecycle.start()
 
-        val db = openWithRetry() ?: run {
-            _state.value = SyncState.Offline
-            return
+    private fun watchStatus(db: PowerSyncDatabase): Job = scope.launch {
+        db.currentStatus.asFlow().collect { status ->
+            _state.value = if (status.connected) SyncState.Connected else SyncState.Offline
+            _pendingUploads.value = lifecycle.pendingUploadCount()
         }
-        database = db
-
-        runCatching { db.connect(connector) }
-            .onFailure { _state.value = SyncState.Offline }
-
-        scope.launch {
-            db.currentStatus.asFlow().map { it.connected }.collect { connected ->
-                _state.value = if (connected) SyncState.Connected else SyncState.Offline
-            }
-        }
-
-        watchEvents(db)
-        watchHousehold(db)
-        watchMembers(db)
     }
 
     /**
@@ -107,7 +115,7 @@ class SyncManager(
      * double-render every repeat. There is no client-side RRULE expansion; a server
      * worker keeps the occurrences in step.
      */
-    private fun watchEvents(db: PowerSyncDatabase) {
+    private fun watchEvents(db: PowerSyncDatabase): Job =
         scope.launch {
             combine(
                 db.watch(EventRowMapper.EVENTS_SQL, mapper = EventRowMapper::map),
@@ -116,13 +124,12 @@ class SyncManager(
                 .catch { /* one malformed row must not tear the whole stream down */ }
                 .collect { derived.setEvents(it) }
         }
-    }
 
     /**
      * The household's timezone drives day bucketing, and it arrives AFTER events may
      * already have — which is why [DerivedEventState] treats it as its own input.
      */
-    private fun watchHousehold(db: PowerSyncDatabase) {
+    private fun watchHousehold(db: PowerSyncDatabase): Job =
         scope.launch {
             // Read BOTH household settings the clients need. week_start was missing
             // here even though it is in the synced schema, which forced the meals
@@ -144,7 +151,6 @@ class SyncManager(
                     if (weekStart.isNotEmpty()) _householdWeekStart.value = weekStart
                 }
         }
-    }
 
     /**
      * The household roster, straight from the synced `persons` table.
@@ -152,13 +158,12 @@ class SyncManager(
      * `members` was previously declared and never populated, which forced features to
      * fetch the roster over REST even though it is one of the five synced tables.
      */
-    private fun watchMembers(db: PowerSyncDatabase) {
+    private fun watchMembers(db: PowerSyncDatabase): Job =
         scope.launch {
             db.watch(PersonRowMapper.PERSONS_SQL, mapper = PersonRowMapper::map)
                 .catch { }
                 .collect { people -> _members.value = people }
         }
-    }
 
     private suspend fun openWithRetry(attempts: Int = 3): PowerSyncDatabase? {
         repeat(attempts) { attempt ->
@@ -242,9 +247,42 @@ class SyncManager(
         _members.value = people
     }
 
-    suspend fun stop() {
-        runCatching { database?.disconnect() }
-        _state.value = SyncState.Idle
+    /**
+     * Stop syncing: cancel the live queries, disconnect, and drop the synced roster and
+     * events so nothing from this session lingers on screen. [start] afterwards reconnects.
+     *
+     * `clearLocal` also wipes the local mirror (PowerSync `disconnectAndClear`) and the
+     * household-scoped state — what a server or household change needs, since the local
+     * SQLite is one shared file. Returns false only when that wipe failed; the caller must
+     * then refuse the change rather than adopt a new scope over the old rows.
+     */
+    suspend fun stop(clearLocal: Boolean = false): Boolean = lifecycle.stop(clearLocal)
+
+    /** [stop] with the local mirror wiped — sign-out to a different principal, server or household. */
+    suspend fun stopAndClear(): Boolean = lifecycle.stop(clearLocal = true)
+
+    /**
+     * Re-scope atomically: stop (wiping when [clearLocal]), run [adopt] — install the new
+     * server or tokens there — then start again. Returns false, with nothing adopted, when
+     * the wipe failed. Port of iOS `updateConnection` / `reauthenticate`.
+     */
+    suspend fun rescope(clearLocal: Boolean, adopt: suspend () -> Unit = {}): Boolean =
+        lifecycle.rescope(clearLocal, adopt)
+
+    /** Re-read the CRUD queue depth now (also updates [pendingUploads]). 0 before the first start. */
+    suspend fun pendingUploadCount(): Int =
+        lifecycle.pendingUploadCount().also { _pendingUploads.value = it }
+
+    private fun resetDerivedState(clearedLocal: Boolean) {
+        _members.value = emptyList()
+        derived.setEvents(emptyList())
+        _pendingUploads.value = 0
+        if (clearedLocal) {
+            // Household-scoped: the next scope's rows and identity supply them afresh.
+            _householdWeekStart.value = null
+            _modules.value = ModuleGate(loaded = false)
+            setCurrentPerson(null)
+        }
     }
 
     private companion object {
