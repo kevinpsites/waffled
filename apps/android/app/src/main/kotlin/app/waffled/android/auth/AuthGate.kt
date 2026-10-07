@@ -63,5 +63,5 @@ fun AuthGate(
 private fun sessionViewModelFactory(container: AppContainer) =
     object : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            SessionViewModel(container.auth, container.authApi) as T
+            SessionViewModel(container.auth, container.authApi, container::newSessionScope) as T
     }
