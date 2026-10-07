@@ -23,6 +23,10 @@ class ShellActions(
     val signOut: () -> Unit = {},
     /** Re-read the shared approvals queue (the banner's retry). */
     val reloadApprovals: suspend () -> Unit = {},
+    /** Open one event on the calendar (Today's events and countdowns, a person's day). */
+    val openEvent: (eventId: String) -> Unit = { selectTab(TAB_CALENDAR) },
+    /** The tablet shell: no tab bar to clear, and planning draws its kiosk chrome. */
+    val isKiosk: Boolean = false,
 )
 
 /** Cross-module placeholders: the feature that opens a thing knows less than the one that shows it. */

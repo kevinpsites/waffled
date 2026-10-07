@@ -25,6 +25,8 @@ import app.waffled.feature.familynight.FamilyNightCard
 import app.waffled.feature.rhythms.RhythmsTodayCard
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
+import app.waffled.feature.goals.GoalLogHost
+import app.waffled.feature.today.TodayGoalPickerSheet
 
 /**
  * The phone home — `feature:today` with every card slot the other features own.
@@ -46,6 +48,9 @@ fun TodayHost(container: AppContainer, actions: ShellActions, modifier: Modifier
     val scope = rememberCoroutineScope()
 
     var chorePick by remember { mutableStateOf(container.devicePrefs.todayChorePersonId) }
+    var goalPin by remember { mutableStateOf(container.devicePrefs.todayGoalId) }
+    var logging by remember { mutableStateOf<String?>(null) }
+    var pickingGoal by remember { mutableStateOf(false) }
     val memberIds = remember(members) { members.mapTo(HashSet()) { it.id } }
 
     // The goals hero draws a goals-feature Goal; Today's own fetch is a thinner shape, so
@@ -58,7 +63,7 @@ fun TodayHost(container: AppContainer, actions: ShellActions, modifier: Modifier
         TodayCards.COUNTDOWNS to {
             CountdownsCard(
                 model = container.countdownsModel,
-                onOpenEvent = { actions.selectTab(TAB_CALENDAR) },
+                onOpenEvent = actions.openEvent,
                 refreshKey = countdownsRev,
             )
         },
@@ -90,17 +95,41 @@ fun TodayHost(container: AppContainer, actions: ShellActions, modifier: Modifier
         TodayCards.GOALS to {
             val goals = heroGoals.orEmpty()
             GoalHeroCard(
-                goal = TodayGoalPick.featured(goals, container.devicePrefs.todayGoalId, memberIds),
+                goal = TodayGoalPick.featured(goals, goalPin, memberIds),
                 goalsLoaded = heroGoals != null,
                 householdMemberIds = memberIds,
                 myPersonId = viewer?.id,
                 onOpen = { actions.push(AppRoute.Goal(it)) },
                 onSeeAll = { actions.push(AppRoute.Goals) },
-                // Logging lives on the detail screen; goals exposes no standalone log host.
-                onLog = { actions.push(AppRoute.Goal(it)) },
+                onLog = { logging = it.id },
+                onSwitch = if (goals.size > 1) ({ pickingGoal = true }) else null,
             )
         },
     )
+
+    logging?.let { id ->
+        GoalLogHost(
+            goalId = id,
+            api = container.goalsApi,
+            onDone = { logging = null },
+            meId = viewer?.id,
+            refreshBus = container.refreshBus,
+        )
+    }
+    if (pickingGoal) {
+        TodayGoalPickerSheet(
+            goals = remember(heroGoals) { heroGoals.orEmpty().map(TodayGoalPick::toToday) },
+            myPersonId = viewer?.id,
+            selectedId = goalPin,
+            onSelect = {
+                goalPin = it
+                container.devicePrefs.todayGoalId = it
+                pickingGoal = false
+            },
+            onDismiss = { pickingGoal = false },
+            loadLists = { container.goalsApi.goalLists().map(TodayGoalPick::toToday) },
+        )
+    }
 
     TodayScreen(
         dash = container.dashboardModel,
@@ -125,7 +154,7 @@ fun TodayHost(container: AppContainer, actions: ShellActions, modifier: Modifier
         onDictate = { actions.capture(true) },
         onOpenPerson = { actions.push(AppRoute.Person(it)) },
         onOpenCalendar = { actions.selectTab(TAB_CALENDAR) },
-        onOpenEvent = { actions.selectTab(TAB_CALENDAR) },
+        onOpenEvent = { actions.openEvent(it.id) },
         onOpenChores = { actions.push(AppRoute.Chores) },
         onOpenGrocery = { actions.push(AppRoute.GROCERY) },
         onOpenReviewEvents = { actions.push(AppRoute.ReviewEvents) },

@@ -7,12 +7,18 @@ import app.waffled.feature.meals.MealDTO
 import app.waffled.feature.recipes.MealBuilderStart
 import app.waffled.feature.recipes.RecipeDetailDTO
 import app.waffled.feature.recipes.RecipeSummary
+import app.waffled.feature.settings.SettingsPanelId
 
 /**
  * A screen pushed over a tab's root — the Android twin of iOS `HubRoute` + `MealsRoute`.
- * Only destinations that exist on Android are here; Weekly Planning lands with its wave.
  */
 sealed interface AppRoute {
+    /** Weekly Planning — the lobby, its steps and the recap. */
+    data object Planning : AppRoute
+
+    /** Settings, opened on [panel] (a `SettingsPanelId`) when a sub-route asks for one. */
+    data class Settings(val panel: String? = null) : AppRoute
+
     data object Goals : AppRoute
     data class Goal(val goal: GoalsApi.Goal) : AppRoute
     data object ReviewEvents : AppRoute
@@ -22,7 +28,6 @@ sealed interface AppRoute {
     data class ListDetail(val list: ListSummary) : AppRoute
     data object Pantry : AppRoute
     data object Photos : AppRoute
-    data object Settings : AppRoute
     data object Approvals : AppRoute
     data object Rhythms : AppRoute
     data class Person(val personId: String) : AppRoute
@@ -60,7 +65,8 @@ sealed interface AppRoute {
                 "photos" -> Photos
                 "recipes" -> RecipesLibrary()
                 "review" -> ReviewEvents
-                "settings" -> Settings
+                "settings" -> Settings(id)
+                "planning" -> Planning
                 "approvals" -> Approvals
                 "rhythms" -> Rhythms
                 "person" -> id?.let(::Person)
@@ -73,9 +79,8 @@ sealed interface AppRoute {
         /**
          * Where a Family-hub tap lands. Hub routes carry ids, not another feature's wire
          * type, so id-only destinations open a placeholder that the detail screen reloads.
-         * Null = no Android screen yet (Weekly Planning).
          */
-        fun fromHub(route: HubRoute): AppRoute? = when (route) {
+        fun fromHub(route: HubRoute): AppRoute = when (route) {
             HubRoute.Chores -> Chores
             HubRoute.Goals -> Goals
             HubRoute.Rewards -> Rewards
@@ -85,7 +90,7 @@ sealed interface AppRoute {
             HubRoute.Rhythms -> Rhythms
             HubRoute.Approvals -> Approvals
             HubRoute.ReviewEvents -> ReviewEvents
-            HubRoute.WeeklyPlanning -> null
+            HubRoute.WeeklyPlanning -> Planning
             is HubRoute.Person -> Person(route.personId)
             is HubRoute.RewardShop -> RewardShop(route.personId)
             is HubRoute.WaffledBites -> WaffledBites(route.personId, route.personName)
@@ -93,15 +98,22 @@ sealed interface AppRoute {
             is HubRoute.ListDetail -> ListDetail(ListSummary(id = route.listId, name = "", listType = "list"))
             is HubRoute.Recipe -> Recipe(RecipeSummary(id = route.recipeId, title = ""), autoCook = route.cook)
             is HubRoute.Meal -> Meal(MealDTO.placeholder(id = route.mealId, name = ""))
-            // SettingsScreen keeps its own panel route and takes no initial one, so every
-            // Settings sub-route opens the landing.
-            HubRoute.Settings,
-            HubRoute.SettingsAccount, HubRoute.SettingsFamily, HubRoute.SettingsModules,
-            HubRoute.SettingsChoresRewards, HubRoute.SettingsCalendars, HubRoute.SettingsAI,
-            HubRoute.SettingsMeals, HubRoute.SettingsPantry, HubRoute.SettingsFamilyNight,
-            HubRoute.SettingsWeeklyPlanning, HubRoute.SettingsDisplay, HubRoute.SettingsNotifications,
-            HubRoute.SettingsAppearance, HubRoute.SettingsPermissions, HubRoute.SettingsAbout,
-            -> Settings
+            // Account has no panel of its own, so it opens the landing.
+            HubRoute.Settings, HubRoute.SettingsAccount -> Settings()
+            HubRoute.SettingsFamily -> Settings(SettingsPanelId.FAMILY)
+            HubRoute.SettingsModules -> Settings(SettingsPanelId.MODULES)
+            HubRoute.SettingsChoresRewards -> Settings(SettingsPanelId.CHORES_REWARDS)
+            HubRoute.SettingsCalendars -> Settings(SettingsPanelId.CALENDARS)
+            HubRoute.SettingsAI -> Settings(SettingsPanelId.AI)
+            HubRoute.SettingsMeals -> Settings(SettingsPanelId.MEALS)
+            HubRoute.SettingsPantry -> Settings(SettingsPanelId.PANTRY)
+            HubRoute.SettingsFamilyNight -> Settings(SettingsPanelId.FAMILY_NIGHT)
+            HubRoute.SettingsWeeklyPlanning -> Settings(SettingsPanelId.WEEKLY_PLANNING)
+            HubRoute.SettingsDisplay -> Settings(SettingsPanelId.DISPLAY)
+            HubRoute.SettingsNotifications -> Settings(SettingsPanelId.NOTIFICATIONS)
+            HubRoute.SettingsAppearance -> Settings(SettingsPanelId.APPEARANCE)
+            HubRoute.SettingsPermissions -> Settings(SettingsPanelId.PERMISSIONS)
+            HubRoute.SettingsAbout -> Settings(SettingsPanelId.ABOUT)
         }
     }
 }

@@ -9,7 +9,22 @@ import app.waffled.core.auth.TokenRefresher
 import app.waffled.core.auth.WaffledAuth
 import app.waffled.core.auth.KeyValueStore
 import app.waffled.core.auth.KeystoreTokenCrypto
+import app.waffled.core.auth.TokenPair
 import app.waffled.core.auth.TokenStore
+import app.waffled.android.auth.SessionPhase
+import app.waffled.feature.kiosk.KioskApi
+import app.waffled.feature.kiosk.KioskDeviceAuth
+import app.waffled.feature.kiosk.KioskDeviceStore
+import app.waffled.feature.kiosk.KioskFamilyModel
+import app.waffled.feature.kiosk.KioskMode
+import app.waffled.feature.kiosk.KioskRailStore
+import app.waffled.feature.kiosk.KioskServerAddress
+import app.waffled.feature.kiosk.KioskSessionHost
+import app.waffled.feature.kiosk.ScreensaverModel
+import app.waffled.feature.kioskcalendar.KioskCalendarApi
+import app.waffled.feature.kiosktoday.KioskTodayModel
+import app.waffled.feature.planning.PlanningEnvironment
+import app.waffled.feature.settings.ServerAddressForm
 import app.waffled.core.design.ThemePrefsStore
 import app.waffled.core.design.ThemeStore
 import app.waffled.core.network.RefreshBus
@@ -114,12 +129,15 @@ class AppContainer(context: Context) {
 
     val serverAddress: MutableServerAddress = MutableServerAddress(prefs)
 
+    /** Per-device plain prefs — planning's "Leave for now", the kiosk rail, the device pairing. */
+    val keyValueStore: KeyValueStore = SharedPrefsKeyValueStore(prefs)
+
     /**
      * Tokens encrypted at rest under a key held in the Android Keystore — the analogue
      * of the iOS Keychain.
      */
     val tokenStore: TokenStore = EncryptedTokenStore(
-        prefs = SharedPrefsKeyValueStore(prefs),
+        prefs = keyValueStore,
         crypto = KeystoreTokenCrypto(),
     )
 
@@ -196,9 +214,11 @@ class AppContainer(context: Context) {
         )
     }
 
+    val photosApi: PhotosApi by lazy { PhotosApi(httpClient, auth) }
+
     val photosModel: PhotosModel by lazy {
         PhotosModel(
-            api = PhotosApi(httpClient, auth),
+            api = photosApi,
             baseUrl = serverAddress.baseUrl(),
             refreshBus = refreshBus,
         )
@@ -226,7 +246,7 @@ class AppContainer(context: Context) {
 
     // ---- Today -------------------------------------------------------------------
 
-    private val todayApi: TodayApi by lazy { TodayApi(httpClient, auth) }
+    val todayApi: TodayApi by lazy { TodayApi(httpClient, auth) }
     val dashboardModel: DashboardModel by lazy { DashboardModel.from(todayApi) }
     val todayLayoutModel: TodayLayoutModel by lazy { TodayLayoutModel(todayApi) }
 
@@ -342,9 +362,8 @@ class AppContainer(context: Context) {
     }
 
     /**
-     * About → Server. A new server must never inherit the old one's local mirror, and
-     * `core:sync` cannot clear it yet — so every change is refused as a failed teardown
-     * rather than saved over stale rows.
+     * About → Server. A new server must never inherit the old one's local mirror: the
+     * address is swapped inside a clearing re-scope, which refuses while uploads are queued.
      */
     val serverConnection: ServerConnection = object : ServerConnection {
         override fun currentUrl(): String = serverAddress.baseUrl()
@@ -352,20 +371,172 @@ class AppContainer(context: Context) {
         override suspend fun change(input: String): ServerChange {
             val verdict = ServerUrl.validate(input)
             if (verdict !is ServerUrlVerdict.Ok) return ServerChange.Rejected(verdict)
-            if (pendingUploads() > 0) return ServerChange.PendingUploads(pendingUploads())
-            if (!clearLocalSync()) return ServerChange.TeardownFailed
-            serverAddress.set(verdict.url)
+            val pending = syncManager.pendingUploadCount()
+            if (pending > 0) return ServerChange.PendingUploads(pending)
+            if (!syncManager.rescope(clearLocal = true) { serverAddress.set(verdict.url) }) {
+                return ServerChange.TeardownFailed
+            }
+            kioskMode.serverChanged()
             newSessionScope()
             return ServerChange.Updated(verdict.url)
         }
     }
 
-    /** Queued PowerSync writes. `core:sync` exposes no count yet, so this reads 0. */
-    fun pendingUploads(): Int = 0
+    /**
+     * Settings → Households: adopt the other household's tokens inside a clearing
+     * re-scope, then re-read identity at once — the wipe resets the module gate, and the
+     * tab bar would otherwise read "no modules" until the next refresh.
+     */
+    suspend fun adoptHouseholdSession(accessToken: String, refreshToken: String): Boolean {
+        val ok = syncManager.rescope(clearLocal = true) { auth.adopt(TokenPair(accessToken, refreshToken)) }
+        if (!ok) return false
+        identity.clear()
+        newSessionScope()
+        identity.load()
+        return true
+    }
 
-    /** Stop sync and wipe the local mirror. `core:sync` has no wipe yet, so this fails safe. */
-    @Suppress("FunctionOnlyReturningConstant")
-    suspend fun clearLocalSync(): Boolean = false
+    // ---- Session phase -------------------------------------------------------------
+
+    /**
+     * `loading → login → shell`, owned here rather than by the gate's ViewModel: a kiosk
+     * claim (outside the gate's composition) must flip it before `KioskMode` shows the shell.
+     */
+    val sessionPhase = MutableStateFlow<SessionPhase>(SessionPhase.Loading)
+
+    /**
+     * A full sign-out: drop reminders and identity, clear the tokens, flip to login, then
+     * stop sync and revoke in the background. In [appScope], because the shell leaves
+     * composition the moment the phase flips.
+     */
+    fun signOut() {
+        eventReminders.clearEventReminders()
+        identity.clear()
+        newSessionScope()
+        val refresh = auth.signOutAndReturnRefreshToken()
+        sessionPhase.value = SessionPhase.SignedOut(null)
+        appScope.launch {
+            syncManager.stop()
+            refresh?.let { runCatching { authApi.logout(it) } }
+            if (sessionPhase.value is SessionPhase.SignedOut) {
+                sessionPhase.value = SessionPhase.SignedOut(runCatching { authApi.status() }.getOrNull())
+            }
+        }
+    }
+
+    /** The kiosk boot cover's Retry: reconnect sync and re-read identity. */
+    fun restartSync() {
+        appScope.launch {
+            syncManager.stop()
+            syncManager.start()
+            identity.load()
+        }
+    }
+
+    // ---- Tablet kiosk --------------------------------------------------------------
+
+    val kioskDeviceStore: KioskDeviceStore by lazy {
+        KioskDeviceStore(keyValueStore, KeystoreTokenCrypto("waffled.kiosk.key"))
+    }
+
+    /** ONE device credential, shared by the API slice and the mode, so a re-pair invalidates both. */
+    val kioskDeviceAuth: KioskDeviceAuth by lazy { KioskDeviceAuth(httpClient, kioskDeviceStore) }
+
+    val kioskApi: KioskApi by lazy { KioskApi(httpClient, auth, kioskDeviceAuth) }
+
+    /**
+     * The picker changed the server without wiping the mirror (its setter is synchronous),
+     * so the next claim's re-scope must clear it. Persisted: a restart in between must not
+     * forget the old server's rows are still there.
+     */
+    private var kioskServerChanged: Boolean
+        get() = prefs.getBoolean(KIOSK_NEEDS_CLEAR, false)
+        set(value) = prefs.edit().putBoolean(KIOSK_NEEDS_CLEAR, value).apply()
+
+    private val kioskSessionHost = object : KioskSessionHost {
+        override fun isSignedIn(): Boolean = auth.isSignedIn()
+
+        override suspend fun adopt(accessToken: String, refreshToken: String): Boolean {
+            val clear = kioskServerChanged
+            val ok = syncManager.rescope(clearLocal = clear) { auth.adopt(TokenPair(accessToken, refreshToken)) }
+            if (!ok) return false
+            if (clear) kioskServerChanged = false
+            identity.clear()
+            newSessionScope()
+            sessionPhase.value = SessionPhase.SignedIn(emptyList())
+            identity.load()
+            return true
+        }
+
+        override suspend fun dropSession() {
+            if (!auth.isSignedIn()) return
+            eventReminders.clearEventReminders()
+            auth.signOut()
+            identity.clear()
+            newSessionScope()
+            syncManager.stop()
+            sessionPhase.value = SessionPhase.SignedOut(null)
+        }
+
+        override suspend fun signOut() = this@AppContainer.signOut()
+    }
+
+    /** One instance for the gate, the shell and Settings → This device, so they agree. */
+    val kioskMode: KioskMode by lazy { KioskMode(kioskDeviceStore, kioskApi, kioskDeviceAuth, kioskSessionHost) }
+
+    /**
+     * The picker's escape hatch. Synchronous by contract, so it cannot run the clearing
+     * re-scope the About form does: it refuses while uploads are queued instead.
+     */
+    val kioskServerAddress: KioskServerAddress = object : KioskServerAddress {
+        override fun current(): String = serverAddress.baseUrl()
+        override fun set(input: String): String? {
+            ServerAddressForm.shapeError(input)?.let { return it }
+            val pending = syncManager.pendingUploads.value
+            if (pending > 0) return ServerAddressForm.message(ServerChange.PendingUploads(pending)).error
+            val verdict = serverAddress.set(input)
+            if (verdict !is ServerUrlVerdict.Ok) return ServerAddressForm.message(ServerChange.Rejected(verdict)).error
+            kioskServerChanged = true
+            kioskMode.serverChanged()
+            newSessionScope()
+            return null
+        }
+    }
+
+    val kioskRailStore: KioskRailStore by lazy { KioskRailStore(keyValueStore) }
+
+    val screensaverModel: ScreensaverModel by lazy {
+        ScreensaverModel.backedBy(householdSettingsApi, todayApi, photosApi)
+    }
+
+    val kioskCalendarApi: KioskCalendarApi by lazy { KioskCalendarApi(httpClient, auth) }
+    val kioskTodayModel: KioskTodayModel by lazy { KioskTodayModel.from(todayApi, listsApi, goalsApi) }
+    val kioskFamilyModel: KioskFamilyModel by lazy {
+        KioskFamilyModel(fetchChores = familyApi::choresToday, fetchStars = familyApi::familyStars)
+    }
+
+    // ---- Weekly Planning -----------------------------------------------------------
+
+    private var planningCache: Triple<Any, Boolean, PlanningEnvironment>? = null
+
+    /**
+     * Stable within a session (the shell remembers its model by env identity) and rebuilt
+     * on a new session scope, since it captures the server's base URL.
+     */
+    @Synchronized
+    fun planningEnv(isKiosk: Boolean): PlanningEnvironment {
+        val scope = sessionScope.value
+        planningCache?.let { (s, k, env) -> if (s === scope && k == isKiosk) return env }
+        return PlanningEnvironment(
+            client = httpClient,
+            tokens = auth,
+            sync = syncManager,
+            refreshBus = refreshBus,
+            baseUrl = serverAddress.baseUrl(),
+            store = keyValueStore,
+            isKiosk = isKiosk,
+        ).also { planningCache = Triple(scope, isKiosk, it) }
+    }
 
     // ---- Family ------------------------------------------------------------------
 
@@ -397,6 +568,7 @@ class AppContainer(context: Context) {
 
     private companion object {
         const val UPDATE_DISMISSED = "waffled.update.dismissed"
+        const val KIOSK_NEEDS_CLEAR = "waffled.kiosk.needsLocalClear"
     }
 }
 
@@ -413,13 +585,24 @@ class DevicePrefs(private val prefs: SharedPreferences) {
         get() = prefs.getString("waffled.todayGoalId", null).orEmpty()
         set(value) = prefs.edit().putString("waffled.todayGoalId", value).apply()
 
+    /** Kiosk Today layout preset (iOS `waffled.kioskDashLayout`); "" = default. */
+    var kioskDashLayout: String
+        get() = prefs.getString("waffled.kioskDashLayout", null).orEmpty()
+        set(value) = prefs.edit().putString("waffled.kioskDashLayout", value).apply()
+
+    /** Kiosk Today's pinned goal (iOS `waffled.kioskGoalId`); "" = automatic. */
+    var kioskGoalId: String
+        get() = prefs.getString("waffled.kioskGoalId", null).orEmpty()
+        set(value) = prefs.edit().putString("waffled.kioskGoalId", value).apply()
+
     /** Today lists card: the pinned list id. */
     var todayListPick: String
         get() = prefs.getString("waffled.todayListPick", null).orEmpty()
         set(value) = prefs.edit().putString("waffled.todayListPick", value).apply()
 }
 
-private class SharedPrefsKeyValueStore(
+/** Plain (unencrypted) per-device prefs behind the `core:auth` [KeyValueStore] seam. */
+internal class SharedPrefsKeyValueStore(
     private val prefs: SharedPreferences,
 ) : KeyValueStore {
     override fun getString(key: String): String? = prefs.getString(key, null)

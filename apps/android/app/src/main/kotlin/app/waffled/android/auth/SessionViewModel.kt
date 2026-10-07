@@ -39,9 +39,12 @@ class SessionViewModel(
     private val api: AuthApi,
     /** A new account context began or ended — the Family models re-scope on it. */
     private val onSessionChanged: () -> Unit = {},
+    /** Owned by `AppContainer` so a kiosk claim can flip it from outside the gate. */
+    private val _phase: MutableStateFlow<SessionPhase> = MutableStateFlow(SessionPhase.Loading),
+    /** The person's refresh token died — a shared kiosk returns to its picker. */
+    private val onExpired: () -> Unit = {},
 ) : ViewModel() {
 
-    private val _phase = MutableStateFlow<SessionPhase>(SessionPhase.Loading)
     val phase: StateFlow<SessionPhase> = _phase.asStateFlow()
 
     private val _login = MutableStateFlow(LoginUiState())
@@ -52,10 +55,11 @@ class SessionViewModel(
         // under us. Re-read the login methods: a null status hides an OIDC-only stack's button.
         auth.onAuthExpired = {
             onSessionChanged()
+            onExpired()
             _phase.value = SessionPhase.SignedOut(null)
             viewModelScope.launch { _phase.value = SessionPhase.SignedOut(api.status()) }
         }
-        restore()
+        if (_phase.value == SessionPhase.Loading) restore()
     }
 
     private fun restore() {
@@ -90,17 +94,6 @@ class SessionViewModel(
                     _login.update { it.copy(isBusy = false, error = result.message) }
                 }
             }
-        }
-    }
-
-    fun signOut() {
-        // Optimistic, like iOS: clear locally and flip immediately, revoke in the
-        // background. A failed revoke must not trap the user in a session they left.
-        val refresh = auth.let { it.signOutAndReturnRefreshToken() }
-        _phase.value = SessionPhase.SignedOut(null)
-        viewModelScope.launch {
-            refresh?.let { api.logout(it) }
-            _phase.value = SessionPhase.SignedOut(api.status())
         }
     }
 
