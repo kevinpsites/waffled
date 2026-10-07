@@ -21,11 +21,10 @@ import '../../../styles/planning-horizon.css'
 
 // Step 3 · Horizon scan — THE NEXT FOUR WEEKS ON THE MONTH VIEW YOU ALREADY SHIP, PLUS ONE BAR.
 //
-// Four weeks from the planned week rather than its calendar month: late in a month, most of
-// "this month" has already happened. This file renders `MonthView`; it does not draw a calendar. The 42-cell grid, the owner-colour
-// resolution (`lib/event-color.ts`), the ↻ on a repeat, the dashed edge on a meal-plan dinner, the
-// countdown badges and the day panel all come for free and stay identical to the calendar the
-// family already knows. A second month grid here would drift from that one.
+// Four weeks from the planned week, not its calendar month: late in a month most of it has
+// already happened. This renders `MonthView` with a 28-cell `range`; it draws no calendar of its
+// own, so owner colours, repeats, meal-plan dinners, countdowns and the day panel stay identical
+// to the calendar the family knows. A second grid here would drift from that one.
 //
 // Three rules this file must not break:
 //  1. THE ＋ AND THE BAR ARE DIFFERENT THINGS. ＋ writes a REAL EVENT through `EventModal`; the bar
@@ -204,7 +203,7 @@ function Body({ weekStart, sessionId, setDecisionData, refresh, busy }: StepBody
         <MonthView
           year={range.start.getFullYear()}
           month={range.start.getMonth()}
-          window={range}
+          range={range}
           firstDay={firstDay}
           // Two, not three: the parked board underneath has to stay on screen and a chip is never
           // allowed to shrink to make room.

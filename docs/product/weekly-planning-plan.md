@@ -127,7 +127,7 @@ port properly rather than transliterating:**
 (`Features/Calendar/PhoneCalendarViews.swift`), so a change to the iPhone month view reaches
 the step too. Web's Horizon reuses `MonthView` the same way. It shows the **next four weeks
 from the planned week**, not the calendar month (late in a month most of it has already
-happened): iOS feeds the grid `PhoneCalendar.weekRows`, web passes `MonthView` a `window`.
+happened): iOS feeds the grid `PhoneCalendar.weekRows`, web passes `MonthView` a `range`.
 The arrows step four weeks; back is floored at the planned week.
 
 **Known debt found beside it (pre-existing, not the port's):** iOS's `RecipePickerSheet` —

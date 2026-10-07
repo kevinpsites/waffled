@@ -7,19 +7,19 @@ import { MonthDayPanel } from './MonthDayPanel'
 import { RhythmMark } from './RhythmMark'
 
 // The visible grid: a month's 6 weeks (42 cells, leading/trailing days included), or an
-// explicit `window` of whole weeks. `monthGridStart` is shared with Calendar's fetch window —
+// explicit `range` of whole weeks. `monthGridStart` is shared with Calendar's fetch window —
 // the two must never disagree.
-function monthGrid(year: number, month: number, firstDay: number, window?: GridWindow): Date[] {
-  const gridStart = window ? window.start : monthGridStart(year, month, firstDay)
-  return Array.from({ length: (window?.weeks ?? 6) * 7 }, (_, i) => {
+function monthGrid(year: number, month: number, firstDay: number, range?: GridRange): Date[] {
+  const gridStart = range ? range.start : monthGridStart(year, month, firstDay)
+  return Array.from({ length: (range?.weeks ?? 6) * 7 }, (_, i) => {
     const d = new Date(gridStart)
     d.setDate(gridStart.getDate() + i)
     return d
   })
 }
 
-/** Whole weeks from `start` instead of a calendar month. Nothing in a window is dimmed. */
-export interface GridWindow {
+/** Whole weeks from `start` instead of a calendar month. Nothing in a range is dimmed. */
+export interface GridRange {
   start: Date
   weeks: number
 }
@@ -38,7 +38,7 @@ export function MonthView({
   onMore,
   firstDay,
   maxChips,
-  window,
+  range,
 }: {
   year: number
   month: number
@@ -56,13 +56,14 @@ export function MonthView({
   /// How many event chips a day cell draws before collapsing the rest into "+N more". Three on
   /// Calendar; Horizon passes 2 to keep its parked-notes board on screen (a chip never shrinks).
   maxChips?: number
-  /// Draw these weeks instead of `year`/`month`'s grid (Horizon's next four weeks).
-  window?: GridWindow
+  /// Draw these weeks instead of `year`/`month`'s grid (Horizon's next four weeks); `year` and
+  /// `month` are then ignored.
+  range?: GridRange
 }) {
   const chipCap = maxChips ?? 3
   const colorOf = useEventColor()
-  const cells = useMemo(() => monthGrid(year, month, firstDay, window), [year, month, firstDay, window])
-  const outOfMonth = (d: Date) => !window && d.getMonth() !== month
+  const cells = useMemo(() => monthGrid(year, month, firstDay, range), [year, month, firstDay, range])
+  const outOfMonth = (d: Date) => !range && d.getMonth() !== month
   const dowLabels = useMemo(() => dowFrom(DOW, firstDay), [firstDay])
   const byDate = useMemo(() => eventsByDay(events, tz), [events, tz])
   // Bars are grid siblings of the cells (a cell clips its overflow), so every cell is placed

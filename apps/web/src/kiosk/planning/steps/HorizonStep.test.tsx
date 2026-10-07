@@ -185,7 +185,7 @@ function renderStep(over: Partial<StepBodyProps> = {}) {
 const cells = (c: HTMLElement) => Array.from(c.querySelectorAll('.cal-cell')) as HTMLElement[]
 
 // The cell for a YYYY-MM-DD, by its offset from the grid's first day — the day numbers
-// alone are ambiguous (two "1"s and two "30"s on a 42-cell grid).
+// alone are ambiguous once the four weeks cross a month boundary.
 function cell(c: HTMLElement, key: string): HTMLElement {
   const i = Math.round(
     (Date.parse(`${key}T00:00:00Z`) - Date.parse(`${GRID_START}T00:00:00Z`)) / 86400000
