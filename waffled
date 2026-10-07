@@ -390,6 +390,24 @@ bump_line() { # bump_line <file> <sed-expression>
   mv "$tmp" "$f"
 }
 
+# Android versionCode, derived from X.Y.Z so it can never drift from versionName and always
+# rises with the release: major*10000 + minor*100 + patch (0.15.3 -> 1503). Assumes minor and
+# patch stay below 100; past that two versions could collide, so widen the multipliers first.
+android_version_code() { # android_version_code X.Y.Z
+  local IFS=. maj min pat
+  read -r maj min pat <<EOF
+$1
+EOF
+  echo $(( maj * 10000 + min * 100 + pat ))
+}
+
+bump_android_version() { # bump_android_version <build.gradle.kts> X.Y.Z
+  local code
+  code="$(android_version_code "$2")"
+  bump_line "$1" "s/^([[:space:]]*versionName[[:space:]]*=[[:space:]]*).*/\\1\"$2\"/"
+  bump_line "$1" "s/^([[:space:]]*versionCode[[:space:]]*=[[:space:]]*).*/\\1${code}/"
+}
+
 # Verify release metadata and prove this checkout is exactly the reviewed main branch.
 # `git fetch` updates remote refs, but no worktree files, commits, or tags are changed.
 release_repository_ready() {
@@ -1318,7 +1336,7 @@ case "$cmd" in
     #   ./waffled release 0.3.0
     #
     # Bumps: apps/api + apps/web package.json (+lockfiles), infra/compose/.env.example
-    # WAFFLED_VERSION, and apps/ios/project.yml MARKETING_VERSION. The iOS BUILD number
+    # WAFFLED_VERSION, apps/ios/project.yml MARKETING_VERSION, and apps/android versionName/versionCode (code derived from X.Y.Z). The iOS BUILD number
     # (CURRENT_PROJECT_VERSION) is left alone — Xcode Cloud auto-increments that.
     # Also finalizes CHANGELOG.md: dates the [Unreleased] notes as this version, opens a
     # fresh [Unreleased], and adds the compare link — so the tag carries the release notes.
@@ -1382,6 +1400,7 @@ case "$cmd" in
     bump_line "$ROOT/infra/compose/.env.example" "s/^WAFFLED_VERSION=.*/WAFFLED_VERSION=$ver/"
     bump_line "$ROOT/apps/ios/project.yml" "s/^([[:space:]]*MARKETING_VERSION:[[:space:]]*).*/\\1\"$ver\"/"
     bump_line "$ROOT/apps/mac/project.yml" "s/^([[:space:]]*MARKETING_VERSION:[[:space:]]*).*/\\1\"$ver\"/"
+    bump_android_version "$ROOT/apps/android/app/build.gradle.kts" "$ver"
     # Finalize the CHANGELOG so the release commit (and its tag) carries the notes:
     # date the [Unreleased] entries (already reviewed above) as this version, open a fresh
     # [Unreleased], and add the compare link. Repo URL + previous tag are derived (nothing
@@ -1402,11 +1421,11 @@ case "$cmd" in
       echo "${c_ylw}⚠ No CHANGELOG [Unreleased] section — skipping changelog finalize.${c_reset}"
     fi
     git -C "$ROOT" --no-pager diff -- CHANGELOG.md apps/api/package.json apps/web/package.json \
-      infra/compose/.env.example apps/ios/project.yml apps/mac/project.yml
+      infra/compose/.env.example apps/ios/project.yml apps/mac/project.yml apps/android/app/build.gradle.kts
     git -C "$ROOT" add -A
     git -C "$ROOT" commit -q -m "release: $tag
 
-Bump api, web, compose (WAFFLED_VERSION), and the iOS and Mac MARKETING_VERSION
+Bump api, web, compose (WAFFLED_VERSION), the iOS and Mac MARKETING_VERSION, the Android versionName/versionCode
 to $ver, and finalize the CHANGELOG [$ver] section."
     git -C "$ROOT" tag -a "$tag" -m "Waffled $tag"
     echo "${c_grn}Committed + tagged $tag locally.${c_reset}"
