@@ -17,6 +17,15 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Done ✅
 
+- **Android app (phone + tablet kiosk)** — a native Kotlin / Jetpack Compose app at near-full
+  iOS parity: Today, Calendar (Month / Week / Day + agenda), Lists and the grocery board,
+  Chores, Rewards, Photos, Meals, Recipes + Cook Mode, Pantry, Goals + charts, Rhythms, Weekly
+  Planning, the family hub, "Add anything" capture with dictation, Waffled-Bites, Family Night,
+  on-device event reminders, and on a tablet the shared kiosk (rail, kiosk Today and calendar,
+  profile picker + PIN + pairing, screensaver). Same self-hosted server; plain HTTP only on
+  home-network addresses. `./waffled release` bumps its version. Health Connect auto-fill is
+  still planned (below). See [`android-port-plan.md`](./android-port-plan.md) and the
+  [install guide](../../website/docs/src/content/docs/guides/android-app.md).
 - **iPhone calendar: Month → Week → Day** — the phone Calendar tab rebuilt from the design
   handoff: a full-height month grid with ISO week numbers and up to four titles a day, a
   horizontal week card rail (tap an event to edit it), and a pushed Day timeline with overlap
@@ -364,6 +373,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Planned 🚧
 
+- **Android: Health Connect → goals** — the counterpart of Apple Health auto-fill. Paused
+  for the first Android release (§7.2 of [`android-port-plan.md`](./android-port-plan.md)).
 - **The rest of the Mac Settings design** — each its own piece of runtime work before a
   control can appear: photos in a folder of their own (media relocation), backups in a
   folder of their own, backups that include photos, keeping every backup ("Forever"), an

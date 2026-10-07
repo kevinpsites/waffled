@@ -277,6 +277,31 @@ t "bump_line fails loudly when the pattern matches nothing" '
   esac
 '
 
+# --- 8d. the Android version site -----------------------------------------------------
+# versionCode must rise with every release (Android refuses a downgrade) and is derived
+# from X.Y.Z, so it can never drift from versionName: major*10000 + minor*100 + patch.
+t "android_version_code derives a monotonic integer from X.Y.Z" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  [ "$(android_version_code 0.15.3)" = "1503" ] || { echo "FAIL: 0.15.3 -> $(android_version_code 0.15.3)"; exit 0; }
+  [ "$(android_version_code 1.0.0)" = "10000" ] || { echo "FAIL: 1.0.0 -> $(android_version_code 1.0.0)"; exit 0; }
+  [ "$(android_version_code 0.16.0)" -gt "$(android_version_code 0.15.99)" ] || { echo "FAIL: not monotonic"; exit 0; }
+  echo "PASS"
+'
+
+t "bump_android_version rewrites versionName and versionCode only" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  cp "$ROOT/apps/android/app/build.gradle.kts" "$tmp/build.gradle.kts"
+
+  bump_android_version "$tmp/build.gradle.kts" "9.8.7"
+
+  grep -q "versionName = \"9.8.7\"" "$tmp/build.gradle.kts" || { echo "FAIL: versionName not bumped"; exit 0; }
+  grep -q "versionCode = 90807" "$tmp/build.gradle.kts" || { echo "FAIL: versionCode not bumped"; exit 0; }
+  changed="$(diff "$ROOT/apps/android/app/build.gradle.kts" "$tmp/build.gradle.kts" | grep -c "^[<>]" || true)"
+  [ "$changed" -eq 4 ] || { echo "FAIL: $changed diff lines, expected exactly two lines changed"; exit 0; }
+  echo "PASS"
+'
+
 # --- 9. backup verification restores only into a disposable Postgres container ------
 t "verify_backup_restore exercises the dump and removes its disposable database" '
   source "$WAFFLED" help >/dev/null 2>&1

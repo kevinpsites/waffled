@@ -6,13 +6,13 @@ worktrees that all merge into **one branch and one PR**.
 
 Status legend: ✅ verified on this machine · 🚧 planned · 🔄 in progress · ⚠️ decision needed
 
-> **Where we are (2026-10-07).** Phase 0 and Waves A + B are merged on `android-port`
-> (11 feature modules, 1,489 JVM tests green). The branch sat idle from 2026-08-21 while
-> `main` moved 922 commits (v0.13.1 → v0.15.3); §9 records the reconciliation. `main` is
-> merged back in, and **Wave B.5** (§6) is bringing the ported features up to today's iOS
-> before any new feature is ported. Still to come: Wave C, the new **Wave E** (Weekly
-> Planning, Rhythms, the iPhone calendar redesign — none existed when this plan was
-> written), Wave D (kiosk) and Phase 5.
+> **Where we are (2026-10-07).** Phase 0 and Waves A, B, B.5, C, E and D are merged on
+> `android-port` (a phone app at near-full iOS parity plus the tablet kiosk). Weekly
+> Planning is finished in parallel and ships in this release. **Phase 5** (integration and
+> release plumbing) is in progress: `./waffled release` bumps the Android version, CI has a
+> Gradle job, and the docs are updated. Health Connect is deliberately not in this release
+> (§7.2). The branch sat idle from 2026-08-21 while `main` moved 922 commits (v0.13.1 →
+> v0.15.3); §9 records the reconciliation.
 
 ---
 
@@ -517,7 +517,7 @@ agent** and merged.
 |---|---|
 | OIDC via Custom Tabs | The button renders from server status; the browser round-trip is Wave A work |
 | Splash / launcher icon | Cosmetic |
-| Settings screen for the server address | The plumbing (`MutableServerAddress`, `ServerUrl.validate`) exists; the UI belongs with Settings in Wave C |
+| Settings screen for the server address | The plumbing (`MutableServerAddress`, `ServerUrl.validate`) exists; the UI shipped with Settings in Wave C |
 
 #### Bugs the exit criterion caught that no unit test would have
 
@@ -606,7 +606,7 @@ The two giants, split so no agent carries >4.5k LOC.
 | `android/goals-dataviews` | The 8 chart/heatmap views (Vico) | ~2,100 |
 | `android/pantry` | Inventory, barcode → Open Food Facts, allergens, expiry, cook-from-pantry | 2,843 |
 
-### Phase 2.5 — Wave B.5: catch the ported features up to current iOS 🔄
+### Phase 2.5 — Wave B.5: catch the ported features up to current iOS ✅ merged
 
 Added 2026-10-07. Waves A and B were ported from iOS as of v0.13.1; §9 lists what iOS
 and the server changed since. Before fanning out new features, one serial step and five
@@ -628,7 +628,7 @@ and Meals all need it, and three parallel copies would not merge.
 The truthful `RestState` lands on Today only in this wave; Photos, Family and approvals
 adopt it after it merges (the iOS fix covered all four).
 
-### Phase 3 — Wave C (5 agents, parallel) 🚧
+### Phase 3 — Wave C (5 agents, parallel) ✅ merged
 
 Since the fork iOS grew here too: Settings gained a Planning panel, Family gained the
 chore-change broadcast and reward-shop `canManage`, and Family Night gained Planning
@@ -642,47 +642,47 @@ integration — port those with their areas, after Wave E's planning core exists
 | `android/capture` | The "Add anything" sheet (8 intents) + dictation. ⚠️ see §7.1 | 1,279 |
 | `android/bites-familynight` | Waffled-Bites control panel + Family Night | 1,363 |
 
-### Phase 3.5 — Wave E: what iOS added since the fork 🚧
+### Phase 3.5 — Wave E: what iOS added since the fork ✅ merged
 
 None of this existed when the plan was written. Weekly Planning is now the **largest area
 in the app** — bigger than Meals — so it is split.
 
-| Agent | Scope | iOS LOC |
-|---|---|---:|
-| `android/calendar-phone` | The iPhone Month / Week / Day calendar (`PhoneCalendarLayoutTests`) and multi-day bars. **Put the month grid in a shared module** — Weekly Planning's Horizon scan draws the same grid on iOS (`PhoneMonthGrid`), and CLAUDE.md cites exactly this copy as the reason to share | ~1,200 |
-| `android/rhythms` | Rhythms card, list, editor, book-it and backdate sheets; `rhythm_id` on events; rhythm countdowns | 2,659 |
-| `android/planning-core` | **Serial, first.** Session shell, lobby, step navigation, parked notes, handoff banner, per-step API clients, Today card, settings panel | ~4,000 |
-| `android/planning-steps-a` | Connection, Loose ends, Calendar, Horizon scan | ~4,000 |
-| `android/planning-steps-b` | Meals, Tasks, Goals, Kids, Family Night, Recap | ~4,300 |
+What was actually built. The three planning agents collapsed into one `feature:planning`
+module with one file per step, because every step shares the session model.
 
-Planning reads every other module, so it goes after Wave B.5 and the calendar redesign.
+| Module | What shipped |
+|---|---|
+| `feature:calendar` | The phone Month / Week / Day calendar and agenda, multi-day bars, and the month grid (`PhoneMonthGrid`) shared with Weekly Planning's Horizon scan (`PhoneCalendarLayoutTests`) |
+| `feature:rhythms` | Rhythms card, list, editor, book-it and backdate sheets; `rhythm_id` on events; rhythm countdowns |
+| `feature:planning` | Weekly Planning end to end: session shell, lobby, step navigation, parked notes, handoff banner, per-step API clients and a step seam (one file per step), the Today card and the settings panel. An aggregator module: it depends on other features |
 
-### Phase 4 — Wave D, tablet kiosk (3 agents) 🚧
+Planning reads every other module, so it went after Wave B.5 and the calendar redesign.
+
+### Phase 4 — Wave D, tablet kiosk (3 agents) ✅ merged
 
 **Sequenced last deliberately** — it is 4,205 LOC plus the two duplicated view trees, and
 it is a separable product. Quantified so the scope is a conscious choice: **kiosk +
 duplicated trees ≈ 4,205 LOC, and Meals + Goals + Settings + Kiosk together are 24,126
 LOC — 56% of all feature code.**
 
-| Agent | Scope |
+| Module | What shipped |
 |---|---|
-| `android/kiosk-shell` | Rail (customisable, 5 pins) + detail pane, boot cover with 8s stall escape, More grid, screensaver, device pairing, profile picker + PIN pad + lockout |
-| `android/kiosk-today` | `KioskDashboard` (993) |
-| `android/kiosk-calendar` | `KioskCalendarView` (998) |
+| `feature:kiosk` | Rail and bottom bar, boot cover with stall escape, More grid, screensaver, device pairing, profile picker + PIN pad + lockout, kiosk Family and Lists pages, the "This tablet" card in Display & Kiosk |
+| `feature:kiosktoday` | `KioskDashboard` |
+| `feature:kioskcalendar` | `KioskCalendarView` |
 
-### Phase 5 — integration & release plumbing (serial) 🚧
+### Phase 5 — integration & release plumbing (serial) 🔄 in progress
 
 1. Merge every feature branch into `android-port`; resolve; full `./gradlew test` +
    `assembleDebug`; install on the emulator **and** on the physical device.
 2. Visual parity pass — side-by-side against the iOS simulator, screen by screen. This is
    where "copy the design exactly" is actually verified.
-3. **`./waffled release` must bump the Android version site.** It currently bumps
-   `apps/api` + `apps/web` package.json (+lockfiles), `WAFFLED_VERSION` in
-   `infra/compose/.env.example`, and iOS `MARKETING_VERSION` (`waffled:1256-1257`). Add
-   `apps/android/app/build.gradle.kts` `versionName`. **Miss it and repo/images/`.env`
-   silently disagree** — the exact failure the release convention exists to prevent.
-4. `.github/workflows/ci.yml` — add a Gradle job (JDK 21, `test` + `assembleDebug`).
-5. **Docs, in this same PR — never as a follow-up:**
+3. ✅ **`./waffled release` bumps the Android version site**: `versionName` = X.Y.Z and
+   `versionCode` = major*10000 + minor*100 + patch (so 0.15.3 is 1503), covered by
+   `tests/waffled.test.sh`. **Miss it and repo/images/`.env` silently disagree** — the
+   exact failure the release convention exists to prevent.
+4. ✅ `.github/workflows/ci.yml` — a Gradle job (JDK 21, `test` + `assembleDebug`).
+5. ✅ **Docs, in this same PR — never as a follow-up:**
    - `apps/android/CLAUDE.md` (folder-scoped conventions: the toolchain table from §0,
      the frozen-design-system rule, the two perf traps, the test command).
    - `CHANGELOG.md` under `[Unreleased]` → **Added**, bold lead + a plain-language
@@ -736,7 +736,7 @@ client; `Theme` ↔ `waffled.css`. **Recommendation: add the two parity tests na
 
 ### 7.4 Tablet kiosk scope
 
-The task says "every feature", so it is planned in full at Phase 4 — but it is 4,205 LOC
+The task says "every feature", so it was planned in full at Phase 4 and shipped there — but it is 4,205 LOC
 plus two duplicated view trees, and it is separable. **Recommendation: keep it in, last**,
 so it can be dropped from the PR without disturbing anything earlier if you want to ship
 the phone app sooner.

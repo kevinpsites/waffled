@@ -73,6 +73,7 @@ Details and album setup: [Photos & screensaver](/features/photos/).
 
 - **iPad** — the native app gives the best kiosk: keep-awake and a Ken-Burns
   slow-zoom screensaver.
+- **Android tablet** — the native app runs the same kiosk: profile picker, PIN and screensaver. See [Install the Android app](/guides/android-app/).
 - **Any other tablet** — the web PWA works great.
 - **iPhone is never a kiosk** — it's a personal device, not a shared display.
 

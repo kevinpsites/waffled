@@ -12,9 +12,9 @@ android {
         applicationId = "app.waffled"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 1
-        // ⚠️ Bumped by ./waffled release — see docs/product/android-port-plan.md, Phase 5.
-        versionName = "0.13.1"
+        versionCode = 1503
+        // Both bumped by ./waffled release. versionCode = major*10000 + minor*100 + patch (0.15.3 -> 1503).
+        versionName = "0.15.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

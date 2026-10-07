@@ -33,9 +33,9 @@ rewards goes with it.
 
 ## One flag, both clients
 
-The on/off flag is **server-side and shared**, so **both web and iOS** honor it. Each
-client renders its own **native UI**, though — a module that has no iOS screen simply
-**doesn't appear on iOS**, gracefully, rather than showing a broken entry.
+The on/off flag is **server-side and shared**, so **web, iOS and Android** all honor it. Each
+client renders its own **native UI**, though — a module that has no screen on a given client simply
+**doesn't appear there**, gracefully, rather than showing a broken entry.
 
 ## Data note: offline vs online-only on iOS
 
