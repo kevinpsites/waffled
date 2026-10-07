@@ -471,10 +471,12 @@ release_repository_ready() {
   # Sparkle decides "is this newer?" from CFBundleVersion, which follows MARKETING_VERSION
   # here, so a release that left it behind is one no installed copy can see.
   mac_ver="$(sed -nE 's/^[[:space:]]*MARKETING_VERSION:[[:space:]]*"?([^"[:space:]]+)"?.*/\1/p' "$ROOT/apps/mac/project.yml" | head -1)"
+  # The Android versionName; versionCode is derived from it at bump time, so it needs no check.
+  android_ver="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$ROOT/apps/android/app/build.gradle.kts" 2>/dev/null | head -1)"
   if [ -z "$api_ver" ] || [ "$api_ver" != "$web_ver" ] || \
      [ "$api_ver" != "$compose_ver" ] || [ "$api_ver" != "$ios_ver" ] || \
-     [ "$api_ver" != "$mac_ver" ]; then
-    echo "${c_red}Current versions disagree:${c_reset} api=$api_ver web=$web_ver compose=$compose_ver ios=$ios_ver mac=$mac_ver"
+     [ "$api_ver" != "$mac_ver" ] || [ "$api_ver" != "$android_ver" ]; then
+    echo "${c_red}Current versions disagree:${c_reset} api=$api_ver web=$web_ver compose=$compose_ver ios=$ios_ver mac=$mac_ver android=$android_ver"
     echo "Fix the drift before cutting another release."
     return 1
   fi
