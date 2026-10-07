@@ -285,7 +285,14 @@ data class GoalDraft(
         // healthMetric / healthDailyTarget are DELIBERATELY absent — see the KDoc.
     }
 
+    /** Pin the goal to [groupId] (iOS `lockedListId`); null leaves the draft untouched. */
+    fun lockedTo(groupId: String?): GoalDraft = if (groupId == null) this else copy(goalListId = groupId)
+
     companion object {
+
+        /** The groups the picker offers: just the locked one when a host fixes the group. */
+        fun groupChoices(lists: List<GoalsApi.GoalList>, lockedGroupId: String?): List<GoalsApi.GoalList> =
+            if (lockedGroupId == null) lists else lists.filter { it.id == lockedGroupId }
 
         val CATEGORIES = listOf("physical", "intellectual", "spiritual", "creative", "social")
 

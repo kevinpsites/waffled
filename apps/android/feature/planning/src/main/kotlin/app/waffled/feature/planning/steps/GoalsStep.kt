@@ -158,6 +158,8 @@ fun GoalsStepBody(props: PlanningStepProps) {
                 // Pinned on the way in, so the server adopts it as the group's lone pin.
                 initial = GoalDraft.new(defaultListId = g.listId).copy(isFeatured = true),
                 onDismiss = model::closeNewGoal,
+                lockedGroupId = g.listId,
+                allowNewGroup = false,
                 onSubmit = { body, _ ->
                     // The GROUP IS CAPTURED HERE: the editor closes itself on submit.
                     val target = g.listId
