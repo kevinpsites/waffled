@@ -52,16 +52,42 @@ internal data class EventDraft(
      */
     val occurrenceStartIso: String? = null,
     val original: RecurringEventSeriesFields? = null,
+    /** The last day an all-day event covers (inclusive); saved as the exclusive end. */
+    val lastDay: LocalDate = date,
 ) {
 
     val canSave: Boolean get() = title.isNotBlank()
 
+    /** All-day starts at noon, like iOS, so a device/household zone gap can't shift its day. */
     fun startInstant(zone: ZoneId): Instant =
-        if (allDay) date.atStartOfDay(zone).toInstant() else date.atTime(startTime).atZone(zone).toInstant()
+        date.atTime(if (allDay) LocalTime.NOON else startTime).atZone(zone).toInstant()
 
-    /** All-day events carry no end; a timed one keeps whatever duration it had. */
+    /**
+     * All-day: noon the day after [lastDay] (exclusive, the shape Google sends). Timed: the
+     * start plus the carried duration, so moving the start keeps the length.
+     */
     fun endInstant(zone: ZoneId): Instant? =
-        if (allDay) null else startInstant(zone).plusSeconds(durationSeconds)
+        if (allDay) EventEnd.allDayExclusiveEnd(lastDay, zone) else startInstant(zone).plusSeconds(durationSeconds)
+
+    /** Move the start day; an all-day span moves with it. */
+    fun withDate(newDate: LocalDate): EventDraft {
+        val span = java.time.temporal.ChronoUnit.DAYS.between(date, lastDay).coerceAtLeast(0)
+        return copy(date = newDate, lastDay = newDate.plusDays(span))
+    }
+
+    /** The all-day Ends date; never before the start day. */
+    fun withLastDay(day: LocalDate): EventDraft = copy(lastDay = maxOf(date, day))
+
+    /** The timed Ends date and time, stored as a length (floored at 15 minutes). */
+    fun withTimedEnd(day: LocalDate, time: LocalTime, zone: ZoneId): EventDraft {
+        val start = date.atTime(startTime).atZone(zone).toInstant()
+        val end = day.atTime(time).atZone(zone).toInstant()
+        return copy(durationSeconds = EventEnd.minutes(start, end) * 60)
+    }
+
+    /** Where the timed Ends pills read from. */
+    fun timedEnd(zone: ZoneId): java.time.LocalDateTime =
+        date.atTime(startTime).atZone(zone).plusSeconds(durationSeconds).toLocalDateTime()
 
     /** Adopt the loaded detail as the baseline the series rule compares against. */
     fun withSeriesBaseline(fields: RecurringEventSeriesFields): EventDraft = copy(original = fields)
@@ -97,10 +123,12 @@ internal data class EventDraft(
             val start = WaffledDates.parseInstant(event.startsAt, zone)
             val local = start?.atZone(zone)
             val end = WaffledDates.parseInstant(event.endsAt, zone)
+            val date = local?.toLocalDate() ?: initialDate
 
             return EventDraft(
                 title = event.title,
-                date = local?.toLocalDate() ?: initialDate,
+                date = date,
+                lastDay = if (event.allDay && start != null) EventEnd.allDayLastDay(start, end, zone) else date,
                 startTime = local?.toLocalTime() ?: DEFAULT_START_TIME,
                 allDay = event.allDay,
                 location = event.location.orEmpty(),
@@ -111,16 +139,18 @@ internal data class EventDraft(
                 repeat = Recurrence.parseRepeat(event.rrule),
                 originalRrule = event.rrule,
                 isRecurring = !event.rrule.isNullOrEmpty(),
-                durationSeconds = durationOf(start, end),
+                // An all-day end is a day boundary, not a length.
+                durationSeconds = if (event.allDay) DEFAULT_DURATION_SECONDS else durationOf(start, end),
                 occurrenceStartIso = event.startsAt,
             )
         }
 
+        /** Rounded through [EventEnd.minutes], the same way the Ends picker writes it back. */
         private fun durationOf(start: Instant?, end: Instant?): Long {
             if (start == null || end == null) return DEFAULT_DURATION_SECONDS
-            val seconds = end.epochSecond - start.epochSecond
             // A non-positive span is malformed data, not a zero-length event.
-            return if (seconds > 0) seconds else DEFAULT_DURATION_SECONDS
+            if (end.epochSecond <= start.epochSecond) return DEFAULT_DURATION_SECONDS
+            return EventEnd.minutes(start, end) * 60
         }
     }
 }

@@ -73,10 +73,86 @@ class EventDraftTest {
     }
 
     @Test
-    fun anAllDayEventCarriesNoEndAtAll() {
+    fun anAllDayEventEndsAtNoonTheDayAfterItsLastDay() {
+        // The exclusive shape Google sends, so a made-here event spreads like a synced one.
         val draft = EventDraft.seed(event = event(allDay = true), initialDate = june16, zone = denver)
         assertTrue(draft.allDay)
-        assertNull(draft.endInstant(denver))
+        assertEquals(june16, draft.lastDay)
+        assertEquals(
+            LocalDate.of(2026, 6, 17).atTime(12, 0).atZone(denver).toInstant(),
+            draft.endInstant(denver),
+        )
+    }
+
+    @Test
+    fun anAllDayStartIsNoonSoAZoneShiftCannotMoveItsDay() {
+        val draft = EventDraft.seed(event = event(allDay = true), initialDate = june16, zone = denver)
+        assertEquals(june16.atTime(12, 0).atZone(denver).toInstant(), draft.startInstant(denver))
+    }
+
+    @Test
+    fun editingASyncedTripOpensOnItsLastDay() {
+        val draft = EventDraft.seed(
+            event = event(startsAt = "2026-07-27T06:00:00Z", endsAt = "2026-08-03T06:00:00Z", allDay = true),
+            initialDate = june16,
+            zone = denver,
+        )
+        assertEquals(LocalDate.of(2026, 7, 27), draft.date)
+        assertEquals(LocalDate.of(2026, 8, 2), draft.lastDay)
+    }
+
+    @Test
+    fun anAllDayEndDoesNotSeedATimedDuration() {
+        // A three-day trip's end is not a 72-hour length; toggling it to timed starts at an hour.
+        val draft = EventDraft.seed(
+            event = event(startsAt = "2026-07-27T06:00:00Z", endsAt = "2026-07-30T06:00:00Z", allDay = true),
+            initialDate = june16,
+            zone = denver,
+        ).copy(allDay = false)
+        assertEquals(3600, draft.endInstant(denver)!!.epochSecond - draft.startInstant(denver).epochSecond)
+    }
+
+    @Test
+    fun movingTheStartDayCarriesTheAllDaySpan() {
+        val draft = EventDraft.seed(event = null, initialDate = june16, zone = denver)
+            .copy(allDay = true)
+            .withLastDay(LocalDate.of(2026, 6, 18))
+            .withDate(LocalDate.of(2026, 6, 20))
+        assertEquals(LocalDate.of(2026, 6, 22), draft.lastDay)
+    }
+
+    @Test
+    fun theLastDayCannotFallBeforeTheStart() {
+        val draft = EventDraft.seed(event = null, initialDate = june16, zone = denver)
+            .withLastDay(LocalDate.of(2026, 6, 10))
+        assertEquals(june16, draft.lastDay)
+    }
+
+    @Test
+    fun aTimedEndCanLandOnALaterDayAndKeepsTheLengthWhenTheStartMoves() {
+        val draft = EventDraft.seed(event = null, initialDate = june16, zone = denver)
+            .copy(startTime = LocalTime.of(20, 0))
+            .withTimedEnd(LocalDate.of(2026, 6, 17), LocalTime.of(1, 30), denver)
+        assertEquals(330 * 60L, draft.durationSeconds)
+        val moved = draft.withDate(LocalDate.of(2026, 6, 18))
+        assertEquals(330 * 60L, moved.endInstant(denver)!!.epochSecond - moved.startInstant(denver).epochSecond)
+    }
+
+    @Test
+    fun aTimedEndBeforeTheStartFloorsAtFifteenMinutes() {
+        val draft = EventDraft.seed(event = null, initialDate = june16, zone = denver)
+            .withTimedEnd(june16, LocalTime.of(8, 0), denver)
+        assertEquals(15 * 60L, draft.durationSeconds)
+    }
+
+    @Test
+    fun aSlightlyShortEventRoundsRatherThanTruncates() {
+        val draft = EventDraft.seed(
+            event = event(startsAt = "2026-06-16T17:00:00Z", endsAt = "2026-06-16T17:59:36Z"),
+            initialDate = june16,
+            zone = denver,
+        )
+        assertEquals(3600L, draft.durationSeconds)
     }
 
     @Test

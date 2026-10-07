@@ -116,8 +116,7 @@ fun EventEditSheet(
     }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var pickingDate by remember { mutableStateOf(false) }
-    var pickingTime by remember { mutableStateOf(false) }
+    var picking by remember { mutableStateOf<WhenPick?>(null) }
     var askingScope by remember { mutableStateOf(false) }
     // Creating an event needs no detail; editing one does.
     var detailState by remember(event?.id) {
@@ -268,18 +267,30 @@ fun EventEditSheet(
                     enabled = !locked,
                     onChange = { draft = draft.copy(allDay = it) },
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ValueButton(
-                        text = draft.date.toString(),
-                        enabled = !locked,
-                        modifier = Modifier.weight(1f),
-                    ) { pickingDate = true }
+                // Starts and Ends share one shape: a day pill, plus a time pill when timed.
+                val end = draft.timedEnd(zone)
+                WhenRow(label = "Starts") {
+                    ValueButton(EventEnd.dayLabel(draft.date), !locked, Modifier.weight(1f)) {
+                        picking = WhenPick.StartDay
+                    }
                     if (!draft.allDay) {
-                        ValueButton(
-                            text = draft.startTime.toString(),
-                            enabled = !locked,
-                            modifier = Modifier.weight(1f),
-                        ) { pickingTime = true }
+                        ValueButton(EventEnd.timeLabel(draft.startTime), !locked, Modifier.weight(1f)) {
+                            picking = WhenPick.StartTime
+                        }
+                    }
+                }
+                WhenRow(label = "Ends") {
+                    if (draft.allDay) {
+                        ValueButton(EventEnd.dayLabel(draft.lastDay), !locked, Modifier.weight(1f)) {
+                            picking = WhenPick.EndDay
+                        }
+                    } else {
+                        ValueButton(EventEnd.dayLabel(end.toLocalDate()), !locked, Modifier.weight(1f)) {
+                            picking = WhenPick.EndDay
+                        }
+                        ValueButton(EventEnd.timeLabel(end.toLocalTime()), !locked, Modifier.weight(1f)) {
+                            picking = WhenPick.EndTime
+                        }
                     }
                 }
             }
@@ -385,26 +396,41 @@ fun EventEditSheet(
         }
     }
 
-    if (pickingDate) {
-        WaffledDatePickerDialog(
+    val end = draft.timedEnd(zone)
+    when (picking) {
+        WhenPick.StartDay -> WaffledDatePickerDialog(
             initial = draft.date,
-            onDismiss = { pickingDate = false },
+            onDismiss = { picking = null },
             onPick = {
-                draft = draft.copy(date = it)
-                pickingDate = false
+                draft = draft.withDate(it)
+                picking = null
             },
         )
-    }
-
-    if (pickingTime) {
-        TimePickerDialog(
+        WhenPick.StartTime -> TimePickerDialog(
             initial = draft.startTime,
-            onDismiss = { pickingTime = false },
+            onDismiss = { picking = null },
             onPick = {
                 draft = draft.copy(startTime = it)
-                pickingTime = false
+                picking = null
             },
         )
+        WhenPick.EndDay -> WaffledDatePickerDialog(
+            initial = if (draft.allDay) draft.lastDay else end.toLocalDate(),
+            onDismiss = { picking = null },
+            onPick = {
+                draft = if (draft.allDay) draft.withLastDay(it) else draft.withTimedEnd(it, end.toLocalTime(), zone)
+                picking = null
+            },
+        )
+        WhenPick.EndTime -> TimePickerDialog(
+            initial = end.toLocalTime(),
+            onDismiss = { picking = null },
+            onPick = {
+                draft = draft.withTimedEnd(end.toLocalDate(), it, zone)
+                picking = null
+            },
+        )
+        null -> Unit
     }
 
     if (askingScope) {
@@ -419,6 +445,21 @@ fun EventEditSheet(
                 save(it)
             },
         )
+    }
+}
+
+/** Which When pill has its picker open. */
+private enum class WhenPick { StartDay, StartTime, EndDay, EndTime }
+
+@Composable
+private fun WhenRow(label: String, pills: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = label,
+            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+            color = WF.colors.ink3,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), content = pills)
     }
 }
 
