@@ -1,5 +1,7 @@
 package app.waffled.feature.meals
 
+import app.waffled.core.model.HouseholdWeekStart
+
 /**
  * Everything "Plan my week/month & build list" sends to the server, as an ordered value.
  *

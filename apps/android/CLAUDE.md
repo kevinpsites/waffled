@@ -89,7 +89,7 @@ Every one of these exists because a feature would otherwise hand-roll it N times
 | Dates | `WaffledDates` (in **`core:model`**) — `parseInstant`, `localDay(zone)`, cached `formatter`, `noonIso` |
 | API tests | `ApiTestHarness` in `core:testing` — MockWebServer + token/server fakes; `enqueueNoContent()` for 204s |
 | Segmented control | `SegmentedRow` |
-| Household week start | `SyncManager.householdWeekStart` — the SERVER owns this; never compute one |
+| Household week start | `HouseholdWeekStart.parse(SyncManager.householdWeekStart.value)` (in `core:model`) — `weekStart(date)`, `rotated(labels)`, `monthLeadCells(first)`. Never cut a household week on the device locale |
 
 **`refreshAccessToken(failedToken)` takes the token the failed request actually sent.**
 Pass it. That is what stops a staggered 401 from burning a second rotation of a

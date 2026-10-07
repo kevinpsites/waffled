@@ -1,45 +1,9 @@
 package app.waffled.feature.meals
 
-import app.waffled.core.model.Household
+import app.waffled.core.model.HouseholdWeekStart
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.temporal.TemporalAdjusters
-
-/**
- * The household's first-day-of-week preference (`households.week_start`), as opposed to
- * the DEVICE's locale setting. The two are independent and routinely disagree — a Monday
- * household on a US phone — and the grocery list is keyed by this one.
- */
-enum class HouseholdWeekStart {
-    Sunday,
-    Monday,
-    ;
-
-    /** The day the household's week opens on. */
-    val dayOfWeek: DayOfWeek
-        get() = if (this == Monday) DayOfWeek.MONDAY else DayOfWeek.SUNDAY
-
-    companion object {
-        /**
-         * Lenient: the value arrives as free text off the synced `households` row. Sunday
-         * is the server's default, so unrecognised or absent text reads as Sunday.
-         *
-         * This is the PARSER, not the "haven't synced yet" answer. Absent-because-nothing-
-         * has-synced is a `null` [HouseholdWeekStart], which [GroceryWeeks.weekStarts]
-         * treats very differently — see its docs. Do not route "no household row" through
-         * here.
-         */
-        fun parse(raw: String?): HouseholdWeekStart =
-            if (raw?.trim()?.lowercase() == "monday") Monday else Sunday
-
-        /**
-         * The preference for a household row that has actually arrived, or null when none
-         * has. A row that exists but omits `week_start` is Sunday (the server default); a
-         * row that has never synced is genuinely unknown.
-         */
-        fun of(household: Household?): HouseholdWeekStart? = household?.let { parse(it.weekStart) }
-    }
-}
 
 /**
  * Which grocery weeks a meal-plan apply has to rebuild.

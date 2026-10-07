@@ -1,5 +1,6 @@
 package app.waffled.feature.meals
 
+import app.waffled.core.model.HouseholdWeekStart
 import org.junit.Test
 import java.time.LocalDate
 import java.util.Locale
