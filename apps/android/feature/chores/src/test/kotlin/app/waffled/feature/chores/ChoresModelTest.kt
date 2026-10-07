@@ -399,6 +399,37 @@ class ChoresModelTest {
     }
 
     @Test
+    fun `deleting returns null on success and reloads the day`() = runTest {
+        enqueueDay(instanceJson("a"))
+        val model = model()
+        model.load()
+        harness.takeRequest()
+
+        harness.enqueueNoContent()
+        enqueueDay()
+        val error = model.delete(
+            choreId = "c-a",
+            body = ChoreScopePolicy.target(kotlinx.serialization.json.buildJsonObject { }, ChoreScope.This, "a"),
+        )
+
+        assertNull(error)
+        assertEquals("DELETE", harness.takeRequest().method)
+        assertTrue(model.rows.isEmpty())
+    }
+
+    @Test
+    fun `a refused scoped delete relays the server's reason`() = runTest {
+        enqueueDay(instanceJson("a", status = "done"))
+        val model = model()
+        model.load()
+
+        harness.enqueueError(409, "ChoreScopeError", "Completed chores can't be changed.")
+        val error = model.delete(choreId = "c-a")
+
+        assertEquals("Completed chores can't be changed.", error)
+    }
+
+    @Test
     fun `approving drops the row from the queue and refreshes the board`() = runTest {
         enqueueDay(instanceJson("a", status = "awaiting"))
         val model = model()

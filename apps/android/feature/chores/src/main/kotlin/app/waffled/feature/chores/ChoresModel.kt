@@ -382,8 +382,19 @@ class ChoresModel(
         return null
     }
 
-    suspend fun delete(choreId: String) {
-        write { api.deleteChore(choreId) }
+    /**
+     * Delete with an optional scope [body]. Returns null on success, else the server's
+     * reason — a settled occurrence is refused with a 409 the editor must show.
+     */
+    suspend fun delete(choreId: String, body: JsonObject = JsonObject(emptyMap())): String? {
+        val failure = runCatching { api.deleteChore(choreId, body) }.exceptionOrNull()
+        if (failure != null) {
+            return (failure as? WaffledApiException)?.userMessage?.takeIf { it.isNotBlank() }
+                ?: "Couldn’t delete this chore — please try again."
+        }
+        invalidate()
+        load()
+        return null
     }
 
     // ---- internals -------------------------------------------------------------------

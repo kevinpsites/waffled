@@ -203,14 +203,25 @@ class ChoresApi(
         sendUnit(HttpMethod.Post, "api/chores") { jsonBody(body) }
     }
 
-    /** Edit a chore definition — the same fields as create. */
+    /**
+     * Edit a chore definition — the same fields as create, plus optional `scope` and
+     * `instanceId` for a recurring chore (see [ChoreScopePolicy.target]).
+     */
     suspend fun updateChore(id: String, body: JsonObject) {
         sendUnit(HttpMethod.Patch, "api/chores/$id") { jsonBody(body) }
     }
 
-    /** Delete a chore definition and its outstanding instances. */
-    suspend fun deleteChore(id: String) {
-        sendUnit(HttpMethod.Delete, "api/chores/$id")
+    /**
+     * Delete one occurrence, this-and-following, or the active series — [body] carries
+     * `scope` + `instanceId` (see [ChoreScopePolicy.target]). An empty body keeps the
+     * server's default: the entire active series.
+     */
+    suspend fun deleteChore(id: String, body: JsonObject = EMPTY) {
+        if (body.isEmpty()) {
+            sendUnit(HttpMethod.Delete, "api/chores/$id")
+        } else {
+            sendUnit(HttpMethod.Delete, "api/chores/$id") { jsonBody(body) }
+        }
     }
 
     // ---- stored proofs ---------------------------------------------------------------
