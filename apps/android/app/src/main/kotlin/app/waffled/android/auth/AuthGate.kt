@@ -69,5 +69,6 @@ private fun sessionViewModelFactory(container: AppContainer) =
                 onSessionChanged = container::newSessionScope,
                 _phase = container.sessionPhase,
                 onExpired = { container.kioskMode.onPersonSessionExpired() },
+                adoptSession = container::adoptSignIn,
             ) as T
     }

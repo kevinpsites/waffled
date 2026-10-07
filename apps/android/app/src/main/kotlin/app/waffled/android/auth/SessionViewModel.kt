@@ -6,6 +6,7 @@ import app.waffled.core.auth.AuthApi
 import app.waffled.core.auth.AuthStatus
 import app.waffled.core.auth.LoginResult
 import app.waffled.core.auth.Membership
+import app.waffled.core.auth.TokenPair
 import app.waffled.core.auth.WaffledAuth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,6 +44,8 @@ class SessionViewModel(
     private val _phase: MutableStateFlow<SessionPhase> = MutableStateFlow(SessionPhase.Loading),
     /** The person's refresh token died — a shared kiosk returns to its picker. */
     private val onExpired: () -> Unit = {},
+    /** Install the signed-in pair; a non-null result is a refusal to show on the form. */
+    private val adoptSession: suspend (TokenPair) -> String? = { auth.adopt(it); null },
 ) : ViewModel() {
 
     val phase: StateFlow<SessionPhase> = _phase.asStateFlow()
@@ -85,7 +88,11 @@ class SessionViewModel(
         viewModelScope.launch {
             when (val result = api.login(state.email, state.password)) {
                 is LoginResult.Success -> {
-                    auth.adopt(result.tokens)
+                    val refusal = adoptSession(result.tokens)
+                    if (refusal != null) {
+                        _login.update { it.copy(isBusy = false, error = refusal) }
+                        return@launch
+                    }
                     onSessionChanged()
                     _login.value = LoginUiState() // don't keep the password around
                     _phase.value = SessionPhase.SignedIn(result.memberships)
