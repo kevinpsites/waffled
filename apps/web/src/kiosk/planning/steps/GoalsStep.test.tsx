@@ -223,9 +223,14 @@ describe('GoalsStep · the tabs are the goal lists', () => {
       if (t) { seen.disconnect(); fireEvent.click(t) }
     })
     seen.observe(document.body, { childList: true, subtree: true })
-    renderStep()
-    expect(await screen.findByText('Date night')).toBeInTheDocument()
-    expect(tab('Mom & Dad')).toHaveAttribute('aria-selected', 'true')
+    try {
+      renderStep()
+      expect(await screen.findByText('Date night')).toBeInTheDocument()
+      expect(tab('Mom & Dad')).toHaveAttribute('aria-selected', 'true')
+    } finally {
+      // Never left watching the page: a later test's render would get a stray click.
+      seen.disconnect()
+    }
   })
 })
 
