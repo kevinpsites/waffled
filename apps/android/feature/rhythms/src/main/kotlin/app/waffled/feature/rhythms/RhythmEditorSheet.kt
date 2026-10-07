@@ -172,9 +172,14 @@ private fun Sentence(form: RhythmForm, isNew: Boolean, members: List<Person>, on
             if (cadenceFixed) {
                 FixedToken("${form.count} ${form.unit.label}")
             } else {
+                // Local text so the field can be emptied mid-edit; only a real count is written.
+                var countText by remember(form.editingId) { mutableStateOf(form.count.toString()) }
                 TokenField(
-                    value = form.count.toString(),
-                    onChange = { text -> text.filter(Char::isDigit).toIntOrNull()?.let { onChange(form.copy(count = it)) } },
+                    value = countText,
+                    onChange = { text ->
+                        countText = text.filter(Char::isDigit)
+                        countText.toIntOrNull()?.takeIf { it >= 1 }?.let { onChange(form.copy(count = it)) }
+                    },
                     placeholder = "1", label = "How often", width = 56.dp, numeric = true,
                 )
                 PillMenu(form.unit.label, "Unit", RhythmForm.Unit.entries.map { it.label to { onChange(form.copy(unit = it)) } })

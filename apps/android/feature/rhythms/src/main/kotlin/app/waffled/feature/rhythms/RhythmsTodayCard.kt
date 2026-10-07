@@ -59,14 +59,12 @@ fun RhythmsTodayCard(
     onChanged: () -> Unit = {},
 ) {
     val state by model.state.collectAsStateWithLifecycle()
-    // Before the empty return: quiet is the initial state, so a load placed after it
+    // Outside the emptiness gate: quiet is the initial state, so a load placed inside it
     // would never run and the card would stay empty forever.
     LaunchedEffect(refreshKey) { model.loadAttention() }
-    if (state.attention.isEmpty()) return
 
-    // The header's "All N" needs the whole register — asked for only on days this renders.
-    LaunchedEffect(refreshKey) { model.loadAll() }
-
+    // Above the emptiness gate: handling the last item empties the list, and a scope that
+    // left composition with the card would cancel the write's follow-up (and onChanged).
     val scope = rememberCoroutineScope()
     var busyId by remember { mutableStateOf<String?>(null) }
     var booking by remember { mutableStateOf<RhythmsApi.AttentionItem?>(null) }
@@ -90,27 +88,31 @@ fun RhythmsTodayCard(
     }
 
     val cap = 4
-    WaffledCard(modifier = modifier, padding = 15.dp) {
-        Column(verticalArrangement = Arrangement.spacedBy(if (kiosk) 12.dp else 10.dp)) {
-            Header(state, kiosk, onOpen)
-            for (item in state.attention.take(cap)) {
-                AttentionRow(
-                    item = item,
-                    status = state.statusLines[item.rhythm.id].orEmpty(),
-                    kiosk = kiosk,
-                    busy = busyId == item.rhythm.id,
-                    urgent = remember(item, state.statusLines) { isUrgent(item, model) },
-                    onDone = { run(item.rhythm.id) { model.markDone(item.rhythm.id) } },
-                    onBook = { booking = item },
-                    onSkip = { run(item.rhythm.id) { model.skipPeriod(item) } },
-                )
-            }
-            if (state.attention.size > cap) {
-                Text(
-                    "+${state.attention.size - cap} more",
-                    style = TextStyle(fontSize = if (kiosk) 13.sp else 11.sp, fontWeight = FontWeight.SemiBold),
-                    color = WF.colors.ink3,
-                )
+    if (state.attention.isNotEmpty()) {
+        // The header's "All N" needs the whole register — asked for only on days this renders.
+        LaunchedEffect(refreshKey) { model.loadAll() }
+        WaffledCard(modifier = modifier, padding = 15.dp) {
+            Column(verticalArrangement = Arrangement.spacedBy(if (kiosk) 12.dp else 10.dp)) {
+                Header(state, kiosk, onOpen)
+                for (item in state.attention.take(cap)) {
+                    AttentionRow(
+                        item = item,
+                        status = state.statusLines[item.rhythm.id].orEmpty(),
+                        kiosk = kiosk,
+                        busy = busyId == item.rhythm.id,
+                        urgent = remember(item, state.statusLines) { isUrgent(item, model) },
+                        onDone = { run(item.rhythm.id) { model.markDone(item.rhythm.id) } },
+                        onBook = { booking = item },
+                        onSkip = { run(item.rhythm.id) { model.skipPeriod(item) } },
+                    )
+                }
+                if (state.attention.size > cap) {
+                    Text(
+                        "+${state.attention.size - cap} more",
+                        style = TextStyle(fontSize = if (kiosk) 13.sp else 11.sp, fontWeight = FontWeight.SemiBold),
+                        color = WF.colors.ink3,
+                    )
+                }
             }
         }
     }
