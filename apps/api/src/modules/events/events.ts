@@ -411,13 +411,16 @@ async function routeToNewOwner(
   if (before.person_id && (await resolveWriteTarget(householdId, before.person_id))) return false
   const target = await resolveWriteTarget(householdId, owner)
   if (!target) return false
-  await query(
+  // `calendar_id is null` claims the row: of two edits racing here only one routes and pushes,
+  // so the other can't insert a second Google copy before the first stores its id.
+  const claimed = await query(
     `update events set calendar_id = $3, sync_state = 'pending_push',
             visibility = coalesce((select visibility from calendars where id = $3 and deleted_at is null), 'family'),
             owner_person_id = (select person_id from calendars where id = $3 and deleted_at is null)
       where household_id = $1 and id = $2 and calendar_id is null and deleted_at is null`,
     [householdId, event.id, target.calendarId]
   )
+  if (!claimed.rowCount) return false
   await pushEventNow(householdId, event.id)
   return true
 }
