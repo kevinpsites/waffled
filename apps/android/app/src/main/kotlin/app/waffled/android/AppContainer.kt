@@ -359,6 +359,13 @@ class AppContainer(context: Context) {
         override fun dismiss(tag: String) {
             prefs.edit().putString(UPDATE_DISMISSED, tag).apply()
         }
+
+        // The container lives as long as the process, so this survives Activity recreation.
+        @Volatile private var snoozed: String? = null
+        override fun snoozedTag(): String? = snoozed
+        override fun snooze(tag: String) {
+            snoozed = tag
+        }
     }
 
     /**
