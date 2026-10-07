@@ -67,7 +67,6 @@ import java.time.ZoneId
 enum class CalMode(val label: String) { Agenda("Agenda"), Month("Month") }
 
 /** The month grid's day headings, Sunday-led to match the web and iOS grids. */
-private val WeekdayInitials = listOf("S", "M", "T", "W", "T", "F", "S")
 
 private val MonthCellHeight = 44.dp
 private const val MAX_DAY_DOTS = 3
@@ -569,7 +568,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.monthContent(
 }
 
 /**
- * Six Sunday-led weeks in a card.
+ * Six weeks in a card, cut on the household's week start.
  *
  * A plain `Column` of `Row`s rather than a `LazyVerticalGrid`: the grid is exactly 42 cells,
  * always fully visible, and nesting a lazy grid inside the screen's `LazyColumn` needs a
@@ -585,7 +584,9 @@ private fun MonthGrid(
     model: CalendarModel,
     onSelectDay: (LocalDate) -> Unit,
 ) {
-    val cells = remember(anchor) { CalendarModel.monthCells(anchor) }
+    val weekStart by model.weekStart.collectAsStateWithLifecycle()
+    val cells = remember(anchor, weekStart) { CalendarModel.monthCells(anchor, weekStart) }
+    val initials = remember(weekStart) { CalendarModel.weekdayInitials(weekStart) }
     val shape = RoundedCornerShape(WF.radius.lg)
 
     Column(
@@ -598,7 +599,7 @@ private fun MonthGrid(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(Modifier.fillMaxWidth()) {
-            for (initial in WeekdayInitials) {
+            for (initial in initials) {
                 Text(
                     text = initial,
                     modifier = Modifier.weight(1f),
@@ -608,7 +609,7 @@ private fun MonthGrid(
                 )
             }
         }
-        for (week in cells.chunked(WeekdayInitials.size)) {
+        for (week in cells.chunked(initials.size)) {
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),

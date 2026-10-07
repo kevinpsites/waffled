@@ -300,6 +300,14 @@ class CalendarApiTest {
     }
 
     @Test
+    fun readsTheHouseholdWeekStartAndLeavesItUnsetWhenAbsent() = runTest {
+        harness.enqueueJson("""{"household":{"id":"h1","name":"X","timezone":"UTC","weekStart":"monday"},"members":[]}""")
+        assertEquals(app.waffled.core.model.HouseholdWeekStart.Monday, api.householdSettings().weekStart)
+        harness.enqueueJson("""{"household":{"id":"h1","name":"X","timezone":"UTC"},"members":[]}""")
+        assertNull(api.householdSettings().weekStart)
+    }
+
+    @Test
     fun anUnknownTimezoneFallsBackToTheDeviceRatherThanThrowing() = runTest {
         harness.enqueueJson("""{"household":{"id":"h1","name":"X","timezone":"Mars/Olympus"},"members":[]}""")
         assertEquals(ZoneId.systemDefault(), api.householdSettings().zone)

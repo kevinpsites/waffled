@@ -1,6 +1,7 @@
 package app.waffled.feature.calendar
 
 import androidx.compose.runtime.Immutable
+import app.waffled.core.model.HouseholdWeekStart
 import app.waffled.core.model.Person
 import app.waffled.core.sync.SyncedEvent
 import kotlinx.coroutines.CoroutineScope
@@ -10,10 +11,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.temporal.TemporalAdjusters
 
 /**
  * The calendar's derived state.
@@ -34,7 +33,24 @@ import java.time.temporal.TemporalAdjusters
 class CalendarModel(
     eventsByDay: StateFlow<Map<LocalDate, List<SyncedEvent>>>,
     scope: CoroutineScope,
+    /** `SyncManager.householdWeekStart` — the raw synced `households.week_start`. */
+    syncedWeekStart: StateFlow<String?> = MutableStateFlow(null),
 ) {
+
+    private val _restWeekStart = MutableStateFlow<HouseholdWeekStart?>(null)
+
+    /**
+     * The household's week start, which cuts the month grid. The synced row wins; the REST
+     * settings stand in until it arrives, and Sunday (the server default) before either.
+     */
+    val weekStart: StateFlow<HouseholdWeekStart> =
+        combine(syncedWeekStart, _restWeekStart) { synced, rest ->
+            synced?.let(HouseholdWeekStart::parse) ?: rest ?: HouseholdWeekStart.Sunday
+        }.stateIn(scope, SharingStarted.Eagerly, HouseholdWeekStart.parse(syncedWeekStart.value))
+
+    fun setRestWeekStart(value: HouseholdWeekStart?) {
+        _restWeekStart.value = value
+    }
 
     private val _display = MutableStateFlow(CalendarApi.HouseholdDisplay())
     val display: StateFlow<CalendarApi.HouseholdDisplay> = _display.asStateFlow()
@@ -89,6 +105,7 @@ class CalendarModel(
         runCatching { api.householdSettings() }.getOrNull()?.let {
             setZone(it.zone)
             setMembers(it.members)
+            setRestWeekStart(it.weekStart)
         }
         runCatching { api.householdDisplay() }.getOrNull()?.let(::setDisplay)
     }
@@ -129,19 +146,21 @@ class CalendarModel(
     }
 
     companion object {
-        /** How many cells a month grid draws: six Sunday-led weeks, always. */
+        /** How many cells a month grid draws: six weeks, always. */
         const val MONTH_CELL_COUNT: Int = 42
 
+        private val SUNDAY_FIRST_INITIALS = listOf("S", "M", "T", "W", "T", "F", "S")
+
+        /** The grid's weekday header, opening on the same day as [monthCells]. */
+        fun weekdayInitials(weekStart: HouseholdWeekStart): List<String> = weekStart.rotated(SUNDAY_FIRST_INITIALS)
+
         /**
-         * Six Sunday-led weeks covering [anchor]'s month.
-         *
-         * Fixed at six rows rather than sized to the month so the grid's height never jumps
-         * as you page through, and Sunday-led to match the web and iOS grids. (The
-         * household's `week_start` governs meal-planning weeks, not this display grid.)
+         * Six weeks covering [anchor]'s month, cut on the household's week start like the
+         * web and iOS grids. Fixed at six rows so the grid's height never jumps as you page.
          */
-        fun monthCells(anchor: LocalDate): List<MonthCell> {
+        fun monthCells(anchor: LocalDate, weekStart: HouseholdWeekStart): List<MonthCell> {
             val first = anchor.withDayOfMonth(1)
-            val start = first.with(TemporalAdjusters.previousOrSame(DayOfWeek.SUNDAY))
+            val start = weekStart.weekStart(first)
             return (0 until MONTH_CELL_COUNT).map { offset ->
                 val date = start.plusDays(offset.toLong())
                 MonthCell(date = date, inMonth = date.month == first.month && date.year == first.year)

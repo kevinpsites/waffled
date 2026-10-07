@@ -1,5 +1,6 @@
 package app.waffled.feature.calendar
 
+import app.waffled.core.model.HouseholdWeekStart
 import app.waffled.core.model.Person
 import app.waffled.core.network.TokenProvider
 import app.waffled.core.network.WaffledHttp
@@ -164,6 +165,8 @@ class CalendarApi(
     data class HouseholdSettings(
         val zone: ZoneId,
         val members: List<Person>,
+        /** Null when the server didn't say, so the synced row (or Sunday) decides. */
+        val weekStart: HouseholdWeekStart? = null,
     )
 
     /** `settings.display` — how the calendar paints chips, and the whole-family colour. */
@@ -360,6 +363,7 @@ class CalendarApi(
             zone = runCatching { ZoneId.of(envelope.household?.timezone.orEmpty()) }
                 .getOrElse { ZoneId.systemDefault() },
             members = envelope.members.map { it.toPerson() },
+            weekStart = envelope.household?.weekStart?.let(HouseholdWeekStart::parse),
         )
     }
 
@@ -432,7 +436,12 @@ class CalendarApi(
     )
 
     @Serializable
-    private data class HouseholdDto(val id: String = "", val name: String = "", val timezone: String? = null)
+    private data class HouseholdDto(
+        val id: String = "",
+        val name: String = "",
+        val timezone: String? = null,
+        val weekStart: String? = null,
+    )
 
     @Serializable
     private data class MemberDto(
