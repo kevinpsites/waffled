@@ -1,5 +1,6 @@
 package app.waffled.feature.recipes
 
+import app.waffled.core.model.HouseholdWeekStart
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -94,6 +95,8 @@ fun RecipeDetailScreen(
     onShare: ((RecipeMarkdown) -> Unit)? = null,
     /** Jump straight into Cook Mode once the steps load. */
     autoCook: Boolean = false,
+    /** The household's `week_start`, so "This week" in the schedule sheet matches the planner. */
+    householdWeekStart: HouseholdWeekStart? = null,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -358,6 +361,7 @@ fun RecipeDetailScreen(
 
     if (scheduling) {
         RecipeScheduleSheet(
+            householdWeekStart = householdWeekStart,
             title = r.title,
             onDismiss = { scheduling = false },
             onSchedule = { date, mealType -> model.schedule(date, mealType) },

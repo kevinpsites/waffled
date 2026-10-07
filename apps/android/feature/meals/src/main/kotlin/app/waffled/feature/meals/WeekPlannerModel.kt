@@ -1,6 +1,7 @@
 package app.waffled.feature.meals
 
 import androidx.compose.runtime.Immutable
+import app.waffled.core.model.HouseholdWeekStart
 import app.waffled.core.network.RefreshBus
 import app.waffled.core.network.RefreshDomain
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,6 +47,12 @@ class WeekPlannerModel(
     val api: MealsApi,
     private val zone: ZoneId = ZoneId.systemDefault(),
     private val locale: Locale = Locale.getDefault(),
+    /**
+     * The household's live `week_start` (null until synced, read as Sunday). A provider
+     * so the grid follows the setting without rebuilding the model; no default, because
+     * a forgotten one would silently cut every week on Sunday.
+     */
+    private val firstDay: () -> HouseholdWeekStart?,
     private val refreshBus: RefreshBus? = null,
     /**
      * Today, in the household's timezone. A provider rather than a constant so the week on
@@ -80,9 +87,9 @@ class WeekPlannerModel(
      */
     private val gate = MealPlanSwap.Gate()
 
-    /** The Monday-or-Sunday the grid starts on — DEVICE locale, display only. */
+    /** The day the grid starts on — the household's first day, never the device's. */
     val weekStart: LocalDate
-        get() = MealsFormat.weekStart(today(), _weekOffset.value, locale)
+        get() = MealsFormat.weekStart(today(), firstDay() ?: HouseholdWeekStart.Sunday, _weekOffset.value)
 
     val weekDays: List<LocalDate> get() = MealsFormat.weekDays(weekStart)
 

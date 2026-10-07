@@ -1,5 +1,6 @@
 package app.waffled.feature.recipes
 
+import app.waffled.core.model.HouseholdWeekStart
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -55,7 +56,6 @@ import app.waffled.core.design.WaffledSecondaryCTA
 import app.waffled.core.design.WaffledTextField
 import app.waffled.core.design.wfChip
 import kotlinx.coroutines.launch
-import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.TextStyle as JavaTextStyle
 import java.util.Locale
@@ -68,6 +68,16 @@ import java.util.Locale
  * hand-rolled overlays: the native sheet already handles the drag handle, the scrim, the
  * back gesture and the insets.
  */
+
+/**
+ * "This week" names the same seven days the planner shows, so it is cut on the
+ * household's first day — otherwise a Monday household's Sunday lands in a different
+ * week (and grocery list) than the planner was showing.
+ */
+internal object ScheduleWeek {
+    fun start(today: LocalDate, firstDay: HouseholdWeekStart?, weekOffset: Int): LocalDate =
+        (firstDay ?: HouseholdWeekStart.Sunday).weekStart(today).plusWeeks(weekOffset.toLong())
+}
 
 /**
  * Schedule a recipe (or a plate) onto a day + meal slot — a slot picker, a week you can
@@ -87,6 +97,8 @@ fun RecipeScheduleSheet(
     onSchedule: suspend (date: String, mealType: String) -> Boolean,
     /** The small-caps line above the title. The Meal Builder says "Schedule this meal". */
     eyebrow: String = "Schedule",
+    /** The household's `week_start`; null until synced, read as Sunday. */
+    householdWeekStart: HouseholdWeekStart? = null,
     today: LocalDate = LocalDate.now(),
 ) {
     val scope = rememberCoroutineScope()
@@ -94,9 +106,8 @@ fun RecipeScheduleSheet(
     var weekOffset by remember { mutableIntStateOf(0) }
     var savingDay by remember { mutableStateOf<String?>(null) }
 
-    // The week starts on Sunday, matching the rest of the app's day grids.
-    val weekStart = remember(weekOffset, today) {
-        today.minusDays((today.dayOfWeek.value % 7).toLong()).plusWeeks(weekOffset.toLong())
+    val weekStart = remember(weekOffset, today, householdWeekStart) {
+        ScheduleWeek.start(today, householdWeekStart, weekOffset)
     }
     val days = remember(weekStart) { (0..6).map { weekStart.plusDays(it.toLong()) } }
     val weekLabel = when (weekOffset) {

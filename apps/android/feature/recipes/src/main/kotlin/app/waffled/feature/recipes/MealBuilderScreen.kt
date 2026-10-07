@@ -1,5 +1,6 @@
 package app.waffled.feature.recipes
 
+import app.waffled.core.model.HouseholdWeekStart
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -109,6 +110,8 @@ fun MealBuilderScreen(
      * once the plate exists server-side, because that is what Cook Mode fetches by.
      */
     onCookPlate: ((MealDTO) -> Unit)? = null,
+    /** The household's `week_start`, so "This week" in the schedule sheet matches the planner. */
+    householdWeekStart: HouseholdWeekStart? = null,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val name by model.nameState.collectAsStateWithLifecycle()
@@ -335,6 +338,7 @@ fun MealBuilderScreen(
         // The same sheet the recipe detail uses; only what scheduling MEANS differs — a
         // plate goes to its own endpoint, which schedules every dish at once.
         RecipeScheduleSheet(
+            householdWeekStart = householdWeekStart,
             title = model.displayName,
             eyebrow = "Schedule this meal",
             onDismiss = { scheduling = false },
