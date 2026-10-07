@@ -332,7 +332,7 @@ fun ChoresScreen(
             currencies = currencies,
             initialDate = date,
             onSave = { choreId, body -> model.save(choreId, body) },
-            onDelete = { choreId -> scope.launch { model.delete(choreId) } },
+            onDelete = { choreId, body -> model.delete(choreId, body) },
             onDismiss = { editor = null },
         )
     }

@@ -43,6 +43,12 @@ fun TodayListCard(
     model: TodayListModel,
     onOpen: (ListSummary) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Reloads the card whenever it changes. The host passes its pull-to-refresh counter
+     * and the Lists refresh revision: keyed on nothing, the card would sit on the data
+     * it read when it first appeared (iOS `TodayListCard`'s `.task(id: refreshRev)`).
+     */
+    refreshKey: Any? = null,
 ) {
     val scope = rememberCoroutineScope()
     val loaded by model.loadedState.collectAsStateWithLifecycle()
@@ -57,7 +63,7 @@ fun TodayListCard(
 
     var switcherOpen by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { model.load() }
+    LaunchedEffect(refreshKey) { model.load() }
 
     val active = model.active
     val pickable = model.pickable

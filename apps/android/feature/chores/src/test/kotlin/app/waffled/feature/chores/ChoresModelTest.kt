@@ -6,6 +6,8 @@ import app.waffled.core.network.RefreshDomain
 import app.waffled.core.network.WaffledHttp
 import app.waffled.core.testing.ApiTestHarness
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Before
@@ -247,6 +249,29 @@ class ChoresModelTest {
     }
 
     @Test
+    fun `a second tap while the write is in flight is ignored`() = runTest {
+        // Translated from iOS TodayChoresTests.aSecondTapWhileTheWriteIsInFlightIsIgnored:
+        // two quick taps would race each other's rollback.
+        enqueueDay(instanceJson("a"))
+        val model = model()
+        model.load()
+        harness.takeRequest()
+        val row = model.rows.single()
+
+        harness.enqueueJson("{}")
+        enqueueDay(instanceJson("a", status = "done"))
+        val first = async { model.toggle(row) }
+        runCurrent()
+        model.toggle(row)
+        first.await()
+
+        assertEquals("/api/chore-instances/a/complete", harness.takeRequest().path)
+        assertTrue(harness.takeRequest().path.orEmpty().startsWith("/api/chore-instances/today"))
+        assertEquals(3, harness.server.requestCount)
+        assertEquals("done", model.rows.single().status)
+    }
+
+    @Test
     fun `every write tells the rest of the app chores changed`() = runTest {
         // Chores are not synced, so nothing else would ever hear about the change.
         enqueueDay(instanceJson("a"))
@@ -396,6 +421,37 @@ class ChoresModelTest {
             "Only a parent can add or edit chores. Switch to a parent to make changes.",
             error,
         )
+    }
+
+    @Test
+    fun `deleting returns null on success and reloads the day`() = runTest {
+        enqueueDay(instanceJson("a"))
+        val model = model()
+        model.load()
+        harness.takeRequest()
+
+        harness.enqueueNoContent()
+        enqueueDay()
+        val error = model.delete(
+            choreId = "c-a",
+            body = ChoreScopePolicy.target(kotlinx.serialization.json.buildJsonObject { }, ChoreScope.This, "a"),
+        )
+
+        assertNull(error)
+        assertEquals("DELETE", harness.takeRequest().method)
+        assertTrue(model.rows.isEmpty())
+    }
+
+    @Test
+    fun `a refused scoped delete relays the server's reason`() = runTest {
+        enqueueDay(instanceJson("a", status = "done"))
+        val model = model()
+        model.load()
+
+        harness.enqueueError(409, "ChoreScopeError", "Completed chores can't be changed.")
+        val error = model.delete(choreId = "c-a")
+
+        assertEquals("Completed chores can't be changed.", error)
     }
 
     @Test

@@ -154,6 +154,23 @@ class RewardsMathTest {
     }
 
     @Test
+    fun `your own wallet is yours to spend without reward manage`() {
+        // The server's assertSelfOrCapability: self, or reward.manage.
+        val kid = Person(id = "kid", name = "Kid")
+        assertTrue(RewardsAccess.maySpend(kid, walletOwnerId = "kid"))
+        assertFalse(RewardsAccess.maySpend(kid, walletOwnerId = "sib"))
+    }
+
+    @Test
+    fun `a reward manager may spend anyone's wallet`() {
+        assertTrue(RewardsAccess.maySpend(person(Capability.REWARD_MANAGE), walletOwnerId = "kid"))
+        assertTrue(RewardsAccess.maySpend(person(admin = true), walletOwnerId = "kid"))
+        // Approving redemptions is not the same as spending for someone.
+        assertFalse(RewardsAccess.maySpend(person(Capability.REWARD_APPROVE), walletOwnerId = "kid"))
+        assertFalse(RewardsAccess.maySpend(null, walletOwnerId = "kid"))
+    }
+
+    @Test
     fun `nobody is nobody`() {
         assertFalse(RewardsAccess.canManage(null))
         assertFalse(RewardsAccess.canApprove(null))

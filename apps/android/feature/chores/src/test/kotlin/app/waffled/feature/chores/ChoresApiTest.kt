@@ -264,6 +264,27 @@ class ChoresApiTest {
         val request = harness.takeRequest()
         assertEquals("DELETE", request.method)
         assertEquals("/api/chores/c1", request.path)
+        assertEquals(0L, request.bodySize)
+    }
+
+    @Test
+    fun `a scoped delete sends the scope and occurrence as its body`() = runTest {
+        harness.enqueueJson("", status = 204)
+
+        api.deleteChore(
+            "c1",
+            buildJsonObject {
+                put("scope", "this")
+                put("instanceId", "i1")
+            },
+        )
+
+        val request = harness.takeRequest()
+        assertEquals("DELETE", request.method)
+        assertEquals("/api/chores/c1", request.path)
+        val body = request.body.readUtf8()
+        assertContains(body, "\"scope\":\"this\"")
+        assertContains(body, "\"instanceId\":\"i1\"")
     }
 
     @Test

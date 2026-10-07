@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.RemoveCircle
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,6 +58,7 @@ import app.waffled.core.design.wfChip
 import app.waffled.core.design.wfField
 import app.waffled.core.model.Person
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonObject
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -92,14 +94,19 @@ fun ChoreEditSheet(
     currencies: List<ChoresApi.Currency>,
     /** The day being viewed — a new one-off defaults to it, not to today. */
     initialDate: String,
-    onSave: suspend (choreId: String?, body: kotlinx.serialization.json.JsonObject) -> String?,
-    onDelete: (choreId: String) -> Unit,
+    onSave: suspend (choreId: String?, body: JsonObject) -> String?,
+    /** Returns null on success, else the message to show (the sheet stays open). */
+    onDelete: suspend (choreId: String, body: JsonObject) -> String?,
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
 
-    val editChoreId = (target as? ChoreEditorTarget.Edit)?.row?.choreId
+    val editRow = (target as? ChoreEditorTarget.Edit)?.row
+    val editChoreId = editRow?.choreId
     val editing = editChoreId != null
+    val editInstanceId = editRow?.let { ChoreScopePolicy.instanceId(it.id, it.choreId) }
+    val editStatus = editRow?.status
+    val originalRrule = editRow?.instance?.rrule?.takeIf { it.isNotBlank() }
 
     var draft by remember(target) {
         mutableStateOf(
@@ -120,6 +127,34 @@ fun ChoreEditSheet(
     var confirmDelete by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
+    var scopeAction by remember { mutableStateOf<ChoreScopeAction?>(null) }
+
+    fun performSave(body: JsonObject, choreScope: ChoreScope) {
+        scope.launch {
+            saving = true
+            saveError = null
+            val payload = if (editing) ChoreScopePolicy.target(body, choreScope, editInstanceId) else body
+            val failure = onSave(editChoreId, payload)
+            saving = false
+            if (failure != null) saveError = failure else onDismiss()
+        }
+    }
+
+    fun performDelete(choreScope: ChoreScope) {
+        val choreId = editChoreId ?: return
+        scope.launch {
+            saving = true
+            saveError = null
+            val failure = onDelete(choreId, ChoreScopePolicy.target(JsonObject(emptyMap()), choreScope, editInstanceId))
+            saving = false
+            if (failure != null) {
+                saveError = failure
+                confirmDelete = false
+            } else {
+                onDismiss()
+            }
+        }
+    }
 
     // A parent doesn't need another parent's OK, so the approval toggle is hidden for an
     // adult assignee — and `ChoreDraft` refuses to persist it there either.
@@ -165,12 +200,13 @@ fun ChoreEditSheet(
                         val body = draft
                             .copy(assigneeIsAdult = assigneeIsAdult)
                             .toBody(currencyCount = currencies.size)
-                        scope.launch {
-                            saving = true
-                            saveError = null
-                            val failure = onSave(editChoreId, body)
-                            saving = false
-                            if (failure != null) saveError = failure else onDismiss()
+                        if (editing && ChoreScopePolicy.asksOnSave(originalRrule, editInstanceId)) {
+                            scopeAction = ChoreScopeAction.Save(
+                                body = body,
+                                repeatChanged = ChoreRrule.build(draft.repeat, draft.days) != originalRrule,
+                            )
+                        } else {
+                            performSave(body, ChoreScope.All)
                         }
                     },
                 ) {
@@ -393,10 +429,14 @@ fun ChoreEditSheet(
 
             if (editing) {
                 TextButton(
+                    enabled = !saving,
                     onClick = {
                         if (confirmDelete) {
-                            onDelete(editChoreId)
-                            onDismiss()
+                            if (ChoreScopePolicy.asksOnDelete(originalRrule)) {
+                                scopeAction = ChoreScopeAction.Delete
+                            } else {
+                                performDelete(ChoreScope.All)
+                            }
                         } else {
                             confirmDelete = true
                         }
@@ -410,6 +450,21 @@ fun ChoreEditSheet(
                 }
             }
         }
+    }
+
+    scopeAction?.let { action ->
+        ChoreScopeDialog(
+            action = action,
+            status = editStatus,
+            onPick = { choice ->
+                scopeAction = null
+                when (action) {
+                    is ChoreScopeAction.Save -> performSave(action.body, choice)
+                    ChoreScopeAction.Delete -> performDelete(choice)
+                }
+            },
+            onCancel = { scopeAction = null },
+        )
     }
 
     // ---- pickers ----
@@ -479,6 +534,58 @@ fun ChoreEditSheet(
             }
         }
     }
+}
+
+/** A save or delete of a recurring chore, waiting on which occurrences it reaches. */
+private sealed interface ChoreScopeAction {
+    data class Save(val body: JsonObject, val repeatChanged: Boolean) : ChoreScopeAction
+    data object Delete : ChoreScopeAction
+}
+
+/** The twin of iOS's scope `confirmationDialog`: one row per scope, then Cancel. */
+@Composable
+private fun ChoreScopeDialog(
+    action: ChoreScopeAction,
+    status: String?,
+    onPick: (ChoreScope) -> Unit,
+    onCancel: () -> Unit,
+) {
+    val deleting = action == ChoreScopeAction.Delete
+    val repeatChanged = (action as? ChoreScopeAction.Save)?.repeatChanged ?: false
+    AlertDialog(
+        onDismissRequest = onCancel,
+        containerColor = WF.colors.card,
+        title = {
+            Text(
+                text = if (deleting) "Which chores should be deleted?" else "Which chores should change?",
+                style = WF.type.sectionTitle,
+                color = WF.colors.ink,
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(ChoreScopePolicy.explanation(status), style = WF.type.bodySmall, color = WF.colors.ink2)
+                ChoreScopePolicy.choices(status, repeatChanged).forEach { choice ->
+                    TextButton(onClick = { onPick(choice) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = when (choice) {
+                                ChoreScope.This -> "This chore only"
+                                ChoreScope.Following -> "This and future chores"
+                                ChoreScope.All -> "Entire active series"
+                            },
+                            style = WF.type.label,
+                            color = if (deleting) WF.colors.danger else WF.colors.primary,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onCancel) {
+                Text("Cancel", style = WF.type.label, color = WF.colors.ink2)
+            }
+        },
+    )
 }
 
 // ---------------------------------------------------------------------------

@@ -5,6 +5,8 @@ import app.waffled.core.network.RefreshDomain
 import app.waffled.core.network.WaffledHttp
 import app.waffled.core.testing.ApiTestHarness
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Before
@@ -74,6 +76,27 @@ class PhotosModelTest {
         assertEquals(listOf("p1", "p2"), model.photos.map { it.id })
         assertTrue(model.loaded)
         assertFalse(model.error)
+    }
+
+    @Test
+    fun `a slow older load never overwrites a newer one`() = runTest {
+        // Port of iOS PhotosModel's load generation: the last load STARTED wins.
+        harness.server.enqueue(
+            okhttp3.mockwebserver.MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"photos":[${photo("stale")}]}""")
+                .setBodyDelay(400, java.util.concurrent.TimeUnit.MILLISECONDS),
+        )
+        enqueueWall(photo("fresh"))
+
+        val older = async { model.load() }
+        runCurrent()
+        harness.takeRequest() // the older request has reached the server first
+        model.load()
+        older.await()
+
+        assertEquals(listOf("fresh"), model.photos.map { it.id })
+        assertFalse(model.loading)
     }
 
     @Test

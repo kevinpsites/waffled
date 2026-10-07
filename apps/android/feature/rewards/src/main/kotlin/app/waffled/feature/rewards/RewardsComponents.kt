@@ -162,6 +162,8 @@ fun SavingTowardCard(
     colorHex: String?,
     symbol: String,
     canPick: Boolean,
+    /** Same rule as a shop tile — see [RewardsAccess.maySpend]. */
+    canRedeem: Boolean,
     onChange: () -> Unit,
     onRedeem: () -> Unit,
     modifier: Modifier = Modifier,
@@ -179,6 +181,7 @@ fun SavingTowardCard(
             symbol = symbol,
             jar = jar,
             onJar = { jar = it },
+            canRedeem = canRedeem,
             onChange = onChange,
             onRedeem = onRedeem,
             modifier = modifier,
@@ -195,6 +198,7 @@ private fun SavingHero(
     symbol: String,
     jar: Boolean,
     onJar: (Boolean) -> Unit,
+    canRedeem: Boolean,
     onChange: () -> Unit,
     onRedeem: () -> Unit,
     modifier: Modifier = Modifier,
@@ -274,7 +278,7 @@ private fun SavingHero(
                 )
             }
             Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                if (ready) {
+                if (ready && canRedeem) {
                     HeroPill(label = "Redeem", fill = WF.colors.primary, outlined = false, onClick = onRedeem)
                 }
                 HeroPill(

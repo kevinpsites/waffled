@@ -70,6 +70,7 @@ class PhotosModel(
 
     private val _loading = MutableStateFlow(false)
     private val _error = MutableStateFlow(false)
+    private val loadGeneration = java.util.concurrent.atomic.AtomicInteger(0)
 
     /** Emitted state for the screen — the rows, whether we've loaded, and the flags. */
     val state: StateFlow<RestDomain.Snapshot<List<PhotoRow>>> = domain.state
@@ -95,16 +96,20 @@ class PhotosModel(
     // ---- loading ---------------------------------------------------------------
 
     suspend fun load() {
+        // The last load STARTED wins: a slow older fetch (say, from before a write) must
+        // not land on top of a newer one.
+        val generation = loadGeneration.incrementAndGet()
         _loading.value = true
         try {
             val rows = runCatching { api.list().map(::toRow) }
+            if (generation != loadGeneration.get()) return
             // RestDomain contract: a real list (even an empty one) replaces; null means
             // the fetch FAILED — keep what we had so a flaky network never blanks the
             // wall, but still mark it loaded so we don't sit on a spinner forever.
             domain.apply(rows.getOrNull())
             _error.value = rows.isFailure
         } finally {
-            _loading.value = false
+            if (generation == loadGeneration.get()) _loading.value = false
         }
     }
 
