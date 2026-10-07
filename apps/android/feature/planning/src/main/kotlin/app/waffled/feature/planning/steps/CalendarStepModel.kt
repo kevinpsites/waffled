@@ -111,6 +111,9 @@ class PlanningCalendarComposer(
 ) {
     /** The crumb counts additions; editing an event already on the week is not one. */
     val countsAsAdded: Boolean get() = event == null
+
+    /** The title a NEW event opens with; an edit keeps its own. */
+    val sheetTitle: String? get() = if (event == null) prefillTitle?.trim()?.takeIf { it.isNotEmpty() } else null
 }
 
 /** Only ever a COUNT: the recap reads through to the calendar, so a copied title could disagree with it. */

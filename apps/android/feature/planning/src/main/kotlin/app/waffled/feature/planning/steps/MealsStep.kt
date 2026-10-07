@@ -57,6 +57,9 @@ import app.waffled.core.model.HouseholdWeekStart
 import app.waffled.core.model.RecipeRef
 import app.waffled.core.network.MediaUrl
 import app.waffled.feature.lists.ListsApi
+import app.waffled.feature.recipes.RecipePickerSheet
+import app.waffled.feature.recipes.RecipesApi
+import app.waffled.feature.recipes.RecipesModel
 import app.waffled.feature.meals.MealsApi
 import app.waffled.feature.meals.PlanWeekSheet
 import app.waffled.feature.planning.PlanningEnvironment
@@ -208,9 +211,8 @@ fun MealsStepBody(props: PlanningStepProps) {
             householdWeekStart = HouseholdWeekStart.parse(weekStart),
             api = remember(env) { MealsApi(env.client, env.tokens) },
             recipePicker = { onPick, onDismiss ->
-                PlanningRecipePickerSheet(library = library, baseUrl = env.baseUrl, onDismiss = onDismiss) { recipe ->
-                    onPick(RecipeRef(recipe.id, recipe.title, recipe.emoji, recipe.imageUrl))
-                }
+                val recipesModel = remember(env) { RecipesModel(RecipesApi(env.client, env.tokens), env.baseUrl) }
+                RecipePickerSheet(model = recipesModel, title = "Pick a recipe", onDismiss = onDismiss, onPickRecipe = onPick)
             },
             onApplied = {},
             onDismiss = { model.setPlanner(false) },

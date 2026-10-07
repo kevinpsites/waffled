@@ -544,4 +544,16 @@ class PlanningConnectionModelTest {
         assertEquals("A and B", result?.who)
         assertEquals(true, result?.slots?.first()?.isFreeAllDay)
     }
+
+    @Test fun `a claimed slot opens the sheet at its start in the household zone`() {
+        val zone = ZoneId.of("America/Denver")
+        val compose = app.waffled.feature.planning.steps.PlanningConnectionCompose(
+            java.time.LocalDate.parse("2026-09-09"), java.time.LocalTime.of(18, 30), listOf("a", "b"),
+        )
+        assertEquals(java.time.Instant.parse("2026-09-10T00:30:00Z"), compose.start(zone))
+        val allDay = app.waffled.feature.planning.steps.PlanningConnectionCompose(
+            java.time.LocalDate.parse("2026-09-09"), null, listOf("a"),
+        )
+        assertNull(allDay.start(zone))
+    }
 }

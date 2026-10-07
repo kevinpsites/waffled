@@ -69,8 +69,9 @@ import kotlinx.coroutines.launch
 
 // Weekly Planning · step 7 (Meals) — the surfaces a night opens. iOS uses the recipes
 // feature's own library screen in pick mode; that feature is NOT a planning dependency, so
-// this is a deliberately small stand-in over the same `api/recipes` read and the meals
-// module's `LibraryFilter` rules. Swap for the shared picker once one is exposed.
+// the night picker is a small stand-in over the same `api/recipes` read and the meals
+// module's `LibraryFilter` rules (it also offers plates). The planner's manual pick uses
+// the recipes feature's real `RecipePickerSheet`.
 
 /** The recipe + plate library, loaded fresh each time a picker opens (empty is a valid answer). */
 class PlanningMealsLibrary(private val api: PlanningMealsApi, private val meals: MealsApi) {
@@ -201,30 +202,6 @@ fun MealsStepNightPicker(
 
 /** EXACTLY the literals the Meals screen writes, so its classifiers read them the same. */
 private val PLACEHOLDERS = listOf("🥡" to "Eating out", "🍱" to "Leftovers", "✨" to "Try something new")
-
-/** The planner's manual pick: recipes only, since the planner's slot takes a recipe. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun PlanningRecipePickerSheet(
-    library: PlanningMealsLibrary,
-    baseUrl: String,
-    onDismiss: () -> Unit,
-    onPick: (RecipeSummary) -> Unit,
-) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = WF.colors.canvas,
-    ) {
-        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Pick a recipe", style = WF.type.serif(18.sp), color = WF.colors.ink)
-            LibraryList(library = library, baseUrl = baseUrl, types = listOf(LibraryType.Recipes)) { entry ->
-                (entry as? LibraryEntry.Recipe)?.let { onPick(it.recipe) }
-                onDismiss()
-            }
-        }
-    }
-}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

@@ -97,6 +97,14 @@ class PlanningCalendarStepTest {
         assertFalse(edit.countsAsAdded)
     }
 
+    @Test fun `a new event is titled with the note's words and an edit never is`() {
+        val day = LocalDate.parse("2026-09-09")
+        assertEquals("Call the plumber", PlanningCalendarComposer(day, prefillTitle = "  Call the plumber ").sheetTitle)
+        assertEquals(null, PlanningCalendarComposer(day, prefillTitle = "   ").sheetTitle)
+        val event = SyncedEvent(id = "e1", householdId = "h", title = "Dentist", startsAt = null)
+        assertEquals(null, PlanningCalendarComposer(day, prefillTitle = "x", event = event).sheetTitle)
+    }
+
     @Test fun `adding an event is only ever a count`() {
         val model = PlanningCalendarModel()
         assertEquals<Map<String, Any>>(mapOf("added" to JsonPrimitive(0)), model.decisionData)

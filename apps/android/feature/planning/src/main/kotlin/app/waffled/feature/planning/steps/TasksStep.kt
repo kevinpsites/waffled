@@ -228,6 +228,8 @@ fun TasksStepBody(props: PlanningStepProps) {
             // This step asks who does what, not which chores should exist.
             onDelete = { _, _ -> "Deleting isn’t part of planning a week." },
             onDismiss = { if (model.composerDismissed()) reload() },
+            initialTitle = (composer as? PlanningTasksComposer.Add)?.note,
+            canDelete = false,
         )
     }
 }

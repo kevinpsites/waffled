@@ -177,6 +177,8 @@ fun RecapStepBody(props: PlanningStepProps) {
                     onSave = { _, body -> model.saveChoreFromNote(body) },
                     onDelete = { _, _ -> "Deleting isn’t part of planning a week." },
                     onDismiss = dismissed,
+                    initialTitle = composer.note,
+                    canDelete = false,
                 )
             }
             is RecapNoteComposer.Event -> EventEditSheet(
@@ -185,6 +187,7 @@ fun RecapStepBody(props: PlanningStepProps) {
                 members = members,
                 event = null,
                 initialDate = day,
+                initialTitle = composer.note,
                 onDismiss = dismissed,
                 onSaved = {
                     model.eventSaved()
