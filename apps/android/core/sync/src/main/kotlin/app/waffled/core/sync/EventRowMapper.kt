@@ -18,6 +18,8 @@ object EventRowMapper {
         fun str(name: String): String? =
             columns[name]?.let { cursor.getString(it) }?.takeIf { it.isNotEmpty() }
 
+        fun time(name: String): String? = str(name)?.let(::isoTimestamp)
+
         // SQLite has no boolean; these arrive as 0/1.
         fun bool(name: String): Boolean =
             columns[name]?.let { cursor.getLong(it) }?.let { it != 0L } ?: false
@@ -26,8 +28,8 @@ object EventRowMapper {
             id = str("id").orEmpty(),
             householdId = str("household_id").orEmpty(),
             title = str("title").orEmpty(),
-            startsAt = str("starts_at"),
-            endsAt = str("ends_at"),
+            startsAt = time("starts_at"),
+            endsAt = time("ends_at"),
             allDay = bool("all_day"),
             isCountdown = bool("is_countdown"),
             location = str("location"),
@@ -43,12 +45,26 @@ object EventRowMapper {
             ownerPersonId = str("owner_person_id"),
             timezone = str("timezone"),
             status = str("status"),
-            updatedAt = str("updated_at"),
+            updatedAt = time("updated_at"),
             // Present only on `event_occurrences` rows — see SyncedEvent.seriesId.
             seriesId = str("event_id"),
-            originalStart = str("original_start"),
+            originalStart = time("original_start"),
             overrideId = str("override_id"),
         )
+    }
+
+    private val postgresText = Regex("""^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}(?:\.\d+)?)([+-]\d{2})(:?\d{2})?$""")
+
+    /**
+     * Server-replicated rows hold Postgres text (`2026-06-16 17:49:00+00`), which
+     * `WaffledDates.parseInstant` cannot read; locally-written rows are already ISO.
+     * Normalised once here so every reader of the mirror sees one shape.
+     */
+    fun isoTimestamp(raw: String): String {
+        val m = postgresText.matchEntire(raw.trim()) ?: return raw
+        val (date, clock, hours, minutes) = m.destructured
+        val mm = minutes.removePrefix(":").ifEmpty { "00" }
+        return "${date}T$clock$hours:$mm"
     }
 
     /**
