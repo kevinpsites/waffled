@@ -51,6 +51,10 @@ object EventRowMapper {
             originalStart = time("original_start"),
             overrideId = str("override_id"),
             rhythmId = str("rhythm_id"),
+            // A group_concat aggregate; NULL when nobody is joined.
+            participantIds = str("participant_ids")
+                ?.split(',')?.map(String::trim)?.filter(String::isNotEmpty)?.distinct()
+                .orEmpty(),
         )
     }
 
@@ -74,15 +78,26 @@ object EventRowMapper {
      * A row with a non-null `rrule` is a recurring MASTER — its materialised occurrences
      * render instead, so including it would double-render every repeat. The server worker
      * keeps `event_occurrences` in step; there is no client-side RRULE expansion.
+     *
+     * `participant_ids` mirrors iOS `EventQuery.agenda`. Naming `event_participants` in
+     * the SQL is also what makes the watch re-emit when only a participant row changes —
+     * PowerSync derives the watched tables from the query. Soft-deleted participant rows
+     * never reach the device (sync-config filters `deleted_at IS NULL`; the client table
+     * has no such column).
      */
-    const val EVENTS_SQL: String = "SELECT * FROM events WHERE rrule IS NULL"
+    const val EVENTS_SQL: String = """
+        SELECT *,
+               (SELECT group_concat(ep.person_id) FROM event_participants ep
+                 WHERE ep.event_id = events.id) AS participant_ids
+          FROM events WHERE rrule IS NULL
+    """
 
     /**
      * Materialised occurrences of the recurring masters excluded above. Every field an
      * occurrence doesn't own comes from its master `m`, mirroring the web's `OCC_SELECT`:
      * `origin` keeps an ICS series read-only, and `rhythm_id` is how an auto-scheduled
      * rhythm — which renders ONLY through this query — keeps its marker. Aliases are
-     * explicit because the mapper reads by column name.
+     * explicit because the mapper reads by column name. Participants are the master's too.
      */
     const val OCCURRENCES_SQL: String = """
         SELECT o.id AS id, o.household_id AS household_id, o.event_id AS event_id,
@@ -94,7 +109,9 @@ object EventRowMapper {
                m.calendar_id AS calendar_id, m.goal_id AS goal_id, m.goal_step_id AS goal_step_id,
                m.rhythm_id AS rhythm_id, m.origin AS origin, m.origin_ref_id AS origin_ref_id,
                m.timezone AS timezone, m.status AS status,
-               o.visibility AS visibility, o.owner_person_id AS owner_person_id
+               o.visibility AS visibility, o.owner_person_id AS owner_person_id,
+               (SELECT group_concat(ep.person_id) FROM event_participants ep
+                 WHERE ep.event_id = m.id) AS participant_ids
           FROM event_occurrences o
           JOIN events m ON m.id = o.event_id
     """

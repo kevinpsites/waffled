@@ -232,4 +232,42 @@ class EventRowMapperTest {
         assertTrue(sql.contains("JOIN events m ON m.id = o.event_id"), sql)
         assertTrue(sql.contains("o.event_id AS event_id"), sql)
     }
+
+    // ---- participants (iOS EventQuery.agenda participant_ids) --------------------
+
+    @Test
+    fun participantIdsAreSplitFromTheAggregatedColumn() {
+        val e = EventRowMapper.map(
+            FakeCursor(mapOf("id" to "e1", "household_id" to "h1", "title" to "t", "participant_ids" to "p2,p3")),
+        )
+        assertEquals(listOf("p2", "p3"), e.participantIds)
+    }
+
+    @Test
+    fun noParticipantsIsAnEmptyList() {
+        // group_concat over zero rows is NULL.
+        val e = EventRowMapper.map(FakeCursor(mapOf("id" to "e1", "household_id" to "h1", "title" to "t")))
+        assertEquals(emptyList(), e.participantIds)
+    }
+
+    @Test
+    fun bothQueriesAggregateParticipantsAndOccurrencesUseTheMasters() {
+        // Listing event_participants in the SQL is also what makes the PowerSync watch
+        // re-emit when only a participant row changes.
+        assertTrue(EventRowMapper.EVENTS_SQL.contains("FROM event_participants ep"), EventRowMapper.EVENTS_SQL)
+        assertTrue(EventRowMapper.EVENTS_SQL.contains("ep.event_id = events.id"), EventRowMapper.EVENTS_SQL)
+        assertTrue(EventRowMapper.EVENTS_SQL.contains("AS participant_ids"), EventRowMapper.EVENTS_SQL)
+        val occ = EventRowMapper.OCCURRENCES_SQL
+        assertTrue(occ.contains("FROM event_participants ep"), occ)
+        assertTrue(occ.contains("ep.event_id = m.id"), occ)
+        assertTrue(occ.contains("AS participant_ids"), occ)
+    }
+
+    @Test
+    fun anEventInvolvesItsOwnerAndItsParticipants() {
+        val e = SyncedEvent(id = "e1", householdId = "h1", title = "t", startsAt = null, personId = "p1", participantIds = listOf("p2"))
+        assertTrue(e.involves("p1"))
+        assertTrue(e.involves("p2"))
+        assertFalse(e.involves("p3"))
+    }
 }

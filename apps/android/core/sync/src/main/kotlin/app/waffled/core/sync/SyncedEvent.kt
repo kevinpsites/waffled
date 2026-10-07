@@ -54,7 +54,15 @@ data class SyncedEvent(
      * master's — the link only ever lives on the series row.
      */
     val rhythmId: String? = null,
+    /**
+     * Everyone joined to the event via `event_participants`. On an occurrence these are
+     * the master's — participants only ever live on the series row.
+     */
+    val participantIds: List<String> = emptyList(),
 ) {
+    /** The person's own event, or one they're joined to — iOS `Agenda.involves`. */
+    fun involves(personId: String): Boolean = this.personId == personId || personId in participantIds
+
     /** Belongs to a rhythm. Means *rhythm*, never *recurring*. */
     val isRhythm: Boolean get() = rhythmId != null
 
