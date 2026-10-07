@@ -1,5 +1,6 @@
 package app.waffled.core.sync
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
@@ -9,6 +10,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -174,5 +176,31 @@ class SyncLifecycleTest {
         rig.lifecycle.start()
         rig.db.pending = 3
         assertEquals(3, rig.lifecycle.pendingUploadCount())
+    }
+
+    @Test
+    fun aRescopeWhoseAdoptThrowsStillRestartsSync() = runTest {
+        val rig = rig()
+        rig.lifecycle.start()
+
+        assertFailsWith<IllegalStateException> {
+            rig.lifecycle.rescope(clearLocal = false) { error("keystore write failed") }
+        }
+
+        // The old session's credentials are still installed; leaving sync stopped would
+        // strand the device offline until a relaunch.
+        assertEquals(2, rig.db.connects)
+    }
+
+    @Test
+    fun aRescopeCancelledDuringAdoptStillRestartsSync() = runTest {
+        val rig = rig()
+        rig.lifecycle.start()
+
+        assertFailsWith<CancellationException> {
+            rig.lifecycle.rescope(clearLocal = false) { throw CancellationException("left") }
+        }
+
+        assertEquals(2, rig.db.connects)
     }
 }

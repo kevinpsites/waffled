@@ -2,6 +2,8 @@ package app.waffled.core.sync
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -45,12 +47,16 @@ internal class SyncLifecycle<D : Any>(
     /**
      * Stop (clearing when asked), run [adopt] — the moment to swap the server or token —
      * then start again. Nothing is adopted when the clear failed: a new scope must never
-     * inherit the previous one's rows.
+     * inherit the previous one's rows. Sync restarts even when [adopt] throws or is
+     * cancelled — under whatever credentials are then installed — and the failure rethrows.
      */
     suspend fun rescope(clearLocal: Boolean, adopt: suspend () -> Unit): Boolean = lock.withLock {
         if (!stopLocked(clearLocal)) return@withLock false
-        adopt()
-        startLocked()
+        try {
+            adopt()
+        } finally {
+            withContext(NonCancellable) { startLocked() }
+        }
         true
     }
 
