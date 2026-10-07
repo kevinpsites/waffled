@@ -49,7 +49,15 @@ data class SyncedEvent(
     val originalStart: String? = null,
     /** Set when this occurrence already has a per-instance override row. */
     val overrideId: String? = null,
+    /**
+     * The rhythm this slot was booked for (`events.rhythm_id`). On an occurrence it is the
+     * master's — the link only ever lives on the series row.
+     */
+    val rhythmId: String? = null,
 ) {
+    /** Belongs to a rhythm. Means *rhythm*, never *recurring*. */
+    val isRhythm: Boolean get() = rhythmId != null
+
     /** An event from a subscribed feed cannot be edited here. */
     val isReadOnly: Boolean get() = origin == "ics"
 

@@ -300,11 +300,13 @@ class CalendarApi(
         scope: String? = null,
         occurrenceStart: String? = null,
         isCountdown: Boolean = false,
+        rhythmId: String? = null,
+        clearRhythmId: Boolean = false,
     ) {
         val body = eventUpdateBody(
             title, startsAtIso, endsAtIso, allDay, location, personIds, goalId, goalStepId,
             rrule, clearRrule, recurrenceEndAt, clearRecurrenceEndAt, scope, occurrenceStart,
-            isCountdown,
+            isCountdown, rhythmId, clearRhythmId,
         )
         sendUnit(HttpMethod.Patch, "api/events/$id") { jsonBody(body) }
     }
@@ -518,6 +520,8 @@ class CalendarApi(
             scope: String?,
             occurrenceStart: String?,
             isCountdown: Boolean,
+            rhythmId: String? = null,
+            clearRhythmId: Boolean = false,
         ): JsonObject = buildJsonObject {
             put("title", JsonPrimitive(title))
             put("startsAt", JsonPrimitive(startsAtIso))
@@ -540,6 +544,12 @@ class CalendarApi(
                 when {
                     recurrenceEndAt != null -> put("recurrenceEndAt", JsonPrimitive(recurrenceEndAt))
                     clearRecurrenceEndAt -> put("recurrenceEndAt", JsonNull)
+                }
+                // Absent means "leave the link alone" on the server, so only an explicit
+                // link or unlink is sent; the link lives on the master, never an override.
+                when {
+                    rhythmId != null -> put("rhythmId", JsonPrimitive(rhythmId))
+                    clearRhythmId -> put("rhythmId", JsonNull)
                 }
             }
         }

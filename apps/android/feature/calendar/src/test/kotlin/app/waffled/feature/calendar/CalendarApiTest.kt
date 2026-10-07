@@ -363,6 +363,55 @@ class CalendarApiTest {
         assertEquals(2, harness.requestCount)
     }
 
+    // ---- rhythm link on an event (EventRhythmLinkTests) ---------------------------
+
+    private fun rhythmBody(rhythmId: String? = null, clearRhythmId: Boolean = false, scope: String? = null) =
+        CalendarApi.eventUpdateBody(
+            title = "Zoo trip",
+            startsAtIso = "2026-06-22T22:00:00Z",
+            endsAtIso = null,
+            allDay = false,
+            location = null,
+            personIds = listOf("person-a"),
+            goalId = null,
+            goalStepId = null,
+            rrule = null,
+            clearRrule = false,
+            recurrenceEndAt = null,
+            clearRecurrenceEndAt = false,
+            scope = scope,
+            occurrenceStart = null,
+            isCountdown = false,
+            rhythmId = rhythmId,
+            clearRhythmId = clearRhythmId,
+        )
+
+    @Test
+    fun anEditThatDoesNotTouchTheRhythmLinkLeavesItAlone() {
+        // Absent means "don't touch"; a null here would unlink every event this app edits.
+        assertFalse(rhythmBody().containsKey("rhythmId"))
+    }
+
+    @Test
+    fun linkingCarriesTheRhythmId() {
+        assertEquals(JsonPrimitive("rh-1"), rhythmBody(rhythmId = "rh-1")["rhythmId"])
+    }
+
+    @Test
+    fun unlinkingIsStatedAsAnExplicitNull() = runTest {
+        harness.enqueueNoContent()
+        api.updateEvent(
+            id = "e1", title = "Zoo trip", startsAtIso = "2026-06-22T22:00:00Z",
+            clearRhythmId = true,
+        )
+        assertEquals(JsonNull, bodyOf(harness.takeRequest().body.readUtf8())["rhythmId"])
+    }
+
+    @Test
+    fun oneOccurrenceOverrideCarriesNoRhythmLink() {
+        assertNull(rhythmBody(rhythmId = "rh-1", scope = "this")["rhythmId"])
+    }
+
     private fun countdown(source: String) = CalendarApi.Countdown(
         id = "c1",
         title = "Beach trip",

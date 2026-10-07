@@ -50,6 +50,7 @@ object EventRowMapper {
             seriesId = str("event_id"),
             originalStart = time("original_start"),
             overrideId = str("override_id"),
+            rhythmId = str("rhythm_id"),
         )
     }
 
@@ -76,8 +77,27 @@ object EventRowMapper {
      */
     const val EVENTS_SQL: String = "SELECT * FROM events WHERE rrule IS NULL"
 
-    /** Materialised occurrences of the recurring masters excluded above. */
-    const val OCCURRENCES_SQL: String = "SELECT * FROM event_occurrences"
+    /**
+     * Materialised occurrences of the recurring masters excluded above. Every field an
+     * occurrence doesn't own comes from its master `m`, mirroring the web's `OCC_SELECT`:
+     * `origin` keeps an ICS series read-only, and `rhythm_id` is how an auto-scheduled
+     * rhythm — which renders ONLY through this query — keeps its marker. Aliases are
+     * explicit because the mapper reads by column name.
+     */
+    const val OCCURRENCES_SQL: String = """
+        SELECT o.id AS id, o.household_id AS household_id, o.event_id AS event_id,
+               o.override_id AS override_id, o.original_start AS original_start,
+               coalesce(o.title, m.title) AS title, m.description AS description,
+               coalesce(o.location, m.location) AS location,
+               o.starts_at AS starts_at, o.ends_at AS ends_at, o.all_day AS all_day,
+               m.is_countdown AS is_countdown, o.person_id AS person_id,
+               m.calendar_id AS calendar_id, m.goal_id AS goal_id, m.goal_step_id AS goal_step_id,
+               m.rhythm_id AS rhythm_id, m.origin AS origin, m.origin_ref_id AS origin_ref_id,
+               m.timezone AS timezone, m.status AS status,
+               o.visibility AS visibility, o.owner_person_id AS owner_person_id
+          FROM event_occurrences o
+          JOIN events m ON m.id = o.event_id
+    """
 }
 
 /**

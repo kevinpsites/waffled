@@ -33,7 +33,7 @@ class SyncSchemaParityTest {
             "household_id", "calendar_id", "title", "description", "location",
             "starts_at", "ends_at", "all_day", "is_countdown", "timezone", "status",
             "person_id", "goal_id", "goal_step_id", "origin", "origin_ref_id",
-            "rrule", "visibility", "owner_person_id", "updated_at",
+            "rrule", "visibility", "owner_person_id", "updated_at", "rhythm_id",
         ),
         "event_participants" to setOf("household_id", "event_id", "person_id"),
         "event_occurrences" to setOf(

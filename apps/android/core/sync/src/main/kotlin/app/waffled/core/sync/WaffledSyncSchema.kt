@@ -70,6 +70,9 @@ object WaffledSyncSchema {
                 Column.text("visibility"),
                 Column.text("owner_person_id"),
                 Column.text("updated_at"),
+                // The rhythm this slot was booked for. Read-only here: the server treats an
+                // absent rhythm_id on upload as "leave it alone", and nothing writes it locally.
+                Column.text("rhythm_id"),
             ),
         ),
         Table(
