@@ -162,6 +162,12 @@ class TodayApi(
         val targetBasis: String? = null,
         /** Only counted, for a per-person target; the shape is the goals feature's. */
         val participants: List<JsonElement> = emptyList(),
+        /**
+         * The participant count when this goal is built from the goals feature's own type
+         * rather than decoded (the `app` module maps it for the picker without Today
+         * depending on goals). Never on the wire; wins over [participants] when set.
+         */
+        val participantCount: Int? = null,
     ) {
         /**
          * The figure shown, on the goal TYPE's axis (iOS `GoalDisplay.progress`): a habit's
@@ -180,7 +186,7 @@ class TodayApi(
                 "habit" -> habitTargetPerPeriod?.toDouble() ?: target
                 "checklist" -> stepTotal?.takeIf { it > 0 }?.toDouble()
                 else -> if (targetBasis == "per_person" && target != null) {
-                    target * maxOf(1, participants.size)
+                    target * maxOf(1, participantCount ?: participants.size)
                 } else {
                     target
                 }

@@ -54,4 +54,20 @@ class TodayGoalDisplayTest {
         assertEquals(0.4, g.fraction, 1e-9)
         assertEquals("40 of 100 mi", goalDescriptor(g))
     }
+
+    @Test
+    fun aGoalBuiltByTheHostCountsItsParticipantsWithoutTheirJson() {
+        // The host maps the goals feature's goal into this one for the picker; it has the
+        // participants as its own type, so it hands over just the count.
+        val g = TodayApi.Goal(
+            id = "g",
+            title = "Books",
+            target = 12.0,
+            totalProgress = 24.0,
+            targetBasis = "per_person",
+            participantCount = 4,
+        )
+        assertEquals(0.5, g.fraction, 1e-9)
+        assertEquals("24 of 48", goalDescriptor(g))
+    }
 }

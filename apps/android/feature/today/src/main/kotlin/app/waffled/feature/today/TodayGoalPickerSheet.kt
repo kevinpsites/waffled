@@ -49,6 +49,10 @@ import app.waffled.core.design.wfField
  * accent rather than iOS's per-category goal palette (`GoalStyle`): that palette lives in
  * the goals feature and inventing a second one here would put two different colours on the
  * same goal.
+ *
+ * A host holding the goals feature's own types maps them in field by field: build each
+ * [TodayApi.Goal] with `participantCount` (no participant JSON needed) and each
+ * [TodayApi.GoalList] from the list's id, name and members.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
