@@ -282,7 +282,7 @@ struct MealsStepView: View {
                         TextField("Add to groceries…", text: $groceryDraft)
                             .font(.system(size: 16, weight: .semibold))
                             .focused($groceryFocused)
-                            .submitLabel(.next)
+                            .submitLabel(.done)
                             .onSubmit(addGrocery)
                             .padding(.horizontal, 14).padding(.vertical, 12)
                             .wfField()
