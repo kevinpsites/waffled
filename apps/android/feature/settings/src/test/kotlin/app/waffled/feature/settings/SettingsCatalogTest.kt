@@ -1,5 +1,6 @@
 package app.waffled.feature.settings
 
+import app.waffled.core.sync.ModuleGate
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -56,6 +57,15 @@ class SettingsCatalogTest {
         assertTrue(SettingsPanelId.PANTRY in rows)
         assertFalse(SettingsPanelId.FAMILY_NIGHT in rows)
         assertFalse(SettingsPanelId.WEEKLY_PLANNING in rows)
+    }
+
+    @Test
+    fun `module-gated rows read the core module gate`() {
+        val gate = ModuleGate.fromServer(mapOf("weeklyPlanning" to true))
+        val rows = ids(SettingsCatalog.rows(isAdmin = true, modules = gate, extras = emptyList()))
+        assertTrue(SettingsPanelId.WEEKLY_PLANNING in rows)
+        assertFalse(SettingsPanelId.PANTRY in rows)
+        assertFalse(SettingsPanelId.FAMILY_NIGHT in rows)
     }
 
     @Test

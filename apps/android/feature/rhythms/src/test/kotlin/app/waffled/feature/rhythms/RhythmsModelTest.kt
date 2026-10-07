@@ -58,6 +58,21 @@ class RhythmsModelTest {
     // ---- loads ----
 
     @Test
+    fun `the Today card and the register agree on one completion rhythm`() = runTest {
+        // A monthly rhythm due in 8 days, inside its runway: on the card AND the register.
+        val floors = rhythm(id = "f", title = "Floors", every = "1 mon", leadTime = "10 days", nextDueAt = "2026-08-26T12:00:00.000Z")
+        val feed = Feed(attention = listOf(due(floors, "2026-08-26T12:00:00.000Z", overdue = false)), all = listOf(floors))
+        val model = feed.model()
+
+        model.loadAll()
+        model.loadAttention()
+        val s = model.state.value
+
+        assertEquals("in 8 days", s.statusLines["f"])
+        assertEquals(RhythmFormat.Countdown("8", "days", RhythmFormat.Countdown.Tone.Late), s.countdowns["f"])
+    }
+
+    @Test
     fun `attention loads sorted, and every row's status line is precomputed on load`() = runTest {
         val feed = Feed(
             attention = listOf(

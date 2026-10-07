@@ -128,8 +128,32 @@ internal data class EventDraft(
 
     companion object {
 
-        fun seed(event: SyncedEvent?, initialDate: LocalDate, zone: ZoneId): EventDraft {
-            if (event == null) return EventDraft(date = initialDate)
+        /**
+         * The prefills apply to a NEW event only (iOS `EventEditSheet.init`): surfaces that
+         * already know what the event is — Weekly Planning's "Make an event" — pass the
+         * note's words, the people, and the start. [prefillStart] is an instant read on the
+         * household clock and wins over [initialTime], a tapped hour.
+         */
+        fun seed(
+            event: SyncedEvent?,
+            initialDate: LocalDate,
+            zone: ZoneId,
+            initialTime: LocalTime? = null,
+            prefillTitle: String? = null,
+            prefillParticipantIds: List<String> = emptyList(),
+            prefillStart: Instant? = null,
+        ): EventDraft {
+            if (event == null) {
+                val start = prefillStart?.atZone(zone)
+                val date = start?.toLocalDate() ?: initialDate
+                return EventDraft(
+                    title = prefillTitle.orEmpty(),
+                    date = date,
+                    lastDay = date,
+                    startTime = start?.toLocalTime()?.withNano(0) ?: initialTime ?: DEFAULT_START_TIME,
+                    personIds = prefillParticipantIds,
+                )
+            }
 
             // Seeded in the HOUSEHOLD's zone, not the device's: otherwise the editor opens
             // on a different clock time than the agenda row the user just tapped.

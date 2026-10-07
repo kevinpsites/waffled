@@ -58,6 +58,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -104,6 +105,11 @@ fun CalendarScreen(
      */
     openEventId: String? = null,
     onOpenEventConsumed: () -> Unit = {},
+    /**
+     * Extra bottom padding for the scrolling Agenda list. The host owns tab-bar clearance
+     * (it pads this screen), so the default adds none — every mode ends at the same edge.
+     */
+    bottomClearance: Dp = 0.dp,
 ) {
     val rows by model.rowsByDay.collectAsStateWithLifecycle()
     val members by model.members.collectAsStateWithLifecycle()
@@ -270,7 +276,7 @@ fun CalendarScreen(
                 val now = remember(visible) { Instant.now() }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 8.dp, bottom = WF.spacing.tabBarClearance),
+                    contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 8.dp + bottomClearance),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     agendaContent(

@@ -1,5 +1,6 @@
 package app.waffled.feature.settings
 
+import app.waffled.core.model.WaffledModule
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -20,6 +21,27 @@ class ModulesModelTest {
             ModuleCatalog.available.map { it.key },
         )
         assertEquals(listOf("quotes"), ModuleCatalog.planned.map { it.key })
+    }
+
+    @Test
+    fun `every core module has exactly one catalog row, keyed by the enum`() {
+        assertEquals(WaffledModule.entries.toSet(), ModuleCatalog.all.map { it.module }.toSet())
+        assertEquals(WaffledModule.entries.size, ModuleCatalog.all.size)
+        WaffledModule.entries.forEach { m ->
+            val info = ModuleCatalog.info(m)
+            assertEquals(m.key, info.key)
+            assertEquals(m.defaultOn, info.defaultOn)
+            assertEquals(m.isAvailable, info.isAvailable)
+        }
+    }
+
+    @Test
+    fun `isOn reads the enum the same way the string key does`() {
+        val flags = mapOf("pantry" to true, "chores" to false)
+        assertTrue(ModuleCatalog.isOn(WaffledModule.Pantry, flags))
+        assertFalse(ModuleCatalog.isOn(WaffledModule.Chores, flags))
+        assertTrue(ModuleCatalog.isOn(WaffledModule.Goals, flags))
+        assertFalse(ModuleCatalog.isOn(WaffledModule.Quotes, mapOf("quotes" to true)))
     }
 
     @Test

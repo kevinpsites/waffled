@@ -7,7 +7,8 @@ import app.waffled.core.model.WaffledModule
  * `SettingsView`. `app` registers the panels with the Settings shell from this table so
  * titles, glyphs, ordering and gates don't drift from iOS.
  *
- * Stored chore photos are not a landing row: Chores & Rewards opens [StoredProofsSheet].
+ * Stored chore photos are not a landing row: Chores & Rewards (in the settings module)
+ * opens its stored-proofs sheet.
  */
 data class HouseholdPanelSpec(
     val id: String,

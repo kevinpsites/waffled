@@ -1,5 +1,6 @@
 package app.waffled.feature.settings
 
+import app.waffled.core.model.WaffledModule
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -7,36 +8,42 @@ import kotlinx.coroutines.flow.update
 
 /** One row of Settings → Modules. Copy is iOS `WaffledModule` (itself lifted from modules.ts). */
 data class ModuleInfo(
-    val key: String,
+    val module: WaffledModule,
     val name: String,
     val icon: String,
     val summary: String,
-    val defaultOn: Boolean,
-    val isAvailable: Boolean = true,
-)
+) {
+    val key: String get() = module.key
+    val defaultOn: Boolean get() = module.defaultOn
+    val isAvailable: Boolean get() = module.isAvailable
+}
 
 /**
- * The module catalog as Settings shows it. Wider than `core:model`'s `WaffledModule`,
- * which predates `rhythms` and `weeklyPlanning`; keep both in step with modules.ts.
+ * The module catalog as Settings shows it: display copy over `core:model`'s
+ * [WaffledModule], which owns the keys, defaults and availability. Order is iOS.
  */
 object ModuleCatalog {
     val all = listOf(
-        ModuleInfo("chores", "Chores & Tasks", "✅", "The Tasks board — assignable chores, photo proof, approvals, and stars.", defaultOn = true),
-        ModuleInfo("goals", "Goals", "🎯", "Personal and family goals with progress, streaks, and checklists.", defaultOn = true),
-        ModuleInfo("meals", "Meals & Recipes", "🍽️", "Recipe library, weekly meal planning, and meals on the calendar.", defaultOn = true),
-        ModuleInfo("lists", "Lists & Groceries", "🛒", "Shared lists and the auto-built grocery board.", defaultOn = true),
-        ModuleInfo("pantry", "Pantry", "🥫", "Track what's on hand (freezer/fridge/pantry) and feed meal planning.", defaultOn = false),
-        ModuleInfo("rhythms", "Rhythms", "🔁", "The things that should keep happening — the air filter, trash night, a quarterly self-care day — with a place to confirm each one is actually handled.", defaultOn = false),
-        ModuleInfo("familyNight", "Family Night", "🏡", "A weekly family gathering with a rotating agenda and a Today card.", defaultOn = false),
-        ModuleInfo("weeklyPlanning", "Weekly Planning", "🗓️", "A guided session that walks the family through deciding the week ahead — loose ends, the calendar, meals, tasks and goals — reading from the modules you already use.", defaultOn = false),
-        ModuleInfo("waffledBites", "Waffled-Bites", "🧇", "Pair a kid's companion touchscreen — quiet time, wake-light, nightlight, alarm, and sound machine.", defaultOn = false),
-        ModuleInfo("quotes", "Daily quote", "💬", "A daily quote or snippet on the Today tab.", defaultOn = false, isAvailable = false),
+        ModuleInfo(WaffledModule.Chores, "Chores & Tasks", "✅", "The Tasks board — assignable chores, photo proof, approvals, and stars."),
+        ModuleInfo(WaffledModule.Goals, "Goals", "🎯", "Personal and family goals with progress, streaks, and checklists."),
+        ModuleInfo(WaffledModule.Meals, "Meals & Recipes", "🍽️", "Recipe library, weekly meal planning, and meals on the calendar."),
+        ModuleInfo(WaffledModule.Lists, "Lists & Groceries", "🛒", "Shared lists and the auto-built grocery board."),
+        ModuleInfo(WaffledModule.Pantry, "Pantry", "🥫", "Track what's on hand (freezer/fridge/pantry) and feed meal planning."),
+        ModuleInfo(WaffledModule.Rhythms, "Rhythms", "🔁", "The things that should keep happening — the air filter, trash night, a quarterly self-care day — with a place to confirm each one is actually handled."),
+        ModuleInfo(WaffledModule.FamilyNight, "Family Night", "🏡", "A weekly family gathering with a rotating agenda and a Today card."),
+        ModuleInfo(WaffledModule.WeeklyPlanning, "Weekly Planning", "🗓️", "A guided session that walks the family through deciding the week ahead — loose ends, the calendar, meals, tasks and goals — reading from the modules you already use."),
+        ModuleInfo(WaffledModule.WaffledBites, "Waffled-Bites", "🧇", "Pair a kid's companion touchscreen — quiet time, wake-light, nightlight, alarm, and sound machine."),
+        ModuleInfo(WaffledModule.Quotes, "Daily quote", "💬", "A daily quote or snippet on the Today tab."),
     )
 
     val available: List<ModuleInfo> get() = all.filter { it.isAvailable }
     val planned: List<ModuleInfo> get() = all.filter { !it.isAvailable }
 
     fun info(key: String): ModuleInfo? = all.firstOrNull { it.key == key }
+
+    fun info(module: WaffledModule): ModuleInfo = all.first { it.module == module }
+
+    fun isOn(module: WaffledModule, flags: Map<String, Boolean>): Boolean = isOn(module.key, flags)
 
     /** `flags[key] ?? defaultOn`; a planned module never gates on. */
     fun isOn(key: String, flags: Map<String, Boolean>): Boolean {

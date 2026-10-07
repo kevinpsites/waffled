@@ -1,6 +1,8 @@
 package app.waffled.feature.settings
 
 import androidx.compose.runtime.Composable
+import app.waffled.core.model.WaffledModule
+import app.waffled.core.sync.ModuleGate
 
 /**
  * The three tiers of the Settings landing (mirrors the web: Account · Family · System),
@@ -80,7 +82,7 @@ object SettingsCatalog {
         val section: SettingsSection,
         val builtIn: Boolean = false,
         val adminOnly: Boolean = false,
-        val module: String? = null,
+        val module: WaffledModule? = null,
     )
 
     // Order is iOS `SettingsView.body`; the Family rows follow Settings → Modules order.
@@ -92,9 +94,9 @@ object SettingsCatalog {
         Spec(SettingsPanelId.CHORES_REWARDS, "⭐", "Chores & Rewards", "Currencies & conversions", SettingsSection.Family, builtIn = true, adminOnly = true),
         Spec(SettingsPanelId.MEALS, "🍽️", "Meals", "Calendar & meal times", SettingsSection.Family, adminOnly = true),
         Spec(SettingsPanelId.LISTS, "📋", "Lists", "Grocery & lists", SettingsSection.Family, adminOnly = true),
-        Spec(SettingsPanelId.PANTRY, "🥫", "Pantry", "Today card & thresholds", SettingsSection.Family, adminOnly = true, module = "pantry"),
-        Spec(SettingsPanelId.FAMILY_NIGHT, "🏡", "Family Night", "Agenda, day & time", SettingsSection.Family, adminOnly = true, module = "familyNight"),
-        Spec(SettingsPanelId.WEEKLY_PLANNING, "🗓️", "Weekly Planning", "Session day, time & steps", SettingsSection.Family, adminOnly = true, module = "weeklyPlanning"),
+        Spec(SettingsPanelId.PANTRY, "🥫", "Pantry", "Today card & thresholds", SettingsSection.Family, adminOnly = true, module = WaffledModule.Pantry),
+        Spec(SettingsPanelId.FAMILY_NIGHT, "🏡", "Family Night", "Agenda, day & time", SettingsSection.Family, adminOnly = true, module = WaffledModule.FamilyNight),
+        Spec(SettingsPanelId.WEEKLY_PLANNING, "🗓️", "Weekly Planning", "Session day, time & steps", SettingsSection.Family, adminOnly = true, module = WaffledModule.WeeklyPlanning),
         Spec(SettingsPanelId.MODULES, "🧩", "Modules", "Optional features on/off", SettingsSection.Family, builtIn = true, adminOnly = true),
         Spec(SettingsPanelId.DISPLAY, "🖥️", "Display & Kiosk", "Screensaver & idle", SettingsSection.Family, adminOnly = true),
         Spec(SettingsPanelId.APPEARANCE, "🌗", "Appearance", "Light, dark or match system", SettingsSection.System, builtIn = true),
@@ -105,18 +107,27 @@ object SettingsCatalog {
 
     private val known = specs.associateBy { it.id }
 
-    /**
-     * The rows to draw, in order. [isModuleOn] takes a module key (`pantry`,
-     * `weeklyPlanning`…) — string-keyed because the Settings catalog is wider than the
-     * core module enum.
-     */
+    /** The rows to draw, in order, gated by the household's [modules]. */
+    fun rows(
+        isAdmin: Boolean,
+        modules: ModuleGate,
+        extras: List<SettingsPanelEntry>,
+    ): List<SettingsRow> = rowsGated(isAdmin, modules::isOn, extras)
+
+    /** As above, with a module looked up by its wire key (`pantry`, `weeklyPlanning`…). */
     fun rows(
         isAdmin: Boolean,
         isModuleOn: (String) -> Boolean,
         extras: List<SettingsPanelEntry>,
+    ): List<SettingsRow> = rowsGated(isAdmin, { isModuleOn(it.key) }, extras)
+
+    private fun rowsGated(
+        isAdmin: Boolean,
+        isModuleOn: (WaffledModule) -> Boolean,
+        extras: List<SettingsPanelEntry>,
     ): List<SettingsRow> {
         val supplied = extras.associateBy { it.id }
-        val visible: (SettingsSection, Boolean, String?) -> Boolean = { section, adminOnly, module ->
+        val visible: (SettingsSection, Boolean, WaffledModule?) -> Boolean = { section, adminOnly, module ->
             (!adminOnly && section != SettingsSection.Family || isAdmin) && (module == null || isModuleOn(module))
         }
 
@@ -141,5 +152,23 @@ object SettingsCatalog {
         return SettingsSection.entries.flatMap { section ->
             catalog.filter { it.section == section } + unknown.filter { it.section == section }
         }
+    }
+}
+
+/** What the Settings shell shows for a route. */
+object SettingsRouting {
+
+    /** [open] null means the landing; [dropRoute] says the route should be forgotten. */
+    data class Resolution(val open: SettingsRow?, val dropRoute: Boolean)
+
+    /**
+     * A row can disappear under an open route (module switched off, admin revoked), and
+     * then the route is dropped. Not before [householdLoaded], though: until then the
+     * viewer reads as a non-admin, which would discard an admin-only deep link.
+     */
+    fun resolve(route: String?, rows: List<SettingsRow>, householdLoaded: Boolean): Resolution {
+        if (route == null) return Resolution(null, dropRoute = false)
+        val row = rows.firstOrNull { it.id == route }?.takeIf { it.target !is SettingsRowTarget.Soon }
+        return Resolution(row, dropRoute = row == null && householdLoaded)
     }
 }

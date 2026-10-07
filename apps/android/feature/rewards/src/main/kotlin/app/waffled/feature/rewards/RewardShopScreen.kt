@@ -83,8 +83,12 @@ fun RewardShopScreen(
     var giving by remember { mutableStateOf(false) }
     var redeemError by remember { mutableStateOf<String?>(null) }
 
-    val economy = model.economy
+    // Observed, not read through the model's getters: a plain getter never recomposes, so
+    // the shop sat on its first (empty) frame until something else re-keyed it.
+    val snapshot by model.state.collectAsStateWithLifecycle()
+    val economy = snapshot.value ?: RewardsEconomy()
     val rewards = economy.rewards
+    LaunchedEffect(Unit) { model.ensureLoaded() }
 
     // The saving-toward pin lives on a per-person endpoint the model doesn't own, so it
     // is refetched when the person changes and once per write. Keying on the ECONOMY
@@ -169,7 +173,7 @@ fun RewardShopScreen(
         }
 
         when {
-            rewards.isEmpty() && !model.loaded ->
+            rewards.isEmpty() && !snapshot.loaded ->
                 item(span = { FullRow }) { WaffledLoading(top = 48.dp) }
 
             rewards.isEmpty() -> item(span = { FullRow }) {
