@@ -4,7 +4,15 @@ Bring the Waffled Android app to **feature and visual parity with iOS** (`apps/i
 218 Swift files / 59,805 LOC), built by a fan-out of subagents working in isolated
 worktrees that all merge into **one branch and one PR**.
 
-Status legend: ✅ verified on this machine · 🚧 planned · ⚠️ decision needed
+Status legend: ✅ verified on this machine · 🚧 planned · 🔄 in progress · ⚠️ decision needed
+
+> **Where we are (2026-10-07).** Phase 0 and Waves A + B are merged on `android-port`
+> (11 feature modules, 1,489 JVM tests green). The branch sat idle from 2026-08-21 while
+> `main` moved 922 commits (v0.13.1 → v0.15.3); §9 records the reconciliation. `main` is
+> merged back in, and **Wave B.5** (§6) is bringing the ported features up to today's iOS
+> before any new feature is ported. Still to come: Wave C, the new **Wave E** (Weekly
+> Planning, Rhythms, the iPhone calendar redesign — none existed when this plan was
+> written), Wave D (kiosk) and Phase 5.
 
 ---
 
@@ -92,6 +100,11 @@ reduction available, and it shapes the whole architecture.
 | FamilyNight | 413 | REST | Rotating agenda parts |
 | Auth | 280 | — | Login gate, splash |
 | Shared | 206 | — | `RestDomain`, offline banner, event row |
+
+**Re-measured 2026-10-07 at v0.15.3** (§9.3): the same 17 areas are now ~47,350 LOC, and
+two areas are new — **Planning (Weekly Planning) 12,307** and **Rhythms 2,659** — for
+~62,300 in all. Calendar grew most (+1,217, the iPhone Month/Week/Day redesign), then
+Today (+272), Family (+250), Settings (+211, a Planning panel) and Goals (+213).
 
 **Note there is no `Groceries` feature** — groceries live inside `Lists/` plus
 `Meals/GroceryWeeks.swift`. Two features are easy to forget: **Photos** and
@@ -561,7 +574,7 @@ Nothing fans out until this is committed and pushed to `android-port`. It must c
 > Photos renders real data from the running stack on the emulator with PowerSync reporting
 > `connected`.
 
-### Phase 1 — Wave A (1 pilot agent, then 4 parallel) 🚧
+### Phase 1 — Wave A (1 pilot agent, then 4 parallel) ✅ merged
 
 Smaller features that pin down the patterns, plus the only offline one.
 
@@ -581,7 +594,7 @@ against.
 | `android/rewards` | Balances, catalog, shops, redemptions, confetti, jar | 1,285 |
 | `android/today` | Phone home, customizable cards, greeting + capture bar | 948 |
 
-### Phase 2 — Wave B (5 agents, parallel) 🚧
+### Phase 2 — Wave B (5 agents, parallel) ✅ merged
 
 The two giants, split so no agent carries >4.5k LOC.
 
@@ -593,7 +606,33 @@ The two giants, split so no agent carries >4.5k LOC.
 | `android/goals-dataviews` | The 8 chart/heatmap views (Vico) | ~2,100 |
 | `android/pantry` | Inventory, barcode → Open Food Facts, allergens, expiry, cook-from-pantry | 2,843 |
 
+### Phase 2.5 — Wave B.5: catch the ported features up to current iOS 🔄
+
+Added 2026-10-07. Waves A and B were ported from iOS as of v0.13.1; §9 lists what iOS
+and the server changed since. Before fanning out new features, one serial step and five
+parallel agents close that gap, so later waves build on today's behaviour rather than
+August's.
+
+**Serial, first:** `HouseholdWeekStart` lifted from `feature/meals` into `core:model` with
+the iOS household overloads (`weekStart`, `rotated`, `monthLeadCells`) — Goals, Calendar
+and Meals all need it, and three parallel copies would not merge.
+
+| Agent | Owns | Closes |
+|---|---|---|
+| `android/parity-session` | `core/network`, `core/auth`, `Modules.kt`, `app`, `feature/today` | `NoHousehold` 403 → sign-out; `rhythms`/`weeklyPlanning` modules + `planning.manage`; truthful `RestState` (`RestDataStateTests`) on Today; Today chores card; unknown Today card keys |
+| `android/parity-goals` | `feature/goals`, `feature/goalcharts` | display axis (`periodDone` / steps / "each"), milestone axis, note-only derived log entries, "already done today", household week in the heatmap, `weekPlan`, suggestion ignores |
+| `android/parity-calendar` | `core/sync`, `feature/calendar` | `events.rhythm_id`; multi-day all-day on every day; event end / all-day Ends; household week in the month grid; APCA chip contrast; rhythm countdowns read-only; failed writes surfaced |
+| `android/parity-household` | `feature/rewards`, `chores`, `lists`, `photos` | `reward.manage` gate + failed-redeem message; chore edit scope (`ChoreScopePolicyTests`); double-tap and banner fixes; sweep |
+| `android/parity-kitchen` | `feature/meals`, `recipes`, `pantry` | Cook Mode step amounts; planners on the household week; Meal Builder deltas; sweep |
+
+The truthful `RestState` lands on Today only in this wave; Photos, Family and approvals
+adopt it after it merges (the iOS fix covered all four).
+
 ### Phase 3 — Wave C (5 agents, parallel) 🚧
+
+Since the fork iOS grew here too: Settings gained a Planning panel, Family gained the
+chore-change broadcast and reward-shop `canManage`, and Family Night gained Planning
+integration — port those with their areas, after Wave E's planning core exists.
 
 | Agent | Scope | LOC |
 |---|---|---:|
@@ -602,6 +641,21 @@ The two giants, split so no agent carries >4.5k LOC.
 | `android/family` | Hub, person spotlight, approvals queue, sync status | 1,705 |
 | `android/capture` | The "Add anything" sheet (8 intents) + dictation. ⚠️ see §7.1 | 1,279 |
 | `android/bites-familynight` | Waffled-Bites control panel + Family Night | 1,363 |
+
+### Phase 3.5 — Wave E: what iOS added since the fork 🚧
+
+None of this existed when the plan was written. Weekly Planning is now the **largest area
+in the app** — bigger than Meals — so it is split.
+
+| Agent | Scope | iOS LOC |
+|---|---|---:|
+| `android/calendar-phone` | The iPhone Month / Week / Day calendar (`PhoneCalendarLayoutTests`) and multi-day bars. **Put the month grid in a shared module** — Weekly Planning's Horizon scan draws the same grid on iOS (`PhoneMonthGrid`), and CLAUDE.md cites exactly this copy as the reason to share | ~1,200 |
+| `android/rhythms` | Rhythms card, list, editor, book-it and backdate sheets; `rhythm_id` on events; rhythm countdowns | 2,659 |
+| `android/planning-core` | **Serial, first.** Session shell, lobby, step navigation, parked notes, handoff banner, per-step API clients, Today card, settings panel | ~4,000 |
+| `android/planning-steps-a` | Connection, Loose ends, Calendar, Horizon scan | ~4,000 |
+| `android/planning-steps-b` | Meals, Tasks, Goals, Kids, Family Night, Recap | ~4,300 |
+
+Planning reads every other module, so it goes after Wave B.5 and the calendar redesign.
 
 ### Phase 4 — Wave D, tablet kiosk (3 agents) 🚧
 
@@ -714,6 +768,9 @@ plain HTTP, rather than failing opaquely.
 
 ## 8. Effort shape
 
+> Re-sized 2026-10-07: ~62,300 LOC of iOS feature code now (§1.2), so roughly **25
+> feature agents** across Waves B.5, C, E and D. The original sizing follows.
+
 ~42,977 LOC of iOS feature code + 8,076 sync + 692 design ≈ **52k LOC of source to
 translate**, against a **7,579-LOC test suite that serves as the spec**. Roughly
 **18 feature agents** across 4 waves, on top of a serial Phase 0 and a serial
@@ -722,3 +779,54 @@ integration phase.
 The two costs most likely to be underestimated: the **SF Symbols → Material Symbols**
 mapping pass (touches every screen), and the **visual parity pass** in Phase 5 — which is
 where "copy the design exactly" is actually earned.
+
+---
+
+## 9. Reconciliation with `main` — 2026-10-07
+
+`android-port` forked at `d4a1b0ed` (v0.13.1, 2026-08-19) and was last touched
+2026-08-21. By 2026-10-07 `main` was 922 commits ahead (v0.15.3). Three read-only audits
+measured the drift before any code moved.
+
+### 9.1 Git
+
+The four `android-*` feature branches were already merged into `android-port`, and
+`main` merged in with **no conflicts** — `main` never touched `apps/android`. The merged
+branch built and passed all 1,489 JVM tests, and was pushed for the first time.
+`fork/feat/android-pwa` (a contributor's July installable-PWA/TWA wrapper of the web app)
+is a separate approach and doesn't overlap.
+
+### 9.2 Server contract — nothing broke, five things to adopt
+
+PowerSync sync rules are unchanged, every column in the Android schema still exists, and
+no route Android calls was removed or renamed. To adopt (all owned in Wave B.5):
+
+- **`403 {error: "NoHousehold"}`** when the household is gone — clients must sign out.
+  Android handled only 401 and would sit wedged.
+- **`events.rhythm_id`** — synced and dropped by the Android schema. Uploads were safe
+  (the server coalesces it).
+- **Modules `rhythms`, `weeklyPlanning`; capability `planning.manage`; Today card
+  `rhythms`; countdown source `rhythm`** — ignored safely, needed for parity.
+- **Redeem / award for another person needs `reward.manage`** — Android offered it to
+  everyone and the 403 was silent.
+- **Chore edits take `scope` + `instanceId`**; settled occurrences are immutable (409).
+
+Also new and tolerated: goal `weekPlan`/`weekPlans`, goal-suggestion ignore routes,
+`planningFocus` on the person overview (Wave E).
+
+### 9.3 Behaviour iOS changed under the port
+
+The iOS test suite is the port spec, and ~40 iOS test files changed after the fork. The
+ones that hit already-ported features — `GoalDisplayTests`, `GoalLogEntryEditableTests`,
+`GoalStatsTests`, `EventEndTests`, `EventIndexTests`, `EventColorTests`,
+`CookSessionTests`, `AuthDeadSessionTests`, `ChoreScopePolicyTests`, `TodayChoresTests`,
+`DashboardModelTests`, `RestDataStateTests`, `PlannerWeekStartTests`,
+`MealBuilderTests`, `MealLibraryTests`, `GoalChartLayoutTests`,
+`GoalSuggestionIgnoreTests` — are each assigned to a Wave B.5 agent. The worst gap was
+Goals: Android showed lifetime totals everywhere, so a habit with 340 logs against a
+target of 5 drew a full ring. Calendar showed multi-day events on their first day only
+and cut weeks on Sunday regardless of the household.
+
+Checked and already correct: rewards never auto-approve, and only celebrate a successful
+redeem; fractional goal amounts; one-off chore move-day; impossible chore dates (the
+server refuses them).
