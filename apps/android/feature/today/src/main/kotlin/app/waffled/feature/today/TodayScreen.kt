@@ -50,7 +50,6 @@ import app.waffled.core.model.WaffledModule
 import androidx.compose.runtime.saveable.rememberSaveable
 import app.waffled.core.network.RefreshBus
 import app.waffled.core.network.RefreshDomain
-import app.waffled.core.network.RestNotice
 import app.waffled.core.network.RestState
 import app.waffled.core.sync.ModuleGate
 import app.waffled.core.sync.SyncedEvent
@@ -298,7 +297,7 @@ fun TodayScreen(
                 val recapRows = recap.value.orEmpty()
                 val suggestionRows = suggestions.value.orEmpty()
                 val reviewState = RestState.combined(listOf(recap.rest, suggestions.rest))
-                if (modules.isOn(WaffledModule.Goals) && RestNotice.of(reviewState) != null) {
+                if (modules.isOn(WaffledModule.Goals) && reviewState.loaded && !reviewState.isAuthoritative) {
                     item(key = "reviewNotice") {
                         RestStateNotice(reviewState, retry = actions.onRetryGoals)
                     }

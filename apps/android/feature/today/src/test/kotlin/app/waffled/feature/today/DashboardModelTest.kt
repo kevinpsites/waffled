@@ -102,7 +102,7 @@ class DashboardModelLoadingStateTest {
     }
 
     @Test
-    fun aFailedRefreshIsStaleRatherThanAuthoritative() = runTest {
+    fun anOfflineRefreshKeepsItsAgeAndItsRows() = runTest {
         val feed = StubFeed()
         feed.chores = listOf(person("June", total = 2))
         val m = model(feed)
