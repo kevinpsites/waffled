@@ -23,17 +23,18 @@ silicon, [download Waffled for Mac](/install/mac/) and open it — no Docker, no
 anywhere else, `git clone` + `./waffled up` brings up the [Docker install](/install/docker/).
 Everything optional (AI providers, Google Calendar, SSO, push) is opt-in via configuration.
 
-## The three surfaces
+## The surfaces
 
 | Surface | Role | Notes |
 | --- | --- | --- |
 | **Counter Kiosk** | Always-on tablet (1280×800) in the kitchen | Same web build in fullscreen/PWA mode; ambient screensaver; profile picker + optional PINs |
 | **Web** | Full management & setup dashboard | The React SPA served by Caddy; first-run setup wizard, all admin/settings |
 | **iOS (iPhone + iPad)** | Native universal SwiftUI app — a personal planner on iPhone, a family hub on iPad | [Free on the App Store](https://apps.apple.com/app/waffled/id6787621452); offline-first calendar over PowerSync; native sign-in + local notifications; an iPad can double as the kiosk |
+| **Android (phone + tablet)** | Native Kotlin / Jetpack Compose app — a personal planner on a phone, a shared kiosk on a tablet | [Install the Android app](/guides/android-app/); same server, offline-first calendar over PowerSync, on-device reminders; Health Connect isn't included yet |
 
 The Kiosk and Web are the **same application** (the "Web / Kiosk" column in the feature
 matrix); iOS is a separate native client — one universal binary whose iPhone and iPad
-experiences are the matrix's "iPhone" and "iPad" columns.
+experiences are the matrix's "iPhone" and "iPad" columns. Android is a third native client, listed in the matrix's [Android availability](/reference/features/#android-availability) table.
 
 ## Core ideas
 

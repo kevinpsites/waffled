@@ -23,7 +23,7 @@ Link a [goal](/features/goals/) to an Apple Health metric on your iPhone and it 
 | iPad | ❌ N/A — displays the synced number only |
 | Web / Kiosk | ❌ N/A — displays the synced number only |
 
-Apple's **HealthKit framework exists only on iPhone** — there's no Health data on iPad or the web. So linking and syncing happen on your iPhone; the family iPad and the web/kiosk simply *show* the number your phone synced up ("Jerry: 7,340 / 10,000 steps"). They never read your health data themselves.
+Apple's **HealthKit framework exists only on iPhone** (the Android app has no Health Connect auto-fill yet) — there's no Health data on iPad or the web. So linking and syncing happen on your iPhone; the family iPad and the web/kiosk simply *show* the number your phone synced up ("Jerry: 7,340 / 10,000 steps"). They never read your health data themselves.
 
 ## Set it up
 

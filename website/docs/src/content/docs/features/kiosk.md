@@ -25,8 +25,10 @@ Kiosk is the ambient-hub half of Waffled — the same web app, running fullscree
 | Web / Kiosk | ✅ |
 | iPhone | ❌ |
 | iPad | ✅ |
+| Android tablet | ✅ |
+| Android phone | ❌ |
 
-The web build **is** the kiosk — run it fullscreen (PWA) on any counter tablet. iPad runs the full kiosk experience natively too. iPhone is **never** a kiosk: pairing, the profile picker, PINs, night-dimming, and keep-awake are all N/A there — the iPhone is a personal planner instead (see [Mobile app](/features/mobile/)).
+The web build **is** the kiosk — run it fullscreen (PWA) on any counter tablet. iPad and Android tablets run the full kiosk experience natively too (see [Install the Android app](/guides/android-app/#4-tablet-use-it-as-a-shared-kiosk)). iPhone and Android phones are **never** a kiosk: pairing, the profile picker, PINs, night-dimming, and keep-awake are all N/A there — the iPhone is a personal planner instead (see [Mobile app](/features/mobile/)).
 
 ## Settings
 
