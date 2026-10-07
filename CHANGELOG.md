@@ -43,6 +43,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   calendar now moves it to that person's calendar and creates it there, whether the edit
   came from the web, iPhone or iPad. An event you chose to keep "Waffled only" stays put.
 
+### Security
+
+- **Server dependencies patched against newly published advisories.** OpenTelemetry tracing
+  no longer records the database username on spans, `@grpc/grpc-js` is updated, and the
+  `brace-expansion` copy used by the migration runner is pinned to a release that fixes
+  three denial-of-service bugs.
+
 ## [0.15.1] - 2026-09-15
 
 ### Added
