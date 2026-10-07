@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A quick tap on a Weekly Planning goals tab is no longer undone.** Tapping a different
+  goal list's tab as the Goals step first opened could snap straight back to the default tab,
+  so you had to tap it again. The tab you pick now stays picked.
+
 ## [0.15.2] - 2026-10-07
 
 ### Added
