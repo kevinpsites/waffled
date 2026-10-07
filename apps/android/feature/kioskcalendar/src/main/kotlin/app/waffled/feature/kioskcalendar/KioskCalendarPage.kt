@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -61,6 +62,7 @@ import app.waffled.feature.calendar.EventEditSheet
 import app.waffled.feature.calendar.EventRow
 import app.waffled.feature.calendar.HorizontalSwipe
 import app.waffled.feature.calendar.PeopleColumns
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -109,7 +111,14 @@ fun KioskCalendarPage(
         miniAnchor = today
     }
 
-    val today = remember(zone) { model.today() }
+    // Ticks, because a wall display runs across midnight and every "today" read must follow.
+    val today by produceState(model.today(), zone) {
+        value = model.today()
+        while (true) {
+            delay(60_000)
+            value = model.today()
+        }
+    }
     val visible = remember(rows, filterPerson) { model.filtered(filterPerson, rows) }
     val openCountdown: (CalendarApi.Countdown) -> Unit = { c ->
         when (val target = KioskCalendar.route(c, rows)) {

@@ -274,7 +274,7 @@ private fun AllDayRow(
     ) {
         Text(
             text = "all-day",
-            modifier = Modifier.width(Gutter).padding(end = 6.dp),
+            modifier = Modifier.padding(end = 6.dp).width(Gutter),
             style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.ExtraBold),
             color = WF.colors.ink3,
             textAlign = TextAlign.End,
