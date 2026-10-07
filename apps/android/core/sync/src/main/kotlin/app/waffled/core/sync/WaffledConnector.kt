@@ -99,12 +99,16 @@ class WaffledConnector(
         }
     }
 
-    /** 4xx is the server's final word — except auth, timeouts and throttling, which pass. */
+    /**
+     * 4xx is the server's final word — except an expired token (the same principal can sign
+     * back in and drain it), timeouts and throttling. A 403 is final: a permission denial,
+     * or NoHousehold for a household that no longer exists.
+     */
     private fun isPermanent(status: Int): Boolean =
         status in 400..499 && status !in RETRYABLE_4XX
 
     private companion object {
-        val RETRYABLE_4XX = setOf(401, 403, 408, 429)
+        val RETRYABLE_4XX = setOf(401, 408, 429)
     }
 }
 

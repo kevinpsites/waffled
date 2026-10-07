@@ -76,8 +76,22 @@ class WaffledConnectorTest {
     }
 
     @Test
+    fun aForbiddenWriteIsDroppedRatherThanWedgingTheQueue() = runTest {
+        // A permission denial, or NoHousehold (the household is gone and the session ends):
+        // neither can succeed on retry, and a queue stuck behind it would refuse every
+        // later sign-in on the device.
+        val connector = WaffledConnector(Backend { WaffledApiException(403, "NoHousehold") })
+        val queue = Queue("e1")
+
+        connector.drain(queue::next)
+
+        assertTrue(queue.all.all { it.completed })
+        assertEquals(403, connector.lastRejection.value?.status)
+    }
+
+    @Test
     fun authAndThrottlingStatusesAreRetriedNotDropped() = runTest {
-        for (status in listOf(401, 403, 408, 429)) {
+        for (status in listOf(401, 408, 429)) {
             val connector = WaffledConnector(Backend { WaffledApiException(status, "later") })
             val queue = Queue("e1")
             assertFailsWith<WaffledApiException> { connector.drain(queue::next) }
