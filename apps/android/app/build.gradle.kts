@@ -72,6 +72,10 @@ dependencies {
     implementation(project(":feature:bites"))
     implementation(project(":feature:familynight"))
     implementation(project(":feature:rhythms"))
+    implementation(project(":feature:planning"))
+    implementation(project(":feature:kiosk"))
+    implementation(project(":feature:kiosktoday"))
+    implementation(project(":feature:kioskcalendar"))
     implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.androidx.activity.compose)
