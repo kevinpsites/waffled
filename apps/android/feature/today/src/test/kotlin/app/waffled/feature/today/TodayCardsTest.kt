@@ -89,6 +89,32 @@ class TodayCardsTest {
         assertEquals(listOf("agenda", "chores"), rows.map { it.id })
     }
 
+    /**
+     * `/api/today-layout/mobile` now carries `rhythms`, and a newer server may send keys
+     * this build has never heard of. Neither may render as a gap or a crash.
+     */
+    @Test
+    fun unknownAndUnwiredKeysAreSkipped() {
+        val rows = TodayCards.rows(
+            order = listOf("agenda", "rhythms", "futureCard", "chores", "grocery"),
+            hidden = emptySet(),
+            modules = allOn,
+            available = setOf("agenda", "tonight", "chores", "grocery"),
+        )
+        assertEquals(
+            listOf(TodayCards.CardRow.Single("agenda"), TodayCards.CardRow.Pair("chores", "grocery")),
+            rows,
+        )
+    }
+
+    @Test
+    fun theRhythmsCardGatesOnItsModuleOnceAHostWiresIt() {
+        val wired = TodayCards.labels.keys
+        assertEquals("Rhythms", TodayCards.label("rhythms"))
+        assertTrue(TodayCards.rows(listOf("rhythms"), emptySet(), allOn, wired).isNotEmpty())
+        assertTrue(TodayCards.rows(listOf("rhythms"), emptySet(), gate(WaffledModule.Rhythms), wired).isEmpty())
+    }
+
     // ---- 2-up pairing -----------------------------------------------------------
 
     @Test

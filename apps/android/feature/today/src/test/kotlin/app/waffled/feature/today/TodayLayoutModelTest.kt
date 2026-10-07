@@ -64,6 +64,29 @@ class TodayLayoutModelTest {
         assertEquals(listOf("agenda", "goals"), model.state.value.order)
     }
 
+    /**
+     * The mobile layout is shared with the iPhone, which renders `rhythms` (and a newer
+     * server may send keys neither knows). Android must keep them in the order it loads
+     * and saves, or one save here deletes the card from the user's iPhone.
+     */
+    @Test
+    fun keysThisBuildCannotRenderSurviveLoadAndSave() = runTest {
+        val layout = """{"resolved":{"order":["agenda","rhythms","futureCard","chores"],
+            "hidden":["countdowns","pantry","familyNight"]},"source":"user","cards":[],"canEditFamily":false}"""
+        harness.enqueueJson(layout)
+        model.load()
+        harness.takeRequest()
+        assertEquals(listOf("agenda", "rhythms", "futureCard", "chores"), model.state.value.order)
+
+        harness.enqueueJson("""{"ok":true}""")
+        harness.enqueueJson(layout)
+        model.save("user", model.state.value.order, model.state.value.hidden)
+        val save = harness.takeRequest()
+        assertEquals("PUT", save.method)
+        val body = save.body.readUtf8()
+        assertTrue(body.contains("\"rhythms\"") && body.contains("\"futureCard\""), body)
+    }
+
     /** A flaky network must never rearrange someone's home screen. */
     @Test
     fun aFailedLoadKeepsThePreviousLayout() = runTest {

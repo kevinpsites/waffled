@@ -22,6 +22,9 @@ object TodayCards {
     const val PANTRY = "pantry"
     const val FAMILY_NIGHT = "familyNight"
 
+    /** Known so it gates and labels correctly; Android has no Rhythms card to wire yet. */
+    const val RHYTHMS = "rhythms"
+
     /** The order a server that has never been customised resolves to. */
     val defaultOrder = listOf(AGENDA, TONIGHT, CHORES, GROCERY, GOALS)
 
@@ -36,6 +39,7 @@ object TodayCards {
         GOALS to "Goals",
         PANTRY to "Pantry",
         FAMILY_NIGHT to "Family Night",
+        RHYTHMS to "Rhythms",
     )
 
     /** A newer server may send a card key this build doesn't know; show the key, don't crash. */
@@ -58,6 +62,7 @@ object TodayCards {
         GOALS -> modules.isOn(WaffledModule.Goals)
         PANTRY -> modules.isOn(WaffledModule.Pantry)
         FAMILY_NIGHT -> modules.isOn(WaffledModule.FamilyNight)
+        RHYTHMS -> modules.isOn(WaffledModule.Rhythms)
         else -> true
     }
 
