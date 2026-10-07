@@ -521,6 +521,22 @@ describe('Horizon scan · looking further out', () => {
     expect(await screen.findByText('Sep 6 – Oct 3')).toBeInTheDocument()
   })
 
+  it('starts over at the planned week when the session moves to another week', async () => {
+    // Stepping ahead is relative to the week being planned; a new week is a new floor.
+    mockApi()
+    const props = {
+      step, sessionId: '11111111-1111-4111-8111-111111111111',
+      setDecisionData: vi.fn(), refresh: vi.fn(), busy: false,
+    }
+    const view = render(<MemoryRouter><Body {...props} weekStart={WEEK_START} /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /next 4 weeks/i }))
+    expect(await screen.findByText('Oct 4 – Oct 31')).toBeInTheDocument()
+
+    view.rerender(<MemoryRouter><Body {...props} weekStart="2026-09-13" /></MemoryRouter>)
+    expect(await screen.findByText('Sep 13 – Oct 10')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /previous 4 weeks/i })).toBeDisabled()
+  })
+
   it('crosses a year boundary without losing a day', async () => {
     // Dec 27 2026 is a Sunday; its four weeks run into January.
     const { eventReads } = mockApi()

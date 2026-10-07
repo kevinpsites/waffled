@@ -73,6 +73,8 @@ function Body({ weekStart, sessionId, setDecisionData, refresh, busy }: StepBody
   // The planned week is the floor for scanning: a horizon is what is AHEAD. Read off the
   // string as a LOCAL date — `new Date('YYYY-MM-DD')` is UTC midnight, the day before out west.
   const [ahead, setAhead] = useState(0)
+  // A different planned week is a new floor, so stepping ahead starts over (as iOS does).
+  useEffect(() => { setAhead(0) }, [weekStart])
   const range = useMemo(() => {
     const [y, m, d] = weekStart.split('-').map(Number)
     return { start: addDays(new Date(y, m - 1, d), ahead * WINDOW_WEEKS * 7), weeks: WINDOW_WEEKS }
