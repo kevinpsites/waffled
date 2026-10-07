@@ -270,6 +270,27 @@ class MealBuilderModel(
     }
 
     /**
+     * The plate is about to fill a slot the caller already chose ("New meal" in a picker):
+     * save it, and report whether it is really usable.
+     *
+     * Being saved is load-bearing: scheduling COPIES a saved plate but schedules an unsaved
+     * one directly, so a later edit would rewrite the planned night. Saving here rather
+     * than at create keeps an abandoned build out of the library. A failed save must
+     * report failure, or the caller schedules an unsaved plate.
+     */
+    suspend fun saveForUse(): Boolean {
+        if (mealId == null || isEmpty) {
+            message = "Add a dish first."
+            return false
+        }
+        if (isSaved) return true
+        _state.update { it.copy(isSaved = true) }
+        return run(rollback = { _state.update { it.copy(isSaved = false) } }) { id ->
+            api.update(id, null, null, true)
+        }
+    }
+
+    /**
      * Commit the inline name edit (on submit / focus loss). Creates the plate if this is
      * the first thing that happened on the screen.
      */

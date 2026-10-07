@@ -153,3 +153,20 @@ object LibraryFilter {
         RecipeSort.Recent -> compareByDescending { it.lastCookedAt.orEmpty() }
     }
 }
+
+/**
+ * What the library's New control offers. A plate is offered under the same rule that
+ * decides whether plate cards are shown: only to a caller that can take one back.
+ */
+enum class LibraryNewOffer {
+    RecipeOnly,
+    RecipeAndMeal,
+    ;
+
+    val offersRecipe: Boolean get() = true
+    val offersMeal: Boolean get() = this == RecipeAndMeal
+
+    companion object {
+        fun of(canPickMeal: Boolean): LibraryNewOffer = if (canPickMeal) RecipeAndMeal else RecipeOnly
+    }
+}

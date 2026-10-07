@@ -110,6 +110,12 @@ fun MealBuilderScreen(
      * once the plate exists server-side, because that is what Cook Mode fetches by.
      */
     onCookPlate: ((MealDTO) -> Unit)? = null,
+    /**
+     * Set when the builder was opened from inside a picker: the bar's Schedule and
+     * Add-to-list give way to "Use this meal", so the plate can't be scheduled here and
+     * again by the slot it is filling. Called with the plate once it is saved.
+     */
+    onUse: ((MealDTO) -> Unit)? = null,
     /** The household's `week_start`, so "This week" in the schedule sheet matches the planner. */
     householdWeekStart: HouseholdWeekStart? = null,
 ) {
@@ -315,6 +321,13 @@ fun MealBuilderScreen(
                 onToggleSaved = { scope.launch { model.toggleSaved() } },
                 onAddToList = { scope.launch { model.addToGrocery() } },
                 onSchedule = { scheduling = true },
+                onUse = onUse?.let { use ->
+                    {
+                        scope.launch {
+                            if (model.saveForUse()) model.meal?.let(use)
+                        }
+                    }
+                },
             )
         }
 
@@ -367,6 +380,7 @@ private fun PlateBar(
     onToggleSaved: () -> Unit,
     onAddToList: () -> Unit,
     onSchedule: () -> Unit,
+    onUse: (() -> Unit)?,
 ) {
     Column(
         Modifier
@@ -435,8 +449,12 @@ private fun PlateBar(
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            BarButton("Add plate to list", filled = false, enabled = !isEmpty && !state.busy, Modifier.weight(1f), onAddToList)
-            BarButton("Schedule", filled = true, enabled = !isEmpty && !state.busy, Modifier.weight(1f), onSchedule)
+            if (onUse != null) {
+                BarButton("Use this meal", filled = true, enabled = !isEmpty && !state.busy, Modifier.weight(1f), onUse)
+            } else {
+                BarButton("Add plate to list", filled = false, enabled = !isEmpty && !state.busy, Modifier.weight(1f), onAddToList)
+                BarButton("Schedule", filled = true, enabled = !isEmpty && !state.busy, Modifier.weight(1f), onSchedule)
+            }
         }
     }
 }

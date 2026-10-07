@@ -453,4 +453,59 @@ class MealBuilderModelTest {
         assertEquals(0, server.creates)
         assertNull(m.meal)
     }
+
+    // ---- a plate built from inside a picker (PlateUsedFromAPickerTests) -------------
+
+    /**
+     * Scheduling COPIES a saved plate and schedules an unsaved one directly, so a plate
+     * handed to a slot must be saved — and only at the moment it is used, so an abandoned
+     * build never reaches the library.
+     */
+    @Test
+    fun usingAPlateSavesItSoSchedulingWillCopyIt() = runTest {
+        val server = FakePlateServer()
+        val m = MealBuilderModel(server)
+        m.addRecipe("chicken", PlateRoles.main)
+        assertFalse(m.isSaved)
+
+        val ready = m.saveForUse()
+
+        assertTrue(ready)
+        assertTrue(m.isSaved)
+        assertEquals(listOf(Triple<String?, Int?, Boolean?>(null, null, true)), server.updates)
+    }
+
+    @Test
+    fun aPlateAlreadyInTheLibraryIsHandedOverWithNoWriteAtAll() = runTest {
+        val server = FakePlateServer()
+        val m = MealBuilderModel(
+            server,
+            plateFixture(isSaved = true, dishes = listOf(plateDish("chicken", "Chicken", role = "main"))),
+        )
+        assertTrue(m.saveForUse())
+        assertTrue(server.updates.isEmpty())
+    }
+
+    @Test
+    fun anEmptyPlateCannotBeUsed() = runTest {
+        val server = FakePlateServer()
+        val m = MealBuilderModel(server)
+
+        assertFalse(m.saveForUse())
+        assertEquals(0, server.creates)
+        assertNotNull(m.message)
+    }
+
+    /** Handing the plate over after a failed save would schedule an unsaved one. */
+    @Test
+    fun aFailedSaveReportsFailureRatherThanHandingThePlateOver() = runTest {
+        val server = FakePlateServer()
+        val m = MealBuilderModel(server)
+        m.addRecipe("chicken", PlateRoles.main)
+        server.failing = true
+
+        assertFalse(m.saveForUse())
+        assertFalse(m.isSaved)
+        assertNotNull(m.message)
+    }
 }
