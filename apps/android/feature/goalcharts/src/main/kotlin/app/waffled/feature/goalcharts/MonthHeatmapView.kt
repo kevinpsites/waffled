@@ -77,6 +77,7 @@ fun MonthHeatmapView(
                 "${monthName(month.monthValue - 1)} ${month.year}"
             },
             subtitle = "${amount(total, chart.unit)} this month",
+            singleLineTitle = true,
             leading = {
                 IconButton(onClick = { monthOffset -= 1 }) {
                     Icon(

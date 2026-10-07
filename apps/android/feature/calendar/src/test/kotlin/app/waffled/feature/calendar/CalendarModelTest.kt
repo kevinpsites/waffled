@@ -233,4 +233,28 @@ class CalendarModelTest {
 
         assertEquals(listOf("#2F7FED", "#E0548B"), model.dotColors(model.rowsByDay.value, june16))
     }
+
+    @Test
+    fun anEventOpenedFromOutsideResolvesToItsNextOccurrence() {
+        // Today's event and countdown taps hand the calendar an id; a repeating event has a
+        // row per day, so the one at or after today is the one the tap meant.
+        val scope = scope()
+        val june20 = LocalDate.of(2026, 6, 20)
+        val events = MutableStateFlow(
+            mapOf(
+                LocalDate.of(2026, 6, 10) to listOf(event("rep", startsAt = "2026-06-10T17:00:00Z")),
+                june16 to listOf(event("e1"), event("rep")),
+                june20 to listOf(event("rep", startsAt = "2026-06-20T17:00:00Z")),
+            ),
+        )
+        val model = model(events, scope)
+        model.setZone(denver)
+
+        assertEquals(june16, model.rowFor("rep", from = LocalDate.of(2026, 6, 12))?.day)
+        assertEquals(june20, model.rowFor("rep", from = LocalDate.of(2026, 6, 17))?.day)
+        // Only past occurrences left: the latest one, rather than nothing at all.
+        assertEquals(june20, model.rowFor("rep", from = LocalDate.of(2026, 7, 1))?.day)
+        assertEquals("e1", model.rowFor("e1", from = june16)?.id)
+        assertNull(model.rowFor("missing", from = june16))
+    }
 }

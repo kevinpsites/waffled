@@ -412,6 +412,49 @@ class GoalsModelTest {
     }
 
     @Test
+    fun `a failed lists read keeps the detail and its this-week total`() = runTest {
+        // The lists only feed the editor's group picker. Dropping the detail with them left
+        // the hero reading THIS WEEK 0 off the lightweight goal it was opened from.
+        harness.server.dispatcher = PathDispatcher()
+            .on("/api/goals/g1", """{"goal":{"id":"g1","title":"Outside","unit":"hours","thisWeek":4}}""")
+            .onError("/api/goal-lists", 500, "ServerError")
+            .on("/api/goals/g1/activity", """{"startDate":"2026-01-01","today":"2026-10-07","days":[]}""")
+
+        val m = GoalDetailModel(api, GoalsApi.Goal(id = "g1"), bus)
+        m.load()
+
+        assertEquals(4.0, m.current.detail?.thisWeek)
+        assertFalse(m.current.error)
+        assertTrue(m.current.lists.isEmpty())
+    }
+
+    @Test
+    fun `the detail decodes the server's nulls for its numbers`() = runTest {
+        harness.server.dispatcher = PathDispatcher()
+            .on(
+                "/api/goals/g1",
+                """
+                {"goal":{"id":"g1","title":"Outside","goalType":"habit","unit":null,"target":null,
+                  "habitPeriod":"week","habitTargetPerPeriod":null,"streakDays":2,"thisWeek":2,
+                  "periodDone":2,"stepTotal":null,"stepDone":null,"loggedTodayBy":null,
+                  "healthDailyTarget":null,"weekPlans":[],"deadline":null,"category":null,
+                  "participants":[{"personId":"p1","name":"Kevin","colorHex":null,"target":null,"progress":null}],
+                  "milestones":[],"steps":[],
+                  "recent":[{"id":"b1","amount":1,"loggedAt":"2026-10-06T19:00:00.000Z","dateKey":"2026-10-06",
+                             "note":null,"editable":true,"participants":[{"personId":"p1","name":"Kevin","avatarEmoji":null,"colorHex":null}]}]}}
+                """.trimIndent(),
+            )
+            .on("/api/goal-lists", """{"lists":[]}""")
+            .on("/api/goals/g1/activity", """{"startDate":"2026-01-01","today":"2026-10-07","days":[]}""")
+
+        val m = GoalDetailModel(api, GoalsApi.Goal(id = "g1"), bus)
+        m.load()
+
+        assertEquals(2.0, m.current.detail?.thisWeek)
+        assertFalse(m.current.error)
+    }
+
+    @Test
     fun `a failed activity read still shows the goal`() = runTest {
         // The ring, the ladder and the log are all worth showing; only the chart is lost.
         harness.server.dispatcher = PathDispatcher()

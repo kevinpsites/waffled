@@ -270,23 +270,7 @@ fun GoalDetailScreen(
     if (logging) {
         // Hand the sheet the freshly-loaded participants and unit: the screen can be
         // reached from a lightweight goal (the person spotlight carries neither).
-        val logGoal = model.goal.copy(
-            unit = unit,
-            target = target,
-            totalProgress = progress,
-            participants = model.participants,
-            participantMode = detail?.participantMode ?: model.goal.participantMode,
-            trackingMode = detail?.trackingMode ?: model.goal.trackingMode,
-            targetBasis = detail?.targetBasis ?: model.goal.targetBasis,
-            habitPeriod = detail?.habitPeriod ?: model.goal.habitPeriod,
-            habitTargetPerPeriod = detail?.habitTargetPerPeriod ?: model.goal.habitTargetPerPeriod,
-            goalType = goalType,
-            // The detail's own axes, so the sheet judges the habit on today's numbers.
-            periodDone = detail?.periodDone ?: model.goal.periodDone,
-            stepTotal = detail?.stepTotal ?: model.goal.stepTotal,
-            stepDone = detail?.stepDone ?: model.goal.stepDone,
-            loggedTodayBy = detail?.loggedTodayBy ?: model.goal.loggedTodayBy,
-        )
+        val logGoal = logGoalFor(model.goal, detail)
         ModalBottomSheet(
             onDismissRequest = { logging = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),

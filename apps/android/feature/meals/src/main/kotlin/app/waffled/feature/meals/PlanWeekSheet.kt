@@ -32,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -74,11 +75,31 @@ fun PlanWeekSheet(
     recipePicker: @Composable (onPick: (RecipeRef) -> Unit, onDismiss: () -> Unit) -> Unit,
     onApplied: () -> Unit,
     onDismiss: () -> Unit,
+    /** Arrives in "Use up first" — Cook from your pantry's spoiling items (iOS `seedUseUp`). */
+    seedUseUp: List<String> = emptyList(),
+    // A host may reuse this planner for part of a week (Weekly Planning's Meals step); every
+    // one of these defaults to the standalone behaviour.
+    /** Which meals may be planned. One entry hides the picker. */
+    mealTypes: List<String> = PlanWeekModel.DEFAULT_MEAL_TYPES,
+    /** Nights to arrive selected, `yyyy-MM-dd` in the household zone; null keeps Mon-Fri. */
+    initialDays: List<String>? = null,
+    /** The host's narrowing, said out loud above the config. */
+    note: String? = null,
+    /**
+     * Where an approved week goes INSTEAD of the per-slot writes. When set, [onApplied] is
+     * not called — the host owns the write and its own refresh.
+     */
+    onApply: (suspend (List<PlanCardDTO>) -> Boolean)? = null,
 ) {
+    // The model outlives recompositions, so it forwards to the host's LATEST hook rather than
+    // capturing the first lambda it saw.
+    val currentOnApply by rememberUpdatedState(onApply)
     val model = remember(start) {
         PlanWeekModel(
             api = api, libraryRecipes = libraryRecipes, householdWeekStart = householdWeekStart,
             familySize = familySize, start = start, weekDays = weekDays,
+            seedUseUp = seedUseUp, mealTypes = mealTypes, initialDays = initialDays,
+            onApply = onApply?.let { { cards -> currentOnApply?.invoke(cards) ?: false } },
         )
     }
     val scope = rememberCoroutineScope()
@@ -92,7 +113,7 @@ fun PlanWeekSheet(
         Column(Modifier.fillMaxSize()) {
             SheetHeader("Plan my week", onDismiss)
             when (phase) {
-                PlanPhase.Config -> WeekConfig(model) { scope.launch { model.suggest() } }
+                PlanPhase.Config -> WeekConfig(model, note) { scope.launch { model.suggest() } }
                 PlanPhase.Loading -> PlanLoadingView(
                     "Drafting your week…",
                     "Asking the kitchen AI — this can take a moment on a local model.",
@@ -100,7 +121,7 @@ fun PlanWeekSheet(
                 PlanPhase.Review -> WeekReview(model, recipePicker) {
                     scope.launch {
                         model.apply()
-                        onApplied()
+                        if (onApply == null) onApplied()
                         onDismiss()
                     }
                 }
@@ -148,7 +169,7 @@ internal fun SheetHeader(title: String, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun WeekConfig(model: PlanWeekModel, onSuggest: () -> Unit) {
+private fun WeekConfig(model: PlanWeekModel, note: String?, onSuggest: () -> Unit) {
     val mealType by model.mealType.collectAsStateWithLifecycle()
     val selectedDays by model.selectedDays.collectAsStateWithLifecycle()
     val cookingFor by model.cookingFor.collectAsStateWithLifecycle()
@@ -167,19 +188,34 @@ private fun WeekConfig(model: PlanWeekModel, onSuggest: () -> Unit) {
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
+            if (note != null) {
+                Text(
+                    note,
+                    style = WF.type.label,
+                    color = WF.colors.ai,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(WF.colors.aiT, RoundedCornerShape(WF.radius.sm))
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                )
+            }
+
             Text(
                 "Tell Waffled the guardrails — it drafts the meals and the grocery list in one go.",
                 style = WF.type.body,
                 color = WF.colors.ink3,
             )
 
-            WaffledFieldCard(title = "Plan which meal?") {
-                SegmentedRow(
-                    options = listOf("breakfast", "lunch", "dinner"),
-                    selected = mealType,
-                    label = MealsFormat::slotLabel,
-                    onSelect = { model.mealType.value = it },
-                )
+            // Only when there is a choice: one option is a claim, not a control.
+            if (model.mealTypes.size > 1) {
+                WaffledFieldCard(title = "Plan which meal?") {
+                    SegmentedRow(
+                        options = model.mealTypes,
+                        selected = mealType,
+                        label = MealsFormat::slotLabel,
+                        onSelect = { model.mealType.value = it },
+                    )
+                }
             }
 
             WaffledFieldCard(title = "Which days?") {

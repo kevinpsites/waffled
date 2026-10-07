@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -99,6 +100,11 @@ internal fun ChartHeader(
     modifier: Modifier = Modifier,
     leading: @Composable (RowScope.() -> Unit)? = null,
     trailing: @Composable (RowScope.() -> Unit)? = null,
+    /**
+     * Keep the title on one line, stepping the type down to fit. A month name has no
+     * break point, so wrapping split "September" mid-word beside the arrows and the menu.
+     */
+    singleLineTitle: Boolean = false,
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -107,7 +113,18 @@ internal fun ChartHeader(
     ) {
         leading?.invoke(this)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(title, style = WF.type.serif(17.sp), color = WF.colors.ink)
+            if (singleLineTitle) {
+                Text(
+                    title,
+                    style = WF.type.serif(17.sp),
+                    color = WF.colors.ink,
+                    maxLines = 1,
+                    softWrap = false,
+                    autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = 17.sp),
+                )
+            } else {
+                Text(title, style = WF.type.serif(17.sp), color = WF.colors.ink)
+            }
             if (!subtitle.isNullOrBlank()) {
                 Text(
                     subtitle,

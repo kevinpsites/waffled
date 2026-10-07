@@ -91,6 +91,63 @@ class PlanSheetModelsTest {
         assertEquals("anthropic", model.via.value)
     }
 
+    @Test
+    fun `a planner opened from the pantry arrives with its use-up names`() {
+        val names = (1..14).map { "item$it" }
+        val model = PlanWeekModel(
+            api = api, libraryRecipes = pool, householdWeekStart = HouseholdWeekStart.Sunday,
+            familySize = 4, start = "2026-09-06",
+            weekDays = MealsFormat.weekDays(LocalDate.parse("2026-09-06")),
+            seedUseUp = names,
+        )
+        assertEquals(names.take(12), model.useUp.value, "capped like a typed list")
+    }
+
+    @Test
+    fun `a narrowing host picks the meal and the nights`() {
+        val model = PlanWeekModel(
+            api = api, libraryRecipes = pool, householdWeekStart = HouseholdWeekStart.Sunday,
+            familySize = 4, start = "2026-09-06",
+            weekDays = MealsFormat.weekDays(LocalDate.parse("2026-09-06")),
+            mealTypes = listOf("lunch"),
+            initialDays = listOf("2026-09-09", "2026-09-12"),
+        )
+        // Planning "dinner" when only lunch is on offer would draft the wrong meal.
+        assertEquals("lunch", model.mealType.value)
+        assertEquals(setOf("2026-09-09", "2026-09-12"), model.selectedDays.value)
+    }
+
+    @Test
+    fun `the standalone week keeps dinner when dinner is on offer`() {
+        assertEquals("dinner", weekModel().mealType.value)
+        assertEquals(listOf("breakfast", "lunch", "dinner"), weekModel().mealTypes)
+    }
+
+    @Test
+    fun `a host's onApply replaces the per-slot writes`() = runTest {
+        harness.enqueueJson(
+            """{"start":"2026-09-06","mealType":"dinner","suggestions":[
+                 {"date":"2026-09-07","mealType":"dinner","title":"Tacos","recipeId":"r1"}]}""",
+        )
+        var handed: List<PlanCardDTO>? = null
+        val model = PlanWeekModel(
+            api = api, libraryRecipes = pool, householdWeekStart = HouseholdWeekStart.Sunday,
+            familySize = 4, start = "2026-09-06",
+            weekDays = MealsFormat.weekDays(LocalDate.parse("2026-09-06")),
+            onApply = { cards -> handed = cards; true },
+        )
+        model.selectedDays.value = setOf("2026-09-07")
+        model.suggest()
+        harness.takeRequest()
+        val baseline = harness.requestCount
+
+        assertTrue(model.apply())
+
+        assertEquals(listOf("Tacos"), handed?.map { it.title })
+        // Running both would plan every night twice.
+        assertEquals(baseline, harness.requestCount)
+    }
+
     /** A runtime provider failure shows the provider's own words, not a generic error. */
     @Test
     fun `a provider failure lands in failed with a friendly message`() = runTest {
