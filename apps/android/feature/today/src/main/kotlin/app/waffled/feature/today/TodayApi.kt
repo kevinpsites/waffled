@@ -11,6 +11,7 @@ import io.ktor.http.contentType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import androidx.compose.runtime.Immutable
 
@@ -151,10 +152,55 @@ class TodayApi(
         val target: Double? = null,
         val totalProgress: Double = 0.0,
         val streakDays: Int = 0,
+        val habitPeriod: String? = null,
+        val habitTargetPerPeriod: Int? = null,
+        /** Distinct days logged in the CURRENT habit period; null on an older server. */
+        val periodDone: Double? = null,
+        val stepTotal: Int? = null,
+        val stepDone: Int? = null,
+        /** `family` | `per_person` — a per-person target is stated per member. */
+        val targetBasis: String? = null,
+        /** Only counted, for a per-person target; the shape is the goals feature's. */
+        val participants: List<JsonElement> = emptyList(),
     ) {
-        /** 0…1 for a progress bar; 0 for a target-less goal, which has no computable %. */
+        /**
+         * The figure shown, on the goal TYPE's axis (iOS `GoalDisplay.progress`): a habit's
+         * current period, never its lifetime total; a checklist's steps; else the total.
+         */
+        val displayProgress: Double
+            get() = when (goalType) {
+                "habit" -> periodDone ?: 0.0
+                "checklist" -> (stepDone ?: 0).toDouble()
+                else -> totalProgress
+            }
+
+        /** What [displayProgress] is measured against; null when there is nothing to. */
+        val displayTarget: Double?
+            get() = when (goalType) {
+                "habit" -> habitTargetPerPeriod?.toDouble() ?: target
+                "checklist" -> stepTotal?.takeIf { it > 0 }?.toDouble()
+                else -> if (targetBasis == "per_person" && target != null) {
+                    target * maxOf(1, participants.size)
+                } else {
+                    target
+                }
+            }
+
+        /** 0…1 for a progress bar; 0 when there is no positive target. */
         val fraction: Double
-            get() = target?.takeIf { it > 0 }?.let { (totalProgress / it).coerceIn(0.0, 1.0) } ?: 0.0
+            get() = displayTarget?.takeIf { it > 0 }?.let { (displayProgress / it).coerceIn(0.0, 1.0) } ?: 0.0
+
+        /** "this week" etc. for a habit's caption; null for every other type. */
+        val periodLabel: String?
+            get() = if (goalType != "habit") {
+                null
+            } else {
+                when (habitPeriod) {
+                    "day" -> "today"
+                    "month" -> "this month"
+                    else -> "this week"
+                }
+            }
     }
 
     @Serializable
