@@ -60,8 +60,12 @@ internal class SyncLifecycle<D : Any>(
         true
     }
 
+    /**
+     * Reads the queue on disk even before the first start — a cold-started process still
+     * has the previous run's `ps_crud`, so "not opened yet" is no proof of zero.
+     */
     suspend fun pendingUploadCount(): Int {
-        val current = db ?: return 0
+        val current = db ?: lock.withLock { openOnceLocked() } ?: return 0
         return try {
             countPending(current)
         } catch (e: CancellationException) {
@@ -74,7 +78,7 @@ internal class SyncLifecycle<D : Any>(
     private suspend fun startLocked() {
         if (started) return
         onState(SyncState.Connecting)
-        val current = db ?: open()?.also { db = it }
+        val current = openOnceLocked()
         if (current == null) {
             onState(SyncState.Offline)
             return
@@ -93,9 +97,10 @@ internal class SyncLifecycle<D : Any>(
     private suspend fun stopLocked(clearLocal: Boolean): Boolean {
         watchers.forEach { it.cancel() }
         watchers = emptyList()
-        val current = db
+        // A clearing stop must wipe the file even if this process never opened it.
+        val current = if (clearLocal) openOnceLocked() else db
         val stopped = when {
-            current == null -> true
+            current == null -> !clearLocal
             // The wipe deletes ps_crud too: never clear while an offline write is queued
             // (iOS gates every clearing caller on pending == 0). Read fresh, not the flow.
             clearLocal && pendingOrUnknown(current) -> {
@@ -113,6 +118,8 @@ internal class SyncLifecycle<D : Any>(
         onState(if (stopped) SyncState.Idle else SyncState.Offline)
         return stopped
     }
+
+    private suspend fun openOnceLocked(): D? = db ?: open()?.also { db = it }
 
     /** True when uploads are queued — or when the count can't be read, which is no proof of none. */
     private suspend fun pendingOrUnknown(current: D): Boolean = try {

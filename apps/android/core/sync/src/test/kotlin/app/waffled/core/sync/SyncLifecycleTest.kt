@@ -32,12 +32,13 @@ class SyncLifecycleTest {
     private class Rig(scope: CoroutineScope) {
         val db = FakeDb()
         var opens = 0
+        var openFails = false
         val states = mutableListOf<SyncState>()
         val resets = mutableListOf<Boolean>()
         val watchers = mutableListOf<Job>()
 
         val lifecycle = SyncLifecycle(
-            open = { opens++; db },
+            open = { opens++; if (openFails) null else db },
             connect = { it.connects++ },
             disconnect = { it.disconnects++ },
             clear = { if (it.failClear) error("locked") else it.clears++ },
@@ -122,10 +123,46 @@ class SyncLifecycleTest {
     }
 
     @Test
-    fun stoppingBeforeAnyStartSucceeds() = runTest {
+    fun aPlainStopBeforeAnyStartSucceedsWithoutOpening() = runTest {
+        val rig = rig()
+        assertTrue(rig.lifecycle.stop())
+        assertEquals(0, rig.opens)
+    }
+
+    @Test
+    fun aClearingStopBeforeAnyStartOpensAndWipesTheMirror() = runTest {
+        // Cold start: the database file still holds the previous scope's rows even
+        // though nothing has opened it yet this process.
         val rig = rig()
         assertTrue(rig.lifecycle.stop(clearLocal = true))
-        assertEquals(0, rig.opens)
+        assertEquals(1, rig.opens)
+        assertEquals(1, rig.db.clears)
+    }
+
+    @Test
+    fun aClearingStopBeforeAnyStartStillRefusesWhileUploadsAreQueued() = runTest {
+        val rig = rig()
+        rig.db.pending = 1
+        assertFalse(rig.lifecycle.stop(clearLocal = true))
+        assertEquals(0, rig.db.clears)
+    }
+
+    @Test
+    fun aClearingStopFailsClosedWhenTheDatabaseCannotOpen() = runTest {
+        val rig = rig()
+        rig.openFails = true
+        assertFalse(rig.lifecycle.stop(clearLocal = true))
+        assertFalse(rig.lifecycle.rescope(clearLocal = true) {})
+    }
+
+    @Test
+    fun pendingUploadsBeforeAnyStartReadTheQueueOnDisk() = runTest {
+        val rig = rig()
+        rig.db.pending = 2
+        assertEquals(2, rig.lifecycle.pendingUploadCount())
+        // Opened once, and the same handle is reused by the next start.
+        rig.lifecycle.start()
+        assertEquals(1, rig.opens)
     }
 
     @Test
