@@ -71,6 +71,8 @@ fun GoalLogSheet(
     steps: List<GoalsApi.GoalDetail.Step> = emptyList(),
     stepsLoaded: Boolean = false,
     today: LocalDate = LocalDate.now(),
+    /** Today's habit loggers refetched on open; null until it lands (or for a non-habit). */
+    freshLoggedTodayBy: List<String>? = null,
     onTickStep: (GoalsApi.GoalDetail.Step, Boolean) -> Unit = { _, _ -> },
     onDismiss: () -> Unit,
     /** (amount, hours, minutes, personIds, note, loggedOn) — see [GoalsApi.logProgress]. */
@@ -123,8 +125,10 @@ fun GoalLogSheet(
         hours > 0 -> "${hours}h"
         else -> "${minutes}m"
     }
+    // The server would drop a same-day duplicate, so say so. Backdating stays open.
+    val blockedToday = GoalDisplay.blockedToday(goal, who, freshLoggedTodayBy, loggedOn, today)
     val confirmLabel = when {
-        isHabit -> "Mark done for today"
+        isHabit -> GoalDisplay.habitConfirmLabel(doneToday = blockedToday)
         isTime -> "Log $durationLabel"
         else -> "Log ${goalFmt(logAmount)}$unitSuffix"
     }
@@ -169,14 +173,28 @@ fun GoalLogSheet(
                     Icon(
                         imageVector = Icons.Filled.CheckCircle,
                         contentDescription = null,
-                        tint = WF.colors.primary,
+                        tint = if (blockedToday) WF.colors.success else WF.colors.primary,
                         modifier = Modifier.size(22.dp),
                     )
                     Text(
-                        text = "One tap logs today's completion — keep the streak going.",
+                        text = if (blockedToday) {
+                            "Already submitted for today — pick another day to catch one up."
+                        } else {
+                            "One tap logs today's completion — keep the streak going."
+                        },
                         style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold),
                         color = WF.colors.ink2,
+                        modifier = Modifier.weight(1f),
                     )
+                    // Where the cadence stands right now: THIS period's count, not all-time.
+                    GoalDisplay.target(goal)?.let { t ->
+                        Text(
+                            text = "${goalFmt(GoalDisplay.progress(goal))}/${goalFmt(t)}",
+                            style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Black),
+                            color = WF.colors.primary,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
 
@@ -333,7 +351,7 @@ fun GoalLogSheet(
 
         WaffledPrimaryCTA(
             label = confirmLabel,
-            isDisabled = logAmount == 0.0 || whoMissing,
+            isDisabled = logAmount == 0.0 || whoMissing || blockedToday,
             onClick = {
                 val backdate = if (loggedOn == today) null else loggedOn.toString()
                 onSave(

@@ -104,6 +104,36 @@ object GoalDisplay {
         }
     }
 
+    /**
+     * Whether a habit is already marked done today for everyone in [who] (person ids plus
+     * the `__family__` sentinel). The server silently skips a same-day duplicate, so the
+     * Log sheet says so first. Nobody picked, a non-habit, or a response too old to carry
+     * the field gates nothing. [loggedTodayBy] overrides the goal's possibly stale list.
+     */
+    fun doneToday(g: GoalDisplayable, who: Set<String>, loggedTodayBy: List<String>? = null): Boolean {
+        if (g.goalType != "habit" || who.isEmpty()) return false
+        val logged = (loggedTodayBy ?: g.loggedTodayBy)?.toSet() ?: return false
+        return who.all { it in logged }
+    }
+
+    /** Who a log is credited to, in `loggedTodayBy` terms: no participants means the family row. */
+    fun logWho(g: GoalDisplayable, picked: Set<String>): Set<String> =
+        if (g.participantCount == 0 && picked.isEmpty()) setOf(FAMILY) else picked
+
+    /** The Log sheet's habit gate: done today for the picks, AND the entry is dated today. */
+    fun blockedToday(
+        g: GoalDisplayable,
+        picked: Set<String>,
+        fresh: List<String>?,
+        loggedOn: java.time.LocalDate,
+        today: java.time.LocalDate,
+    ): Boolean = loggedOn == today && doneToday(g, logWho(g, picked), fresh)
+
+    fun habitConfirmLabel(doneToday: Boolean): String =
+        if (doneToday) "Already submitted today ✓" else "Mark done for today"
+
+    private const val FAMILY = "__family__"
+
     /** "of 5 this week" for a habit, "of 5 steps" for a checklist, "of 1,000 miles" otherwise. */
     fun targetCaption(g: GoalDisplayable, unit: String?, fmt: (Double?) -> String): String {
         val base = "of ${fmt(target(g))}"

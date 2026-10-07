@@ -4,6 +4,7 @@ import app.waffled.core.network.WaffledJson
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -184,6 +185,81 @@ class GoalDisplayTest {
     fun aPassedMilestoneNeverReadsNegative() {
         val g = goal("total", target = 1000.0, totalProgress = 900.0)
         assertEquals("0 to go", GoalDisplay.milestoneToGo(g, threshold = 500.0, fmt = ::goalFmt))
+    }
+
+    // ---- "already done today": a habit is once per day PER PERSON ------------------
+
+    @Test
+    fun aHabitIsDoneTodayWhenEveryonePickedHasAlreadyLogged() {
+        val g = goal("habit", habitTargetPerPeriod = 5, periodDone = 1.0, loggedTodayBy = listOf("p0"))
+        assertTrue(GoalDisplay.doneToday(g, who = setOf("p0")))
+    }
+
+    @Test
+    fun aHabitIsNotDoneTodayWhileSomeonePickedStillOwesToday() {
+        // The server dedupes per person, so the second person's completion is still live.
+        val g = goal("habit", habitTargetPerPeriod = 5, periodDone = 1.0, loggedTodayBy = listOf("p0"))
+        assertFalse(GoalDisplay.doneToday(g, who = setOf("p0", "p1")))
+    }
+
+    @Test
+    fun aFamilyLogCountsUnderItsOwnSentinel() {
+        val g = goal("habit", habitTargetPerPeriod = 5, periodDone = 1.0, loggedTodayBy = listOf("__family__"))
+        assertTrue(GoalDisplay.doneToday(g, who = setOf("__family__")))
+        assertFalse(GoalDisplay.doneToday(g, who = setOf("p0")))
+    }
+
+    @Test
+    fun nothingIsBlockedWithNobodyPickedOrOnANonHabit() {
+        val habit = goal("habit", habitTargetPerPeriod = 5, loggedTodayBy = listOf("p0"))
+        assertFalse(GoalDisplay.doneToday(habit, who = emptySet()))
+        // A count goal can be logged all day long.
+        val count = goal("count", target = 20.0, loggedTodayBy = listOf("p0"))
+        assertFalse(GoalDisplay.doneToday(count, who = setOf("p0")))
+    }
+
+    @Test
+    fun aHabitWithNoParticipantsLogsForTheFamilyAndIsBlockedOnceItHas() {
+        // No participants: the sheet picks nobody and the server writes a family row.
+        val g = goal("habit", habitTargetPerPeriod = 5, people = 0, loggedTodayBy = listOf("__family__"))
+        assertEquals(setOf("__family__"), GoalDisplay.logWho(g, picked = emptySet()))
+        assertTrue(GoalDisplay.doneToday(g, who = GoalDisplay.logWho(g, picked = emptySet())))
+    }
+
+    @Test
+    fun aGoalWithParticipantsKeepsTheLoggerPicksIncludingNone() {
+        val g = goal("habit", habitTargetPerPeriod = 5, people = 2, loggedTodayBy = listOf("p0"))
+        assertTrue(GoalDisplay.logWho(g, picked = emptySet()).isEmpty())
+        assertEquals(setOf("p1"), GoalDisplay.logWho(g, picked = setOf("p1")))
+    }
+
+    @Test
+    fun aFreshLoggedTodayOverridesTheListTheSheetWasOpenedWith() {
+        val stale = goal("habit", habitTargetPerPeriod = 5, people = 1, loggedTodayBy = emptyList())
+        assertFalse(GoalDisplay.doneToday(stale, who = setOf("p0")))
+        assertTrue(GoalDisplay.doneToday(stale, who = setOf("p0"), loggedTodayBy = listOf("p0")))
+    }
+
+    @Test
+    fun theHabitConfirmSaysAlreadySubmittedOnceDoneToday() {
+        assertEquals("Already submitted today ✓", GoalDisplay.habitConfirmLabel(doneToday = true))
+        assertEquals("Mark done for today", GoalDisplay.habitConfirmLabel(doneToday = false))
+    }
+
+    @Test
+    fun anOlderResponseWithoutLoggedTodayByBlocksNothing() {
+        // A missing field must not gate the button shut — the server still dedupes.
+        val g = goal("habit", habitTargetPerPeriod = 5, loggedTodayBy = null)
+        assertFalse(GoalDisplay.doneToday(g, who = setOf("p0")))
+    }
+
+    @Test
+    fun onlyAnEntryDatedTodayIsBlocked() {
+        // Backdating a missed day stays open even once today is done.
+        val g = goal("habit", habitTargetPerPeriod = 5, people = 1, loggedTodayBy = listOf("p0"))
+        val today = java.time.LocalDate.of(2026, 9, 14)
+        assertTrue(GoalDisplay.blockedToday(g, picked = setOf("p0"), fresh = null, loggedOn = today, today = today))
+        assertFalse(GoalDisplay.blockedToday(g, picked = setOf("p0"), fresh = null, loggedOn = today.minusDays(1), today = today))
     }
 
     @Test

@@ -232,9 +232,17 @@ fun GoalsScreen(
                 noteSuggestions = runCatching { model.api.noteSuggestions(goal.id, me?.id) }
                     .getOrDefault(emptyList())
             }
+            // The card's goal may predate today's log; refetch who has ticked the habit off.
+            var freshLoggedTodayBy by remember(goal.id) { mutableStateOf<List<String>?>(null) }
+            LaunchedEffect(goal.id) {
+                if (goal.goalType == "habit") {
+                    freshLoggedTodayBy = runCatching { model.api.goalDetail(goal.id).loggedTodayBy }.getOrNull()
+                }
+            }
             GoalLogSheet(
                 goal = goal,
                 noteSuggestions = noteSuggestions,
+                freshLoggedTodayBy = freshLoggedTodayBy,
                 onDismiss = { logging = null },
                 onSave = { amount, hours, minutes, ids, note, loggedOn ->
                     scope.launch {

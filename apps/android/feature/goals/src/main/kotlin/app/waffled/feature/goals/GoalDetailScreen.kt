@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -39,6 +40,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -183,10 +185,17 @@ fun GoalDetailScreen(
 
             // Logging is the primary action, so it gets a full-width button rather than
             // hiding in the header.
+            // Everyone has ticked the habit off today. Still opens: the sheet backdates a
+            // missed day.
+            val habitDoneToday = GoalDisplay.doneToday(
+                model.displayed,
+                GoalDisplay.logWho(model.displayed, model.participants.map { it.personId }.toSet()),
+            )
             PrimaryAction(
-                label = "Log progress",
-                icon = Icons.Filled.Add,
+                label = if (habitDoneToday) "Done for today" else "Log progress",
+                icon = if (habitDoneToday) Icons.Filled.CheckCircle else Icons.Filled.Add,
                 fill = WF.colors.success,
+                modifier = Modifier.alpha(if (habitDoneToday) 0.65f else 1f),
                 onClick = { logging = true },
             )
 
@@ -279,8 +288,15 @@ fun GoalDetailScreen(
                 noteSuggestions = runCatching { model.api.noteSuggestions(model.goal.id, me?.id) }
                     .getOrDefault(emptyList())
             }
+            var freshLoggedTodayBy by remember(model.goal.id) { mutableStateOf<List<String>?>(null) }
+            LaunchedEffect(model.goal.id) {
+                if (goalType == "habit") {
+                    freshLoggedTodayBy = runCatching { model.api.goalDetail(model.goal.id).loggedTodayBy }.getOrNull()
+                }
+            }
             GoalLogSheet(
                 goal = logGoal,
+                freshLoggedTodayBy = freshLoggedTodayBy,
                 // The household's today, off the series the server built — not the
                 // DEVICE's date, which drifts across a timezone boundary.
                 today = state.series.today ?: LocalDate.now(),
@@ -433,10 +449,11 @@ private fun PrimaryAction(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     fill: Color,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(WF.radius.md)
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .background(goalHeroBrush(fill), shape)
             .clip(shape)
