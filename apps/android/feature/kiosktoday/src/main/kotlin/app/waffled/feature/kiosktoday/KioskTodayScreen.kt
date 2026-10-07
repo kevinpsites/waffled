@@ -127,6 +127,12 @@ fun KioskTodayScreen(
     onOpenReview: () -> Unit = {},
     /** Reload what this page does not own (module flags, synced surfaces) — on resume and at midnight. */
     onRefreshSurfaces: suspend () -> Unit = {},
+    /**
+     * The Weekly Planning nudge, appended last in the meals column like iOS. A slot, because
+     * the card needs `feature:planning`'s environment, which only `app` can build; the host
+     * gates it on the `weeklyPlanning` module.
+     */
+    planningCard: (@Composable () -> Unit)? = null,
 ) {
     val chores by model.choresSnapshot.collectAsStateWithLifecycle()
     val meals by model.mealsSnapshot.collectAsStateWithLifecycle()
@@ -252,6 +258,7 @@ fun KioskTodayScreen(
                 if (familyNight != null && modules.isOn(WaffledModule.FamilyNight)) {
                     FamilyNightCard(familyNight, kiosk = true, refreshKey = surfaceRev)
                 }
+                planningCard?.invoke()
             }
 
             KioskColumn.ChoreGrocery -> Column(colModifier, verticalArrangement = Arrangement.spacedBy(22.dp)) {

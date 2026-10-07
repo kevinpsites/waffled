@@ -25,6 +25,7 @@ import app.waffled.feature.kiosktoday.KioskTodayScreen
 import app.waffled.feature.lists.ListDetailModel
 import app.waffled.feature.lists.ListDetailScreen
 import app.waffled.feature.meals.MealDTO as MealsMeal
+import app.waffled.feature.planning.PlanningTodayCard
 import app.waffled.feature.recipes.RecipeSummary
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -175,6 +176,17 @@ private fun KioskTodayPage(container: AppContainer, actions: ShellActions, navig
         onOpenApprovals = { actions.push(AppRoute.Approvals) },
         onOpenReview = { actions.push(AppRoute.ReviewEvents) },
         onRefreshSurfaces = { container.refreshSurfaces() },
+        planningCard = if (modules.isOn(WaffledModule.WeeklyPlanning)) {
+            {
+                PlanningTodayCard(
+                    env = container.planningEnv(true),
+                    onOpen = { navigateTo(KioskNav.Planning) },
+                    kiosk = true,
+                )
+            }
+        } else {
+            null
+        },
     )
 
     logging?.let { id ->
