@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+### Fixed
+
+## [0.15.2] - 2026-10-07
+
+### Added
+
+### Changed
+
 - **Cook Mode on the web puts each step's ingredients in a column on the left.** It now matches
   the iPad: each ingredient is its own row you tick off, and long names wrap instead of being
   cut off. On a phone-width screen the column sits under the step.
@@ -3068,7 +3076,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.15.1...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.15.2...HEAD
+[0.15.2]: https://github.com/kevinpsites/waffled/compare/v0.15.1...v0.15.2
 [0.15.1]: https://github.com/kevinpsites/waffled/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/kevinpsites/waffled/compare/v0.14.3...v0.15.0
 [0.14.3]: https://github.com/kevinpsites/waffled/compare/v0.14.2...v0.14.3
