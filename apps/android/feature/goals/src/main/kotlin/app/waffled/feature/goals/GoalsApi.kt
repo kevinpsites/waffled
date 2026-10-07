@@ -133,7 +133,19 @@ class GoalsApi(
         override val stepDone: Int? = null,
         /** Who already logged TODAY — person ids plus the `__family__` sentinel. */
         override val loggedTodayBy: List<String>? = null,
+        /** The target Weekly Planning set for the week under way, else the next one planned. */
+        val weekPlan: WeekTarget? = null,
     ) : GoalDisplayable {
+        /** One week's planned target and what was logged inside it. */
+        @Serializable
+        data class WeekTarget(
+            val weekStart: String = "",
+            val target: Double = 0.0,
+            val done: Double = 0.0,
+            /** The week has started; before that the label names the week instead. */
+            val current: Boolean = false,
+        )
+
         val spotlight: Boolean get() = isSpotlight == true
         val countsOnce: Boolean get() = (participantMode ?: "count_once") == "count_once"
         override val participantCount: Int get() = participants.size
@@ -179,8 +191,14 @@ class GoalsApi(
         override val stepTotal: Int? = null,
         override val stepDone: Int? = null,
         override val loggedTodayBy: List<String>? = null,
+        /** The weeks Weekly Planning set a target for, from the one under way onward. */
+        val weekPlans: List<Goal.WeekTarget>? = null,
     ) : GoalDisplayable {
         override val participantCount: Int get() = participants.size
+
+        /** The plan for the week under way, which the hero's THIS WEEK line reads. */
+        val currentPlan: Goal.WeekTarget? get() = weekPlans?.firstOrNull { it.current }
+        val laterPlans: List<Goal.WeekTarget> get() = weekPlans.orEmpty().filterNot { it.current }
 
         /** A checklist goal's steps; empty for every other type. */
         @Serializable

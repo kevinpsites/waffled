@@ -134,6 +134,21 @@ object GoalDisplay {
 
     private const val FAMILY = "__family__"
 
+    private val WEEK_LABEL = java.time.format.DateTimeFormatter.ofPattern("MMM d", java.util.Locale.US)
+
+    /** "3 of 10 hours": a planned week's target against what was logged inside it. */
+    fun weekPlanAmount(t: GoalsApi.Goal.WeekTarget, unit: String?): String =
+        "${goalFmt(t.done)} of ${goalFmt(t.target)}${unit?.let { " $it" }.orEmpty()}"
+
+    /** "This week: 3 of 10 hours", or before that week starts, "Week of Sep 21: 10 hours". */
+    fun weekPlanLabel(t: GoalsApi.Goal.WeekTarget, unit: String?): String {
+        if (t.current) return "This week: ${weekPlanAmount(t, unit)}"
+        val day = GoalDateKey.parseOrNull(t.weekStart)?.let(WEEK_LABEL::format) ?: t.weekStart
+        return "Week of $day: ${goalFmt(t.target)}${unit?.let { " $it" }.orEmpty()}"
+    }
+
+    fun weekTargetLabel(g: GoalsApi.Goal): String? = g.weekPlan?.let { weekPlanLabel(it, g.unit) }
+
     /** "of 5 this week" for a habit, "of 5 steps" for a checklist, "of 1,000 miles" otherwise. */
     fun targetCaption(g: GoalDisplayable, unit: String?, fmt: (Double?) -> String): String {
         val base = "of ${fmt(target(g))}"

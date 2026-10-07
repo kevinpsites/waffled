@@ -134,6 +134,13 @@ fun GoalHeroCard(
                     color = Color.White,
                     maxLines = 3,
                 )
+                GoalDisplay.weekTargetLabel(goal)?.let { week ->
+                    Text(
+                        text = week,
+                        style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Bold),
+                        color = Color.White.copy(alpha = 0.92f),
+                    )
+                }
                 if (goal.streakDays > 0) {
                     Text(
                         text = "🔥 ${goal.streakDays}-day streak",

@@ -189,6 +189,8 @@ fun GoalDetailScreen(
                 displayed = model.displayed,
                 unit = unit,
                 thisWeek = detail?.thisWeek ?: 0.0,
+                currentPlan = detail?.currentPlan,
+                laterPlans = detail?.laterPlans.orEmpty(),
                 subtitle = heroSubtitle(detail, model.goal),
             )
 
@@ -389,6 +391,8 @@ private fun DetailHero(
     displayed: GoalDisplayable,
     unit: String?,
     thisWeek: Double,
+    currentPlan: GoalsApi.Goal.WeekTarget?,
+    laterPlans: List<GoalsApi.Goal.WeekTarget>,
     subtitle: String,
 ) {
     val fraction = GoalDisplay.fraction(displayed).toFloat()
@@ -443,9 +447,18 @@ private fun DetailHero(
                     color = Color.White.copy(alpha = 0.8f),
                 )
                 Text(
-                    text = "${goalFmt(thisWeek)}${unit?.let { " $it" }.orEmpty()}",
+                    // A week planned in Weekly Planning reads against its own target.
+                    text = currentPlan?.let { GoalDisplay.weekPlanAmount(it, unit) }
+                        ?: "${goalFmt(thisWeek)}${unit?.let { " $it" }.orEmpty()}",
                     style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Black),
                     color = Color.White,
+                )
+            }
+            laterPlans.forEach { plan ->
+                Text(
+                    text = GoalDisplay.weekPlanLabel(plan, unit),
+                    style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+                    color = Color.White.copy(alpha = 0.88f),
                 )
             }
         }

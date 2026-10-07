@@ -52,6 +52,47 @@ class GoalDisplayTest {
     private fun near(expected: Double, actual: Double) =
         assertTrue(abs(expected - actual) < 0.0001, "expected $expected, got $actual")
 
+    // ---- a week's target, set in Weekly Planning ---------------------------------
+
+    @Test
+    fun aTargetForThisWeekReadsAgainstWhatIsLogged() {
+        val g = goal(unit = "hours").copy(weekPlan = GoalsApi.Goal.WeekTarget("2026-09-13", 10.0, 3.5, current = true))
+        assertEquals("This week: 3.5 of 10 hours", GoalDisplay.weekTargetLabel(g))
+    }
+
+    @Test
+    fun aTargetForAWeekAheadNamesThatWeek() {
+        val g = goal(unit = "hours").copy(weekPlan = GoalsApi.Goal.WeekTarget("2026-09-21", 10.0, 0.0, current = false))
+        assertEquals("Week of Sep 21: 10 hours", GoalDisplay.weekTargetLabel(g))
+    }
+
+    @Test
+    fun aWeekPlanReadsTheSameOnTheGoalsOwnPage() {
+        val current = GoalsApi.Goal.WeekTarget("2026-09-13", 10.0, 3.0, current = true)
+        val ahead = GoalsApi.Goal.WeekTarget("2026-09-20", 12.0, 0.0, current = false)
+        assertEquals("3 of 10 hours", GoalDisplay.weekPlanAmount(current, unit = "hours"))
+        assertEquals("Week of Sep 20: 12 hours", GoalDisplay.weekPlanLabel(ahead, unit = "hours"))
+    }
+
+    @Test
+    fun aGoalWithoutAWeekTargetHasNoLabel() {
+        assertNull(GoalDisplay.weekTargetLabel(goal()))
+    }
+
+    @Test
+    fun theWeekPlansDecodeTolerantly() {
+        val g = WaffledJson.decodeFromString<GoalsApi.Goal>(
+            """{"id":"g1","weekPlan":{"weekStart":"2026-09-13","target":10,"done":3.5,"current":true}}""",
+        )
+        assertEquals(10.0, g.weekPlan?.target)
+        val d = WaffledJson.decodeFromString<GoalsApi.GoalDetail>(
+            """{"id":"g1","weekPlans":[{"weekStart":"2026-09-13","target":10,"done":3,"current":true},
+               {"weekStart":"2026-09-20","target":12,"done":0,"current":false}]}""",
+        )
+        assertEquals(2, d.weekPlans?.size)
+        assertNull(WaffledJson.decodeFromString<GoalsApi.GoalDetail>("""{"id":"g1"}""").weekPlans)
+    }
+
     // ---- habit ------------------------------------------------------------------
 
     @Test

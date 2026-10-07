@@ -446,6 +446,14 @@ private fun GoalHero(goal: GoalsApi.Goal, onOpen: () -> Unit, onLog: () -> Unit)
                     style = WF.type.bodySmall,
                     color = Color.White.copy(alpha = 0.85f),
                 )
+                GoalDisplay.weekTargetLabel(goal)?.let { week ->
+                    Text(
+                        text = week,
+                        style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Bold),
+                        color = Color.White.copy(alpha = 0.92f),
+                        maxLines = 1,
+                    )
+                }
             }
         }
 
@@ -556,6 +564,9 @@ private fun GoalCard(
                     color = WF.colors.ink3,
                     maxLines = 1,
                 )
+                GoalDisplay.weekTargetLabel(goal)?.let { week ->
+                    Text(text = week, style = WF.type.caption, color = WF.colors.ink2, maxLines = 1)
+                }
             }
             Text(
                 text = "${goalFmt(GoalDisplay.progress(goal))}/${goalFmt(GoalDisplay.target(goal))}",
