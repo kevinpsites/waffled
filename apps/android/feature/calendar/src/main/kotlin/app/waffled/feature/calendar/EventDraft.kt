@@ -52,11 +52,24 @@ internal data class EventDraft(
      */
     val occurrenceStartIso: String? = null,
     val original: RecurringEventSeriesFields? = null,
+    /**
+     * The id the API accepts for this event: the series for a recurring occurrence (whose
+     * own row id 404s on every route), else the event itself. Null for a new event.
+     */
+    val editId: String? = null,
     /** The last day an all-day event covers (inclusive); saved as the exclusive end. */
     val lastDay: LocalDate = date,
 ) {
 
     val canSave: Boolean get() = title.isNotBlank()
+
+    /** The rule to send: none for "just this one", which an override cannot carry. */
+    fun seriesRrule(scope: EditScope?): String? =
+        if (scope == EditScope.This) null else Recurrence.buildRrule(repeat, date)
+
+    /** Only an explicit "was recurring, now isn't" on the series clears the rule. */
+    fun clearsRrule(scope: EditScope?): Boolean =
+        scope != EditScope.This && seriesRrule(scope) == null && originalRrule != null
 
     /** All-day starts at noon, like iOS, so a device/household zone gap can't shift its day. */
     fun startInstant(zone: ZoneId): Instant =
@@ -138,10 +151,12 @@ internal data class EventDraft(
                 goalStepId = event.goalStepId,
                 repeat = Recurrence.parseRepeat(event.rrule),
                 originalRrule = event.rrule,
-                isRecurring = !event.rrule.isNullOrEmpty(),
+                isRecurring = event.isOccurrence || !event.rrule.isNullOrEmpty(),
                 // An all-day end is a day boundary, not a length.
                 durationSeconds = if (event.allDay) DEFAULT_DURATION_SECONDS else durationOf(start, end),
-                occurrenceStartIso = event.startsAt,
+                // An override may have moved the start; the server keys the slot by the original.
+                occurrenceStartIso = event.originalStart ?: event.startsAt,
+                editId = event.editableId,
             )
         }
 

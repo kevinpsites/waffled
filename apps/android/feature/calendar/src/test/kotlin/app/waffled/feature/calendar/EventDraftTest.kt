@@ -222,4 +222,63 @@ class EventDraftTest {
 
         assertFalse(draft.seriesUnchanged())
     }
+
+    // ---- recurring occurrences -------------------------------------------------
+
+    private fun occurrence() = SyncedEvent(
+        id = "occ-row-7",
+        householdId = "h",
+        title = "Soccer practice",
+        // An override moved this one; the server still knows it by its original slot.
+        startsAt = "2026-06-16T18:00:00Z",
+        endsAt = "2026-06-16T19:00:00Z",
+        personId = "p1",
+        seriesId = "series-1",
+        originalStart = "2026-06-16T17:00:00Z",
+    )
+
+    @Test
+    fun anOccurrenceIsEditedThroughItsSeriesId() {
+        // The occurrence row's own id is not an event the API knows: GET/PATCH/DELETE on it 404.
+        val draft = EventDraft.seed(event = occurrence(), initialDate = june16, zone = denver)
+        assertEquals("series-1", draft.editId)
+    }
+
+    @Test
+    fun aPlainEventIsEditedThroughItsOwnId() {
+        assertEquals("ev-1", EventDraft.seed(event = event(), initialDate = june16, zone = denver).editId)
+        assertNull(EventDraft.seed(event = null, initialDate = june16, zone = denver).editId)
+    }
+
+    @Test
+    fun anOccurrenceIsKeyedByItsOriginalSlotEvenAfterAnOverrideMovedIt() {
+        val draft = EventDraft.seed(event = occurrence(), initialDate = june16, zone = denver)
+        assertEquals("2026-06-16T17:00:00Z", draft.occurrenceStartIso)
+    }
+
+    @Test
+    fun anOccurrenceIsRecurringThoughItsRowCarriesNoRule() {
+        // Occurrence rows have no rrule (the master does), so the rule alone would skip the
+        // "which occurrences?" question and write to the whole series.
+        assertTrue(EventDraft.seed(event = occurrence(), initialDate = june16, zone = denver).isRecurring)
+        assertFalse(EventDraft.seed(event = event(), initialDate = june16, zone = denver).isRecurring)
+    }
+
+    @Test
+    fun justThisOneSendsNoSeriesRule() {
+        val draft = EventDraft.seed(event = occurrence(), initialDate = june16, zone = denver)
+            .copy(repeat = RepeatState(freq = RepeatFreq.Weekly), originalRrule = "FREQ=WEEKLY")
+        assertNull(draft.seriesRrule(EditScope.This))
+        assertFalse(draft.clearsRrule(EditScope.This))
+        assertTrue(draft.seriesRrule(EditScope.All) != null)
+    }
+
+    @Test
+    fun stoppingTheRepeatClearsTheRuleOnlyForTheSeries() {
+        val draft = EventDraft.seed(event = occurrence(), initialDate = june16, zone = denver)
+            .copy(repeat = RepeatState.NONE, originalRrule = "FREQ=WEEKLY")
+        assertTrue(draft.clearsRrule(EditScope.All))
+        assertTrue(draft.clearsRrule(null))
+        assertFalse(draft.clearsRrule(EditScope.This))
+    }
 }

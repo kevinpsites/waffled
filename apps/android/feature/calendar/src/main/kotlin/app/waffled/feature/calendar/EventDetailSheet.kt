@@ -68,7 +68,8 @@ fun EventDetailSheet(
     var detail by remember { mutableStateOf<CalendarApi.EventDetail?>(null) }
 
     LaunchedEffect(row.id) {
-        detail = runCatching { api.eventDetail(row.id) }.getOrNull()
+        // An occurrence row id 404s; the API wants the series.
+        detail = runCatching { api.eventDetail(row.event.editableId) }.getOrNull()
     }
 
     val readOnly = EventOrigin.isReadOnly(

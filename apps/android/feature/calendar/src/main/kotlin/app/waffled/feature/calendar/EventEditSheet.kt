@@ -106,18 +106,24 @@ fun EventEditSheet(
     initialDate: LocalDate,
     onDismiss: () -> Unit,
     onSaved: () -> Unit,
+    /** A create's start time — the tapped hour on the Day grid; the editor's default otherwise. */
+    initialTime: LocalTime? = null,
 ) {
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val locked = EventOrigin.blocksEditing(event)
 
     var draft by remember {
-        mutableStateOf(EventDraft.seed(event, initialDate, zone))
+        mutableStateOf(
+            EventDraft.seed(event, initialDate, zone).let { seeded ->
+                if (event == null && initialTime != null) seeded.copy(startTime = initialTime) else seeded
+            },
+        )
     }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var picking by remember { mutableStateOf<WhenPick?>(null) }
-    var askingScope by remember { mutableStateOf(false) }
+    var askingScope by remember { mutableStateOf<ScopeQuestion?>(null) }
     // Creating an event needs no detail; editing one does.
     var detailState by remember(event?.id) {
         mutableStateOf<DetailState>(if (event == null) DetailState.Ready else DetailState.Loading)
@@ -129,7 +135,7 @@ fun EventEditSheet(
     // until that detail lands. Refusing to save is the safe failure here; saving on a guess
     // is data loss that reports success.
     LaunchedEffect(event?.id) {
-        val id = event?.id ?: return@LaunchedEffect
+        val id = draft.editId ?: return@LaunchedEffect
         detailState = runCatching { api.eventDetail(id) }.fold(
             onSuccess = { detail ->
                 val participants = detail.participants.map { it.id }
@@ -140,7 +146,7 @@ fun EventEditSheet(
                     originalRrule = detail.rrule,
                     goalId = detail.goalId,
                     goalStepId = detail.goalStepId,
-                    isRecurring = !detail.rrule.isNullOrEmpty(),
+                    isRecurring = draft.isRecurring || !detail.rrule.isNullOrEmpty(),
                 ).withSeriesBaseline(
                     // The baseline the scope rule compares against. Without it every edit
                     // looks series-changing and "just this one" is never offered.
@@ -157,17 +163,9 @@ fun EventEditSheet(
                 DetailState.Ready
             },
             onFailure = { failure ->
-                // A 404 on an id the agenda just showed means this row is one materialised
-                // OCCURRENCE of a repeating event: `event_occurrences` holds the master's
-                // `event_id` and the occurrence's `original_start`, but `SyncedEvent` carries
-                // neither, so there is no id here the server would accept. Editing anyway
-                // would write against the wrong row. See the port report.
                 DetailState.Blocked(
-                    if ((failure as? WaffledApiException)?.status == 404) {
-                        "This is one occurrence of a repeating event. Edit it on the web or on iPhone for now."
-                    } else {
-                        "Couldn't load this event's details, so it can't be edited safely right now."
-                    },
+                    (failure as? WaffledApiException)?.userMessage
+                        ?: "Couldn't load this event's details, so it can't be edited safely right now.",
                 )
             },
         )
@@ -180,8 +178,9 @@ fun EventEditSheet(
             val result = runCatching {
                 val startIso = draft.startInstant(zone).toString()
                 val endIso = draft.endInstant(zone)?.toString()
-                val rrule = Recurrence.buildRrule(draft.repeat, draft.date)
-                if (event == null) {
+                val editId = draft.editId
+                if (editId == null) {
+                    val rrule = Recurrence.buildRrule(draft.repeat, draft.date)
                     api.createEvent(
                         title = draft.title.trim(),
                         startsAtIso = startIso,
@@ -195,7 +194,7 @@ fun EventEditSheet(
                     )
                 } else {
                     api.updateEvent(
-                        id = event.id,
+                        id = editId,
                         title = draft.title.trim(),
                         startsAtIso = startIso,
                         endsAtIso = endIso,
@@ -204,10 +203,8 @@ fun EventEditSheet(
                         personIds = draft.personIds,
                         goalId = draft.goalId,
                         goalStepId = draft.goalStepId,
-                        rrule = rrule,
-                        // Only an explicit "was recurring, now isn't" clears the rule; a
-                        // missing key would leave the series in place.
-                        clearRrule = rrule == null && draft.originalRrule != null,
+                        rrule = draft.seriesRrule(editScope),
+                        clearRrule = draft.clearsRrule(editScope),
                         scope = editScope?.wire,
                         // The ORIGINAL start, never the edited one — it is how the
                         // server picks which occurrence to override.
@@ -221,6 +218,22 @@ fun EventEditSheet(
                 .onFailure { failure ->
                     error = (failure as? WaffledApiException)?.userMessage
                         ?: "Couldn't save this event. Check your connection and try again."
+                    busy = false
+                }
+        }
+    }
+
+    // A recurring delete without a scope drops the whole series, so it always asks first.
+    fun delete(editScope: EditScope?) {
+        val id = draft.editId ?: return
+        busy = true
+        error = null
+        scope.launch {
+            runCatching { api.deleteEvent(id, editScope?.wire, editScope?.let { draft.occurrenceStartIso }) }
+                .onSuccess { onSaved() }
+                .onFailure { failure ->
+                    error = (failure as? WaffledApiException)?.userMessage
+                        ?: "Couldn't delete this event."
                     busy = false
                 }
         }
@@ -360,7 +373,7 @@ fun EventEditSheet(
                     onClick = {
                         // A recurring occurrence needs to know WHICH occurrences to touch;
                         // a one-off can just save.
-                        if (draft.isRecurring) askingScope = true else save(null)
+                        if (draft.isRecurring) askingScope = ScopeQuestion.Save else save(null)
                     },
                     isBusy = busy,
                     isDisabled = !draft.canSave || detailState !is DetailState.Ready,
@@ -369,18 +382,7 @@ fun EventEditSheet(
 
             if (event != null && !locked && detailState is DetailState.Ready) {
                 TextButton(
-                    onClick = {
-                        busy = true
-                        scope.launch {
-                            runCatching { api.deleteEvent(event.id) }
-                                .onSuccess { onSaved() }
-                                .onFailure { failure ->
-                                    error = (failure as? WaffledApiException)?.userMessage
-                                        ?: "Couldn't delete this event."
-                                    busy = false
-                                }
-                        }
-                    },
+                    onClick = { if (draft.isRecurring) askingScope = ScopeQuestion.Delete else delete(null) },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !busy,
                 ) {
@@ -433,20 +435,24 @@ fun EventEditSheet(
         null -> Unit
     }
 
-    if (askingScope) {
+    askingScope?.let { question ->
         ScopeDialog(
             // A per-occurrence override can only carry title/start/end/location, so once a
             // series field moved, "just this one" is not on the menu — offering it would
             // appear to save and then quietly not apply.
-            allowSingle = draft.seriesUnchanged(),
-            onDismiss = { askingScope = false },
+            allowSingle = question == ScopeQuestion.Delete || draft.seriesUnchanged(),
+            deleting = question == ScopeQuestion.Delete,
+            onDismiss = { askingScope = null },
             onPick = {
-                askingScope = false
-                save(it)
+                askingScope = null
+                if (question == ScopeQuestion.Delete) delete(it) else save(it)
             },
         )
     }
 }
+
+/** Which action the "which occurrences?" dialog is scoping. */
+private enum class ScopeQuestion { Save, Delete }
 
 /** Which When pill has its picker open. */
 private enum class WhenPick { StartDay, StartTime, EndDay, EndTime }
@@ -593,14 +599,21 @@ private fun TimePickerDialog(initial: LocalTime, onDismiss: () -> Unit, onPick: 
 
 /** Which occurrences to apply an edit to. */
 @Composable
-private fun ScopeDialog(allowSingle: Boolean, onDismiss: () -> Unit, onPick: (EditScope) -> Unit) {
+private fun ScopeDialog(
+    allowSingle: Boolean,
+    deleting: Boolean,
+    onDismiss: () -> Unit,
+    onPick: (EditScope) -> Unit,
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("This is a repeating event") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    text = if (allowSingle) {
+                    text = if (deleting) {
+                        "Which occurrences should be deleted?"
+                    } else if (allowSingle) {
                         "Which occurrences should change?"
                     } else {
                         "You changed something that applies to the whole series, so this can't be saved for one occurrence only."
