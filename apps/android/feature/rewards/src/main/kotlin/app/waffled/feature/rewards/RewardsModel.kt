@@ -137,6 +137,11 @@ class RewardsModel(
         }
     }
 
+    /** Load on a screen's first appearance; a no-op once any load has finished. */
+    suspend fun ensureLoaded() {
+        if (!domain.loaded) load()
+    }
+
     /**
      * Tell the rest of the app the reward economy moved. Called after every write —
      * including the ones the sheets issue directly against [api].

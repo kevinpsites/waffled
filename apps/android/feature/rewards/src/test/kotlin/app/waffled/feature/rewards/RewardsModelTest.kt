@@ -93,6 +93,21 @@ class RewardsModelTest {
     }
 
     @Test
+    fun `ensureLoaded fetches the economy once and publishes it on the observed state`() = runTest {
+        assertFalse(model.state.value.loaded)
+
+        model.ensureLoaded()
+
+        assertTrue(model.state.value.loaded)
+        assertEquals(2, model.state.value.value?.rewards?.size)
+        val fetches = paths.count { it.startsWith("/api/balances") }
+
+        // A second screen arriving must not refetch what is already there.
+        model.ensureLoaded()
+        assertEquals(fetches, paths.count { it.startsWith("/api/balances") })
+    }
+
+    @Test
     fun `the catalog comes back in sort order regardless of what the server sent`() = runTest {
         model.load()
 
