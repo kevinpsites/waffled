@@ -776,6 +776,26 @@ describe('a short cadence does not out-run its lead time', () => {
   })
 })
 
+// The period grid is tiled up to the database's own today (`now()`), so a scheduling rhythm's
+// dates come from the real clock: a written-in quarter goes stale once the calendar passes it.
+// Q starts on the 1st of last month, so today is always inside it.
+const isoDay = (d: Date) => d.toISOString().slice(0, 10)
+const Q = (() => {
+  const now = new Date()
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1))
+  const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 3, 1))
+  const day = (base: Date, n: number) => isoDay(new Date(base.getTime() + n * 86_400_000))
+  return {
+    start: isoDay(start),
+    end: isoDay(end),
+    // Inside the 14-day booking runway before the period ends.
+    runway: `from=${day(end, -11)}&to=${day(end, -4)}`,
+    beforeRunway: `from=${day(start, 4)}&to=${day(start, 11)}`,
+    bookedDay: day(end, -5),
+    earlyDay: day(start, 11),
+  }
+})()
+
 describe('scheduling-shape rhythms', () => {
   let templeId = ''
 
@@ -784,32 +804,32 @@ describe('scheduling-shape rhythms', () => {
       title: 'Temple visit',
       satisfiedBy: 'scheduling',
       every: '3 months',
-      startsOn: '2026-07-01',
+      startsOn: Q.start,
       personId: kevinId,
       leadTime: '14 days',
     })
     expect(res.statusCode).toBe(201)
     const body = JSON.parse(res.body).rhythm
     templeId = body.id
-    expect(body.startsOn).toBe('2026-07-01')
+    expect(body.startsOn).toBe(Q.start)
     // Never tracked for this shape — asking "did you go?" is what makes it a goal.
     expect(body.lastCompletedAt).toBeNull()
   })
 
   it('surfaces as unscheduled inside the booking runway', async () => {
-    // Period is 2026-07-01..2026-10-01; with a 14-day runway it should surface from 09-17.
-    const res = await call('GET', '/api/rhythms/attention?from=2026-09-20&to=2026-09-27', kevin)
+    // A three-month period with a 14-day runway surfaces two weeks before it ends.
+    const res = await call('GET', `/api/rhythms/attention?${Q.runway}`, kevin)
     expect(res.statusCode).toBe(200)
     const items = JSON.parse(res.body).items
     const temple = items.find((i: { rhythm: { id: string } }) => i.rhythm.id === templeId)
     expect(temple).toBeDefined()
     expect(temple.kind).toBe('unscheduled')
-    expect(temple.periodStart).toBe('2026-07-01')
-    expect(temple.periodEnd).toBe('2026-10-01')
+    expect(temple.periodStart).toBe(Q.start)
+    expect(temple.periodEnd).toBe(Q.end)
   })
 
   it('stays quiet before the runway opens', async () => {
-    const res = await call('GET', '/api/rhythms/attention?from=2026-07-05&to=2026-07-12', kevin)
+    const res = await call('GET', `/api/rhythms/attention?${Q.beforeRunway}`, kevin)
     const items = JSON.parse(res.body).items
     expect(items.find((i: { rhythm: { id: string } }) => i.rhythm.id === templeId)).toBeUndefined()
   })
@@ -819,14 +839,14 @@ describe('scheduling-shape rhythms', () => {
   it('goes quiet once an event in the period points at it', async () => {
     const ev = await call('POST', '/api/events', kevin, {
       title: 'Temple',
-      startsAt: '2026-09-26T09:00:00',
-      endsAt: '2026-09-26T11:00:00',
+      startsAt: `${Q.bookedDay}T09:00:00`,
+      endsAt: `${Q.bookedDay}T11:00:00`,
       rhythmId: templeId,
     })
     expect(ev.statusCode).toBe(201)
     expect(JSON.parse(ev.body).event.rhythmId).toBe(templeId)
 
-    const res = await call('GET', '/api/rhythms/attention?from=2026-09-20&to=2026-09-27', kevin)
+    const res = await call('GET', `/api/rhythms/attention?${Q.runway}`, kevin)
     const items = JSON.parse(res.body).items
     expect(items.find((i: { rhythm: { id: string } }) => i.rhythm.id === templeId)).toBeUndefined()
   })
@@ -836,18 +856,18 @@ describe('scheduling-shape rhythms', () => {
       title: 'Self-care day',
       satisfiedBy: 'scheduling',
       every: '3 months',
-      startsOn: '2026-07-01',
+      startsOn: Q.start,
       leadTime: '14 days',
     })
     const id = JSON.parse(skipped.body).rhythm.id
 
-    const before = await call('GET', '/api/rhythms/attention?from=2026-09-20&to=2026-09-27', kevin)
+    const before = await call('GET', `/api/rhythms/attention?${Q.runway}`, kevin)
     expect(JSON.parse(before.body).items.some((i: { rhythm: { id: string } }) => i.rhythm.id === id)).toBe(true)
 
-    const skip = await call('POST', `/api/rhythms/${id}/skip`, kevin, { periodStart: '2026-07-01' })
+    const skip = await call('POST', `/api/rhythms/${id}/skip`, kevin, { periodStart: Q.start })
     expect(skip.statusCode).toBe(200)
 
-    const after = await call('GET', '/api/rhythms/attention?from=2026-09-20&to=2026-09-27', kevin)
+    const after = await call('GET', `/api/rhythms/attention?${Q.runway}`, kevin)
     expect(JSON.parse(after.body).items.some((i: { rhythm: { id: string } }) => i.rhythm.id === id)).toBe(false)
   })
 })
@@ -974,18 +994,18 @@ describe('editing and retiring a rhythm', () => {
 describe('the list carries current-period state', () => {
   it('reports the period a scheduling rhythm is in, and whether it is handled', async () => {
     const made = await call('POST', '/api/rhythms', kevin, {
-      title: 'Self-care day', satisfiedBy: 'scheduling', every: '3 months', startsOn: '2026-07-01',
+      title: 'Self-care day', satisfiedBy: 'scheduling', every: '3 months', startsOn: Q.start,
     })
     const id = JSON.parse(made.body).rhythm.id
 
     const before = JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms
       .find((r: { id: string }) => r.id === id)
-    expect(before.currentPeriodStart).toBe('2026-07-01')
-    expect(before.currentPeriodEnd).toBe('2026-10-01')
+    expect(before.currentPeriodStart).toBe(Q.start)
+    expect(before.currentPeriodEnd).toBe(Q.end)
     expect(before.satisfied).toBe(false)
 
     await call('POST', `/api/rhythms/${id}/schedule`, kevin, {
-      startsAt: '2026-09-12T18:00:00Z', endsAt: '2026-09-12T21:00:00Z',
+      startsAt: `${Q.earlyDay}T18:00:00Z`, endsAt: `${Q.earlyDay}T21:00:00Z`,
     })
     const after = JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms
       .find((r: { id: string }) => r.id === id)
