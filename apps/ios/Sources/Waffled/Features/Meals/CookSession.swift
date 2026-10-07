@@ -127,6 +127,33 @@ struct CookSession: Equatable {
         return false
     }
 
+    /// "3 tbsp", or "" when the row has no parsed amount.
+    static func amountText(_ ing: WaffledAPI.RecipeIngredientDTO) -> String {
+        guard let amt = ing.amount else { return "" }
+        return RecipeAmount.format(amt) + (ing.unit.map { " \($0)" } ?? "")
+    }
+
+    /// The editor writes a picked ingredient with no per-step amount as its bare NAME, so a
+    /// chip that IS a row's name borrows that row's measurement. Anything else is the
+    /// author's own words and stays as written. Mirrors `chipLabel` in the web CookMode.tsx.
+    static func chipLabel(_ chip: String, in ingredients: [WaffledAPI.RecipeIngredientDTO]) -> String {
+        let text = chip.trimmingCharacters(in: .whitespaces)
+        let lc = text.lowercased()
+        guard let row = ingredients.first(where: { $0.name.trimmingCharacters(in: .whitespaces).lowercased() == lc }) else {
+            return chip
+        }
+        let amt = amountText(row)
+        return amt.isEmpty ? chip : "\(amt) \(text)"
+    }
+
+    /// The overview list's name column. With no parsed amount, an imported line keeps its
+    /// quantity only in `display`.
+    static func listName(_ ing: WaffledAPI.RecipeIngredientDTO) -> String {
+        if let sub = ing.sub { return sub }
+        if ing.amount == nil, let display = ing.display, !display.isEmpty { return display }
+        return ing.name
+    }
+
     func contains(_ dishId: String) -> Bool { dishes.contains { $0.id == dishId } }
 
     /// Bring another dish on screen; its own step is restored untouched. False ⇒ that

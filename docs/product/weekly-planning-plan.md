@@ -125,7 +125,10 @@ port properly rather than transliterating:**
 
 **Month grid:** the Horizon scan draws the Calendar tab's own `PhoneMonthGrid`
 (`Features/Calendar/PhoneCalendarViews.swift`), so a change to the iPhone month view reaches
-the step too. Web's Horizon reuses `MonthView` the same way.
+the step too. Web's Horizon reuses `MonthView` the same way. It shows the **next four weeks
+from the planned week**, not the calendar month (late in a month most of it has already
+happened): iOS feeds the grid `PhoneCalendar.weekRows`, web passes `MonthView` a `range`.
+The arrows step four weeks; back is floored at the planned week.
 
 **Known debt found beside it (pre-existing, not the port's):** iOS's `RecipePickerSheet` —
 the Meals tab's own night picker, and the planner's manual pick — supplies no `onPickMeal`,
@@ -242,7 +245,7 @@ absent from the catalog, which is what makes the incremental build possible.
 |---|-----|-----|-------|
 | 1 | `looseEnds` | Intake | chores, lists, rhythms, goals |
 | 2 | `calendar` | Frame the week | events |
-| 3 | `horizon` | Frame the week | events (month) |
+| 3 | `horizon` | Frame the week | events (next 4 weeks) |
 | 4 | `familyNight` | Claim the good | familyNight |
 | 5 | `connection` | Claim the good | event_participants |
 | 6 | `goals` | Claim the good | goals / goal_lists |
@@ -524,6 +527,12 @@ session id, offering the same forward-only tags as Horizon's bar — runnable st
 current one, minus `looseEnds` and `recap` — so a tag always names a step still ahead
 tonight. It is hidden on `looseEnds` and `horizon`, which draw their own bar; a second one
 there would be two inputs for one table.
+
+**And between sessions.** The record, "Left for now" and the lobby each carry the same
+composer with no session and no tags (`sessionId: null` on web, `betweenSessions` on iOS):
+the note posts with neither, so it lands in the record's last call (the read is
+household-wide) and at the next session's Loose ends. The record re-keys its read-back after
+the park so the new note shows at once.
 
 ### Family night grew two columns, and one of them is subtler than it looks
 

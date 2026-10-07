@@ -1,7 +1,7 @@
-// Weekly Planning · step 3 "Horizon scan" — the month you already have, plus one bar.
+// Weekly Planning · step 3 "Horizon scan" — the next four weeks of the calendar you already have, plus one bar.
 //
-// The month is the plain calendar read and the app's own event modal, so there is
-// deliberately NO month endpoint here: a mirror of the calendar would be a second door
+// The weeks are the plain calendar read and the app's own event modal, so there is
+// deliberately NO calendar endpoint here: a mirror of the calendar would be a second door
 // onto the same rows and the two would drift. Parking is likewise not re-implemented —
 // `parkItem` in ./looseEnds.ts is the one writer.
 //
@@ -36,7 +36,7 @@ const TAG_HINTS: Record<string, string> = {
   kids: 'It’s about one of the kids',
 }
 
-// The tag the bar opens on: most of what a month provokes is something somebody has to DO
+// The tag the bar opens on: most of what a look ahead provokes is something somebody has to DO
 // before the date arrives.
 const PRIMARY_TAG = 'tasks'
 

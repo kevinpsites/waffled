@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { mealBuilderApi, mealsApi, personsApi, planningMealsApi, useRecipes, type Meal, type Person } from '../../../lib/api'
 import { groceryApi, useGroceryBoard, type GroceryBoardItem } from '../../../lib/api/grocery'
 import { isEatingOut } from '../../components/MealsColumn'
@@ -113,15 +113,29 @@ async function addGrocery(weekStart: string, name: string): Promise<boolean> {
 
 function GroceryAdd({ weekStart, disabled }: { weekStart: string; disabled: boolean }) {
   const [draft, setDraft] = useState('')
+  // Adding is a BURST, so the cursor goes back after each item. Restored in an effect once
+  // the field is enabled again: `focus()` on a disabled input does nothing (as in HorizonStep).
+  const inputRef = useRef<HTMLInputElement>(null)
+  const wantFocus = useRef(false)
+  useEffect(() => {
+    if (!wantFocus.current || disabled) return
+    wantFocus.current = false
+    inputRef.current?.focus()
+  }, [disabled, draft])
   return (
     <form
       className="ai-bar grocery-add wpm-gro-add"
       onSubmit={(e) => {
         e.preventDefault()
-        void addGrocery(weekStart, draft).then((ok) => { if (ok) setDraft('') })
+        void addGrocery(weekStart, draft).then((ok) => {
+          if (!ok) return
+          wantFocus.current = true
+          setDraft('')
+        })
       }}
     >
       <input
+        ref={inputRef}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         placeholder="Add to groceries…"

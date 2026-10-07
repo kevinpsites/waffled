@@ -266,6 +266,22 @@ describe('meals step · the week as it stands', () => {
     expect((screen.getByLabelText('Add to groceries') as HTMLInputElement).value).toBe('')
   })
 
+  it('puts the cursor back in the grocery field after an add, so the next item needs no click', async () => {
+    // A browser drops focus from the field while it is disabled for the add (jsdom doesn't),
+    // and clicking "Add item" moves it to the button — either way it has to come back.
+    mockApi()
+    draw()
+    await screen.findByText('Pasta bake')
+    const field = screen.getByLabelText('Add to groceries')
+    fireEvent.change(field, { target: { value: 'Paper towels' } })
+    const add = screen.getByRole('button', { name: 'Add item' })
+    add.focus()
+    fireEvent.click(add)
+    await waitFor(() => expect(sent('POST', '/api/lists/grocery/items')).toHaveLength(1))
+    await waitFor(() => expect((field as HTMLInputElement).value).toBe(''))
+    await waitFor(() => expect(document.activeElement).toBe(field))
+  })
+
   it('opens the week’s grocery list from the count, and ticks an item off in place', async () => {
     mockApi()
     draw()

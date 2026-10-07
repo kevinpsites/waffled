@@ -5,7 +5,7 @@ import { getHorizon } from './horizon'
 
 type Api = ReturnType<typeof createAPI>
 
-// Step 3 · Horizon scan — ONE route, and deliberately not three. The month itself is the
+// Step 3 · Horizon scan — ONE route, and deliberately not three. The weeks themselves are the
 // plain calendar (`GET /api/events?from&to`, `POST /api/events`), and PARKING is a POST to
 // step 1's `/api/weekly-planning/loose-ends/parked`, which was written general enough that
 // this step needs neither a migration nor a second writer — a `/horizon/park` alias would

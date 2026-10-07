@@ -159,6 +159,8 @@
 }
 .wp-lobby-act-steps { margin-top: 3px; font-size: 14.5px; font-weight: 650; color: var(--ink); line-height: 1.35; }
 .wp-lobby-go { width: 100%; justify-content: center; }
+/* "Park a note" between sessions: under the lobby's primary, beside "Reopen" on the record. */
+.wp-lobby .wp-park-between { width: 100%; justify-content: center; margin-top: 10px; }
 
 /* ── Agenda sheet ───────────────────────────────────────────────────────────── */
 /* `width: min(520px, …)` against the VIEWPORT, not `max-width: 100%`.
@@ -268,7 +270,7 @@
 .wp-record-main { min-width: 0; }
 .wp-record-main b { display: block; font-size: 15.5px; font-weight: 650; }
 .wp-record-main s { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink-2); text-decoration: none; margin-top: 1px; }
-.wp-record-f { display: flex; margin-top: 18px; }
+.wp-record-f { display: flex; gap: 10px; margin-top: 18px; }
 .wp-record-f .btn { flex: 1; justify-content: center; }
 .wp-record-week {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;

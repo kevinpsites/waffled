@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router'
-import { CookMode, ingredientKey } from './CookMode'
+import { CookMode, chipLabel, ingredientKey } from './CookMode'
 import { TopbarSlotProvider } from './topbar-slot'
 
 // Cooking is a checklist you work through, so the ingredients are one: tick each off
@@ -17,7 +17,7 @@ interface StepInput {
 function ing(id: string, name: string, amount: number | null = null, unit: string | null = null) {
   return {
     id, name, amount, unit,
-    prepNote: null, display: null, section: null, aisle: null,
+    prepNote: null, display: null as string | null, section: null, aisle: null,
     isStaple: false, sortOrder: null, sub: null,
   }
 }
@@ -66,7 +66,31 @@ const closeAll = () => fireEvent.click(screen.getByRole('button', { name: 'Close
 // A chip and its list row deliberately read the same ("4 cloves garlic"), so every
 // query says which of the two it means.
 const list = () => within(document.querySelector('.modal-card') as HTMLElement)
-const stage = () => within(document.querySelector('.cm-stage') as HTMLElement)
+// The step's ingredients sit in their own column beside the step, as on the iPad.
+const stage = () => within(document.querySelector('.cm-side') as HTMLElement)
+
+describe('CookMode — the step’s ingredients have their own column', () => {
+  it('puts them in a column beside the step, not under the instruction', async () => {
+    mockRecipe([{ stepNumber: 1, instruction: 'Sweat the garlic', ingredients: ['4 cloves garlic'] }])
+    renderCook()
+    await screen.findByText('Sweat the garlic')
+
+    const side = document.querySelector('.cm-side') as HTMLElement
+    expect(side).toBeTruthy()
+    expect(within(side).getByText('Ingredients')).toBeTruthy()
+    expect(within(side).getByRole('checkbox', { name: '4 cloves garlic' })).toBeTruthy()
+    // The instruction's own column no longer carries them.
+    const main = document.querySelector('.cm-stage') as HTMLElement
+    expect(within(main).queryByRole('checkbox')).toBeNull()
+  })
+
+  it('draws no column for a step that names no ingredients', async () => {
+    mockRecipe([{ stepNumber: 1, instruction: 'Preheat the oven' }])
+    renderCook()
+    await screen.findByText('Preheat the oven')
+    expect(document.querySelector('.cm-side')).toBeNull()
+  })
+})
 
 describe('CookMode — ingredients you can tick off', () => {
   it('ticks an ingredient off the full list', async () => {
@@ -183,5 +207,69 @@ describe('ingredientKey — a name has to start where a word starts', () => {
 
   it('still matches a name at the very start of the chip', () => {
     expect(ingredientKey('oil for frying', rows)).toBe('i1')
+  })
+})
+
+// The recipe editor writes a step's picked ingredient as its bare NAME when nobody typed a
+// per-step amount, so the checklist read "onion" with the measurement nowhere on screen.
+describe('CookMode — a step chip carries its measurement', () => {
+  it('fills in the amount and unit for a chip that is just the ingredient’s name', async () => {
+    mockRecipe([{ stepNumber: 1, instruction: 'Warm the oil', ingredients: ['olive oil', 'onion'] }])
+    renderCook()
+    await screen.findByText('Warm the oil')
+
+    expect(stage().getByRole('checkbox', { name: '3 tbsp olive oil' })).toBeInTheDocument()
+    expect(stage().getByRole('checkbox', { name: '2 onion' })).toBeInTheDocument()
+  })
+
+  it('still ties the filled-in chip to its list row', async () => {
+    mockRecipe([{ stepNumber: 1, instruction: 'Warm the oil', ingredients: ['olive oil'] }])
+    renderCook()
+    await screen.findByText('Warm the oil')
+    fireEvent.click(stage().getByRole('checkbox', { name: '3 tbsp olive oil' }))
+
+    await openAll()
+    expect(list().getByRole('checkbox', { name: /olive oil/i })).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('prints a fraction the way the recipe page does', async () => {
+    mockRecipe(
+      [{ stepNumber: 1, instruction: 'Add the stock', ingredients: ['stock'] }],
+      [ing('i1', 'stock', 0.5, 'cup')],
+    )
+    renderCook()
+    await screen.findByText('Add the stock')
+    expect(stage().getByRole('checkbox', { name: '½ cup stock' })).toBeInTheDocument()
+  })
+
+  it('leaves the list row’s full text standing when the row has no parsed amount', async () => {
+    // An imported line like "2¾–3 cups flour" keeps its quantity only in `display`.
+    mockRecipe(
+      [{ stepNumber: 1, instruction: 'Sift', ingredients: [] }],
+      [{ ...ing('i1', 'flour'), display: '2¾–3 cups flour' }],
+    )
+    renderCook()
+    await openAll()
+    expect(list().getByRole('checkbox', { name: /2¾–3 cups flour/ })).toBeInTheDocument()
+  })
+})
+
+describe('chipLabel — only a bare name is filled in', () => {
+  const rows = [ing('i1', 'garlic', 2, 'cloves'), ing('i2', 'salt'), ing('i3', 'olive oil', 3, 'tbsp')]
+
+  it('keeps a chip that already says how much', () => {
+    expect(chipLabel('4 cloves garlic', rows)).toBe('4 cloves garlic')
+  })
+
+  it('keeps a chip that names a share of the ingredient rather than the ingredient', () => {
+    expect(chipLabel('Half the minced garlic', rows)).toBe('Half the minced garlic')
+  })
+
+  it('keeps a bare name whose row has no amount', () => {
+    expect(chipLabel('salt', rows)).toBe('salt')
+  })
+
+  it('matches the name whatever its case or padding', () => {
+    expect(chipLabel(' Olive Oil ', rows)).toBe('3 tbsp Olive Oil')
   })
 })

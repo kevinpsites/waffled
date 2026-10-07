@@ -7,6 +7,9 @@ import type { ParkedTag } from './ParkedNoteEditor'
  * PARK A NOTE FROM ANY STEP — the shell's copy of Horizon's bar, opened from the session footer.
  * A tag sends the note to a step still ahead tonight; "No tag" leaves it for the recap and next
  * session's Loose ends. Loose ends and Horizon keep their own bars, so the shell hides this there.
+ *
+ * With `sessionId` null it is BETWEEN SESSIONS (the record, "Left for now", the lobby): no step
+ * is ahead of you, so there are no tags, and the note waits for the next session.
  */
 export function ParkNoteComposer({
   tags,
@@ -15,7 +18,7 @@ export function ParkNoteComposer({
   onParked,
 }: {
   tags: ParkedTag[]
-  sessionId: string
+  sessionId: string | null
   onClose: () => void
   onParked: () => void
 }) {
@@ -37,7 +40,7 @@ export function ParkNoteComposer({
     setSaving(true)
     setError(null)
     looseEndsApi
-      .park(trimmed, { ...(tag ? { stepKey: tag } : {}), sessionId })
+      .park(trimmed, { ...(tag ? { stepKey: tag } : {}), ...(sessionId ? { sessionId } : {}) })
       .then(() => onParked())
       .catch((err: unknown) => {
         setError(
@@ -73,7 +76,7 @@ export function ParkNoteComposer({
             }
           }}
         />
-        <div className="wp-pne-tags" role="group" aria-label="Which step should look at this?">
+        {sessionId && <div className="wp-pne-tags" role="group" aria-label="Which step should look at this?">
           {tags.map((t) => (
             <button
               key={t.stepKey}
@@ -95,9 +98,11 @@ export function ParkNoteComposer({
           >
             No tag
           </button>
-        </div>
+        </div>}
         <p className="wp-park-says">
-          {landsAt ? (
+          {!sessionId ? (
+            <>It waits in the recap and at the next session&rsquo;s Loose ends.</>
+          ) : landsAt ? (
             <>Comes back at <b>{landsAt}</b>, later in this session.</>
           ) : (
             <>No step will raise it. It waits in the recap and at next week&rsquo;s Loose ends.</>

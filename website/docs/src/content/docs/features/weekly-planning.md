@@ -50,6 +50,11 @@ Inside the session, every step looks the same:
 
 Skipping is a real answer. The record shows which steps you skipped on purpose.
 
+Between sessions the page is a summary: the saved record (**The week is decided**), **Left
+for now**, or the lobby. Each has its own **📌 Park a note**, for the thought that comes up
+on a Wednesday. No step is ahead of you then, so there's no tag: the note shows in the
+record's last call straight away and waits at the next session's Loose ends.
+
 **Leave for now** (in the header, and in the agenda) puts you back on the lobby with the
 session kept exactly where it was, a button to resume it, and the week arrows. Leaving is
 remembered on that device only, so someone else can pick the session up on another device at
@@ -96,8 +101,10 @@ day to add what's missing: a line, a time, and who it's for. It's an ordinary
 [calendar](/features/calendar/) event. Tap an event that's already there to open it in the same
 editor and change it.
 
-**3 · Horizon scan** — *"Anything further out you should see now?"* The month view, so you
-see what's coming before it arrives. **＋** on a day adds a real event. The bar underneath
+**3 · Horizon scan** — *"Anything further out you should see now?"* The next four weeks on
+the calendar's month view, starting with the week you're planning, so you see what's coming
+before it arrives — even at the end of a month, when most of "this month" is behind you.
+**›** looks another four weeks out. **＋** on a day adds a real event. The bar underneath
 parks a note instead — "we're going camping, we need to pack" — and you can tag it for one of
 the steps still ahead of you, which will then open with it. A note with no tag stays on the
 board for the Recap and next week's Loose ends. Everything parked shows under **Parked in

@@ -718,6 +718,46 @@ private func scratchDefaults() -> UserDefaults {
         #expect(model.parkError != nil)
     }
 
+    // Mid-week the page is a summary — the record, "Left for now", the lobby — and a note for
+    // the next session parks from there with NO session and no tag.
+    @Test func parkingBetweenSessionsSendsNoSessionAndNoTagThenRefreshes() async throws {
+        let feed = PlanningFeed(session: session(status: "completed", completedAt: "2026-09-06T17:32:00.000Z"))
+        let model = makeModel(feed, defaults: scratchDefaults())
+        await model.load()
+        let fetched = feed.fetchCount
+        let rev = model.parkedBetweenRevision
+
+        let ok = await model.parkBetweenSessions("book the cabin")
+
+        #expect(ok)
+        let park = try #require(feed.parks.first)
+        #expect(park.note == "book the cabin")
+        #expect(park.stepKey == nil)
+        #expect(park.sessionId == nil)
+        #expect(feed.fetchCount == fetched + 1)
+        // The record's read-back re-reads its last call off this.
+        #expect(model.parkedBetweenRevision == rev + 1)
+    }
+
+    @Test func parkingBetweenSessionsWorksBeforeAnySessionExists() async throws {
+        let feed = PlanningFeed()
+        let model = makeModel(feed, defaults: scratchDefaults())
+        await model.load()
+
+        #expect(await model.parkBetweenSessions("fix the gate"))
+        #expect(try #require(feed.parks.first).sessionId == nil)
+    }
+
+    @Test func aRefusedParkBetweenSessionsSaysSo() async {
+        let feed = PlanningFeed()
+        feed.parkFails = true
+        let model = makeModel(feed, defaults: scratchDefaults())
+        await model.load()
+
+        #expect(await model.parkBetweenSessions("fix the gate") == false)
+        #expect(model.parkError != nil)
+    }
+
     // MARK: config
 
     @Test func savingOneStepToggleSendsOnlyThatStep() async throws {

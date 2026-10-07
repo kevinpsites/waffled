@@ -17,7 +17,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Cook Mode on the web puts each step's ingredients in a column on the left.** It now matches
+  the iPad: each ingredient is its own row you tick off, and long names wrap instead of being
+  cut off. On a phone-width screen the column sits under the step.
+
 ### Fixed
+
+- **Weekly Planning's Horizon scan shows the next four weeks.** It used to show the calendar
+  month the planned week fell in, so near the end of a month most of what it showed had
+  already happened. It now starts on the week you're planning and the arrows step four weeks
+  at a time, on web and iOS.
+- **Cook Mode's ingredient checklist shows how much.** A step ingredient picked in the recipe
+  editor without its own amount used to show just the name ("onion"). It now shows that
+  ingredient's amount and unit from the recipe ("2 onion"). An imported line with no parsed
+  amount shows its full original text in the ingredient list. Web and iOS.
+- **Adding groceries in Weekly Planning keeps the cursor in the field.** After each item the
+  Meals step's "Add to groceries" field is ready for the next one, so you no longer tap back
+  into it (or reopen the keyboard on iPhone) between items.
+- **You can park a Weekly Planning note between sessions.** The saved week, "Left for now"
+  and the lobby each have **📌 Park a note**, so a thought that comes up mid-week doesn't
+  wait for Sunday. The note shows in the saved week's last call right away and comes back at
+  the next session's Loose ends. Web and iOS.
+- **An event with nobody on it moves to Google once you add someone.** An event made with no
+  one selected is saved in Waffled only. Adding a person with a connected Google or Outlook
+  calendar now moves it to that person's calendar and creates it there, whether the edit
+  came from the web, iPhone or iPad. An event you chose to keep "Waffled only" stays put.
+
+### Security
+
+- **Server dependencies patched against newly published advisories.** OpenTelemetry tracing
+  no longer records the database username on spans, `@grpc/grpc-js` is updated, and the
+  `brace-expansion` copy used by the migration runner is pinned to a release that fixes
+  three denial-of-service bugs.
 
 ## [0.15.1] - 2026-09-15
 

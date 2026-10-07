@@ -15,6 +15,7 @@ struct PlanningShellView: View {
     @State private var model = PlanningModel()
     @State private var sheet = false
     @State private var parking = false
+    @State private var parkingBetween = false
     @State private var confirmDiscard = false
     /// The verb the step on screen has lent the parked-note banner, paired with the step
     /// that lent it, so a verb whose owner is off screen is simply not READ. Do NOT swap
@@ -45,6 +46,25 @@ struct PlanningShellView: View {
                     onPark: { note, stepKey in await model.parkNote(note, stepKey: stepKey) },
                     onClose: { parking = false })
             }
+            .sheet(isPresented: $parkingBetween, onDismiss: { model.clearParkError() }) {
+                PlanningParkNoteSheet(
+                    tags: [], betweenSessions: true,
+                    errorMessage: model.parkError,
+                    onPark: { note, _ in await model.parkBetweenSessions(note) },
+                    onClose: { parkingBetween = false })
+            }
+    }
+
+    /// The record, "Left for now" and the lobby are what the page shows mid-week, which is
+    /// when a note for the next session comes up.
+    private var parkBetweenButton: some View {
+        Button { parkingBetween = true } label: {
+            Label("Park a note", systemImage: "pin")
+                .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink2)
+                .frame(maxWidth: .infinity).padding(.vertical, 12)
+                .wfField()
+        }
+        .buttonStyle(.plain).disabled(model.busy)
     }
 
     @ViewBuilder private var content: some View {
@@ -105,6 +125,7 @@ struct PlanningShellView: View {
                     Task { await model.start() }
                 }
                 .padding(.top, 4)
+                parkBetweenButton
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16).padding(.bottom, WF.bottomBarClearance)
@@ -124,6 +145,7 @@ struct PlanningShellView: View {
                     .font(.system(size: 14)).foregroundStyle(WF.ink3)
                     .fixedSize(horizontal: false, vertical: true)
                 WaffledPrimaryCTA(label: "Resume the session", isBusy: model.busy) { model.resume() }
+                parkBetweenButton
                 planAnotherWeek
                 discardBlock
             }
@@ -151,7 +173,7 @@ struct PlanningShellView: View {
                    let sessionId = model.session?.id,
                    let week = model.view?.weekStart {
                     planningStepBody(stepProps(recap, sessionId: sessionId, weekStart: week))
-                        .id("record-recap")
+                        .id("record-recap-\(model.parkedBetweenRevision)")
                 } else {
                     // Only without a read-back: the recap's "left alone on purpose" otherwise
                     // names every skipped step, and the list just repeated it.
@@ -174,6 +196,7 @@ struct PlanningShellView: View {
                     }
                     }
                 }
+                parkBetweenButton
                 Button {
                     Task { await model.reopen() }
                 } label: {

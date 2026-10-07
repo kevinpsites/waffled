@@ -351,7 +351,7 @@ struct CookModeView: View {
                         Button { store.toggleTick(key) } label: {
                             HStack(alignment: .top, spacing: 10) {
                                 tickBox(on: on).padding(.top, 1)
-                                Text(ig)
+                                Text(CookSession.chipLabel(ig, in: store.ingredients))
                                     .font(.system(size: 17, weight: .medium))
                                     .foregroundStyle(on ? WF.ink3 : WF.ink)
                                     .strikethrough(on)
@@ -402,7 +402,7 @@ struct CookModeView: View {
                 Button { store.toggleTick(key) } label: {
                     HStack(spacing: 8) {
                         tickBox(on: on)
-                        Text(ig).font(.system(size: isKiosk ? 18 : 15, weight: .medium))
+                        Text(CookSession.chipLabel(ig, in: store.ingredients)).font(.system(size: isKiosk ? 18 : 15, weight: .medium))
                             .foregroundStyle(WF.success)
                             .strikethrough(on)
                     }
@@ -684,10 +684,10 @@ struct CookModeView: View {
                                 Button { store.toggleTick(ing.id) } label: {
                                     HStack(alignment: .top, spacing: 12) {
                                         tickBox(on: on)
-                                        Text(amountText(ing)).font(.system(size: 15, weight: .semibold, design: .rounded))
+                                        Text(CookSession.amountText(ing)).font(.system(size: 15, weight: .semibold, design: .rounded))
                                             .foregroundStyle(on ? WF.ink3 : WF.ink2).strikethrough(on)
                                             .frame(width: 70, alignment: .trailing)
-                                        Text(ing.sub ?? ing.name).font(.system(size: 16))
+                                        Text(CookSession.listName(ing)).font(.system(size: 16))
                                             .foregroundStyle(on ? WF.ink3 : WF.ink).strikethrough(on)
                                         Spacer(minLength: 0)
                                     }
@@ -732,11 +732,6 @@ struct CookModeView: View {
                 .padding(.top, 5)
         }
         .padding(.vertical, 8).contentShape(Rectangle())
-    }
-
-    private func amountText(_ ing: WaffledAPI.RecipeIngredientDTO) -> String {
-        guard let amt = ing.amount else { return "" }
-        return RecipeAmount.format(amt) + (ing.unit.map { " \($0)" } ?? "")
     }
 }
 

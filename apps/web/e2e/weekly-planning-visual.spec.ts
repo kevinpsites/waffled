@@ -303,7 +303,7 @@ test('the parked board stays on screen, and a chosen tag stays readable under th
   const board = page.locator('.wph-board')
   await expect(board).toBeVisible()
 
-  // ON A KIOSK the month gets all six rows AND the board keeps its place: `.wph-cal` is
+  // ON A KIOSK the four weeks get all four rows AND the board keeps its place: `.wph-cal` is
   // `flex: 1`, taking whatever the bar, note and board leave.
   await page.setViewportSize({ width: 1280, height: 1000 })
   await expect(board).toBeVisible()
@@ -316,11 +316,11 @@ test('the parked board stays on screen, and a chosen tag stays readable under th
     return el ? { scrollH: el.scrollHeight, clientH: el.clientHeight, cells } : null
   })
   expect(grid).not.toBeNull()
-  expect(grid!.cells).toBe(42)
-  // The month USES the room it is given: six unsquashed rows cost ~552px and there are 491.
-  expect(grid!.clientH).toBeGreaterThanOrEqual(92 * 5)
+  expect(grid!.cells).toBe(28)
+  // The grid USES the room it is given: four rows never squash below ~92px each.
+  expect(grid!.clientH).toBeGreaterThanOrEqual(92 * 4)
 
-  // ON A SHORT SCREEN the month gives way instead of the board, and never compresses.
+  // ON A SHORT SCREEN the grid gives way instead of the board, and never compresses.
   await page.setViewportSize({ width: 1280, height: 720 })
   expect(await withinViewport(page, '.wph-board')).toBe(true)
   const heights = await page.locator('.wph-cal .ev').evaluateAll((els) =>

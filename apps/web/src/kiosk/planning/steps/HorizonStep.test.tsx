@@ -4,18 +4,19 @@ import mod from './HorizonStep'
 import type { PlanningStep } from '../../../lib/api'
 import type { StepBodyProps } from '../registry'
 
-// Step 3 · Horizon scan. THE MONTH YOU ALREADY SHIP, PLUS ONE BAR. Most of these tests
-// assert that the step renders the REAL month view (`MonthView` + `MonthDayPanel`) rather
-// than a second calendar — the class names asserted on are the shipped ones. The bar is
+// Step 3 · Horizon scan. THE NEXT FOUR WEEKS ON THE MONTH VIEW YOU ALREADY SHIP, PLUS ONE
+// BAR. Most of these tests assert that the step renders the REAL month view (`MonthView` +
+// `MonthDayPanel`) rather than a second calendar — the class names asserted on are the
+// shipped ones. The bar is
 // what the session adds, and the distinction is the point: ＋ on a day writes a REAL EVENT,
 // the bar writes a NOTE that never reaches the calendar. `weekStart` is a fixed Sunday,
 // because `new Date('2026-09-06')` is UTC midnight and renders as the 5th west of
 // Greenwich.
 
 const WEEK_START = '2026-09-06' // a Sunday, in September 2026
-// The 42-cell grid for September 2026 on a Sunday-start household: Aug 30 … Oct 10.
-const GRID_START = '2026-08-30'
-const GRID_END = '2026-10-10'
+// Four weeks from the planned week's first day, whatever month they fall in: Sep 6 … Oct 3.
+const GRID_START = WEEK_START
+const GRID_END = '2026-10-03'
 
 const Body = mod.Body
 
@@ -184,7 +185,7 @@ function renderStep(over: Partial<StepBodyProps> = {}) {
 const cells = (c: HTMLElement) => Array.from(c.querySelectorAll('.cal-cell')) as HTMLElement[]
 
 // The cell for a YYYY-MM-DD, by its offset from the grid's first day — the day numbers
-// alone are ambiguous (two "1"s and two "30"s on a 42-cell grid).
+// alone are ambiguous once the four weeks cross a month boundary.
 function cell(c: HTMLElement, key: string): HTMLElement {
   const i = Math.round(
     (Date.parse(`${key}T00:00:00Z`) - Date.parse(`${GRID_START}T00:00:00Z`)) / 86400000
@@ -208,26 +209,26 @@ async function type(text: string) {
 }
 
 describe('Weekly planning · step 3 · Horizon scan', () => {
-  it('renders the SHIPPED month view — the 42-cell grid, not a second calendar', async () => {
+  it('renders the SHIPPED month view cut to four weeks — not a second calendar', async () => {
     const { container } = renderStep()
     mockApi()
 
-    await waitFor(() => expect(cells(container).length).toBe(42))
+    await waitFor(() => expect(cells(container).length).toBe(28))
     expect(container.querySelectorAll('.cal-dow div').length).toBe(7)
     expect(container.querySelector('.cal-grid')).toBeTruthy()
-    // Leading/trailing days are dimmed, September's are not — MonthView's own rule.
-    expect(cell(container, GRID_START).className).toContain('dim')
-    expect(cell(container, '2026-09-06').className).not.toContain('dim')
-    expect(cell(container, GRID_END).className).toContain('dim')
+    // The window starts on the planned week, so nothing in it is "another month" to dim —
+    // October's days are as much the horizon as September's.
+    expect(cell(container, GRID_START).className).not.toContain('dim')
+    expect(cell(container, '2026-10-01').className).not.toContain('dim')
+    expect(cell(container, GRID_END).className).not.toContain('dim')
   })
 
-  it('shows the month the planned week is in, and fetches exactly the grid it draws', async () => {
+  it('shows the next four weeks from the planned week, and fetches exactly what it draws', async () => {
     const { eventReads } = mockApi()
     renderStep()
 
-    expect(await screen.findByText('September 2026')).toBeInTheDocument()
-    // The window is the 42 cells, not the month — an off-by-one silently empties the first
-    // or last row. (`monthGridStart`, shared with the calendar.)
+    // Late in a month, "this month" is mostly behind you — the window crosses into the next.
+    expect(await screen.findByText('Sep 6 – Oct 3')).toBeInTheDocument()
     await waitFor(() =>
       expect(eventReads.some((u) => u.includes(`from=${GRID_START}`) && u.includes(`to=${GRID_END}`))).toBe(true)
     )
@@ -492,33 +493,58 @@ describe('Horizon scan · the park bar', () => {
 })
 
 describe('Horizon scan · looking further out', () => {
-  it('steps forward a month and refetches that month’s grid', async () => {
+  it('steps forward four weeks and refetches that window', async () => {
     // The step's question is "anything FURTHER OUT you should see now?", so it has to look
-    // past the month the planned week falls in.
+    // past the first four weeks too.
     const { eventReads } = mockApi()
     const { container } = renderStep()
 
-    fireEvent.click(await screen.findByRole('button', { name: /next month/i }))
-    expect(await screen.findByText('October 2026')).toBeInTheDocument()
-    // October 2026 starts on a Thursday, so its Sunday-start grid runs Sep 27 … Nov 7.
+    fireEvent.click(await screen.findByRole('button', { name: /next 4 weeks/i }))
+    expect(await screen.findByText('Oct 4 – Oct 31')).toBeInTheDocument()
     await waitFor(() =>
-      expect(eventReads.some((u) => u.includes('from=2026-09-27') && u.includes('to=2026-11-07'))).toBe(true)
+      expect(eventReads.some((u) => u.includes('from=2026-10-04') && u.includes('to=2026-10-31'))).toBe(true)
     )
-    expect(cells(container).length).toBe(42)
+    expect(cells(container).length).toBe(28)
   })
 
   it('does not scan backwards past the week being planned', async () => {
-    // A horizon is what is ahead. The month the session is planning is the floor.
+    // A horizon is what is ahead. The week the session is planning is the floor.
     mockApi()
     renderStep()
-    expect(await screen.findByText('September 2026')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /previous month/i })).toBeDisabled()
+    expect(await screen.findByText('Sep 6 – Oct 3')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /previous 4 weeks/i })).toBeDisabled()
 
-    fireEvent.click(screen.getByRole('button', { name: /next month/i }))
-    expect(await screen.findByText('October 2026')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /previous month/i })).toBeEnabled()
-    fireEvent.click(screen.getByRole('button', { name: /previous month/i }))
-    expect(await screen.findByText('September 2026')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /next 4 weeks/i }))
+    expect(await screen.findByText('Oct 4 – Oct 31')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /previous 4 weeks/i })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: /previous 4 weeks/i }))
+    expect(await screen.findByText('Sep 6 – Oct 3')).toBeInTheDocument()
+  })
+
+  it('starts over at the planned week when the session moves to another week', async () => {
+    // Stepping ahead is relative to the week being planned; a new week is a new floor.
+    mockApi()
+    const props = {
+      step, sessionId: '11111111-1111-4111-8111-111111111111',
+      setDecisionData: vi.fn(), refresh: vi.fn(), busy: false,
+    }
+    const view = render(<MemoryRouter><Body {...props} weekStart={WEEK_START} /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /next 4 weeks/i }))
+    expect(await screen.findByText('Oct 4 – Oct 31')).toBeInTheDocument()
+
+    view.rerender(<MemoryRouter><Body {...props} weekStart="2026-09-13" /></MemoryRouter>)
+    expect(await screen.findByText('Sep 13 – Oct 10')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /previous 4 weeks/i })).toBeDisabled()
+  })
+
+  it('crosses a year boundary without losing a day', async () => {
+    // Dec 27 2026 is a Sunday; its four weeks run into January.
+    const { eventReads } = mockApi()
+    renderStep({ weekStart: '2026-12-27' })
+    expect(await screen.findByText('Dec 27 – Jan 23')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(eventReads.some((u) => u.includes('from=2026-12-27') && u.includes('to=2027-01-23'))).toBe(true)
+    )
   })
 })
 

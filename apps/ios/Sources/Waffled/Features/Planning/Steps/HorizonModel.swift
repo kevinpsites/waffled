@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 // Weekly Planning · step 3 "Horizon scan" — the state behind the park bar. Ported from
-// `apps/web/src/kiosk/planning/steps/HorizonStep.tsx`. The month has no state here: it is
+// `apps/web/src/kiosk/planning/steps/HorizonStep.tsx`. The four weeks have no state here: they are
 // the calendar the family already has, read through the PowerSync mirror. What this object
 // owns is the ONE THING THE SESSION ADDS — a parked note and its tag.
 
@@ -170,7 +170,7 @@ final class PlanningHorizonModel {
         }
     }
 
-    /// A real calendar event was created from this step's month.
+    /// A real calendar event was created from this step's calendar.
     func recordEventAdded() {
         added += 1
         revision &+= 1

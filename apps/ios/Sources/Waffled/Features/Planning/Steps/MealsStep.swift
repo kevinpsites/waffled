@@ -16,6 +16,7 @@ struct MealsStepView: View {
     @State private var shopping = false
     @State private var groceryList = false
     @State private var groceryDraft = ""
+    @FocusState private var groceryFocused: Bool
 
     /// The library the planner's manual-pick sheet browses, loaded only when it opens.
     @State private var plannerRecipes = RecipesModel()
@@ -244,9 +245,16 @@ struct MealsStepView: View {
     // MARK: - Groceries
 
     /// ONE LINE, not a panel: the board already builds itself from this plan.
+    /// Adding is a BURST, so the keyboard comes back after each item rather than making you
+    /// tap the field again.
     private func addGrocery() {
         let name = groceryDraft
-        Task { if await model.addGrocery(name, weekStart: props.weekStart) { groceryDraft = "" } }
+        Task {
+            if await model.addGrocery(name, weekStart: props.weekStart) {
+                groceryDraft = ""
+                groceryFocused = true
+            }
+        }
     }
 
     @ViewBuilder private var groceryLine: some View {
@@ -273,6 +281,7 @@ struct MealsStepView: View {
                     HStack(spacing: 10) {
                         TextField("Add to groceries…", text: $groceryDraft)
                             .font(.system(size: 16, weight: .semibold))
+                            .focused($groceryFocused)
                             .submitLabel(.done)
                             .onSubmit(addGrocery)
                             .padding(.horizontal, 14).padding(.vertical, 12)

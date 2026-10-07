@@ -484,3 +484,40 @@ struct CookIngredientTickTests {
         #expect(CookSession.ingredientKey("oil for frying", in: rows) == "ing-oil")
     }
 }
+
+private func measured(_ name: String, _ amount: Double?, _ unit: String?, display: String? = nil) -> WaffledAPI.RecipeIngredientDTO {
+    WaffledAPI.RecipeIngredientDTO(id: "ing-\(name)", name: name, amount: amount, unit: unit,
+                                   prepNote: nil, display: display, section: nil, aisle: nil,
+                                   isStaple: false, sortOrder: nil, sub: nil)
+}
+
+/// The recipe editor writes a picked ingredient with no per-step amount as its bare NAME,
+/// so the step checklist read "onion" with the measurement nowhere on screen. Mirrors
+/// `chipLabel` in the web app's CookMode.tsx.
+@Suite struct CookChipLabelTests {
+    let rows = [measured("garlic", 2, "cloves"), measured("salt", nil, nil),
+                measured("olive oil", 3, "tbsp"), measured("stock", 0.5, "cup")]
+
+    @Test("a chip that is just the ingredient's name gets its amount and unit")
+    func bareNameGetsMeasurement() {
+        #expect(CookSession.chipLabel("olive oil", in: rows) == "3 tbsp olive oil")
+        #expect(CookSession.chipLabel("stock", in: rows) == "½ cup stock")
+        #expect(CookSession.chipLabel(" Olive Oil ", in: rows) == "3 tbsp Olive Oil")
+    }
+
+    @Test("a chip in the author's own words stays as written")
+    func authoredChipStays() {
+        #expect(CookSession.chipLabel("4 cloves garlic", in: rows) == "4 cloves garlic")
+        #expect(CookSession.chipLabel("Half the minced garlic", in: rows) == "Half the minced garlic")
+        #expect(CookSession.chipLabel("salt", in: rows) == "salt")
+    }
+
+    @Test("the list row falls back to its imported line when nothing was parsed")
+    func listRowFallsBackToDisplay() {
+        let flour = measured("flour", nil, nil, display: "2¾–3 cups flour")
+        #expect(CookSession.listName(flour) == "2¾–3 cups flour")
+        #expect(CookSession.listName(measured("garlic", 2, "cloves", display: "2 cloves garlic, minced")) == "garlic")
+        #expect(CookSession.amountText(measured("garlic", 2, "cloves")) == "2 cloves")
+        #expect(CookSession.amountText(flour) == "")
+    }
+}

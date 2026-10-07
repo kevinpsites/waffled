@@ -9,11 +9,15 @@ import {
   type RecipeMatch,
   type RecipeStep,
 } from '../lib/api'
+import { fmtAmt } from '../lib/amount'
 import { CHECK } from './components/CheckGlyph'
 import { CookConfirm } from './components/CookConfirm'
 import { CookTabs, type CookTabInfo } from './components/CookTabs'
 import { useCookPlate } from './components/CookDishes'
 import { fmt, useCookTimers, type CookTimer } from './components/CookTimers'
+// The add-timer controls borrow the recipe page's .re-timer-* styles; import them here too, or
+// opening cook mode directly (a refresh, a link) leaves them unstyled.
+import './../styles/recipe.css'
 import './../styles/cookmode.css'
 
 // Full-screen, step-by-step cooking view for the kiosk — large type for across-the-
@@ -58,6 +62,22 @@ export function ingredientKey(chip: string, ingredients: RecipeIngredient[]): st
     .filter(({ name }) => name && nameStartsAWord(lc, name))
     .sort((a, b) => b.name.length - a.name.length)[0]
   return match ? match.ing.id : `text:${lc}`
+}
+
+// "3 tbsp", or '' when the row has no parsed amount.
+function amountText(ing: RecipeIngredient): string {
+  return ing.amount != null ? `${fmtAmt(ing.amount)}${ing.unit ? ` ${ing.unit}` : ''}` : ''
+}
+
+// The editor writes a picked ingredient with no per-step amount as its bare NAME, so a chip
+// that IS a row's name borrows that row's measurement. Anything else ("Half the minced
+// garlic", "4 cloves garlic") is the author's own words and stays as written.
+export function chipLabel(chip: string, ingredients: RecipeIngredient[]): string {
+  const text = chip.trim()
+  const lc = text.toLowerCase()
+  const row = ingredients.find((ing) => ing.name.trim().toLowerCase() === lc)
+  const amt = row ? amountText(row) : ''
+  return amt ? `${amt} ${text}` : chip
 }
 
 const toggleKey = (keys: Set<string>, key: string): Set<string> => {
@@ -373,34 +393,36 @@ function CookSession({
       {header}
       <div className="cm-progress"><span style={{ width: `${pct}%` }} /></div>
 
+      {/* The step's ingredients get their own column on the LEFT, as on the iPad
+          (CookModeView.ingredientsSidebar): a full-width row per ingredient whose text wraps,
+          where a pill would cut a long name mid-word. Stacks under the step on a narrow screen. */}
+      <div className={`cm-body${step.ingredients.length > 0 ? ' has-side' : ''}`}>
+      {step.ingredients.length > 0 && (
+        <aside className="cm-side" aria-label="Ingredients for this step">
+          <div className="cm-side-label">Ingredients</div>
+          {step.ingredients.map((ig, k) => {
+            const key = ingredientKey(ig, ingredients)
+            const on = ticked.has(key)
+            return (
+              <button
+                key={k}
+                type="button"
+                role="checkbox"
+                aria-checked={on}
+                className={`cm-side-row ${on ? 'on' : ''}`}
+                onClick={() => onTick(key)}
+              >
+                <span className="cm-ing-box" aria-hidden="true">{on ? CHECK : null}</span>
+                <span className="cm-side-nm">{chipLabel(ig, ingredients)}</span>
+              </button>
+            )
+          })}
+        </aside>
+      )}
+
       <div className="cm-stage">
         <div className="cm-step-n">Step {at + 1}</div>
         <div className="cm-instruction wf-serif">{step.instruction}</div>
-
-        {step.ingredients.length > 0 && (
-          <div className="cm-ings">
-            <div className="cm-ings-label">For this step</div>
-            <div className="cm-ings-row">
-              {step.ingredients.map((ig, k) => {
-                const key = ingredientKey(ig, ingredients)
-                const on = ticked.has(key)
-                return (
-                  <button
-                    key={k}
-                    type="button"
-                    role="checkbox"
-                    aria-checked={on}
-                    className={`cm-ing-chip ${on ? 'on' : ''}`}
-                    onClick={() => onTick(key)}
-                  >
-                    <span className="cm-ing-box" aria-hidden="true">{on ? CHECK : null}</span>
-                    <span>{ig}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
 
         {step.note && <div className="cm-note">📝 {step.note}</div>}
 
@@ -414,6 +436,7 @@ function CookSession({
         ) : (
           <AddTimer key={at} onStart={(secs) => onStartTimer(at, secs)} />
         )}
+      </div>
       </div>
 
       <div className="cm-controls">
@@ -451,8 +474,9 @@ function CookSession({
                     onClick={() => onTick(ing.id)}
                   >
                     <span className="cm-all-box" aria-hidden="true">{on ? CHECK : null}</span>
-                    <span className="cm-all-amt">{ing.amount != null ? `${ing.amount}${ing.unit ? ` ${ing.unit}` : ''}` : '—'}</span>
-                    <span className="cm-all-nm">{ing.sub ?? ing.name}</span>
+                    <span className="cm-all-amt">{amountText(ing) || '—'}</span>
+                    {/* With no parsed amount, an imported line keeps its quantity only in `display`. */}
+                    <span className="cm-all-nm">{ing.sub ?? (ing.amount == null && ing.display ? ing.display : ing.name)}</span>
                   </button>
                 )
               })}

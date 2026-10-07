@@ -57,40 +57,29 @@
   color: var(--ink);
 }
 
-.cm-ings {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
+/* The stage and, when the step names any, its ingredients in a fixed LEFT column — the iPad's
+   layout (CookModeView.ingredientsSidebar). */
+.cm-body { flex: 1; display: flex; gap: 32px; }
+.cm-body > .cm-stage { min-width: 0; }
+.cm-side {
+  flex: none; width: 300px; align-self: stretch; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px;
+  background: var(--panel); border-radius: var(--r-lg); padding: 24px 20px;
 }
-.cm-ings-label {
-  font-size: 12.5px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-3);
+.cm-side-label {
+  font-size: 13px; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--ink-3); margin-bottom: 4px;
 }
-.cm-ings-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
+/* Tick an ingredient off as it goes in. Same check-off vocabulary as the grocery board (a box
+   that fills on the person-3 green), sized for a row you tap from across the kitchen. */
+.cm-side-row {
+  font: inherit; font-size: 17px; font-weight: 600; line-height: 1.35; text-align: left;
+  width: 100%; padding: 9px 12px; border: 0; border-radius: var(--r-sm); cursor: pointer;
+  background: var(--person-3-t); color: var(--ink);
+  display: flex; align-items: flex-start; gap: 10px;
 }
-/* Tick an ingredient off as it goes in. Same check-off vocabulary as the grocery
-   board (a box that fills on the person-3 green), sized for a chip you tap from
-   across the kitchen. */
-.cm-ing-chip {
-  font: inherit;
-  font-size: 16px;
-  font-weight: 600;
-  padding: 9px 16px;
-  border-radius: 999px;
-  background: var(--person-3-t);
-  color: var(--success);
-  border: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  cursor: pointer;
-}
+.cm-side-row .cm-ing-box { margin-top: 1px; }
+.cm-side-nm { min-width: 0; overflow-wrap: anywhere; }
 .cm-ing-box {
   width: 20px;
   height: 20px;
@@ -100,13 +89,15 @@
   display: grid;
   place-items: center;
 }
-.cm-ing-chip.on .cm-ing-box {
+.cm-side-row.on .cm-ing-box {
   background: var(--success);
   border-color: var(--success);
 }
-.cm-ing-chip.on {
-  opacity: 0.62;
-  text-decoration: line-through;
+.cm-side-row.on { opacity: 0.62; color: var(--ink-3); text-decoration: line-through; }
+/* A phone has no room beside the step: the column stacks under it, as the iPhone keeps them inline. */
+@media (max-width: 760px) {
+  .cm-body { flex-direction: column; gap: 18px; }
+  .cm-side { order: 1; width: auto; padding: 16px; }
 }
 .cm-note {
   font-size: 17px;

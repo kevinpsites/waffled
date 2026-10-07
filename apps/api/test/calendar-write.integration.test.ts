@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { createServer, type Server } from 'node:http'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 
@@ -223,6 +223,94 @@ describe('outbound write-back', () => {
     const writes = writesSince(n)
     expect(writes).toHaveLength(1)
     expect(writes[0]).toMatchObject({ method: 'POST', calendar: 'primary' })
+  })
+
+  // An event made with nobody on it has no owner calendar, so it is saved Waffled-only. Putting
+  // somebody with a connected calendar on it later has to send it there.
+  describe('a Waffled-only event that gains a person', () => {
+    const localEvent = async (title: string, extra: Record<string, unknown> = {}) => {
+      const res = await call('POST', '/api/events', kevin, { title, startsAt: '2026-07-10T15:00:00Z', ...extra })
+      expect(res.statusCode).toBe(201)
+      return JSON.parse(res.body).event as { id: string }
+    }
+    const stored = async (id: string) => {
+      const { query } = await import('../src/platform/db')
+      const { rows } = await query<{ calendar_id: string | null; sync_state: string; google_event_id: string | null; owner_person_id: string | null }>(
+        `select calendar_id, sync_state, google_event_id, owner_person_id from events where id = $1`, [id])
+      return rows[0]
+    }
+
+    it('moves to the new person’s calendar and is created on Google (REST, participants)', async () => {
+      const ev = await localEvent('Piano recital')
+      const n = writeCalls.length
+      const res = await call('PATCH', `/api/events/${ev.id}`, kevin, { participantIds: [kevinId] })
+      expect(res.statusCode).toBe(200)
+      const writes = writesSince(n)
+      expect(writes).toHaveLength(1)
+      expect(writes[0]).toMatchObject({ method: 'POST', calendar: 'work@group.calendar.google.com' })
+      const row = await stored(ev.id)
+      expect(row.calendar_id).not.toBeNull()
+      expect(row.sync_state).toBe('synced')
+      expect(row.google_event_id).toMatch(/^g-evt/)
+      expect(row.owner_person_id).toBe(kevinId)
+
+      // From here it is an ordinary synced event: the next edit patches the Google copy.
+      const m = writeCalls.length
+      await call('PATCH', `/api/events/${ev.id}`, kevin, { title: 'Piano recital (moved)' })
+      expect(writesSince(m)).toEqual([{ method: 'PATCH', calendar: 'work@group.calendar.google.com', eventId: row.google_event_id }])
+    })
+
+    it('moves when only person_id changes — the shape an offline edit uploads', async () => {
+      const ev = await localEvent('Book fair')
+      const n = writeCalls.length
+      const res = await call('POST', '/api/powersync/crud', kevin, {
+        ops: [{ op: 'PATCH', table: 'events', id: ev.id, data: { title: 'Book fair', person_id: kevinId } }],
+      })
+      expect(res.statusCode).toBe(200)
+      expect(writesSince(n)).toEqual([expect.objectContaining({ method: 'POST', calendar: 'work@group.calendar.google.com' })])
+      expect((await stored(ev.id)).calendar_id).not.toBeNull()
+    })
+
+    it('moves an event made offline with nobody on it, once an offline edit adds somebody', async () => {
+      // Both halves through the PowerSync upload — how the iPhone and the offline web make and edit events.
+      const id = randomUUID()
+      const made = await call('POST', '/api/powersync/crud', kevin, {
+        ops: [{ op: 'PUT', table: 'events', id, data: {
+          title: 'Swim meet', starts_at: '2026-07-11T15:00:00Z', ends_at: '2026-07-11T16:00:00Z',
+          all_day: 0, timezone: 'America/Chicago', person_id: null,
+        } }],
+      })
+      expect(made.statusCode).toBe(200)
+      expect((await stored(id)).calendar_id).toBeNull()
+
+      const n = writeCalls.length
+      await call('POST', '/api/powersync/crud', kevin, {
+        ops: [{ op: 'PATCH', table: 'events', id, data: { person_id: kevinId } }],
+      })
+      expect(writesSince(n)).toEqual([expect.objectContaining({ method: 'POST', calendar: 'work@group.calendar.google.com' })])
+      expect((await stored(id)).sync_state).toBe('synced')
+    })
+
+    it('stays Waffled-only when the new person has no connected calendar', async () => {
+      const { query } = await import('../src/platform/db')
+      const hh = await query<{ household_id: string }>(`select household_id from persons where id = $1`, [kevinId])
+      const kid = await query<{ id: string }>(
+        `insert into persons (household_id, name, member_type) values ($1, 'Wren', 'kid') returning id`,
+        [hh.rows[0].household_id])
+      const ev = await localEvent('Library day')
+      const n = writeCalls.length
+      await call('PATCH', `/api/events/${ev.id}`, kevin, { participantIds: [kid.rows[0].id] })
+      expect(writesSince(n)).toHaveLength(0)
+      expect((await stored(ev.id)).calendar_id).toBeNull()
+    })
+
+    it('keeps an explicit “Waffled only” choice made with a calendar-owning person on it', async () => {
+      const ev = await localEvent('Surprise party', { personId: kevinId, calendarId: null })
+      const n = writeCalls.length
+      await call('PATCH', `/api/events/${ev.id}`, kevin, { participantIds: [kevinId], title: 'Surprise party!' })
+      expect(writesSince(n)).toHaveLength(0)
+      expect((await stored(ev.id)).calendar_id).toBeNull()
+    })
   })
 
   it('creates a Waffled-only event when calendarId is null (no push)', async () => {

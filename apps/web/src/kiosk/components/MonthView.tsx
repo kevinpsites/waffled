@@ -6,15 +6,22 @@ import { eventsByDay, weekSpans } from './month-spans'
 import { MonthDayPanel } from './MonthDayPanel'
 import { RhythmMark } from './RhythmMark'
 
-// The visible 6-week (42-cell) grid for a month, including leading/trailing days.
-// `monthGridStart` is shared with Calendar's fetch window — the two must never disagree.
-function monthGrid(year: number, month: number, firstDay: number): Date[] {
-  const gridStart = monthGridStart(year, month, firstDay)
-  return Array.from({ length: 42 }, (_, i) => {
+// The visible grid: a month's 6 weeks (42 cells, leading/trailing days included), or an
+// explicit `range` of whole weeks. `monthGridStart` is shared with Calendar's fetch window —
+// the two must never disagree.
+function monthGrid(year: number, month: number, firstDay: number, range?: GridRange): Date[] {
+  const gridStart = range ? range.start : monthGridStart(year, month, firstDay)
+  return Array.from({ length: (range?.weeks ?? 6) * 7 }, (_, i) => {
     const d = new Date(gridStart)
     d.setDate(gridStart.getDate() + i)
     return d
   })
+}
+
+/** Whole weeks from `start` instead of a calendar month. Nothing in a range is dimmed. */
+export interface GridRange {
+  start: Date
+  weeks: number
 }
 
 export function MonthView({
@@ -31,6 +38,7 @@ export function MonthView({
   onMore,
   firstDay,
   maxChips,
+  range,
 }: {
   year: number
   month: number
@@ -48,16 +56,20 @@ export function MonthView({
   /// How many event chips a day cell draws before collapsing the rest into "+N more". Three on
   /// Calendar; Horizon passes 2 to keep its parked-notes board on screen (a chip never shrinks).
   maxChips?: number
+  /// Draw these weeks instead of `year`/`month`'s grid (Horizon's next four weeks); `year` and
+  /// `month` are then ignored.
+  range?: GridRange
 }) {
   const chipCap = maxChips ?? 3
   const colorOf = useEventColor()
-  const cells = useMemo(() => monthGrid(year, month, firstDay), [year, month, firstDay])
+  const cells = useMemo(() => monthGrid(year, month, firstDay, range), [year, month, firstDay, range])
+  const outOfMonth = (d: Date) => !range && d.getMonth() !== month
   const dowLabels = useMemo(() => dowFrom(DOW, firstDay), [firstDay])
   const byDate = useMemo(() => eventsByDay(events, tz), [events, tz])
   // Bars are grid siblings of the cells (a cell clips its overflow), so every cell is placed
   // explicitly and each bar takes its row and columns on top.
   const rowSpans = useMemo(
-    () => Array.from({ length: 6 }, (_, r) => weekSpans(cells.slice(r * 7, r * 7 + 7).map(ymd), byDate, tz)),
+    () => Array.from({ length: cells.length / 7 }, (_, r) => weekSpans(cells.slice(r * 7, r * 7 + 7).map(ymd), byDate, tz)),
     [cells, byDate, tz],
   )
   const today = ymd(new Date())
@@ -77,7 +89,7 @@ export function MonthView({
           const dayEvents = spans.chipsByDay[key] ?? []
           const shown = Math.max(0, chipCap - spans.lanes)
           const cds = countdownsByDate?.[key] ?? []
-          const dim = d.getMonth() !== month
+          const dim = outOfMonth(d)
           return (
             <div
               key={key}
@@ -141,7 +153,7 @@ export function MonthView({
         {rowSpans.flatMap((spans, r) =>
           spans.bars.map((b) => {
             const days = cells.slice(r * 7, r * 7 + 7)
-            const outside = days[b.startCol].getMonth() !== month && days[b.endCol].getMonth() !== month
+            const outside = outOfMonth(days[b.startCol]) && outOfMonth(days[b.endCol])
             return (
               <div
                 key={`${r}-${b.event.id}`}

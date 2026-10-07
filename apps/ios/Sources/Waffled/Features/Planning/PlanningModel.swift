@@ -114,6 +114,8 @@ final class PlanningModel {
     private(set) var errorMessage: String?
     /// Why the footer's park composer couldn't park; the composer stays open on what was typed.
     private(set) var parkError: String?
+    /// Bumped by a park between sessions, so the record's read-back re-reads its last call.
+    private(set) var parkedBetweenRevision = 0
 
     /// The week the NEXT fetch asks for; `nil` means the server's default week.
     private(set) var requestedWeek: String?
@@ -400,6 +402,21 @@ final class PlanningModel {
         parkError = nil
         do {
             try await parkNoteCall(note, stepKey, sessionId)
+            await load()
+            return true
+        } catch {
+            parkError = "That note didn’t park — try again."
+            return false
+        }
+    }
+
+    /// From a summary screen (the record, "Left for now", the lobby): no session and no tag,
+    /// so the note waits in the recap and at the next session's Loose ends.
+    func parkBetweenSessions(_ note: String) async -> Bool {
+        parkError = nil
+        do {
+            try await parkNoteCall(note, nil, nil)
+            parkedBetweenRevision += 1
             await load()
             return true
         } catch {
