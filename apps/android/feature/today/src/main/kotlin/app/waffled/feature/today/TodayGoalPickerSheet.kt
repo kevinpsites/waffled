@@ -160,10 +160,14 @@ fun TodayGoalPickerSheet(
 
 /** "4 of 10 books" / "12-day streak" / the goal's category — whatever we actually know. */
 internal fun goalDescriptor(goal: TodayApi.Goal): String {
-    val target = goal.target
+    val target = goal.displayTarget
     if (target != null && target > 0) {
-        val unit = goal.unit?.takeIf { it.isNotBlank() }?.let { " $it" }.orEmpty()
-        return "${trimNumber(goal.totalProgress)} of ${trimNumber(target)}$unit"
+        val unit = when {
+            goal.goalType == "checklist" -> " steps"
+            goal.periodLabel != null -> " ${goal.periodLabel}"
+            else -> goal.unit?.takeIf { it.isNotBlank() }?.let { " $it" }.orEmpty()
+        }
+        return "${trimNumber(goal.displayProgress)} of ${trimNumber(target)}$unit"
     }
     if (goal.streakDays > 0) return "${goal.streakDays}-day streak"
     return goal.category?.replaceFirstChar(Char::uppercase) ?: "No target set"

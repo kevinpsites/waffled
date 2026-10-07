@@ -46,8 +46,12 @@ class SessionViewModel(
     val login: StateFlow<LoginUiState> = _login.asStateFlow()
 
     init {
-        // A rejected refresh token means the session ended out from under us.
-        auth.onAuthExpired = { _phase.value = SessionPhase.SignedOut(null) }
+        // A rejected refresh token, or a household that is gone, ends the session out from
+        // under us. Re-read the login methods: a null status hides an OIDC-only stack's button.
+        auth.onAuthExpired = {
+            _phase.value = SessionPhase.SignedOut(null)
+            viewModelScope.launch { _phase.value = SessionPhase.SignedOut(api.status()) }
+        }
         restore()
     }
 

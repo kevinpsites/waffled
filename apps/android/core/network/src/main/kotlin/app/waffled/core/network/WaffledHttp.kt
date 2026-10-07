@@ -37,6 +37,13 @@ interface TokenProvider {
      * when the caller has no token to name.
      */
     suspend fun refreshAccessToken(failedToken: String?): String?
+
+    /**
+     * The server says this session can never succeed (403 `NoHousehold`: the household the
+     * token names is gone). Clear the tokens and return to login. Defaulted so fakes and
+     * anonymous providers need not care.
+     */
+    fun sessionEnded() {}
 }
 
 /** Where the server lives. User-editable at runtime — Waffled is self-hosted. */
@@ -141,6 +148,11 @@ object WaffledHttp {
 
         if (!current.status.isSuccess()) {
             val body = runCatching { current.bodyAsText() }.getOrNull()
+            // Never on a bare 403: a permission denial is the app working, and signing
+            // someone out for lacking a capability is worse than a stuck session.
+            if (current.status.value == 403 && ApiErrorText.code(body) == NO_HOUSEHOLD) {
+                tokens.sessionEnded()
+            }
             throw WaffledApiException(
                 status = current.status.value,
                 userMessage = ApiErrorText.from(body, current.status.value),
@@ -148,4 +160,7 @@ object WaffledHttp {
         }
         return parse(current)
     }
+
+    /** The API's `NoHouseholdError` code (`apps/api/src/platform/auth.ts`). */
+    const val NO_HOUSEHOLD = "NoHousehold"
 }

@@ -1,6 +1,7 @@
 package app.waffled.feature.today
 
 import app.waffled.core.model.WaffledDates
+import app.waffled.core.network.RestState
 import app.waffled.core.sync.SyncedEvent
 import java.time.Instant
 import java.time.LocalDate
@@ -78,4 +79,21 @@ object TodayFormat {
         byDay: Map<LocalDate, List<SyncedEvent>>,
         day: LocalDate,
     ): List<SyncedEvent> = byDay[day].orEmpty()
+
+    /** The chores card's title: the family summary, "My chores", or "June’s chores". */
+    fun choresTitle(person: ChorePerson?, currentPersonId: String?): String = when {
+        person == null -> "Family chores"
+        person.id == currentPersonId -> "My chores"
+        else -> "${person.name.trim().split(" ").first().ifEmpty { person.name }}’s chores"
+    }
+
+    /**
+     * A card's copy when it has nothing to show. Domain empty copy ("No chores today") is
+     * only true on an authoritative answer; a failure must never read as empty.
+     */
+    fun unavailableCopy(state: RestState, empty: String): String = when {
+        state.isAuthoritative -> empty
+        state == RestState.Loading -> "Loading…"
+        else -> "Unavailable"
+    }
 }

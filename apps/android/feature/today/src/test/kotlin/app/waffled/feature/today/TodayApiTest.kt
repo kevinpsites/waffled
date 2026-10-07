@@ -180,6 +180,38 @@ class TodayApiTest {
         assertEquals("Bearer refreshed-access-token", harness.takeRequest().getHeader("Authorization"))
     }
 
+    // ---- the one-person chores card ------------------------------------------------
+
+    @Test
+    fun choreInstancesAsksForTheDayAndDecodesAnOlderServer() = runTest {
+        // No requiresPhoto / dueTime / currency: a pre-proof server must still decode.
+        harness.enqueueJson(
+            """{"instances":[{"id":"i1","choreId":"c1","choreTitle":"Bins","personId":"p1",
+               "status":"pending","rewardAmount":2,"requiresApproval":true}]}""",
+        )
+        val rows = api.choreInstances("2026-09-14")
+        assertEquals("Bins", rows.single().choreTitle)
+        assertEquals(true, rows.single().requiresApproval)
+        assertEquals(false, rows.single().requiresPhoto)
+        assertEquals("/api/chore-instances/today?date=2026-09-14", harness.takeRequest().path)
+    }
+
+    @Test
+    fun completingAndUncompletingPostAnEmptyObject() = runTest {
+        harness.enqueueJson("""{"ok":true}""")
+        harness.enqueueNoContent()
+        api.completeChore("i1")
+        api.uncompleteChore("i1")
+
+        val complete = harness.takeRequest()
+        assertEquals("POST", complete.method)
+        assertEquals("/api/chore-instances/i1/complete", complete.path)
+        assertEquals("{}", complete.body.readUtf8())
+        val uncomplete = harness.takeRequest()
+        assertEquals("/api/chore-instances/i1/uncomplete", uncomplete.path)
+        assertEquals("{}", uncomplete.body.readUtf8())
+    }
+
     /** A dead session surfaces the SERVER's message rather than a guess. */
     @Test
     fun aServerErrorRelaysItsMessage() = runTest {

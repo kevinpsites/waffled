@@ -22,6 +22,9 @@ object TodayCards {
     const val PANTRY = "pantry"
     const val FAMILY_NIGHT = "familyNight"
 
+    /** Known so it gates and labels correctly; Android has no Rhythms card to wire yet. */
+    const val RHYTHMS = "rhythms"
+
     /** The order a server that has never been customised resolves to. */
     val defaultOrder = listOf(AGENDA, TONIGHT, CHORES, GROCERY, GOALS)
 
@@ -36,6 +39,7 @@ object TodayCards {
         GOALS to "Goals",
         PANTRY to "Pantry",
         FAMILY_NIGHT to "Family Night",
+        RHYTHMS to "Rhythms",
     )
 
     /** A newer server may send a card key this build doesn't know; show the key, don't crash. */
@@ -58,6 +62,7 @@ object TodayCards {
         GOALS -> modules.isOn(WaffledModule.Goals)
         PANTRY -> modules.isOn(WaffledModule.Pantry)
         FAMILY_NIGHT -> modules.isOn(WaffledModule.FamilyNight)
+        RHYTHMS -> modules.isOn(WaffledModule.Rhythms)
         else -> true
     }
 
@@ -87,16 +92,19 @@ object TodayCards {
         hidden: Set<String>,
         modules: ModuleGate,
         available: Set<String> = labels.keys,
+        /** The chores card is showing one person's list, which needs the full width. */
+        wideChores: Boolean = false,
     ): List<CardRow> {
         val visible = order.filter {
             it !in hidden && moduleAllows(it, modules) && it in available
         }
+        val small = if (wideChores) smallCards - CHORES else smallCards
         val out = mutableListOf<CardRow>()
         var i = 0
         while (i < visible.size) {
             val key = visible[i]
             val next = visible.getOrNull(i + 1)
-            if (key in smallCards && next != null && next in smallCards) {
+            if (key in small && next != null && next in small) {
                 out += CardRow.Pair(key, next)
                 i += 2
             } else {
