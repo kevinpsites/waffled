@@ -69,21 +69,28 @@ fun SettingsScreen(
     host: SettingsHost,
     modifier: Modifier = Modifier,
     extraPanels: List<SettingsPanelEntry> = emptyList(),
+    /** A [SettingsPanelId] to open on arrival — a deep link or a sub-route. */
+    initialPanel: String? = null,
+    /** The landing's back affordance when Settings is pushed (iOS shows one there). */
+    onBack: (() -> Unit)? = null,
 ) {
-    var route by rememberSaveable { mutableStateOf<String?>(null) }
+    var route by rememberSaveable(initialPanel) { mutableStateOf(initialPanel) }
+    var householdLoaded by remember { mutableStateOf(false) }
     var overview by remember { mutableStateOf<SettingsApi.HouseholdOverview?>(null) }
     var flags by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     val members by sync.members.collectAsStateWithLifecycle()
     val syncPerson by sync.currentPerson.collectAsStateWithLifecycle()
 
     // Re-read on every return to the landing: a household switch or a module toggle
-    // inside a panel changes who is admin and which rows exist.
+    // inside a panel changes who is admin and which rows exist. Also read once when
+    // arriving straight on a panel, which needs the admin flag to resolve.
     LaunchedEffect(route == null) {
-        if (route != null) return@LaunchedEffect
+        if (route != null && householdLoaded) return@LaunchedEffect
         runCatching { api.household() }.getOrNull()?.let {
             overview = it
             flags = it.modules().modules
         }
+        householdLoaded = true
     }
 
     val personId = overview?.person?.id ?: syncPerson?.id
@@ -94,21 +101,23 @@ fun SettingsScreen(
     }
 
     BackHandler(enabled = route != null) { route = null }
+    BackHandler(enabled = route == null && onBack != null) { onBack?.invoke() }
     val back = { route = null }
 
     val rows = SettingsCatalog.rows(isAdmin, ModuleGate.fromServer(flags), extraPanels)
-    val open = rows.firstOrNull { it.id == route }
-    // A row can disappear under an open route (module switched off, admin revoked).
-    if (route != null && (open == null || open.target is SettingsRowTarget.Soon)) {
+    val resolved = SettingsRouting.resolve(route, rows, householdLoaded)
+    val open = resolved.open
+    if (resolved.dropRoute) {
         LaunchedEffect(route) { route = null }
     }
 
     when {
-        open == null || open.target is SettingsRowTarget.Soon -> SettingsLanding(
+        open == null -> SettingsLanding(
             rows = rows,
             signedInName = members.firstOrNull { it.id == personId }?.name,
             onOpen = { route = it },
             onSignOut = host.signOut,
+            onBack = onBack,
             modifier = modifier,
         )
         open.target is SettingsRowTarget.Extra -> open.target.entry.content(back)
@@ -130,9 +139,10 @@ private fun SettingsLanding(
     signedInName: String?,
     onOpen: (String) -> Unit,
     onSignOut: () -> Unit,
+    onBack: (() -> Unit)?,
     modifier: Modifier,
 ) {
-    SettingsPage(title = "Settings", onBack = null, modifier = modifier, spacing = 10.dp) {
+    SettingsPage(title = "Settings", onBack = onBack, modifier = modifier, spacing = 10.dp) {
         var previous: SettingsSection? = null
         rows.forEach { row ->
             if (row.section != previous) {

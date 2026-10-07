@@ -154,3 +154,21 @@ object SettingsCatalog {
         }
     }
 }
+
+/** What the Settings shell shows for a route. */
+object SettingsRouting {
+
+    /** [open] null means the landing; [dropRoute] says the route should be forgotten. */
+    data class Resolution(val open: SettingsRow?, val dropRoute: Boolean)
+
+    /**
+     * A row can disappear under an open route (module switched off, admin revoked), and
+     * then the route is dropped. Not before [householdLoaded], though: until then the
+     * viewer reads as a non-admin, which would discard an admin-only deep link.
+     */
+    fun resolve(route: String?, rows: List<SettingsRow>, householdLoaded: Boolean): Resolution {
+        if (route == null) return Resolution(null, dropRoute = false)
+        val row = rows.firstOrNull { it.id == route }?.takeIf { it.target !is SettingsRowTarget.Soon }
+        return Resolution(row, dropRoute = row == null && householdLoaded)
+    }
+}
