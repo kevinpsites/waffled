@@ -58,7 +58,7 @@ fun FamilyTab(container: AppContainer, actions: ShellActions, modifier: Modifier
         me = viewer,
         syncState = syncState,
         scope = scope,
-        onOpen = { hub -> AppRoute.fromHub(hub)?.let(actions.push) },
+        onOpen = { hub -> actions.push(AppRoute.fromHub(hub)) },
         onOpenSync = { showSync = true },
         modifier = modifier,
         refreshBus = container.refreshBus,
@@ -74,7 +74,6 @@ fun FamilyTab(container: AppContainer, actions: ShellActions, modifier: Modifier
     }
 }
 
-/** Weekly Planning stays off until its Android screen exists — its tile would dead-end. */
 internal fun familyGates(modules: app.waffled.core.sync.ModuleGate, rewardsSub: Boolean) = FamilyHubGates(
     chores = modules.isOn(WaffledModule.Chores),
     goals = modules.isOn(WaffledModule.Goals),
@@ -82,7 +81,7 @@ internal fun familyGates(modules: app.waffled.core.sync.ModuleGate, rewardsSub: 
     lists = modules.isOn(WaffledModule.Lists),
     pantry = modules.isOn(WaffledModule.Pantry),
     rhythms = modules.isOn(WaffledModule.Rhythms),
-    weeklyPlanning = false,
+    weeklyPlanning = modules.isOn(WaffledModule.WeeklyPlanning),
 )
 
 @Composable
@@ -136,8 +135,8 @@ fun PersonHost(personId: String, container: AppContainer, actions: ShellActions,
         me = viewer,
         eventsByDay = eventsByDay,
         zone = zone,
-        onOpen = { hub -> AppRoute.fromHub(hub)?.let(actions.push) },
-        onOpenEvent = { actions.selectTab(TAB_CALENDAR) },
+        onOpen = { hub -> actions.push(AppRoute.fromHub(hub)) },
+        onOpenEvent = { actions.openEvent(it.id) },
         onAdd = { actions.capture(false) },
         modifier = modifier,
         onAward = if (RewardsAccess.canGrant(viewer)) ({ awarding = true }) else null,
@@ -148,6 +147,7 @@ fun PersonHost(personId: String, container: AppContainer, actions: ShellActions,
                 }
             },
             goalTint = { goalCategoryColor(it) },
+            planningFocus = { PlanningFocusCard(it) },
             waffledBite = if (bitesOn) {
                 { id, firstName ->
                     WaffledBiteEntryCard(

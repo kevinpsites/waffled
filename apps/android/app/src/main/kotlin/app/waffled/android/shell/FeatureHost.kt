@@ -62,6 +62,13 @@ import app.waffled.feature.bites.WaffledBitesModel
 import app.waffled.feature.bites.WaffledBitesScreen
 import app.waffled.feature.rhythms.RhythmsScreen
 import kotlinx.coroutines.launch
+import androidx.lifecycle.viewmodel.compose.viewModel
+import app.waffled.core.model.HouseholdWeekStart
+import app.waffled.feature.meals.MealsFormat
+import app.waffled.feature.meals.PlanLeftoverSheet
+import app.waffled.feature.meals.PlanWeekSheet
+import app.waffled.feature.planning.PlanningShell
+import java.time.LocalDate
 
 /**
  * Maps a tab root or a pushed [AppRoute] to the feature screen that renders it.
@@ -80,13 +87,18 @@ fun TabRoot(
     val modules by container.syncManager.modules.collectAsStateWithLifecycle()
     when (tabId) {
         TAB_TODAY -> TodayHost(container, actions, modifier)
-        TAB_CALENDAR -> CalendarScreen(
-            model = container.calendarModel,
-            countdowns = container.countdownsModel,
-            api = container.calendarApi,
-            modifier = modifier.padding(bottom = WF.spacing.tabBarClearance),
-            mealsEnabled = modules.isOn(WaffledModule.Meals),
-        )
+        TAB_CALENDAR -> {
+            val shell: ShellViewModel = viewModel()
+            CalendarScreen(
+                model = container.calendarModel,
+                countdowns = container.countdownsModel,
+                api = container.calendarApi,
+                modifier = modifier.padding(bottom = WF.spacing.tabBarClearance),
+                mealsEnabled = modules.isOn(WaffledModule.Meals),
+                openEventId = shell.pendingEventId,
+                onOpenEventConsumed = { shell.pendingEventId = null },
+            )
+        }
         // iOS self-corrects to Today when every flex candidate is off; the bar keeps a
         // placeholder here so the FAB stays centred, and the placeholder says why.
         TAB_FLEX -> when (FlexSlot.resolve(modules)) {
@@ -108,7 +120,7 @@ fun TabRoot(
 
 /** The Meals tab: week / month planners and the recipe library, sharing one recipes model. */
 @Composable
-private fun MealsHost(container: AppContainer, actions: ShellActions, modifier: Modifier) {
+internal fun MealsHost(container: AppContainer, actions: ShellActions, modifier: Modifier = Modifier) {
     val weekStart by container.identity.householdWeekStart.collectAsStateWithLifecycle()
     val members by container.syncManager.members.collectAsStateWithLifecycle()
     val library by container.recipesModel.state.collectAsStateWithLifecycle()
@@ -132,7 +144,7 @@ private fun MealsHost(container: AppContainer, actions: ShellActions, modifier: 
             )
         },
         recipesTab = { LibraryHost(container, actions, protein = null, newOnly = false) },
-        modifier = modifier.padding(bottom = WF.spacing.tabBarClearance),
+        modifier = modifier.padding(bottom = if (actions.isKiosk) 0.dp else WF.spacing.tabBarClearance),
         refreshBus = container.refreshBus,
     )
 }
@@ -177,7 +189,8 @@ fun RouteHost(
     val modules by container.syncManager.modules.collectAsStateWithLifecycle()
     val zone by container.syncManager.householdZone.collectAsStateWithLifecycle()
     val surfaceRev by container.surfaceRev.collectAsStateWithLifecycle()
-    val bottom = Modifier.padding(bottom = WF.spacing.tabBarClearance)
+    val clearance = if (actions.isKiosk) 0.dp else WF.spacing.tabBarClearance
+    val bottom = Modifier.padding(bottom = clearance)
 
     @Composable
     fun withBack(content: @Composable () -> Unit) {
@@ -199,6 +212,7 @@ fun RouteHost(
                 members = members,
                 onOpenGoal = { actions.push(AppRoute.Goal(it)) },
                 modifier = (if (showBack) Modifier else modifier).then(bottom),
+                zone = zone,
             )
         }
 
@@ -277,6 +291,8 @@ fun RouteHost(
         }
 
         AppRoute.Pantry -> withBack {
+            var planWeek by remember { mutableStateOf<List<String>?>(null) }
+            var leftover by remember { mutableStateOf<String?>(null) }
             PantryModuleGate(gate = modules) {
                 PantryScreen(
                     model = container.pantryModel(zone),
@@ -287,6 +303,8 @@ fun RouteHost(
                             actions.push(AppRoute.Recipe(Placeholders.recipe(id, title, emoji), autoCook = startCooking))
                         },
                         onOpenProteinLibrary = { actions.push(AppRoute.RecipesLibrary(protein = it)) },
+                        onPlanWeek = if (modules.isOn(WaffledModule.Meals)) ({ names -> planWeek = names }) else null,
+                        onPlanLeftover = if (modules.isOn(WaffledModule.Meals)) ({ row -> leftover = row.item.name }) else null,
                         onAddToGroceryList = { name ->
                             container.listsApi.addGroceryItem(name)
                             container.refreshBus.bump(app.waffled.core.network.RefreshDomain.Lists)
@@ -294,7 +312,27 @@ fun RouteHost(
                     ),
                 )
             }
+            planWeek?.let { names -> PantryPlanWeek(container, names, onDone = { planWeek = null }) }
+            leftover?.let { title ->
+                PlanLeftoverSheet(
+                    title = title,
+                    today = LocalDate.now(zone),
+                    api = container.mealsApi,
+                    onPlanned = { leftover = null },
+                    onDismiss = { leftover = null },
+                    refreshBus = container.refreshBus,
+                )
+            }
         }
+
+        AppRoute.Planning -> PlanningShell(
+            env = container.planningEnv(actions.isKiosk),
+            onBack = actions.pop,
+            modifier = modifier,
+            refreshKey = surfaceRev,
+            bottomClearance = clearance,
+            footerClearance = if (actions.isKiosk) 0.dp else 64.dp,
+        )
 
         AppRoute.Photos -> withBack {
             PhotosScreen(
@@ -303,7 +341,13 @@ fun RouteHost(
             )
         }
 
-        AppRoute.Settings -> SettingsRoute(container, actions, modifier)
+        is AppRoute.Settings -> SettingsRoute(
+            container = container,
+            actions = actions,
+            modifier = modifier,
+            initialPanel = route.panel,
+            onBack = if (showBack) actions.pop else null,
+        )
 
         AppRoute.Approvals -> PageWithBack(onBack = actions.pop, modifier = modifier, title = "Approvals") {
             ApprovalsHost(container)
@@ -461,24 +505,13 @@ internal fun BackRow(onBack: () -> Unit, title: String? = null) {
 @Composable
 private fun RewardShopHost(personId: String, container: AppContainer, viewer: app.waffled.core.model.Person?) {
     var editing by remember { mutableStateOf<app.waffled.feature.rewards.RewardsApi.Reward?>(null) }
-    // The shop reads the shared economy but never loads it (RewardsScreen does, and a
-    // spotlight Redeem can reach the shop first).
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        if (!container.rewardsModel.loaded) container.rewardsModel.load()
-    }
-    // RewardShopScreen reads `model.economy`, a plain getter, and strong skipping keeps it
-    // from recomposing when the load lands. Re-keying on the first load is the least
-    // disruptive nudge (a later reload would reset the redeem celebration).
-    val economy by container.rewardsModel.state.collectAsStateWithLifecycle()
-    androidx.compose.runtime.key(economy.loaded) {
-        RewardShopScreen(
-            personId = personId,
-            model = container.rewardsModel,
-            canManage = RewardsAccess.canManage(viewer),
-            maySpend = RewardsAccess.maySpend(viewer, personId),
-            onEdit = { editing = it },
-        )
-    }
+    RewardShopScreen(
+        personId = personId,
+        model = container.rewardsModel,
+        canManage = RewardsAccess.canManage(viewer),
+        maySpend = RewardsAccess.maySpend(viewer, personId),
+        onEdit = { editing = it },
+    )
     editing?.let { reward ->
         RewardEditorSheet(
             editing = reward,
@@ -487,6 +520,38 @@ private fun RewardShopHost(personId: String, container: AppContainer, viewer: ap
             onDismiss = { editing = null },
         )
     }
+}
+
+/**
+ * Pantry's "Plan a week around these": the meals planner's sheet for the HOUSEHOLD's
+ * current week, with the spoiling names arriving in "Use up first".
+ */
+@Composable
+private fun PantryPlanWeek(container: AppContainer, names: List<String>, onDone: () -> Unit) {
+    val weekStart by container.identity.householdWeekStart.collectAsStateWithLifecycle()
+    val zone by container.syncManager.householdZone.collectAsStateWithLifecycle()
+    val members by container.syncManager.members.collectAsStateWithLifecycle()
+    val library by container.recipesModel.state.collectAsStateWithLifecycle()
+    val start = (weekStart ?: HouseholdWeekStart.parse(null)).weekStart(LocalDate.now(zone))
+    PlanWeekSheet(
+        start = MealsFormat.ymd(start),
+        weekDays = MealsFormat.weekDays(start),
+        familySize = members.size.coerceAtLeast(1),
+        libraryRecipes = remember(library.recipes) { library.recipes.map { it.toRef() } },
+        householdWeekStart = weekStart,
+        api = container.mealsApi,
+        recipePicker = { onPick, onDismiss ->
+            RecipePickerSheet(
+                model = container.recipesModel,
+                title = "Pick a recipe",
+                onDismiss = onDismiss,
+                onPickRecipe = onPick,
+            )
+        },
+        onApplied = { container.refreshBus.bump(app.waffled.core.network.RefreshDomain.Meals) },
+        onDismiss = onDone,
+        seedUseUp = names,
+    )
 }
 
 const val TAB_TODAY = "today"

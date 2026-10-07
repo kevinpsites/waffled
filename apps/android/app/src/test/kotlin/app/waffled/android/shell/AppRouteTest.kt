@@ -14,7 +14,9 @@ class AppRouteTest {
         assertEquals(AppRoute.Pantry, AppRoute.fromDebugKey("pantry"))
         assertEquals(AppRoute.RecipesLibrary(), AppRoute.fromDebugKey("recipes"))
         assertEquals(AppRoute.GROCERY, AppRoute.fromDebugKey("grocery"))
-        assertEquals(AppRoute.Settings, AppRoute.fromDebugKey("settings"))
+        assertEquals(AppRoute.Settings(), AppRoute.fromDebugKey("settings"))
+        assertEquals(AppRoute.Settings("display"), AppRoute.fromDebugKey("settings:display"))
+        assertEquals(AppRoute.Planning, AppRoute.fromDebugKey("planning"))
         assertEquals(AppRoute.Approvals, AppRoute.fromDebugKey("approvals"))
         assertEquals(AppRoute.Rhythms, AppRoute.fromDebugKey("rhythms"))
     }
@@ -48,7 +50,7 @@ class AppRouteTest {
         assertEquals(AppRoute.Photos, AppRoute.fromHub(HubRoute.Photos))
         assertEquals(AppRoute.Pantry, AppRoute.fromHub(HubRoute.Pantry))
         assertEquals(AppRoute.Rhythms, AppRoute.fromHub(HubRoute.Rhythms))
-        assertEquals(AppRoute.Settings, AppRoute.fromHub(HubRoute.Settings))
+        assertEquals(AppRoute.Settings(), AppRoute.fromHub(HubRoute.Settings))
         assertEquals(AppRoute.Approvals, AppRoute.fromHub(HubRoute.Approvals))
         assertEquals(AppRoute.ReviewEvents, AppRoute.fromHub(HubRoute.ReviewEvents))
     }
@@ -74,14 +76,18 @@ class AppRouteTest {
     }
 
     @Test
-    fun settingsSubRoutesLandOnTheSettingsHub() {
-        // SettingsScreen takes no initial panel, so a sub-route can only open the landing.
-        assertEquals(AppRoute.Settings, AppRoute.fromHub(HubRoute.SettingsDisplay))
-        assertEquals(AppRoute.Settings, AppRoute.fromHub(HubRoute.SettingsAbout))
+    fun settingsSubRoutesOpenTheirPanel() {
+        assertEquals(AppRoute.Settings("display"), AppRoute.fromHub(HubRoute.SettingsDisplay))
+        assertEquals(AppRoute.Settings("about"), AppRoute.fromHub(HubRoute.SettingsAbout))
+        assertEquals(AppRoute.Settings("weeklyPlanning"), AppRoute.fromHub(HubRoute.SettingsWeeklyPlanning))
+        assertEquals(AppRoute.Settings("choresRewards"), AppRoute.fromHub(HubRoute.SettingsChoresRewards))
+        assertEquals(AppRoute.Settings("family"), AppRoute.fromHub(HubRoute.SettingsFamily))
+        // Account has no panel id of its own: it lands on the Settings hub.
+        assertEquals(AppRoute.Settings(), AppRoute.fromHub(HubRoute.SettingsAccount))
     }
 
     @Test
-    fun weeklyPlanningHasNoAndroidScreenYet() {
-        assertNull(AppRoute.fromHub(HubRoute.WeeklyPlanning))
+    fun weeklyPlanningOpensTheSession() {
+        assertEquals(AppRoute.Planning, AppRoute.fromHub(HubRoute.WeeklyPlanning))
     }
 }
