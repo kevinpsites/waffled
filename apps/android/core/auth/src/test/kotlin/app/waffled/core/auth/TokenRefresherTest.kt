@@ -1,5 +1,6 @@
 package app.waffled.core.auth
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
@@ -7,6 +8,7 @@ import kotlinx.coroutines.test.runTest
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -70,6 +72,81 @@ class TokenRefresherTest {
         assertNull(refresher.refresh("access-1"))
         assertNull(tokens.load(), "a dead refresh token must not be left on disk")
         assertTrue(expired)
+    }
+
+    @Test
+    fun aTransientFailureKeepsTheSession() = runTest {
+        // Offline, or the server mid-restart: iOS keeps the tokens and retries later.
+        val tokens = store(TokenPair("access-1", "refresh-1"))
+        val refresher = TokenRefresher(tokens, object : RefreshBackend {
+            override suspend fun refresh(refreshToken: String): TokenPair? =
+                throw RefreshUnavailableException("offline")
+        })
+        var expired = false
+        refresher.onAuthExpired = { expired = true }
+
+        assertNull(refresher.refresh("access-1"))
+        assertEquals(TokenPair("access-1", "refresh-1"), tokens.load())
+        assertFalse(expired)
+    }
+
+    /** A backend that suspends until the test releases it, so the store can change mid-flight. */
+    private class GatedBackend(val result: TokenPair?) : RefreshBackend {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        override suspend fun refresh(refreshToken: String): TokenPair? {
+            started.complete(Unit)
+            release.await()
+            return result
+        }
+    }
+
+    @Test
+    fun aSessionAdoptedDuringARefreshIsNotOverwrittenByTheRotation() = runTest {
+        val tokens = store(TokenPair("access-1", "refresh-1"))
+        val backend = GatedBackend(TokenPair("access-2", "refresh-2"))
+        val refresher = TokenRefresher(tokens, backend)
+
+        val inFlight = async { refresher.refresh("access-1") }
+        backend.started.await()
+        tokens.save(TokenPair("other-access", "other-refresh")) // a new sign-in lands
+        backend.release.complete(Unit)
+        inFlight.await()
+
+        assertEquals(TokenPair("other-access", "other-refresh"), tokens.load())
+    }
+
+    @Test
+    fun aSignOutDuringARefreshIsNotUndoneByTheRotation() = runTest {
+        val tokens = store(TokenPair("access-1", "refresh-1"))
+        val backend = GatedBackend(TokenPair("access-2", "refresh-2"))
+        val refresher = TokenRefresher(tokens, backend)
+
+        val inFlight = async { refresher.refresh("access-1") }
+        backend.started.await()
+        tokens.clear()
+        backend.release.complete(Unit)
+
+        assertNull(inFlight.await())
+        assertNull(tokens.load())
+    }
+
+    @Test
+    fun aRejectionForAReplacedSessionDoesNotEndTheNewOne() = runTest {
+        val tokens = store(TokenPair("access-1", "refresh-1"))
+        val backend = GatedBackend(result = null)
+        val refresher = TokenRefresher(tokens, backend)
+        var expired = false
+        refresher.onAuthExpired = { expired = true }
+
+        val inFlight = async { refresher.refresh("access-1") }
+        backend.started.await()
+        tokens.save(TokenPair("other-access", "other-refresh"))
+        backend.release.complete(Unit)
+        inFlight.await()
+
+        assertEquals(TokenPair("other-access", "other-refresh"), tokens.load())
+        assertFalse(expired)
     }
 
     @Test

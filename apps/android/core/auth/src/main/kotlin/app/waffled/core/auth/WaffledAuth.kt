@@ -10,6 +10,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 
 /**
@@ -85,23 +86,32 @@ class KtorRefreshBackend(
 ) : RefreshBackend {
 
     override suspend fun refresh(refreshToken: String): TokenPair? {
-        val response = runCatching {
+        val response = try {
             client.post("api/auth/refresh") {
                 contentType(ContentType.Application.Json)
                 setBody(RefreshRequest(refreshToken))
             }
-        }.getOrNull() ?: return null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw RefreshUnavailableException("refresh unreachable", e)
+        }
 
-        // A rejected refresh token is a dead session. A transport failure is NOT — but we
-        // cannot tell the caller "try later" through this interface, so both return null
-        // and the user re-authenticates. Erring toward a sign-in beats a silent zombie.
-        if (!response.status.isSuccess()) return null
+        // Only a rejected refresh token ends the session (iOS: 401; 403 is a revoked one).
+        val status = response.status.value
+        if (status == 401 || status == 403) return null
+        if (!response.status.isSuccess()) throw RefreshUnavailableException("refresh failed: HTTP $status")
 
-        val parsed = runCatching {
+        val parsed = try {
             WaffledJson.decodeFromString(RefreshResponse.serializer(), response.bodyAsText())
-        }.getOrNull() ?: return null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw RefreshUnavailableException("unreadable refresh response", e)
+        }
 
-        val access = parsed.accessToken ?: parsed.token ?: return null
+        val access = parsed.accessToken ?: parsed.token
+            ?: throw RefreshUnavailableException("refresh response carried no access token")
         // A rotating refresh token: keep the new one, or the old if the server reused it.
         val rotated = parsed.refreshToken ?: refreshToken
         return TokenPair(access, rotated)
