@@ -243,11 +243,11 @@ class KioskTimeGridTest {
     @Test
     fun shortAndOpenEndedBlocksStayReadable() {
         val short = rowsOf(timedEvent("a", "2026-10-07 09:00", minutes = 10)).values.first().first()
-        assertEquals(0.5f * 56f - 3f, KioskCalendar.block(short, ny)!!.height)
+        // Stretched to 30 minutes (25dp), then floored at 26dp.
+        assertEquals(26f, KioskCalendar.block(short, ny)!!.height)
         val open = rowsOf(timedEvent("b", "2026-10-07 09:00", minutes = null)).values.first().first()
         assertEquals(56f - 3f, KioskCalendar.block(open, ny)!!.height)
-        // The 26dp floor only bites on a smaller hour height.
-        assertEquals(26f, KioskCalendar.block(short, ny, hourHeight = 20f)!!.height)
+        assertEquals(0.5f * 100f - 3f, KioskCalendar.block(short, ny, hourHeight = 100f)!!.height)
     }
 
     @Test
