@@ -13,6 +13,11 @@ Every Waffled feature and whether it's supported on each surface.
   rail + every page, re-laid-out big; runs on the counter). One binary, one
   [App Store listing](https://apps.apple.com/app/waffled/id6787621452) — the device picks
   the experience by idiom (`DeviceExperience`).
+- **Android phone / Android tablet** — the native Kotlin/Jetpack Compose app. The phone
+  gets the same *personal-planner* shape as iPhone (bottom tabs); a tablet gets the
+  *family-hub* shape as iPad (a side rail and the shared-kiosk flow). See
+  [Install the Android app](/guides/android-app/) and the [Android availability](#android-availability)
+  table below.
 - **Status** — where the feature sits on the [roadmap](https://github.com/kevinpsites/waffled/blob/main/docs/product/roadmap.md).
 
 Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
@@ -26,6 +31,36 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 > an opt-in (single persistent login stays the default); it's ❌ N/A on iPhone, which is
 > never a kiosk. See
 > [`apps/ios/IPAD_ROADMAP.md`](https://github.com/kevinpsites/waffled/blob/main/apps/ios/IPAD_ROADMAP.md) for the mobile build plan.
+
+
+---
+
+## Android availability
+
+The tables below keep their Web / iPhone / iPad columns. Android follows the iPhone
+(phone) and iPad (tablet) columns almost row for row, so rather than repeat two more
+columns on every line, this table lists where the Android app stands by area. Anything
+the tables below mark ✅ for both iPhone and iPad is available on Android unless it is
+named under "Not on Android yet".
+
+| Area | Android phone | Android tablet | Notes |
+| --- | :---: | :---: | --- |
+| Sign-in (email/password, OIDC SSO), offline sync, dark mode | ✅ | ✅ | Same server, same account. Plain `http://` only on home-network addresses |
+| **Today** dashboard | ✅ | ✅ | Tablet uses the kiosk Today layout |
+| **Calendar** — Month / Week / Day + agenda, event editor | ✅ | ✅ | Tablet uses the kiosk calendar grids |
+| On-device **event reminders** | ✅ | ✅ | Local notifications; Android asks for notification permission |
+| **Lists** + grocery board | ✅ | ✅ | |
+| **Chores** and **Rewards** | ✅ | ✅ | |
+| **Photos** and screensaver | ✅ | ✅ | Screensaver runs on the tablet kiosk |
+| **Meals** planners, **Recipes** + Cook Mode, **Pantry** | ✅ | ✅ | |
+| **Goals** + the eight progress charts | ✅ | ✅ | |
+| **Rhythms** | ✅ | ✅ | |
+| **Weekly Planning** | ✅ | ✅ | |
+| **Family hub** — approvals, person pages | ✅ | ✅ | |
+| **Capture** ("Add anything") + dictation | ✅ | ✅ | Dictation asks for the microphone permission |
+| **Waffled-Bites** and **Family Night** | ✅ | ✅ | |
+| Shared-kiosk **profile picker**, PIN, pairing | ❌ N/A | ✅ | A phone is never a kiosk |
+| Health goals auto-fill (Health Connect) | 🚧 | 🚧 | Not in the first Android release; the Android counterpart of [Apple Health → goals](/features/apple-health/) |
 
 ---
 
