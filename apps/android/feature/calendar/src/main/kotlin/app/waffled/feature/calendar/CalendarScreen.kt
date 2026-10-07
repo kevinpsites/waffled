@@ -1,17 +1,21 @@
 package app.waffled.feature.calendar
 
+import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import app.waffled.core.design.DismissibleErrorBanner
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -22,12 +26,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.ViewDay
+import androidx.compose.material.icons.filled.ViewWeek
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,18 +44,25 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.waffled.core.design.Avatar
+import app.waffled.core.design.DismissibleErrorBanner
 import app.waffled.core.design.WF
 import app.waffled.core.design.WaffledEmptyState
 import app.waffled.core.design.colorFromHex
@@ -55,30 +71,22 @@ import app.waffled.core.model.WaffledDates
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 
-/**
- * How the calendar is being read.
- *
- * ⚠️ Only two modes on the phone, deliberately. iOS also offers a 24-hour Day grid and the
- * tablet adds a People view; a phone column is too narrow for the latter (four members
- * already truncate titles to "Dinn…"), and the person FILTER below covers "just show me one
- * person's day" instead. The Day grid is Phase 4.
- */
-enum class CalMode(val label: String) { Agenda("Agenda"), Month("Month") }
+private typealias CalMode = PhoneCalendar.Mode
 
-/** The month grid's day headings, Sunday-led to match the web and iOS grids. */
-
-private val MonthCellHeight = 44.dp
-private const val MAX_DAY_DOTS = 3
+private const val PREFS = "waffled.calendar"
+private const val MODE_KEY = "waffled.calendarMode"
 
 /**
- * The Calendar tab — an upcoming agenda grouped by day, or a month grid with the selected
- * day's list beneath it, filtered to one person or to everyone.
+ * The Calendar tab on a phone: Month is home and fills the screen, a tapped day drills into
+ * Day, and the header's view menu (or a pinch) switches between Month, Week, Day and Agenda.
+ * Twin of iOS `CalendarView`; the screens live in [EventMonthGrid], [PhoneWeekRail] and
+ * [PhoneDayTimeline], their rules in [PhoneCalendar].
  *
- * Events arrive over PowerSync and are read through [CalendarModel], which has already
- * ordered and labelled every row; this screen only looks things up. Countdowns are REST and
- * appear inline as all-day rows, so a day with only a countdown still shows.
+ * Events arrive over PowerSync through [CalendarModel], already ordered and labelled; every
+ * view reads the same person-filtered index. Countdowns are REST and draw as all-day items.
  */
 @Composable
 fun CalendarScreen(
@@ -86,18 +94,28 @@ fun CalendarScreen(
     countdowns: CountdownsModel,
     api: CalendarApi,
     modifier: Modifier = Modifier,
+    /** The Meals module flag: the Week cards close on tonight's dinner only when it is on. */
+    mealsEnabled: Boolean = true,
 ) {
     val rows by model.rowsByDay.collectAsStateWithLifecycle()
     val members by model.members.collectAsStateWithLifecycle()
     val zone by model.zone.collectAsStateWithLifecycle()
+    val weekStart by model.weekStart.collectAsStateWithLifecycle()
+    val palette by model.palette.collectAsStateWithLifecycle()
     val loadError by model.loadError.collectAsStateWithLifecycle()
     val countdownItems by countdowns.byDateState.collectAsStateWithLifecycle()
     val sleeps by countdowns.sleepsState.collectAsStateWithLifecycle()
 
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
+    val prefs = LocalContext.current.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    var mode by remember { mutableStateOf(CalMode.Agenda) }
-    var filterPerson by remember { mutableStateOf<String?>(null) }
+    // Remembered across launches, so your preferred view sticks. Day is a drill-in on top.
+    var root by rememberSaveable {
+        mutableStateOf(CalMode.restored(stored = CalMode.fromWire(prefs.getString(MODE_KEY, null)) ?: CalMode.Month, override = null))
+    }
+    var showsDay by rememberSaveable { mutableStateOf(false) }
+    val mode = if (showsDay) CalMode.Day else root
+    var filterPerson by rememberSaveable { mutableStateOf<String?>(null) }
     var monthAnchor by remember { mutableStateOf(LocalDate.now()) }
     var selectedDay by remember { mutableStateOf(LocalDate.now()) }
 
@@ -111,18 +129,54 @@ fun CalendarScreen(
     }
 
     // The household's zone arrives after first composition, so "today" is only correct once
-    // it lands — anchor the grid on it rather than on the device day.
+    // it lands — anchor on it rather than on the device day.
     LaunchedEffect(zone) {
         val today = model.today()
         monthAnchor = today
         selectedDay = today
     }
 
+    // The root, not `mode`: remembering a tapped-open Day would reopen the tab on it.
+    LaunchedEffect(root) { prefs.edit().putString(MODE_KEY, root.wire).apply() }
+
+    // Month pages by `monthAnchor`, Week by `selectedDay`; switching carries the position
+    // across so you land on the same stretch of time.
+    fun show(target: CalMode) {
+        if (target == CalMode.Day) {
+            showsDay = true
+            return
+        }
+        if (target == CalMode.Month && root != CalMode.Month) monthAnchor = selectedDay
+        if (target == CalMode.Week && root == CalMode.Month && !showsDay) {
+            selectedDay = PhoneCalendar.focusDay(selectedDay, monthAnchor, model.today())
+        }
+        if (showsDay) monthAnchor = selectedDay
+        root = target
+        showsDay = false
+    }
+
+    // Back from a Day you paged through lands on that day's month.
+    BackHandler(enabled = showsDay) {
+        showsDay = false
+        monthAnchor = selectedDay
+    }
+
     val visible = remember(rows, filterPerson) { model.filtered(filterPerson, rows) }
     val today = remember(zone) { model.today() }
-    // One clock read per data change, not one per row — `isPast` is a per-row lookup after
-    // this, never a fresh `Instant.now()` inside the list.
-    val now = remember(visible) { Instant.now() }
+    val openCountdown: (CalendarApi.Countdown) -> Unit = {
+        open(it, rows, { c -> editingCountdown = c }, { r -> detailRow = r })
+    }
+    val onAdd = { editing = EditTarget.New(if (mode == CalMode.Agenda) model.today() else selectedDay) }
+
+    val menu: @Composable () -> Unit = {
+        ViewMenu(
+            mode = mode,
+            members = members,
+            filterPerson = filterPerson,
+            onShow = ::show,
+            onFilter = { filterPerson = it },
+        )
+    }
 
     Column(
         modifier
@@ -130,64 +184,130 @@ fun CalendarScreen(
             .background(WF.colors.canvas)
             .statusBarsPadding(),
     ) {
-        CalendarHeader(
-            mode = mode,
-            monthAnchor = monthAnchor,
-            zone = zone,
-            onModeChange = { mode = it },
-            onStepMonth = { monthAnchor = monthAnchor.plusMonths(it.toLong()) },
-            onAdd = { editing = EditTarget.New(selectedDay) },
-        )
-
-        PersonFilterRow(
-            members = members,
-            selected = filterPerson,
-            onSelect = { filterPerson = it },
-        )
-
         loadError?.let {
             Box(Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) {
                 DismissibleErrorBanner(message = it, onDismiss = model::clearLoadError)
             }
         }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                start = 18.dp,
-                end = 18.dp,
-                top = 8.dp,
-                // Content scrolls UNDER the tab bar.
-                bottom = WF.spacing.tabBarClearance,
-            ),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            when (mode) {
-                CalMode.Agenda -> agendaContent(
-                    groups = Agenda.upcoming(visible, today),
-                    countdownsByDate = countdownItems,
-                    today = today,
-                    zone = zone,
-                    now = now,
-                    sleeps = sleeps,
-                    onOpenEvent = { detailRow = it },
-                    onOpenCountdown = { open(it, rows, { editingCountdown = it }, { detailRow = it }) },
+        when {
+            showsDay -> Column(Modifier.fillMaxSize().calendarPinchZoom { show(mode.zoomed(it)) }) {
+                DayTopBar(
+                    backLabel = WaffledDates.format(selectedDay.atStartOfDay(zone).toInstant(), "MMMM", zone),
+                    onBack = {
+                        showsDay = false
+                        monthAnchor = selectedDay
+                    },
+                    menu = menu,
+                    onAdd = onAdd,
                 )
-
-                CalMode.Month -> monthContent(
-                    anchor = monthAnchor,
-                    selectedDay = selectedDay,
-                    today = today,
-                    rows = visible,
-                    countdownsByDate = countdownItems,
+                PhoneDayTimeline(
+                    day = selectedDay,
                     zone = zone,
-                    now = now,
-                    sleeps = sleeps,
-                    model = model,
-                    onSelectDay = { selectedDay = it },
-                    onOpenEvent = { detailRow = it },
-                    onOpenCountdown = { open(it, rows, { editingCountdown = it }, { detailRow = it }) },
-                    onAddOnDay = { editing = EditTarget.New(it) },
+                    rows = visible[selectedDay].orEmpty(),
+                    countdowns = countdownItems[selectedDay.toString()].orEmpty(),
+                    isToday = selectedDay == today,
+                    style = palette.style,
+                    onTapEvent = { detailRow = it },
+                    onTapCountdown = openCountdown,
+                    onAddAt = { hour -> editing = EditTarget.New(selectedDay, LocalTime.of(minOf(hour, 23), 0)) },
+                    onSwipeDay = { selectedDay = selectedDay.plusDays(it.toLong()) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            root == CalMode.Week -> Column(Modifier.fillMaxSize().calendarPinchZoom { show(mode.zoomed(it)) }) {
+                val days = remember(selectedDay, weekStart) { PhoneCalendar.weekDays(selectedDay, weekStart) }
+                CalendarHeader(menu = menu, onAdd = onAdd) {
+                    Text(
+                        text = PhoneCalendar.weekTitle(days),
+                        style = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.Bold),
+                        color = WF.colors.ink,
+                        maxLines = 1,
+                    )
+                }
+                PhoneWeekRail(
+                    selectedDay = selectedDay,
+                    onSelect = { selectedDay = it },
+                    weekStart = weekStart,
+                    zone = zone,
+                    today = today,
+                    byDay = visible,
+                    countdownsByDate = countdownItems,
+                    style = palette.style,
+                    mealsEnabled = mealsEnabled,
+                    onEditEvent = { editing = EditTarget.Edit(it) },
+                    onTapCountdown = openCountdown,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            root == CalMode.Agenda -> {
+                CalendarHeader(menu = menu, onAdd = onAdd) {
+                    Text(
+                        text = WaffledDates.format(Instant.now(), "MMMM", zone),
+                        style = WF.type.serif(30.sp),
+                        color = WF.colors.ink,
+                        maxLines = 1,
+                    )
+                }
+                PersonFilterRow(members = members, selected = filterPerson, onSelect = { filterPerson = it })
+                // One clock read per data change, not one per row.
+                val now = remember(visible) { Instant.now() }
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 8.dp, bottom = WF.spacing.tabBarClearance),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    agendaContent(
+                        groups = Agenda.upcoming(visible, today),
+                        countdownsByDate = countdownItems,
+                        today = today,
+                        zone = zone,
+                        now = now,
+                        sleeps = sleeps,
+                        onOpenEvent = { detailRow = it },
+                        onOpenCountdown = openCountdown,
+                    )
+                }
+            }
+
+            else -> Column(Modifier.fillMaxSize().calendarPinchZoom { show(mode.zoomed(it)) }) {
+                CalendarHeader(menu = menu, onAdd = onAdd) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = WaffledDates.format(monthAnchor.atStartOfDay(zone).toInstant(), "MMMM", zone),
+                            modifier = Modifier.alignByBaseline(),
+                            style = WF.type.serif(25.sp),
+                            color = WF.colors.ink,
+                            maxLines = 1,
+                        )
+                        Text(
+                            text = "${monthAnchor.year}",
+                            modifier = Modifier.alignByBaseline(),
+                            style = WF.type.serif(25.sp, FontWeight.Normal),
+                            color = WF.colors.ink3,
+                            maxLines = 1,
+                        )
+                    }
+                }
+                val monthRows = remember(monthAnchor, weekStart) { PhoneCalendar.monthRows(monthAnchor, weekStart) }
+                EventMonthGrid(
+                    rows = monthRows,
+                    weekStart = weekStart,
+                    zone = zone,
+                    byDay = visible,
+                    countdownsByDate = countdownItems,
+                    style = palette.style,
+                    today = today,
+                    selectedDay = selectedDay,
+                    onPick = {
+                        selectedDay = it
+                        show(CalMode.Day)
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .calendarFlick { monthAnchor = monthAnchor.plusMonths(it.toLong()) },
                 )
             }
         }
@@ -216,6 +336,7 @@ fun CalendarScreen(
                 is EditTarget.New -> target.day
                 is EditTarget.Edit -> target.row.day
             },
+            initialTime = (target as? EditTarget.New)?.time,
             onDismiss = { editing = null },
             onSaved = {
                 editing = null
@@ -238,7 +359,7 @@ fun CalendarScreen(
 
 /** What the editor sheet is creating or editing. */
 private sealed interface EditTarget {
-    data class New(val day: LocalDate) : EditTarget
+    data class New(val day: LocalDate, val time: LocalTime? = null) : EditTarget
     data class Edit(val row: EventRow) : EditTarget
 }
 
@@ -261,98 +382,167 @@ private fun open(
 }
 
 // ---------------------------------------------------------------------------
-// Header + filter
+// Header, view menu, add
 // ---------------------------------------------------------------------------
 
 @Composable
 private fun CalendarHeader(
-    mode: CalMode,
-    monthAnchor: LocalDate,
-    zone: ZoneId,
-    onModeChange: (CalMode) -> Unit,
-    onStepMonth: (Int) -> Unit,
+    menu: @Composable () -> Unit,
     onAdd: () -> Unit,
+    title: @Composable RowScope.() -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+            .height(52.dp)
+            .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (mode == CalMode.Month) {
-            HeaderIcon(Icons.Filled.ChevronLeft, "Previous month") { onStepMonth(-1) }
+        Row(Modifier.weight(1f), content = title)
+        menu()
+        AddButton(onAdd)
+    }
+}
+
+/** The pushed Day's bar: back to the month by name ("‹ September"), then the same actions. */
+@Composable
+private fun DayTopBar(backLabel: String, onBack: () -> Unit, menu: @Composable () -> Unit, onAdd: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .padding(start = 6.dp, end = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(WF.radius.sm))
+                .clickable(onClick = onBack)
+                .padding(end = 8.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Filled.ChevronLeft, contentDescription = null, tint = WF.colors.primary, modifier = Modifier.size(28.dp))
+            Text(text = backLabel, style = TextStyle(fontSize = 17.sp), color = WF.colors.primary)
         }
-        Text(
-            text = monthTitle(if (mode == CalMode.Agenda) LocalDate.now(zone) else monthAnchor, zone, mode),
-            modifier = Modifier.weight(1f),
-            style = if (mode == CalMode.Agenda) WF.type.hero else WF.type.title,
-            color = WF.colors.ink,
-            maxLines = 1,
-        )
-        if (mode == CalMode.Month) {
-            HeaderIcon(Icons.Filled.ChevronRight, "Next month") { onStepMonth(1) }
+        Spacer(Modifier.weight(1f))
+        menu()
+        AddButton(onAdd)
+    }
+}
+
+private fun CalMode.icon(): ImageVector = when (this) {
+    CalMode.Month -> Icons.Filled.CalendarMonth
+    CalMode.Week -> Icons.Filled.ViewWeek
+    CalMode.Day -> Icons.Filled.ViewDay
+    CalMode.Agenda -> Icons.AutoMirrored.Filled.FormatListBulleted
+}
+
+/**
+ * The view switcher: its icon names the current view, and the menu also holds the
+ * per-person filter, marked by a dot while one is on. A Material `DropdownMenu` stands in
+ * for the iOS inline-picker `Menu`.
+ */
+@Composable
+private fun ViewMenu(
+    mode: CalMode,
+    members: List<Person>,
+    filterPerson: String?,
+    onShow: (CalMode) -> Unit,
+    onFilter: (String?) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Box(
+            Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(WF.colors.card, CircleShape)
+                .border(1.dp, WF.colors.hair, CircleShape)
+                .clickable { open = true }
+                .semantics {
+                    contentDescription = "${mode.label} view"
+                    stateDescription = if (filterPerson == null) "Everyone" else "Filtered to one person"
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(mode.icon(), contentDescription = null, tint = WF.colors.ink2, modifier = Modifier.size(17.dp))
         }
-        ModeToggle(mode = mode, onChange = onModeChange)
-        HeaderIcon(Icons.Filled.Add, "Add an event", tint = WF.colors.primary, onClick = onAdd)
+        if (filterPerson != null) {
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 1.dp, y = (-1).dp)
+                    .size(9.dp)
+                    .background(WF.colors.canvas, CircleShape)
+                    .padding(1.5.dp)
+                    .background(WF.colors.primary, CircleShape),
+            )
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            MenuSection("View")
+            for (m in CalMode.entries) {
+                DropdownMenuItem(
+                    text = { Text(m.label) },
+                    leadingIcon = { Icon(m.icon(), contentDescription = null) },
+                    trailingIcon = { if (m == mode) Icon(Icons.Filled.Check, contentDescription = "Selected") },
+                    onClick = {
+                        open = false
+                        onShow(m)
+                    },
+                )
+            }
+            HorizontalDivider(color = WF.colors.hair)
+            MenuSection("Show")
+            DropdownMenuItem(
+                text = { Text("Everyone") },
+                leadingIcon = { Icon(Icons.Filled.Group, contentDescription = null) },
+                trailingIcon = { if (filterPerson == null) Icon(Icons.Filled.Check, contentDescription = "Selected") },
+                onClick = {
+                    open = false
+                    onFilter(null)
+                },
+            )
+            for (member in members) {
+                DropdownMenuItem(
+                    text = { Text(member.name) },
+                    trailingIcon = {
+                        if (filterPerson == member.id) Icon(Icons.Filled.Check, contentDescription = "Selected")
+                    },
+                    onClick = {
+                        open = false
+                        onFilter(member.id)
+                    },
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun HeaderIcon(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    tint: Color = WF.colors.ink2,
-    onClick: () -> Unit,
-) {
-    Icon(
-        imageVector = icon,
-        contentDescription = label,
-        tint = tint,
-        modifier = Modifier
-            .size(30.dp)
-            .clip(CircleShape)
-            .clickable(onClick = onClick)
-            .padding(4.dp),
+private fun MenuSection(title: String) {
+    Text(
+        text = title,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+        style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+        color = WF.colors.ink3,
     )
 }
 
-/**
- * The Agenda/Month switch.
- *
- * Hand-rolled rather than a Material3 `SegmentedButton`: the segmented control is an
- * outlined, evenly-weighted control sized for a form row, and this has to sit in a title bar
- * beside a serif month name at icon scale. The tokens keep it consistent with the app's
- * other pills.
- */
 @Composable
-private fun ModeToggle(mode: CalMode, onChange: (CalMode) -> Unit) {
-    val shape = RoundedCornerShape(WF.radius.pill)
-    Row(
-        modifier = Modifier
-            .background(WF.colors.panel, shape)
-            .clip(shape)
-            .padding(2.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+private fun AddButton(onAdd: () -> Unit) {
+    Box(
+        Modifier
+            .size(34.dp)
+            .clip(CircleShape)
+            .background(WF.colors.primary, CircleShape)
+            .clickable(onClick = onAdd)
+            .semantics { contentDescription = "New event" },
+        contentAlignment = Alignment.Center,
     ) {
-        for (option in CalMode.entries) {
-            val on = option == mode
-            Icon(
-                imageVector = if (option == CalMode.Agenda) {
-                    Icons.AutoMirrored.Filled.FormatListBulleted
-                } else {
-                    Icons.Filled.CalendarMonth
-                },
-                contentDescription = option.label,
-                tint = if (on) WF.colors.onInk else WF.colors.ink2,
-                modifier = Modifier
-                    .size(30.dp)
-                    .background(if (on) WF.colors.ink else Color.Transparent, shape)
-                    .clip(shape)
-                    .clickable { onChange(option) }
-                    .padding(7.dp),
-            )
-        }
+        // White on the saturated coral fill, which stays coral in both themes.
+        Icon(Icons.Filled.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
     }
 }
 
@@ -504,226 +694,3 @@ private fun DayHeading(day: LocalDate, today: LocalDate, zone: ZoneId) {
         )
     }
 }
-
-// ---------------------------------------------------------------------------
-// Month
-// ---------------------------------------------------------------------------
-
-private fun androidx.compose.foundation.lazy.LazyListScope.monthContent(
-    anchor: LocalDate,
-    selectedDay: LocalDate,
-    today: LocalDate,
-    rows: Map<LocalDate, List<EventRow>>,
-    countdownsByDate: Map<String, List<CalendarApi.Countdown>>,
-    zone: ZoneId,
-    now: Instant,
-    sleeps: Boolean,
-    model: CalendarModel,
-    onSelectDay: (LocalDate) -> Unit,
-    onOpenEvent: (EventRow) -> Unit,
-    onOpenCountdown: (CalendarApi.Countdown) -> Unit,
-    onAddOnDay: (LocalDate) -> Unit,
-) {
-    item(key = "month-grid") {
-        MonthGrid(
-            anchor = anchor,
-            selectedDay = selectedDay,
-            today = today,
-            rows = rows,
-            countdownsByDate = countdownsByDate,
-            model = model,
-            onSelectDay = onSelectDay,
-        )
-    }
-
-    item(key = "month-day-heading") { DayHeading(day = selectedDay, today = today, zone = zone) }
-
-    val dayRows = Agenda.forDay(rows, selectedDay)
-    val dayCountdowns = countdownsByDate[selectedDay.toString()].orEmpty()
-
-    if (dayRows.isEmpty() && dayCountdowns.isEmpty()) {
-        item(key = "month-day-empty") {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onAddOnDay(selectedDay) }
-                    .padding(vertical = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Add,
-                    contentDescription = null,
-                    tint = WF.colors.ink3,
-                    modifier = Modifier.size(14.dp),
-                )
-                Text(
-                    text = "Add an event",
-                    style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold),
-                    color = WF.colors.ink3,
-                )
-            }
-        }
-        return
-    }
-
-    items(dayRows, key = { "month-event-${it.id}" }) { row ->
-        EventCard(row = row, isPast = Agenda.isPast(row, zone, now), onClick = { onOpenEvent(row) })
-    }
-    items(dayCountdowns, key = { "month-countdown-${it.id}" }) { countdown ->
-        CountdownCard(countdown = countdown, sleeps = sleeps, onClick = { onOpenCountdown(countdown) })
-    }
-}
-
-/**
- * Six weeks in a card, cut on the household's week start.
- *
- * A plain `Column` of `Row`s rather than a `LazyVerticalGrid`: the grid is exactly 42 cells,
- * always fully visible, and nesting a lazy grid inside the screen's `LazyColumn` needs a
- * fixed height anyway — so laziness buys nothing and costs a measurement constraint.
- */
-@Composable
-private fun MonthGrid(
-    anchor: LocalDate,
-    selectedDay: LocalDate,
-    today: LocalDate,
-    rows: Map<LocalDate, List<EventRow>>,
-    countdownsByDate: Map<String, List<CalendarApi.Countdown>>,
-    model: CalendarModel,
-    onSelectDay: (LocalDate) -> Unit,
-) {
-    val weekStart by model.weekStart.collectAsStateWithLifecycle()
-    val cells = remember(anchor, weekStart) { CalendarModel.monthCells(anchor, weekStart) }
-    val initials = remember(weekStart) { CalendarModel.weekdayInitials(weekStart) }
-    val shape = RoundedCornerShape(WF.radius.lg)
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(WF.colors.card, shape)
-            .border(1.dp, WF.colors.hair, shape)
-            .clip(shape)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Row(Modifier.fillMaxWidth()) {
-            for (initial in initials) {
-                Text(
-                    text = initial,
-                    modifier = Modifier.weight(1f),
-                    style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Black),
-                    color = WF.colors.ink3,
-                    textAlign = TextAlign.Center,
-                )
-            }
-        }
-        for (week in cells.chunked(initials.size)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                for (cell in week) {
-                    MonthCell(
-                        cell = cell,
-                        isSelected = cell.date == selectedDay,
-                        isToday = cell.date == today,
-                        dots = model.dotColors(rows, cell.date),
-                        countdowns = countdownsByDate[cell.date.toString()].orEmpty(),
-                        modifier = Modifier.weight(1f),
-                        onClick = { onSelectDay(cell.date) },
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MonthCell(
-    cell: CalendarModel.MonthCell,
-    isSelected: Boolean,
-    isToday: Boolean,
-    dots: List<String>,
-    countdowns: List<CalendarApi.Countdown>,
-    modifier: Modifier,
-    onClick: () -> Unit,
-) {
-    val shape = RoundedCornerShape(10.dp)
-    Column(
-        modifier = modifier
-            .height(MonthCellHeight)
-            .background(if (isSelected) WF.colors.primary.copy(alpha = 0.12f) else Color.Transparent, shape)
-            .then(if (isSelected) Modifier.border(1.5.dp, WF.colors.primary, shape) else Modifier)
-            .clip(shape)
-            .clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            text = cell.dayOfMonth.toString(),
-            style = TextStyle(
-                fontSize = 14.sp,
-                fontWeight = if (isToday) FontWeight.Black else FontWeight.SemiBold,
-            ),
-            color = when {
-                !cell.inMonth -> WF.colors.ink3.copy(alpha = 0.5f)
-                isToday -> WF.colors.primary
-                else -> WF.colors.ink
-            },
-        )
-        Spacer(Modifier.height(3.dp))
-        // A countdown badge REPLACES the dots: a day that is counting down to something is
-        // about that thing, and both at 8sp in a 44dp cell is unreadable. Tapping the day
-        // still lists everything below.
-        if (countdowns.isNotEmpty()) {
-            CountdownBadge(countdowns)
-        } else {
-            Row(
-                modifier = Modifier.height(5.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                for (hex in dots.take(MAX_DAY_DOTS)) {
-                    Box(
-                        Modifier
-                            .size(5.dp)
-                            .background(colorFromHex(hex) ?: WF.colors.ink3, CircleShape),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CountdownBadge(countdowns: List<CalendarApi.Countdown>) {
-    val first = countdowns.first()
-    Row(
-        modifier = Modifier
-            .background(WF.colors.warnT, RoundedCornerShape(WF.radius.pill))
-            .padding(horizontal = 3.dp, vertical = 1.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(text = first.emoji ?: "⏳", style = TextStyle(fontSize = 8.sp))
-        Text(
-            text = CountdownFormat.short(first.daysLeft),
-            style = TextStyle(fontSize = 8.sp, fontWeight = FontWeight.Black),
-            color = WF.colors.warn,
-        )
-        if (countdowns.size > 1) {
-            Text(
-                text = "+${countdowns.size - 1}",
-                style = TextStyle(fontSize = 8.sp, fontWeight = FontWeight.Bold),
-                color = WF.colors.ink3,
-            )
-        }
-    }
-}
-
-/** "June" in agenda mode (this year is implied); "June 2026" once you can page months. */
-private fun monthTitle(date: LocalDate, zone: ZoneId, mode: CalMode): String =
-    WaffledDates.format(
-        date.atStartOfDay(zone).toInstant(),
-        if (mode == CalMode.Agenda) "MMMM" else "MMMM yyyy",
-        zone,
-    )

@@ -106,13 +106,19 @@ fun EventEditSheet(
     initialDate: LocalDate,
     onDismiss: () -> Unit,
     onSaved: () -> Unit,
+    /** A create's start time — the tapped hour on the Day grid; the editor's default otherwise. */
+    initialTime: LocalTime? = null,
 ) {
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val locked = EventOrigin.blocksEditing(event)
 
     var draft by remember {
-        mutableStateOf(EventDraft.seed(event, initialDate, zone))
+        mutableStateOf(
+            EventDraft.seed(event, initialDate, zone).let { seeded ->
+                if (event == null && initialTime != null) seeded.copy(startTime = initialTime) else seeded
+            },
+        )
     }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
