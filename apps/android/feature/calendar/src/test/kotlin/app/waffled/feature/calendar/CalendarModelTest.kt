@@ -40,6 +40,14 @@ class CalendarModelTest {
     ) = CalendarModel(eventsByDay = events, scope = scope)
 
     @Test
+    fun rowsCarryTheSyncedParticipants() = runTest {
+        val shared = event("e1", owner = "p1").copy(participantIds = listOf("p2", "p3"))
+        val model = model(MutableStateFlow(mapOf(june16 to listOf(shared))), scope())
+
+        assertEquals(setOf("p2", "p3"), model.rowsByDay.value.getValue(june16).first().people.participantIds)
+    }
+
+    @Test
     fun buildsRowsFromTheSyncedDayBucketsWithoutRebucketing() = runTest {
         val scope = scope()
         val events = MutableStateFlow(mapOf(june16 to listOf(event("e1"))))

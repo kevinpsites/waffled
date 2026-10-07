@@ -182,5 +182,5 @@ object PersonSpotlight {
         personId: String,
         eventsByDay: Map<LocalDate, List<SyncedEvent>>,
         today: LocalDate,
-    ): List<SyncedEvent> = eventsByDay[today].orEmpty().filter { it.personId == personId }
+    ): List<SyncedEvent> = eventsByDay[today].orEmpty().filter { it.involves(personId) }
 }

@@ -81,10 +81,7 @@ class CalendarModel(
                     ownerPersonId = event.personId,
                     ownerColorHex = owner?.colorHex,
                     ownerAvatarEmoji = owner?.avatarEmoji,
-                    // ⚠️ Always empty today: nothing exposes the synced `event_participants`
-                    // table. The editor prefills participants from `CalendarApi.eventDetail`
-                    // instead, so a save can't strip them — see the port report.
-                    participantIds = emptySet(),
+                    participantIds = event.participantIds.toSet(),
                 )
             }
         }.stateIn(scope, SharingStarted.Eagerly, emptyMap())

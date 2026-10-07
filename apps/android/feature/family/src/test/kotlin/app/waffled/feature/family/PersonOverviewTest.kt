@@ -138,6 +138,13 @@ class PersonOverviewTest {
         assertTrue(PersonSpotlight.eventsFor("p1", emptyMap(), today).isEmpty())
     }
 
+    @Test fun aPersonsDayIncludesEventsTheyJoined() {
+        val today = java.time.LocalDate.of(2026, 6, 16)
+        val joined = SyncedEvent(id = "joined", householdId = "h", title = "t", startsAt = "2026-06-16T17:00:00Z",
+            personId = "p9", participantIds = listOf("p1"))
+        assertEquals(listOf("joined"), PersonSpotlight.eventsFor("p1", mapOf(today to listOf(joined)), today).map { it.id })
+    }
+
     @Test fun eventTimeReadsAllDayAClockTimeOrADash() {
         val zone = java.time.ZoneId.of("America/Denver")
         fun ev(start: String?, allDay: Boolean = false) =
