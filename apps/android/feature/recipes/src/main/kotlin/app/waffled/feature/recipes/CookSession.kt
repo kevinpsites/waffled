@@ -38,6 +38,11 @@ data class CookDish(
     val ingredients: List<RecipeIngredientDTO> = emptyList(),
     /** Where this dish is in its own method — kept while another dish is on screen. */
     val index: Int = 0,
+    /**
+     * Which of this dish's ingredients have gone in — per dish for the same reason [index]
+     * is. Session-only: nothing about a tick is written to the server.
+     */
+    val ticked: Set<String> = emptySet(),
 ) {
     /** Clamp a step to one this dish actually has. */
     fun clamp(i: Int): Int = if (steps.isEmpty()) 0 else i.coerceIn(0, steps.size - 1)
@@ -96,6 +101,22 @@ data class CookSession(
      * to the active one; [withIndex] writes through (clamped to that dish's method).
      */
     val index: Int get() = activeDish?.index ?: 0
+
+    /** Has this ingredient gone in? Reads the dish on screen, like [index]. */
+    fun isTicked(key: String): Boolean = activeDish?.ticked?.contains(key) ?: false
+
+    /** Tick an ingredient off, or put it back. */
+    fun toggleTick(key: String): CookSession {
+        val i = activeSlot
+        if (i < 0) return this
+        val d = dishes[i]
+        val updated = dishes.toMutableList()
+        updated[i] = d.copy(ticked = if (key in d.ticked) d.ticked - key else d.ticked + key)
+        return copy(dishes = updated)
+    }
+
+    /** Ticks on the dish's OWN listed rows; a step-only chip doesn't count towards the list. */
+    val tickedCount: Int get() = ingredients.count { isTicked(it.id) }
 
     fun contains(dishId: String): Boolean = dishes.any { it.id == dishId }
 
@@ -167,6 +188,61 @@ data class CookSession(
         get() = pendingReturn?.let { m -> dishes.firstOrNull { it.id == m.dishId }?.title }
 
     companion object {
+        /**
+         * Tie a step's free-text ingredient to the recipe row whose name it contains —
+         * longest name wins. Text matching no row keys off itself so it is still tickable.
+         * Mirrors `ingredientKey` in the web CookMode.tsx and iOS `CookSession`.
+         */
+        fun ingredientKey(chip: String, ingredients: List<RecipeIngredientDTO>): String {
+            val text = chip.trim().lowercase()
+            val match = ingredients
+                .map { it to it.name.trim().lowercase() }
+                .filter { (_, name) -> name.isNotEmpty() && namesWordIn(text, name) }
+                .maxByOrNull { (_, name) -> name.length }
+            return match?.first?.id ?: "text:$text"
+        }
+
+        /**
+         * Does [name] appear in [text] starting where a word starts? Plain containment
+         * matches "oil" inside "boiling". The END is left unchecked so a plural still
+         * finds its singular. Both sides are already lowercased.
+         */
+        fun namesWordIn(text: String, name: String): Boolean {
+            var from = 0
+            while (true) {
+                val at = text.indexOf(name, from)
+                if (at < 0) return false
+                if (at == 0 || !text[at - 1].isLetterOrDigit()) return true
+                from = at + 1
+            }
+        }
+
+        /** "3 tbsp", or "" when the row has no parsed amount. */
+        fun amountText(ing: RecipeIngredientDTO): String {
+            val amt = ing.amount ?: return ""
+            return RecipeAmount.format(amt) + (ing.unit?.let { " $it" } ?: "")
+        }
+
+        /**
+         * The editor writes a picked ingredient with no per-step amount as its bare name,
+         * so a chip that IS a row's name borrows that row's measurement; anything else is
+         * the author's own words. Mirrors `chipLabel` in the web CookMode.tsx.
+         */
+        fun chipLabel(chip: String, ingredients: List<RecipeIngredientDTO>): String {
+            val text = chip.trim()
+            val lc = text.lowercase()
+            val row = ingredients.firstOrNull { it.name.trim().lowercase() == lc } ?: return chip
+            val amt = amountText(row)
+            return if (amt.isEmpty()) chip else "$amt $text"
+        }
+
+        /** The overview list's name column; an unparsed import keeps its quantity in `display`. */
+        fun listName(ing: RecipeIngredientDTO): String {
+            ing.sub?.let { return it }
+            if (ing.amount == null && !ing.display.isNullOrEmpty()) return ing.display
+            return ing.name
+        }
+
         /** null when there's nothing to cook — a session always has at least one dish. */
         fun of(plateId: String?, title: String, dishes: List<CookDish>): CookSession? {
             val first = dishes.firstOrNull() ?: return null

@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -56,6 +57,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
@@ -238,17 +241,28 @@ fun CookModeScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         for (ig in stepIngredients) {
-                            Text(
-                                text = ig,
+                            val tickKey = CookSession.ingredientKey(ig, session.ingredients)
+                            val on = session.isTicked(tickKey)
+                            Row(
                                 modifier = Modifier
-                                    .background(
-                                        WF.colors.success.copy(alpha = 0.12f),
-                                        RoundedCornerShape(WF.radius.pill),
-                                    )
+                                    .clip(RoundedCornerShape(WF.radius.pill))
+                                    .background(WF.colors.success.copy(alpha = if (on) 0.05f else 0.12f))
+                                    .toggleable(value = on, role = Role.Checkbox) { store.toggleTick(tickKey) }
                                     .padding(horizontal = 12.dp, vertical = 7.dp),
-                                style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium),
-                                color = WF.colors.success,
-                            )
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                TickBox(on)
+                                Text(
+                                    text = CookSession.chipLabel(ig, session.ingredients),
+                                    style = TextStyle(
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        textDecoration = if (on) TextDecoration.LineThrough else null,
+                                    ),
+                                    color = WF.colors.success,
+                                )
+                            }
                         }
                     }
                 }
@@ -325,6 +339,9 @@ fun CookModeScreen(
                 steps = steps,
                 ingredients = session.ingredients,
                 currentIndex = session.index,
+                isTicked = session::isTicked,
+                tickedCount = session.tickedCount,
+                onToggleTick = store::toggleTick,
                 onPickStep = {
                     store.index = it
                     showOverview = false
@@ -812,6 +829,9 @@ private fun CookOverviewSheet(
     steps: List<RecipeStepDTO>,
     ingredients: List<RecipeIngredientDTO>,
     currentIndex: Int,
+    isTicked: (String) -> Boolean,
+    tickedCount: Int,
+    onToggleTick: (String) -> Unit,
     onPickStep: (Int) -> Unit,
 ) {
     Column(
@@ -873,23 +893,37 @@ private fun CookOverviewSheet(
 
         if (ingredients.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                app.waffled.core.design.SectionLabel("Ingredients")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    app.waffled.core.design.SectionLabel("Ingredients")
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = "$tickedCount of ${ingredients.size}",
+                        style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 0.6.sp),
+                        color = WF.colors.ink3,
+                    )
+                }
                 for (ing in ingredients) {
+                    val on = isTicked(ing.id)
+                    val strike = if (on) TextDecoration.LineThrough else null
                     Row(
-                        Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .toggleable(value = on, role = Role.Checkbox) { onToggleTick(ing.id) }
+                            .padding(vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
+                        TickBox(on)
                         Text(
-                            text = RecipeAmount.line(ing.amount, ing.unit),
+                            text = CookSession.amountText(ing),
                             modifier = Modifier.widthIn(min = 70.dp),
-                            style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
-                            color = WF.colors.ink2,
+                            style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, textDecoration = strike),
+                            color = if (on) WF.colors.ink3 else WF.colors.ink2,
                             textAlign = androidx.compose.ui.text.style.TextAlign.End,
                         )
                         Text(
-                            text = ing.displayName,
-                            style = TextStyle(fontSize = 16.sp),
-                            color = WF.colors.ink,
+                            text = CookSession.listName(ing),
+                            style = TextStyle(fontSize = 16.sp, textDecoration = strike),
+                            color = if (on) WF.colors.ink3 else WF.colors.ink,
                         )
                     }
                 }
@@ -898,3 +932,18 @@ private fun CookOverviewSheet(
     }
 }
 
+/** The tick shared by the step chips and the overview list; the row owns the toggle. */
+@Composable
+private fun TickBox(on: Boolean) {
+    androidx.compose.material3.Checkbox(
+        checked = on,
+        onCheckedChange = null,
+        colors = androidx.compose.material3.CheckboxDefaults.colors(
+            checkedColor = WF.colors.success,
+            uncheckedColor = WF.colors.success,
+            // White on the saturated success fill.
+            checkmarkColor = androidx.compose.ui.graphics.Color.White,
+        ),
+        modifier = Modifier.size(20.dp),
+    )
+}
