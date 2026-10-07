@@ -124,16 +124,38 @@ class PlanWeekModel(
     familySize: Int,
     private val start: String,
     weekDays: List<LocalDate>,
+    /** Names to arrive in "Use up first" — Cook from your pantry's spoiling items. */
+    seedUseUp: List<String> = emptyList(),
+    /** Which meals may be planned; a single entry hides the picker. */
+    val mealTypes: List<String> = DEFAULT_MEAL_TYPES,
+    /** The nights to arrive selected (`yyyy-MM-dd`, household zone); null keeps Mon-Fri. */
+    initialDays: List<String>? = null,
+    /**
+     * Where an approved week goes INSTEAD of the per-slot writes (Weekly Planning's Meals
+     * step owns its own endpoint). Replaces [apply]'s writes rather than running alongside.
+     */
+    private val onApply: (suspend (List<PlanCardDTO>) -> Boolean)? = null,
 ) : PlanSheetModel(api, libraryRecipes, householdWeekStart, familySize) {
+
+    companion object {
+        /** The standalone planner's meals. */
+        val DEFAULT_MEAL_TYPES: List<String> = listOf("breakfast", "lunch", "dinner")
+    }
 
     val days: List<LocalDate> = weekDays
 
-    val mealType = MutableStateFlow("dinner")
+    /** Dinner, unless the host narrowed it away — then its first meal. */
+    val mealType = MutableStateFlow(if ("dinner" in mealTypes) "dinner" else mealTypes.firstOrNull() ?: "dinner")
 
-    /** Defaults to Mon-Fri, matching the web kiosk. */
+    /** The host's nights, else Mon-Fri, matching the web kiosk. */
     val selectedDays = MutableStateFlow(
-        weekDays.filter { it.dayOfWeek.value in 1..5 }.map(MealsFormat::ymd).toSet(),
+        initialDays?.toSet()
+            ?: weekDays.filter { it.dayOfWeek.value in 1..5 }.map(MealsFormat::ymd).toSet(),
     )
+
+    init {
+        useUp.value = seedUseUp.map(String::trim).filter(String::isNotEmpty).distinct().take(USE_UP_CAP)
+    }
 
     /** A novelty nudge, plus specific dishes to feature. */
     val trySomethingNew = MutableStateFlow(false)
@@ -247,6 +269,14 @@ class PlanWeekModel(
      */
     suspend fun apply(): Boolean {
         _applying.value = true
+        onApply?.let { hostApply ->
+            // The host owns the write; the per-slot path below is what it exists to replace.
+            return try {
+                hostApply(_suggestions.value)
+            } finally {
+                _applying.value = false
+            }
+        }
         try {
             for (op in MealPlanApply.week(_suggestions.value, householdWeekStart)) {
                 runCatching { api.perform(op) }
