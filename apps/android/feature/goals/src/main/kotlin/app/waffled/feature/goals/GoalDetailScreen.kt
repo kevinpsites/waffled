@@ -175,8 +175,7 @@ fun GoalDetailScreen(
             DetailHero(
                 title = model.goal.title,
                 category = detail?.category,
-                progress = progress,
-                target = target,
+                displayed = model.displayed,
                 unit = unit,
                 thisWeek = detail?.thisWeek ?: 0.0,
                 subtitle = heroSubtitle(detail, model.goal),
@@ -258,7 +257,15 @@ fun GoalDetailScreen(
             participants = model.participants,
             participantMode = detail?.participantMode ?: model.goal.participantMode,
             trackingMode = detail?.trackingMode ?: model.goal.trackingMode,
+            targetBasis = detail?.targetBasis ?: model.goal.targetBasis,
+            habitPeriod = detail?.habitPeriod ?: model.goal.habitPeriod,
+            habitTargetPerPeriod = detail?.habitTargetPerPeriod ?: model.goal.habitTargetPerPeriod,
             goalType = goalType,
+            // The detail's own axes, so the sheet judges the habit on today's numbers.
+            periodDone = detail?.periodDone ?: model.goal.periodDone,
+            stepTotal = detail?.stepTotal ?: model.goal.stepTotal,
+            stepDone = detail?.stepDone ?: model.goal.stepDone,
+            loggedTodayBy = detail?.loggedTodayBy ?: model.goal.loggedTodayBy,
         )
         ModalBottomSheet(
             onDismissRequest = { logging = false },
@@ -330,11 +337,10 @@ fun GoalDetailScreen(
 internal fun heroSubtitle(detail: GoalsApi.GoalDetail?, fallback: GoalsApi.Goal): String {
     val parts = mutableListOf<String>()
     detail?.createdAt?.takeIf { it.isNotBlank() }?.let { parts.add("Started ${monthDay(it)}") }
-    val target = detail?.target ?: fallback.target
-    val progress = detail?.totalProgress ?: fallback.totalProgress
-    if ((target ?: 0.0) > 0) {
-        parts.add("${minOf(100, ((progress / target!!) * 100).toInt())}% complete")
-    }
+    val displayed: GoalDisplayable = detail ?: fallback
+    val pct = (GoalDisplay.fraction(displayed) * 100).toInt()
+    // A habit's percent is of THIS period's cadence, so say which window.
+    parts.add("$pct% ${GoalDisplay.periodLabel(displayed) ?: "complete"}")
     val streak = detail?.streakDays ?: fallback.streakDays
     if (streak > 0) parts.add("🔥 $streak-day streak")
     (detail?.deadline ?: fallback.deadline)?.let { parts.add("by ${monthDay(it)}") }
@@ -357,13 +363,12 @@ private fun monthDay(iso: String): String {
 private fun DetailHero(
     title: String,
     category: String?,
-    progress: Double,
-    target: Double?,
+    displayed: GoalDisplayable,
     unit: String?,
     thisWeek: Double,
     subtitle: String,
 ) {
-    val fraction = target?.takeIf { it > 0 }?.let { (progress / it).toFloat() } ?: 0f
+    val fraction = GoalDisplay.fraction(displayed).toFloat()
     val shape = RoundedCornerShape(WF.radius.lg)
     Row(
         Modifier
@@ -383,13 +388,13 @@ private fun DetailHero(
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = ringFmt(progress),
+                    text = ringFmt(GoalDisplay.progress(displayed)),
                     style = TextStyle(fontSize = 26.sp, fontWeight = FontWeight.Black),
                     color = Color.White,
                     maxLines = 1,
                 )
                 Text(
-                    text = "of ${ringFmt(target)}${unit?.let { " $it" }.orEmpty()}",
+                    text = GoalDisplay.targetCaption(displayed, unit, ::ringFmt),
                     style = TextStyle(fontSize = 9.sp, fontWeight = FontWeight.Bold),
                     color = Color.White.copy(alpha = 0.85f),
                     maxLines = 1,

@@ -241,7 +241,11 @@ class GoalDetailModel(
     // can be reached from a lightweight goal (the person spotlight carries no participants).
     val unit: String? get() = _state.value.detail?.unit ?: goal.unit
     val target: Double? get() = _state.value.detail?.target ?: goal.target
+    /** The raw LIFETIME total — the Log sheet's figure. Displays read [displayed]. */
     val progress: Double get() = _state.value.detail?.totalProgress ?: goal.totalProgress
+
+    /** What every measured line reads off, on the goal's own axis. */
+    val displayed: GoalDisplayable get() = _state.value.detail ?: goal
     val participants: List<GoalsApi.Participant>
         get() = _state.value.detail?.participants?.takeIf { it.isNotEmpty() } ?: goal.participants
 

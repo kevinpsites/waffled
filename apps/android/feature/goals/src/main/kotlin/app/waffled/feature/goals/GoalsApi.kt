@@ -93,10 +93,10 @@ class GoalsApi(
         val title: String = "",
         val emoji: String? = null,
         val category: String? = null,
-        val goalType: String = "total",
-        val unit: String? = null,
-        val habitPeriod: String? = null,
-        val habitTargetPerPeriod: Int? = null,
+        override val goalType: String = "total",
+        override val unit: String? = null,
+        override val habitPeriod: String? = null,
+        override val habitTargetPerPeriod: Int? = null,
         val trackingMode: String = "shared_total",
         /**
          * How a SHARED goal counts a multi-person entry: `count_once` | `split`. Nullable
@@ -104,16 +104,16 @@ class GoalsApi(
          */
         val participantMode: String? = null,
         /** For `each_tracks`: `family` (flat target) | `per_person` (target × members). */
-        val targetBasis: String? = null,
+        override val targetBasis: String? = null,
         val deadline: String? = null,
         val isFeatured: Boolean = false,
         /** The one hero goal per list ("Spotlight"). [isFeatured] is the "Pinned" tier. */
         val isSpotlight: Boolean? = null,
-        val target: Double? = null,
-        val totalProgress: Double = 0.0,
+        override val target: Double? = null,
+        override val totalProgress: Double = 0.0,
         val milestoneTotal: Int = 0,
         val milestoneReached: Int = 0,
-        val streakDays: Int = 0,
+        override val streakDays: Int = 0,
         /** Opted in to counting matching calendar events (drives "Plan time"). */
         val autoFromCalendar: Boolean = false,
         /**
@@ -123,9 +123,20 @@ class GoalsApi(
         val healthMetric: String? = null,
         val createdAt: String? = null,
         val participants: List<Participant> = emptyList(),
-    ) {
+        /**
+         * Habit only: distinct days logged in the CURRENT period (household timezone) —
+         * what a habit displays. Null on an older payload. Read it through [GoalDisplay].
+         */
+        override val periodDone: Double? = null,
+        /** Checklist only: the axis a checklist displays on. Null on an older payload. */
+        override val stepTotal: Int? = null,
+        override val stepDone: Int? = null,
+        /** Who already logged TODAY — person ids plus the `__family__` sentinel. */
+        override val loggedTodayBy: List<String>? = null,
+    ) : GoalDisplayable {
         val spotlight: Boolean get() = isSpotlight == true
         val countsOnce: Boolean get() = (participantMode ?: "count_once") == "count_once"
+        override val participantCount: Int get() = participants.size
     }
 
     /**
@@ -139,19 +150,19 @@ class GoalsApi(
         val title: String = "",
         val emoji: String? = null,
         val category: String? = null,
-        val goalType: String = "total",
-        val unit: String? = null,
-        val target: Double? = null,
+        override val goalType: String = "total",
+        override val unit: String? = null,
+        override val target: Double? = null,
         val trackingMode: String = "shared_total",
         val participantMode: String? = null,
-        val targetBasis: String? = null,
-        val habitPeriod: String? = null,
-        val habitTargetPerPeriod: Int? = null,
+        override val targetBasis: String? = null,
+        override val habitPeriod: String? = null,
+        override val habitTargetPerPeriod: Int? = null,
         val isFeatured: Boolean = false,
         val isSpotlight: Boolean? = null,
         val hasRewards: Boolean = false,
-        val totalProgress: Double = 0.0,
-        val streakDays: Int = 0,
+        override val totalProgress: Double = 0.0,
+        override val streakDays: Int = 0,
         val deadline: String? = null,
         val createdAt: String = "",
         val thisWeek: Double = 0.0,
@@ -163,7 +174,14 @@ class GoalsApi(
         val milestones: List<Milestone> = emptyList(),
         val steps: List<Step> = emptyList(),
         val recent: List<LogEntry> = emptyList(),
-    ) {
+        /** The same axes as [Goal], so the detail hero agrees with the card tapped. */
+        override val periodDone: Double? = null,
+        override val stepTotal: Int? = null,
+        override val stepDone: Int? = null,
+        override val loggedTodayBy: List<String>? = null,
+    ) : GoalDisplayable {
+        override val participantCount: Int get() = participants.size
+
         /** A checklist goal's steps; empty for every other type. */
         @Serializable
         data class Step(

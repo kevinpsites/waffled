@@ -97,7 +97,17 @@ class GoalsUiLogicTest {
             GoalsApi.GoalDetail(id = "g1", createdAt = "", target = null, streakDays = 0),
             GoalsApi.Goal(id = "g1"),
         )
-        assertEquals("", subtitle, "an open goal with no history has nothing to say")
+        // iOS always states the percent, even at zero; everything else is skipped.
+        assertEquals("0% complete", subtitle)
+    }
+
+    @Test
+    fun aHabitsPercentIsOfThisPeriodAndSaysWhichWindow() {
+        val detail = GoalsApi.GoalDetail(
+            id = "g1", createdAt = "", goalType = "habit", habitPeriod = "week",
+            habitTargetPerPeriod = 5, totalProgress = 99.0, periodDone = 2.0,
+        )
+        assertTrue(heroSubtitle(detail, GoalsApi.Goal(id = "g1")).contains("40% this week"))
     }
 
     @Test
