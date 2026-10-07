@@ -181,9 +181,11 @@ function Body({ sessionId, setDecisionData, refresh, busy }: StepBodyProps) {
   // the primary is pressed, so a click-handler-only body erases its record on a remount.
   useEffect(() => { if (view) setDecisionData(planningGoalsDecision(view)) }, [view, setDecisionData])
 
+  // Functional update: this effect can flush after a tab click with a stale `tabId` of null,
+  // and must not overwrite the tab the user just picked.
   useEffect(() => {
     if (!view || tabId) return
-    setTabId((view.groups.find((g) => !g.settled) ?? view.groups[0])?.listId ?? null)
+    setTabId((cur) => cur ?? (view.groups.find((g) => !g.settled) ?? view.groups[0])?.listId ?? null)
   }, [view, tabId])
 
   const groups = view?.groups ?? []
