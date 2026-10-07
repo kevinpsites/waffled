@@ -45,7 +45,7 @@ class GoalLogHostModelTest {
     private val detail = """
         {"goal":{"id":"g1","title":"Read","goalType":"habit","unit":"days","habitPeriod":"week",
           "habitTargetPerPeriod":5,"participantMode":"split","trackingMode":"each_tracks",
-          "periodDone":2,"loggedTodayBy":["p1"],
+          "periodDone":2,"loggedTodayBy":["p1"],"streakDays":4,"category":"health","goalListId":"l1",
           "participants":[{"personId":"p1","name":"Kevin","progress":2},{"personId":"p2","name":"Ana","progress":1}]}}
     """.trimIndent()
 
@@ -67,6 +67,9 @@ class GoalLogHostModelTest {
         assertEquals(5, g.habitTargetPerPeriod)
         assertEquals(2.0, g.periodDone)
         assertEquals(listOf("p1"), g.loggedTodayBy)
+        assertEquals(4, g.streakDays)
+        assertEquals("health", g.category)
+        assertEquals("l1", g.goalListId)
         assertEquals(listOf("p1", "p2"), g.participants.map { it.personId })
         assertEquals(listOf("Before bed"), m.current.noteSuggestions)
         assertEquals(LocalDate.of(2026, 10, 6), m.current.today, "the household's today, not the device's")
