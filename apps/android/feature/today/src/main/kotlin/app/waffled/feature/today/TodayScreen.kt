@@ -54,6 +54,7 @@ import app.waffled.core.network.RestNotice
 import app.waffled.core.network.RestState
 import app.waffled.core.sync.ModuleGate
 import app.waffled.core.sync.SyncedEvent
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -114,6 +115,12 @@ fun TodayScreen(
      */
     chorePick: String = "",
     onChorePick: (String) -> Unit = {},
+    /**
+     * Reload what Today does not own — module flags and the self-loading host cards
+     * (countdowns, lists, pantry, Family Night). Run on pull-to-refresh and on return to
+     * the foreground, so a module switched off elsewhere actually disappears.
+     */
+    onRefreshSurfaces: suspend () -> Unit = {},
 ) {
     val tonight by dash.tonightSnapshot.collectAsStateWithLifecycle()
     val chores by dash.choresSnapshot.collectAsStateWithLifecycle()
@@ -135,9 +142,10 @@ fun TodayScreen(
     val scope = rememberCoroutineScope()
     var refreshing by remember { mutableStateOf(false) }
 
-    suspend fun reload() {
-        dash.load(today.toString())
-        dash.loadGoals()
+    suspend fun reload() = coroutineScope {
+        launch { onRefreshSurfaces() }
+        launch { dash.load(today.toString()) }
+        launch { dash.loadGoals() }
     }
 
     LaunchedEffect(zone) { layout.load() }
@@ -258,7 +266,12 @@ fun TodayScreen(
             onRefresh = {
                 refreshing = true
                 scope.launch {
-                    reload()
+                    coroutineScope {
+                        launch { reload() }
+                        launch { dash.loadWeather() }
+                    }
+                    // The card set itself can change when a module is toggled elsewhere.
+                    layout.load()
                     refreshing = false
                 }
             },
