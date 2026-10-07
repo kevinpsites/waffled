@@ -396,6 +396,32 @@ export async function getEventById(householdId: string, id: string, viewerPerson
   return rows[0] ?? null
 }
 
+// A Waffled-only manual event whose owner changes may now have somewhere to go: it was
+// local only because nobody with a connected calendar owned it. Adopt the new owner's write
+// target, stamped like a create. An owner who already had a target means "Waffled only" was
+// an explicit choice, so that event stays put.
+async function routeToNewOwner(
+  householdId: string,
+  before: { calendar_id: string | null; origin: string | null; person_id: string | null },
+  event: EventRow
+): Promise<boolean> {
+  if (before.calendar_id || before.origin !== 'manual') return false
+  const owner = event.person_id
+  if (!owner || owner === before.person_id) return false
+  if (before.person_id && (await resolveWriteTarget(householdId, before.person_id))) return false
+  const target = await resolveWriteTarget(householdId, owner)
+  if (!target) return false
+  await query(
+    `update events set calendar_id = $3, sync_state = 'pending_push',
+            visibility = coalesce((select visibility from calendars where id = $3 and deleted_at is null), 'family'),
+            owner_person_id = (select person_id from calendars where id = $3 and deleted_at is null)
+      where household_id = $1 and id = $2 and calendar_id is null and deleted_at is null`,
+    [householdId, event.id, target.calendarId]
+  )
+  await pushEventNow(householdId, event.id)
+  return true
+}
+
 export async function updateEvent(
   householdId: string,
   id: string,
@@ -404,6 +430,13 @@ export async function updateEvent(
   const personIds = Array.isArray(patch.participantIds)
     ? [...new Set(patch.participantIds as string[])]
     : null
+  const peopleChanged = personIds !== null || 'personId' in patch
+  const before = peopleChanged
+    ? (await query<{ calendar_id: string | null; origin: string | null; person_id: string | null }>(
+        `select calendar_id, origin, person_id from events where household_id = $1 and id = $2 and deleted_at is null`,
+        [householdId, id]
+      )).rows[0]
+    : undefined
 
   // A patch may carry only one half of the pair — "make it end at 4" says nothing
   // about the start — so the missing half comes from the STORED row. Checking only
@@ -488,6 +521,10 @@ export async function updateEvent(
     // participants are Waffled-owned (Google has no such field), so don't push for them.
     const touchedGoogle = GOOGLE_OWNED_FIELDS.some((f) => f in patch)
     if (event.calendar_id && touchedGoogle) await pushEventNow(householdId, id)
+    else if (before && (await routeToNewOwner(householdId, before, event))) {
+      const routed = await query<EventRow>(`select * from events where id = $1`, [id])
+      event = routed.rows[0] ?? event
+    }
     // Re-expand if this is (or just became / stopped being) a recurring master, so
     // its occurrences reflect the edited rule/timing/fields.
     if (event.rrule || 'rrule' in patch) await materializeMaster(id)

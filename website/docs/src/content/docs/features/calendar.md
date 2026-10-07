@@ -55,7 +55,9 @@ gated off**.
   cursor) plus outbound push to each person's **write-target** calendar (reader-only
   calendars are never a target). The push lifecycle runs `pending_push → synced` or
   `push_failed` (retried). Google and Microsoft accounts can be mixed in one household;
-  each shows which provider it came from.
+  each shows which provider it came from. An event made with nobody on it stays in Waffled
+  only; add someone with a connected calendar later and it moves to their write-target
+  calendar. An event you saved as **Waffled only** on purpose stays there.
 - 📡 **Calendar feeds (ICS)** — subscribe to any published `.ics` / `webcal://` link, no
   sign-in needed; refreshed every 15 minutes. See [below](#calendar-feeds-ics).
 - 📶 **Fully offline via PowerSync** — the calendar is the *one* fully-offline domain:

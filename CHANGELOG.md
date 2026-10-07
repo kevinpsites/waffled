@@ -34,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the lobby each have **📌 Park a note**, so a thought that comes up mid-week doesn't
   wait for Sunday. The note shows in the saved week's last call right away and comes back at
   the next session's Loose ends. Web and iOS.
+- **An event with nobody on it moves to Google once you add someone.** An event made with no
+  one selected is saved in Waffled only. Adding a person with a connected Google or Outlook
+  calendar now moves it to that person's calendar and creates it there, whether the edit
+  came from the web, iPhone or iPad. An event you chose to keep "Waffled only" stays put.
 
 ## [0.15.1] - 2026-09-15
 
