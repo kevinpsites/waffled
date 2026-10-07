@@ -22,6 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -80,9 +82,12 @@ fun EventCard(
             color = WF.colors.ink2,
         )
         AccentBar(colorFromHex(row.colorHex) ?: WF.colors.ink3)
+        val rhythm = row.event.isRhythm
         Text(
-            text = row.title,
-            modifier = Modifier.weight(1f),
+            text = RhythmMark.prefixed(row.title, rhythm),
+            modifier = Modifier
+                .weight(1f)
+                .semantics { contentDescription = RhythmMark.accessibilityLabel(row.title, rhythm) },
             style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
             color = WF.colors.ink,
             maxLines = 1,

@@ -18,6 +18,8 @@ object EventRowMapper {
         fun str(name: String): String? =
             columns[name]?.let { cursor.getString(it) }?.takeIf { it.isNotEmpty() }
 
+        fun time(name: String): String? = str(name)?.let(::isoTimestamp)
+
         // SQLite has no boolean; these arrive as 0/1.
         fun bool(name: String): Boolean =
             columns[name]?.let { cursor.getLong(it) }?.let { it != 0L } ?: false
@@ -26,8 +28,8 @@ object EventRowMapper {
             id = str("id").orEmpty(),
             householdId = str("household_id").orEmpty(),
             title = str("title").orEmpty(),
-            startsAt = str("starts_at"),
-            endsAt = str("ends_at"),
+            startsAt = time("starts_at"),
+            endsAt = time("ends_at"),
             allDay = bool("all_day"),
             isCountdown = bool("is_countdown"),
             location = str("location"),
@@ -43,12 +45,27 @@ object EventRowMapper {
             ownerPersonId = str("owner_person_id"),
             timezone = str("timezone"),
             status = str("status"),
-            updatedAt = str("updated_at"),
+            updatedAt = time("updated_at"),
             // Present only on `event_occurrences` rows — see SyncedEvent.seriesId.
             seriesId = str("event_id"),
-            originalStart = str("original_start"),
+            originalStart = time("original_start"),
             overrideId = str("override_id"),
+            rhythmId = str("rhythm_id"),
         )
+    }
+
+    private val postgresText = Regex("""^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}(?:\.\d+)?)([+-]\d{2})(:?\d{2})?$""")
+
+    /**
+     * Server-replicated rows hold Postgres text (`2026-06-16 17:49:00+00`), which
+     * `WaffledDates.parseInstant` cannot read; locally-written rows are already ISO.
+     * Normalised once here so every reader of the mirror sees one shape.
+     */
+    fun isoTimestamp(raw: String): String {
+        val m = postgresText.matchEntire(raw.trim()) ?: return raw
+        val (date, clock, hours, minutes) = m.destructured
+        val mm = minutes.removePrefix(":").ifEmpty { "00" }
+        return "${date}T$clock$hours:$mm"
     }
 
     /**
@@ -60,8 +77,27 @@ object EventRowMapper {
      */
     const val EVENTS_SQL: String = "SELECT * FROM events WHERE rrule IS NULL"
 
-    /** Materialised occurrences of the recurring masters excluded above. */
-    const val OCCURRENCES_SQL: String = "SELECT * FROM event_occurrences"
+    /**
+     * Materialised occurrences of the recurring masters excluded above. Every field an
+     * occurrence doesn't own comes from its master `m`, mirroring the web's `OCC_SELECT`:
+     * `origin` keeps an ICS series read-only, and `rhythm_id` is how an auto-scheduled
+     * rhythm — which renders ONLY through this query — keeps its marker. Aliases are
+     * explicit because the mapper reads by column name.
+     */
+    const val OCCURRENCES_SQL: String = """
+        SELECT o.id AS id, o.household_id AS household_id, o.event_id AS event_id,
+               o.override_id AS override_id, o.original_start AS original_start,
+               coalesce(o.title, m.title) AS title, m.description AS description,
+               coalesce(o.location, m.location) AS location,
+               o.starts_at AS starts_at, o.ends_at AS ends_at, o.all_day AS all_day,
+               m.is_countdown AS is_countdown, o.person_id AS person_id,
+               m.calendar_id AS calendar_id, m.goal_id AS goal_id, m.goal_step_id AS goal_step_id,
+               m.rhythm_id AS rhythm_id, m.origin AS origin, m.origin_ref_id AS origin_ref_id,
+               m.timezone AS timezone, m.status AS status,
+               o.visibility AS visibility, o.owner_person_id AS owner_person_id
+          FROM event_occurrences o
+          JOIN events m ON m.id = o.event_id
+    """
 }
 
 /**

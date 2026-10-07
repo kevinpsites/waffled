@@ -67,6 +67,26 @@ class CalendarApiTest {
     }
 
     @Test
+    fun aRhythmOrUnknownSourceDecodesWithoutEmptyingTheList() = runTest {
+        // A strict source enum would fail the WHOLE list the day the server grows a kind,
+        // as it did with 'rhythm'.
+        harness.enqueueJson(
+            """
+            {"countdowns":[
+              {"id":"rhythm:7f1c","title":"Air filter","date":"2026-08-15","daysLeft":3,"source":"rhythm"},
+              {"id":"x1","title":"Future","date":"2026-08-20","daysLeft":8,"source":"something-new"},
+              {"id":"c1","title":"Beach trip","date":"2026-08-21","daysLeft":9,"source":"standalone"}
+            ],"sleeps":false}
+            """.trimIndent(),
+        )
+
+        val items = api.countdowns().countdowns
+
+        assertEquals(listOf("rhythm:7f1c", "x1", "c1"), items.map { it.id })
+        assertEquals(listOf(false, false, true), items.map { it.isStandalone })
+    }
+
+    @Test
     fun anOlderServerWithoutABirthdayHorizonStillDecodes() = runTest {
         // A server a version behind omits the key entirely. Failing to decode here reads to
         // the user as "couldn't reach server", which is a misleading way to say "your
@@ -300,6 +320,14 @@ class CalendarApiTest {
     }
 
     @Test
+    fun readsTheHouseholdWeekStartAndLeavesItUnsetWhenAbsent() = runTest {
+        harness.enqueueJson("""{"household":{"id":"h1","name":"X","timezone":"UTC","weekStart":"monday"},"members":[]}""")
+        assertEquals(app.waffled.core.model.HouseholdWeekStart.Monday, api.householdSettings().weekStart)
+        harness.enqueueJson("""{"household":{"id":"h1","name":"X","timezone":"UTC"},"members":[]}""")
+        assertNull(api.householdSettings().weekStart)
+    }
+
+    @Test
     fun anUnknownTimezoneFallsBackToTheDeviceRatherThanThrowing() = runTest {
         harness.enqueueJson("""{"household":{"id":"h1","name":"X","timezone":"Mars/Olympus"},"members":[]}""")
         assertEquals(ZoneId.systemDefault(), api.householdSettings().zone)
@@ -361,6 +389,55 @@ class CalendarApiTest {
 
         assertEquals(1, harness.refreshCount.get())
         assertEquals(2, harness.requestCount)
+    }
+
+    // ---- rhythm link on an event (EventRhythmLinkTests) ---------------------------
+
+    private fun rhythmBody(rhythmId: String? = null, clearRhythmId: Boolean = false, scope: String? = null) =
+        CalendarApi.eventUpdateBody(
+            title = "Zoo trip",
+            startsAtIso = "2026-06-22T22:00:00Z",
+            endsAtIso = null,
+            allDay = false,
+            location = null,
+            personIds = listOf("person-a"),
+            goalId = null,
+            goalStepId = null,
+            rrule = null,
+            clearRrule = false,
+            recurrenceEndAt = null,
+            clearRecurrenceEndAt = false,
+            scope = scope,
+            occurrenceStart = null,
+            isCountdown = false,
+            rhythmId = rhythmId,
+            clearRhythmId = clearRhythmId,
+        )
+
+    @Test
+    fun anEditThatDoesNotTouchTheRhythmLinkLeavesItAlone() {
+        // Absent means "don't touch"; a null here would unlink every event this app edits.
+        assertFalse(rhythmBody().containsKey("rhythmId"))
+    }
+
+    @Test
+    fun linkingCarriesTheRhythmId() {
+        assertEquals(JsonPrimitive("rh-1"), rhythmBody(rhythmId = "rh-1")["rhythmId"])
+    }
+
+    @Test
+    fun unlinkingIsStatedAsAnExplicitNull() = runTest {
+        harness.enqueueNoContent()
+        api.updateEvent(
+            id = "e1", title = "Zoo trip", startsAtIso = "2026-06-22T22:00:00Z",
+            clearRhythmId = true,
+        )
+        assertEquals(JsonNull, bodyOf(harness.takeRequest().body.readUtf8())["rhythmId"])
+    }
+
+    @Test
+    fun oneOccurrenceOverrideCarriesNoRhythmLink() {
+        assertNull(rhythmBody(rhythmId = "rh-1", scope = "this")["rhythmId"])
     }
 
     private fun countdown(source: String) = CalendarApi.Countdown(

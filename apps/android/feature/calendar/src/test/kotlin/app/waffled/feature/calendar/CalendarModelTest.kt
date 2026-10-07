@@ -1,5 +1,6 @@
 package app.waffled.feature.calendar
 
+import app.waffled.core.model.HouseholdWeekStart
 import app.waffled.core.model.Person
 import app.waffled.core.sync.SyncedEvent
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -137,8 +138,74 @@ class CalendarModelTest {
     }
 
     @Test
+    fun aFailedRefreshSaysSoWithTheServersMessageAndKeepsWhatItHad() = runTest {
+        val harness = app.waffled.core.testing.ApiTestHarness()
+        harness.start()
+        try {
+            val api = CalendarApi(
+                app.waffled.core.network.WaffledHttp.client(harness.tokens, harness.serverAddress),
+                harness.tokens,
+            )
+            val model = model(MutableStateFlow(emptyMap()), scope())
+            model.setMembers(listOf(Person(id = "p1", name = "Jerry")))
+
+            harness.enqueueError(503, "Unavailable", "Household settings are down for maintenance.")
+            harness.enqueueError(503, "Unavailable", "Household settings are down for maintenance.")
+            assertTrue(!model.refresh(api))
+
+            assertTrue(model.loadError.value.orEmpty().contains("down for maintenance"), model.loadError.value)
+            assertEquals(listOf("p1"), model.members.value.map { it.id })
+
+            harness.enqueueJson("""{"household":{"id":"h1","name":"X","timezone":"UTC"},"members":[]}""")
+            harness.enqueueJson("""{"household":{"settings":{}}}""")
+            assertTrue(model.refresh(api))
+            assertNull(model.loadError.value)
+        } finally {
+            harness.stop()
+        }
+    }
+
+    @Test
+    fun aMondayHouseholdsMonthGridOpensOnMonday() {
+        // June 2026 starts on a Monday, so a Monday-cut grid has no lead-in cells at all.
+        val cells = CalendarModel.monthCells(LocalDate.of(2026, 6, 15), HouseholdWeekStart.Monday)
+        assertEquals(42, cells.size)
+        assertEquals(LocalDate.of(2026, 6, 1), cells.first().date)
+        assertEquals(java.time.DayOfWeek.MONDAY, cells.first().date.dayOfWeek)
+        assertEquals(
+            HouseholdWeekStart.Monday.monthLeadCells(LocalDate.of(2026, 6, 1)),
+            cells.indexOfFirst { it.inMonth },
+        )
+    }
+
+    @Test
+    fun theWeekdayHeaderRotatesWithTheGrid() {
+        assertEquals(listOf("M", "T", "W", "T", "F", "S", "S"), CalendarModel.weekdayInitials(HouseholdWeekStart.Monday))
+        assertEquals(listOf("S", "M", "T", "W", "T", "F", "S"), CalendarModel.weekdayInitials(HouseholdWeekStart.Sunday))
+    }
+
+    @Test
+    fun theWeekStartFollowsTheSyncedHouseholdRow() {
+        val synced = MutableStateFlow<String?>(null)
+        val model = CalendarModel(eventsByDay = MutableStateFlow(emptyMap()), scope = scope(), syncedWeekStart = synced)
+        assertEquals(HouseholdWeekStart.Sunday, model.weekStart.value)
+        synced.value = "monday"
+        assertEquals(HouseholdWeekStart.Monday, model.weekStart.value)
+    }
+
+    @Test
+    fun theRestWeekStartStandsInUntilTheHouseholdRowSyncs() {
+        val synced = MutableStateFlow<String?>(null)
+        val model = CalendarModel(eventsByDay = MutableStateFlow(emptyMap()), scope = scope(), syncedWeekStart = synced)
+        model.setRestWeekStart(HouseholdWeekStart.Monday)
+        assertEquals(HouseholdWeekStart.Monday, model.weekStart.value)
+        synced.value = "sunday"
+        assertEquals(HouseholdWeekStart.Sunday, model.weekStart.value)
+    }
+
+    @Test
     fun theMonthGridIsSixSundayLedWeeksCoveringTheAnchorsMonth() {
-        val cells = CalendarModel.monthCells(LocalDate.of(2026, 6, 15))
+        val cells = CalendarModel.monthCells(LocalDate.of(2026, 6, 15), HouseholdWeekStart.Sunday)
 
         assertEquals(42, cells.size)
         assertEquals(java.time.DayOfWeek.SUNDAY, cells.first().date.dayOfWeek)

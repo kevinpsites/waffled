@@ -145,4 +145,91 @@ class EventRowMapperTest {
         )
         assertEquals("FREQ=WEEKLY", master.rrule)
     }
+
+    // ---- Postgres-text timestamps (SyncLogicTests.parsesPostgres*) ---------------
+
+    private fun startsAt(raw: String): String? =
+        EventRowMapper.map(FakeCursor(mapOf("id" to "e", "household_id" to "h", "title" to "t", "starts_at" to raw))).startsAt
+
+    @Test
+    fun serverReplicatedPostgresTextBecomesIso() {
+        // Replicated rows arrive as `YYYY-MM-DD HH:MM:SS+00`, which java.time cannot read;
+        // left as-is every synced event would be dropped from the day index.
+        assertEquals("2026-06-16T17:49:00+00:00", startsAt("2026-06-16 17:49:00+00"))
+        assertEquals("2026-06-16T17:49:00.123+00:00", startsAt("2026-06-16 17:49:00.123+00"))
+        assertEquals("2026-06-16T17:49:00.123456+00:00", startsAt("2026-06-16 17:49:00.123456+00"))
+        assertEquals("2026-06-16T11:49:00-06:00", startsAt("2026-06-16 11:49:00-06"))
+        assertEquals("2026-06-16T11:49:00+05:30", startsAt("2026-06-16 11:49:00+05:30"))
+    }
+
+    @Test
+    fun theTwoFormatsAgreeOnTheInstant() {
+        val pg = app.waffled.core.model.WaffledDates.parseInstant(startsAt("2026-06-16 17:49:00+00"))
+        val iso = app.waffled.core.model.WaffledDates.parseInstant(startsAt("2026-06-16T17:49:00Z"))
+        assertEquals(iso, pg)
+        assertEquals(
+            app.waffled.core.model.WaffledDates.parseInstant("2026-06-16T17:49:00Z"),
+            app.waffled.core.model.WaffledDates.parseInstant(startsAt("2026-06-16 11:49:00-06")),
+        )
+    }
+
+    @Test
+    fun isoAndDateOnlyValuesPassThroughUntouched() {
+        assertEquals("2026-06-16T17:49:00Z", startsAt("2026-06-16T17:49:00Z"))
+        assertEquals("2026-06-16", startsAt("2026-06-16"))
+    }
+
+    @Test
+    fun everyTimestampColumnIsNormalised() {
+        val e = EventRowMapper.map(
+            FakeCursor(
+                mapOf(
+                    "id" to "o", "household_id" to "h", "title" to "t", "event_id" to "s",
+                    "ends_at" to "2026-08-03 06:00:00+00",
+                    "original_start" to "2026-07-27 06:00:00+00",
+                    "updated_at" to "2026-07-01 00:00:00.5+00",
+                ),
+            ),
+        )
+        assertEquals("2026-08-03T06:00:00+00:00", e.endsAt)
+        assertEquals("2026-07-27T06:00:00+00:00", e.originalStart)
+        assertEquals("2026-07-01T00:00:00.5+00:00", e.updatedAt)
+    }
+
+    // ---- rhythm link (RhythmMarkTests) -------------------------------------------
+
+    @Test
+    fun anEventLinkedToARhythmIsMarked() {
+        val e = EventRowMapper.map(
+            FakeCursor(mapOf("id" to "e1", "household_id" to "h1", "title" to "t", "rhythm_id" to "rh-1")),
+        )
+        assertEquals("rh-1", e.rhythmId)
+        assertTrue(e.isRhythm)
+    }
+
+    @Test
+    fun recurrenceAloneDoesNotMarkAnEvent() {
+        // "Rhythm" never means "recurring" — a repeating standup is not a rhythm.
+        val occurrence = EventRowMapper.map(
+            FakeCursor(mapOf("id" to "o1", "household_id" to "h1", "title" to "t", "event_id" to "s1")),
+        )
+        assertFalse(occurrence.isRhythm)
+    }
+
+    @Test
+    fun theSingleEventQueryCarriesRhythmId() {
+        // `SELECT *` picks up every declared column, rhythm_id included.
+        assertTrue(EventRowMapper.EVENTS_SQL.contains("SELECT *"))
+    }
+
+    @Test
+    fun anOccurrenceTakesItsMastersRhythmAndOrigin() {
+        // An occurrence has no rhythm_id or origin of its own. An auto-scheduled rhythm
+        // renders ONLY as occurrences, and a recurring ICS series must stay read-only.
+        val sql = EventRowMapper.OCCURRENCES_SQL
+        assertTrue(sql.contains("m.rhythm_id AS rhythm_id"), sql)
+        assertTrue(sql.contains("m.origin AS origin"), sql)
+        assertTrue(sql.contains("JOIN events m ON m.id = o.event_id"), sql)
+        assertTrue(sql.contains("o.event_id AS event_id"), sql)
+    }
 }

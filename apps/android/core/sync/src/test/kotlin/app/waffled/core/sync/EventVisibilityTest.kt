@@ -1,7 +1,10 @@
 package app.waffled.core.sync
 
 import app.waffled.core.model.WaffledDates
+import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
+import kotlin.test.assertNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -127,5 +130,81 @@ class EventBucketingTest {
         val events = listOf(event("good", "2026-08-21T13:00:00Z"), event("bad", "nonsense"))
         val byDay = EventBucketing.byDay(events, ZoneId.of("UTC"))
         assertEquals(1, byDay.values.sumOf { it.size })
+    }
+
+    // ---- ordering + multi-day spans (EventIndexTests: AgendaByDay / AgendaSpan) ------
+
+    private val denver = ZoneId.of("America/Denver")
+
+    private fun span(id: String, start: String, end: String?, allDay: Boolean = true) =
+        SyncedEvent(id = id, householdId = "h1", title = id, startsAt = start, endsAt = end, allDay = allDay)
+
+    private fun d(s: String) = LocalDate.parse(s)
+
+    // The all-day end is EXCLUSIVE: a 7/27 -> 8/3 row is the 27th through the 2nd.
+    private val trip = span("trip", "2026-07-27T06:00:00Z", "2026-08-03T06:00:00Z")
+
+    @Test
+    fun withinADayTimedEventsComeFirstThenAllDay() {
+        val byDay = EventBucketing.byDay(
+            listOf(
+                span("allday", "2026-06-16", null),
+                span("next", "2026-06-17T18:00:00Z", null, allDay = false),
+                span("evening", "2026-06-17T03:00:00Z", null, allDay = false),
+                span("morning", "2026-06-16T17:49:00Z", null, allDay = false),
+            ),
+            denver,
+        )
+        assertEquals(2, byDay.size)
+        assertEquals(listOf("morning", "evening", "allday"), byDay[d("2026-06-16")]?.map { it.id })
+        assertEquals(listOf("next"), byDay[d("2026-06-17")]?.map { it.id })
+    }
+
+    @Test
+    fun anAllDayTripCoversEveryDayUpToItsExclusiveEnd() {
+        assertEquals(
+            listOf("2026-07-27", "2026-07-28", "2026-07-29", "2026-07-30", "2026-07-31", "2026-08-01", "2026-08-02")
+                .map(::d),
+            EventBucketing.dayKeys(trip, denver),
+        )
+        val byDay = EventBucketing.byDay(listOf(trip), denver)
+        assertEquals(7, byDay.size)
+        assertEquals(listOf("trip"), byDay[d("2026-07-30")]?.map { it.id })
+        assertNull(byDay[d("2026-08-03")])
+    }
+
+    @Test
+    fun aOneDayAllDayEventAndAnOpenEndedOneStayOnTheirDay() {
+        assertEquals(
+            listOf(d("2026-07-11")),
+            EventBucketing.dayKeys(span("one", "2026-07-11T06:00:00Z", "2026-07-12T06:00:00Z"), denver),
+        )
+        assertEquals(listOf(d("2026-06-16")), EventBucketing.dayKeys(span("bare", "2026-06-16", null), denver))
+    }
+
+    @Test
+    fun aTimedEventStaysOnItsStartDayEvenPastMidnight() {
+        val late = span("late", "2026-07-11T02:00:00Z", "2026-07-11T16:00:00Z", allDay = false)
+        assertEquals(listOf(d("2026-07-10")), EventBucketing.dayKeys(late, denver))
+    }
+
+    @Test
+    fun aTripIsNotPastUntilItsLastDayIsBehindToday() {
+        assertFalse(EventBucketing.isPast(trip, denver, now = Instant.parse("2026-08-02T18:00:00Z")))
+        assertTrue(EventBucketing.isPast(trip, denver, now = Instant.parse("2026-08-03T18:00:00Z")))
+    }
+
+    @Test
+    fun coversFindsATripOnAMiddleDay() {
+        assertTrue(EventBucketing.covers(trip, d("2026-07-30"), denver))
+        assertTrue(EventBucketing.covers(trip, d("2026-08-02"), denver))
+        assertFalse(EventBucketing.covers(trip, d("2026-08-03"), denver))
+        assertEquals(d("2026-08-03"), EventBucketing.exclusiveEndDay(trip, denver))
+    }
+
+    @Test
+    fun aCorruptFarFutureEndIsCapped() {
+        val runaway = span("runaway", "2026-01-01T07:00:00Z", "2031-01-01T07:00:00Z")
+        assertEquals(EventBucketing.MAX_SPAN_DAYS, EventBucketing.dayKeys(runaway, denver).size)
     }
 }

@@ -7,6 +7,7 @@ import kotlinx.coroutines.yield
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -24,6 +25,7 @@ class CountdownsModelTest {
     /** A scriptable stand-in for the countdowns endpoint. */
     private class Feed(var items: List<CalendarApi.Countdown>) {
         var fetchCount = 0
+        var fetchFails = false
         var createFails = false
         var updateFails = false
         var deleteFails = false
@@ -44,6 +46,7 @@ class CountdownsModelTest {
     private fun model(feed: Feed) = CountdownsModel(
         fetchCountdowns = {
             feed.fetchCount++
+            if (feed.fetchFails) throw Rejected()
             CountdownsModel.Fetched(feed.items, sleeps = false)
         },
         createCountdown = { _, _, _ -> if (feed.createFails) throw Rejected() },
@@ -224,5 +227,57 @@ class CountdownsModelTest {
 
         assertEquals(2, feed.fetchCount)
         assertEquals(listOf("new"), model.items.map { it.id })
+    }
+
+    @Test
+    fun aSuccessfulCreateReportsWhenTheFollowUpRefreshFails() = runTest {
+        // The write is confirmed; only the re-read failed. Saying "not added" here would
+        // invite a retry that creates a duplicate.
+        val feed = Feed(emptyList())
+        val model = model(feed)
+        model.load()
+        feed.fetchFails = true
+
+        val outcome = model.add(title = "Vacation", date = "2026-09-01", emoji = null)
+
+        assertEquals(CountdownsModel.MutationOutcome.SavedButRefreshFailed, outcome)
+        assertEquals(2, feed.fetchCount)
+        assertTrue(model.items.isEmpty())
+    }
+
+    @Test
+    fun aSuccessfulUpdateReportsWhenTheFollowUpRefreshFails() = runTest {
+        val item = countdown("countdown-1", title = "Beach trip")
+        val feed = Feed(listOf(item))
+        val model = model(feed)
+        model.load()
+        feed.fetchFails = true
+
+        val outcome = model.update(item, title = "Mountain trip", date = "2026-09-01", emoji = null)
+
+        assertEquals(CountdownsModel.MutationOutcome.SavedButRefreshFailed, outcome)
+        assertEquals(2, feed.fetchCount)
+        assertEquals("Beach trip", model.items.first().title)
+    }
+
+    @Test
+    fun aRefreshedWriteSaysSo() = runTest {
+        val model = model(Feed(emptyList()))
+        assertEquals(CountdownsModel.MutationOutcome.Refreshed, model.add("Vacation", "2026-09-01", null))
+    }
+
+    @Test
+    fun aRhythmCountdownIsNeitherEditableNorRemovable() = runTest {
+        val rhythm = countdown("rhythm:7f1c", source = "rhythm")
+        val feed = Feed(listOf(rhythm))
+        val model = model(feed)
+        model.load()
+
+        model.remove(rhythm)
+        model.update(rhythm, title = "Nope", date = "2026-09-01", emoji = null)
+
+        assertTrue(feed.deletedIds.isEmpty())
+        assertEquals(listOf("rhythm:7f1c"), model.items.map { it.id })
+        assertFalse(rhythm.isStandalone)
     }
 }

@@ -33,6 +33,7 @@ import app.waffled.core.design.WF
 import app.waffled.core.design.WaffledCard
 import app.waffled.core.design.WaffledEmojiTile
 import app.waffled.core.design.colorFromHex
+import app.waffled.core.network.WaffledApiException
 import kotlinx.coroutines.launch
 
 /** How many rows fit before the card collapses the rest into "+N more". */
@@ -124,8 +125,9 @@ fun CountdownsCard(
                         },
                         onRemove = {
                             scope.launch {
-                                runCatching { model.remove(countdown) }.onFailure {
-                                    error = "Couldn't remove this countdown. Check your connection and try again."
+                                runCatching { model.remove(countdown) }.onFailure { failure ->
+                                    error = (failure as? WaffledApiException)?.userMessage
+                                        ?: "Couldn't remove this countdown. Check your connection and try again."
                                 }
                             }
                         },

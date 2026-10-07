@@ -92,6 +92,15 @@ fun EventDetailSheet(
 
             DetailRow(Icons.Filled.Schedule, dayAndTime(row, zone))
 
+            // Read off the synced row, so it shows offline and on first paint.
+            if (row.event.isRhythm) {
+                Text(
+                    text = "${RhythmMark.GLYPH} ${RhythmMark.DETAIL_LINE}",
+                    style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold),
+                    color = WF.colors.ink2,
+                )
+            }
+
             (detail?.location ?: row.location)?.takeIf { it.isNotBlank() }?.let {
                 DetailRow(Icons.Filled.Place, it)
             }
@@ -143,13 +152,16 @@ fun EventDetailSheet(
     }
 }
 
-/** "Tue · Jun 16 · 8:30 AM", or "Tue · Jun 16 · All day". */
+/**
+ * "Tue · Jun 16 · 8:30 AM", "Tue · Jun 16 · All day", or for a multi-day all-day event
+ * "Mon · Jul 27 – Sun · Aug 2 · All day" — whichever of its days was tapped.
+ */
 private fun dayAndTime(row: EventRow, zone: ZoneId): String {
-    val day = WaffledDates.format(
-        row.day.atStartOfDay(zone).toInstant(),
-        "EEE · MMM d",
-        zone,
-    )
+    fun label(day: java.time.LocalDate) =
+        WaffledDates.format(day.atStartOfDay(zone).toInstant(), "EEE · MMM d", zone)
+    val end = row.exclusiveEndDay
+    val first = row.startsAt?.let { WaffledDates.localDay(it, zone) } ?: row.day
+    val day = if (end != null) "${label(first)} – ${label(end.minusDays(1))}" else label(row.day)
     return if (row.timeLabel.isEmpty()) day else "$day · ${row.timeLabel}"
 }
 

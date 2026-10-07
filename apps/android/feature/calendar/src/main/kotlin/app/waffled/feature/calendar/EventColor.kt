@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import app.waffled.core.design.colorFromHex
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -125,13 +126,9 @@ data class EventPalette(
 /**
  * The readable-ink rule for **solid** chips, ported 1:1 from the web's `solidChipInk`.
  *
- * A solid chip fills with the event's colour, so the text can't be a fixed white: white
- * clears WCAG AA (4.5:1) on only one of the eight preset member colours — gold sits at
- * 2.2:1 and teal at 2.5:1, illegible from across a kitchen. Black or white always works,
- * though: wherever white falls short the fill is light enough that black clears it (the
- * crossover is at luminance ≈0.179, where both give 4.58:1). So each chip takes the winning
- * ink **for the fill it actually gets**, which differs by theme — dark mixes the fill
- * toward black first.
+ * A solid chip fills with the event's colour, so the text can't be a fixed white: gold and
+ * teal are too light for it. Each chip picks black or white by APCA contrast **on the fill
+ * it actually gets**, which differs by theme — dark mixes the fill toward black first.
  *
  * Kept as pure hex→hex functions (rather than folded into `Color` maths) so the tests can
  * assert the web function's exact output for every swatch; a drift on any platform then
@@ -184,8 +181,33 @@ object EventChipInk {
         return inkFor(hex)
     }
 
+    // APCA, not the WCAG ratio: WCAG narrowly picks black on purple and blue, which reads
+    // worse. The rationale lives beside the web's `solidChipInk`.
     private fun inkFor(background: String): String =
-        if (contrastRatio(background, WHITE) >= contrastRatio(background, BLACK)) WHITE else BLACK
+        if (apcaContrast(text = WHITE, background = background) >= apcaContrast(text = BLACK, background = background)) {
+            WHITE
+        } else {
+            BLACK
+        }
+
+    /** APCA lightness contrast (|Lc|, 0 to ~106) of [text] on [background]; 0 for malformed input. */
+    fun apcaContrast(text: String, background: String): Double {
+        val t = components(text) ?: return 0.0
+        val b = components(background) ?: return 0.0
+        fun y(rgb: List<Double>): Double {
+            val c = rgb.map { (it / 255.0).pow(2.4) }
+            val v = 0.2126729 * c[0] + 0.7151522 * c[1] + 0.0721750 * c[2]
+            return if (v > 0.022) v else v + (0.022 - v).pow(1.414)
+        }
+        val yt = y(t)
+        val yb = y(b)
+        val sapc = if (yb > yt) {
+            (yb.pow(0.56) - yt.pow(0.57)) * 1.14
+        } else {
+            (yb.pow(0.65) - yt.pow(0.62)) * 1.14
+        }
+        return if (abs(sapc) < 0.1) 0.0 else (abs(sapc) - 0.027) * 100
+    }
 
     /** WCAG relative luminance of 0–255 components. */
     private fun luminance(rgb: List<Double>): Double {

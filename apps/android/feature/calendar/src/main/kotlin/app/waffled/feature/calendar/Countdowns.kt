@@ -84,20 +84,36 @@ class CountdownsModel(
     /** In-flight deletes, so a double-tap on the ✕ can't fire two requests. */
     private val deleting = mutableSetOf<String>()
 
-    suspend fun load() {
-        runCatching { fetchCountdowns() }.getOrNull()?.let { response ->
-            setItems(response.items)
-            _sleeps.value = response.sleeps
+    /** What a confirmed write reports about the re-read that follows it. */
+    enum class MutationOutcome { Refreshed, SavedButRefreshFailed }
+
+    private suspend fun refresh(): Boolean {
+        val response = runCatching { fetchCountdowns() }.getOrNull()
+        response?.let {
+            setItems(it.items)
+            _sleeps.value = it.sleeps
         }
         // Marked loaded even on failure, or the card sits on "Loading…" for ever.
         _loaded.value = true
+        return response != null
     }
 
-    suspend fun add(title: String, date: String, emoji: String?) {
+    /** A passive load keeps the last confirmed snapshot when it fails. */
+    suspend fun load() {
+        refresh()
+    }
+
+    /**
+     * Re-read rather than patching locally: daysLeft, the ordering and the birthday / event
+     * rows are all computed server-side. A failed re-read is reported apart from the write,
+     * so the caller never implies that retrying the write is safe.
+     */
+    private suspend fun refreshAfterMutation(): MutationOutcome =
+        if (refresh()) MutationOutcome.Refreshed else MutationOutcome.SavedButRefreshFailed
+
+    suspend fun add(title: String, date: String, emoji: String?): MutationOutcome {
         createCountdown(title, date, emoji)
-        // Re-read rather than patching locally: daysLeft, the ordering and the birthday /
-        // event rows are all computed server-side.
-        load()
+        return refreshAfterMutation()
     }
 
     /** Only standalone items can be removed (events/birthdays are managed at their source). */
@@ -113,10 +129,15 @@ class CountdownsModel(
     }
 
     /** Rename / move a standalone countdown. */
-    suspend fun update(countdown: CalendarApi.Countdown, title: String, date: String, emoji: String?) {
-        if (!countdown.isStandalone) return
+    suspend fun update(
+        countdown: CalendarApi.Countdown,
+        title: String,
+        date: String,
+        emoji: String?,
+    ): MutationOutcome {
+        if (!countdown.isStandalone) return MutationOutcome.Refreshed
         updateCountdown(countdown.id, title, date, emoji)
-        load()
+        return refreshAfterMutation()
     }
 
     private fun setItems(value: List<CalendarApi.Countdown>) {
