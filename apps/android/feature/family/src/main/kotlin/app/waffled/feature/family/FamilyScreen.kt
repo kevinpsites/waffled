@@ -198,8 +198,8 @@ private data class HubTileSpec(
 
 @Composable
 private fun HubTile(spec: HubTileSpec, onOpen: (HubRoute) -> Unit, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(WF.radius.lg)
-    WaffledCard(modifier = modifier.clip(shape).clickable { onOpen(spec.route) }, padding = 15.dp) {
+    // No clip ahead of the card: it would cut off WaffledCard's own shadow.
+    WaffledCard(modifier = modifier.clickable { onOpen(spec.route) }, padding = 15.dp) {
         Row(verticalAlignment = Alignment.Top) {
             Box {
                 Box(

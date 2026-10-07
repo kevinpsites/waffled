@@ -26,6 +26,7 @@ sealed interface HubRoute {
     data class WaffledBites(val personId: String, val personName: String) : HubRoute
     data class Recipe(val recipeId: String, val cook: Boolean = false) : HubRoute
     data class Meal(val mealId: String) : HubRoute
+    /** Render with `canManage = me.can(REWARD_MANAGE)` — without it a parent can't redeem in a kid's shop. */
     data class RewardShop(val personId: String) : HubRoute
 
     data object SettingsAccount : HubRoute

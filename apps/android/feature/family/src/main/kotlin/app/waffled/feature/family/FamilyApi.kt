@@ -105,6 +105,7 @@ class FamilyApi(
         val status: String = "pending",
         val rewardAmount: Int = 0,
         val rewardCurrency: String? = null,
+        val rrule: String? = null,
         val dueOn: String? = null,
         val dueTime: String? = null,
         val requiresApproval: Boolean = false,
