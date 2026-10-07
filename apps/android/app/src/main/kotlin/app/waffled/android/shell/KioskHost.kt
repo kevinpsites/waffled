@@ -53,6 +53,8 @@ fun KioskHost(container: AppContainer, shell: ShellViewModel, actions: ShellActi
                 countdowns = container.countdownsModel,
                 api = container.calendarApi,
                 kioskApi = container.kioskCalendarApi,
+                openEventId = shell.pendingEventId,
+                onOpenEventConsumed = { shell.pendingEventId = null },
             )
         },
         KioskNav.Tasks to page(KioskNav.Tasks) { a, _ -> RouteHost(AppRoute.Chores, container, a, showBack = false) },
@@ -79,6 +81,8 @@ fun KioskHost(container: AppContainer, shell: ShellViewModel, actions: ShellActi
         onCapture = onCapture,
         onRetry = { container.restartSync() },
         onSignOut = actions.signOut,
+        requestedNav = shell.kioskNavRequest,
+        onRequestedNavConsumed = { shell.kioskNavRequest = null },
     )
 }
 
@@ -105,8 +109,10 @@ private fun KioskPageBody(
             capture = actions.capture,
             signOut = actions.signOut,
             reloadApprovals = actions.reloadApprovals,
-            // KioskCalendarPage has no open-by-id hook yet: land on the page.
-            openEvent = { page.navigate(KioskNav.Calendar) },
+            openEvent = {
+                shell.pendingEventId = it
+                page.navigate(KioskNav.Calendar)
+            },
             isKiosk = true,
         )
     }

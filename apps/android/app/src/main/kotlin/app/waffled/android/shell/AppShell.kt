@@ -41,7 +41,7 @@ sealed interface LaunchRequest {
     /** A tapped cook-timer notification: Cook Mode is already resumed, just raise it. */
     data object Cook : LaunchRequest
 
-    /** A tapped event reminder: the phone's Calendar opens it. */
+    /** A tapped event reminder: the Calendar (phone tab or tablet rail page) opens it. */
     data class Event(val eventId: String) : LaunchRequest
 }
 
@@ -97,6 +97,10 @@ fun AppShell(
 
     fun openEvent(id: String) {
         shell.pendingEventId = id
+        if (isTablet) {
+            shell.kioskNavRequest = app.waffled.feature.kiosk.KioskNav.Calendar
+            return
+        }
         if (nav.tab != TAB_CALENDAR) nav = nav.copy(tab = TAB_CALENDAR)
     }
 
@@ -108,7 +112,7 @@ fun AppShell(
                 if (isTablet) shell.kioskStacks = shell.kioskStacks.push(app.waffled.feature.kiosk.KioskNav.Today, launch.route)
                 else nav = nav.open(launch.tab, launch.route)
             LaunchRequest.Cook -> cookShown = true
-            is LaunchRequest.Event -> if (!isTablet) openEvent(launch.eventId)
+            is LaunchRequest.Event -> openEvent(launch.eventId)
             null -> return@LaunchedEffect
         }
         onLaunchHandled()
