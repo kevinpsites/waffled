@@ -15,6 +15,9 @@ import { CookConfirm } from './components/CookConfirm'
 import { CookTabs, type CookTabInfo } from './components/CookTabs'
 import { useCookPlate } from './components/CookDishes'
 import { fmt, useCookTimers, type CookTimer } from './components/CookTimers'
+// The add-timer controls borrow the recipe page's .re-timer-* styles; import them here too, or
+// opening cook mode directly (a refresh, a link) leaves them unstyled.
+import './../styles/recipe.css'
 import './../styles/cookmode.css'
 
 // Full-screen, step-by-step cooking view for the kiosk — large type for across-the-
