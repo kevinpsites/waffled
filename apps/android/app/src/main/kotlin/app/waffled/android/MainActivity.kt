@@ -18,6 +18,7 @@ import app.waffled.android.shell.LaunchRequest
 import app.waffled.android.shell.TAB_TODAY
 import app.waffled.core.design.WaffledTheme
 import app.waffled.feature.recipes.cookTimerLinkFrom
+import app.waffled.feature.settingshousehold.EventReminderReceiver
 import kotlinx.coroutines.launch
 
 class WaffledApp : Application(), coil3.SingletonImageLoader.Factory {
@@ -48,7 +49,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val container = (application as WaffledApp).container
-        handle(intent)
+        // A recreation (theme flip) keeps the nav stack; replaying the launch intent would
+        // re-push its route on top of wherever the user has since gone.
+        if (savedInstanceState == null) handle(intent)
 
         setContent {
             val themePref by container.themeStore.prefFlow.collectAsStateWithLifecycle()
@@ -57,9 +60,10 @@ class MainActivity : ComponentActivity() {
                 darkTheme = forcedDark
                     ?: androidx.compose.foundation.isSystemInDarkTheme(),
             ) {
-                AuthGate(container) {
+                AuthGate(container) { session ->
                     AppShell(
                         container = container,
+                        session = session,
                         launch = launchRequest,
                         onLaunchHandled = { launchRequest = null },
                     )
@@ -84,8 +88,16 @@ class MainActivity : ComponentActivity() {
             }
             return
         }
-        // Debug-only headless verification: `--es waffled.route goals [--es waffled.tab family]`.
+        // A tapped event reminder.
+        intent?.getStringExtra(EventReminderReceiver.EXTRA_EVENT_ID)?.takeIf { it.isNotEmpty() }?.let { id ->
+            intent.removeExtra(EventReminderReceiver.EXTRA_EVENT_ID)
+            launchRequest = LaunchRequest.Event(id)
+            return
+        }
+        // Debug-only headless verification: `--es waffled.route goals [--es waffled.tab family]`,
+        // and `--es waffled.server http://10.0.2.2:8081` to point at another local stack.
         if (BuildConfig.DEBUG) {
+            intent?.getStringExtra(EXTRA_SERVER)?.let { (application as WaffledApp).container.serverAddress.set(it) }
             AppRoute.fromDebugKey(intent?.getStringExtra(EXTRA_ROUTE))?.let { route ->
                 launchRequest = LaunchRequest.Route(
                     tab = intent?.getStringExtra(EXTRA_TAB) ?: TAB_TODAY,
@@ -98,5 +110,6 @@ class MainActivity : ComponentActivity() {
     private companion object {
         const val EXTRA_ROUTE = "waffled.route"
         const val EXTRA_TAB = "waffled.tab"
+        const val EXTRA_SERVER = "waffled.server"
     }
 }

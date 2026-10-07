@@ -50,6 +50,23 @@ import app.waffled.feature.recipes.SharedPrefsCookStateStore
 import app.waffled.feature.today.DashboardModel
 import app.waffled.feature.today.TodayApi
 import app.waffled.feature.today.TodayLayoutModel
+import app.waffled.feature.bites.WaffledBitesApi
+import app.waffled.feature.capture.CaptureApi
+import app.waffled.feature.family.ApprovalsModel
+import app.waffled.feature.family.FamilyApi
+import app.waffled.feature.family.FamilyHubModel
+import app.waffled.feature.familynight.FamilyNightApi
+import app.waffled.feature.familynight.FamilyNightModel
+import app.waffled.feature.rhythms.RhythmsApi
+import app.waffled.feature.rhythms.RhythmsModel
+import app.waffled.feature.settings.ServerChange
+import app.waffled.feature.settings.ServerConnection
+import app.waffled.feature.settings.SettingsApi
+import app.waffled.feature.settings.UpdateDismissalStore
+import app.waffled.feature.settingshousehold.EventReminders
+import app.waffled.feature.settingshousehold.SettingsHouseholdApi
+import app.waffled.feature.settingshousehold.create
+import java.time.ZoneId
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -161,6 +178,8 @@ class AppContainer(context: Context) {
         ListsIndexModel(api = listsApi, refreshBus = refreshBus)
     }
 
+    val rewardsApi: RewardsApi by lazy { RewardsApi(httpClient, auth) }
+
     val choresModel: ChoresModel by lazy {
         ChoresModel(
             api = ChoresApi(httpClient, auth),
@@ -172,7 +191,7 @@ class AppContainer(context: Context) {
 
     val rewardsModel: RewardsModel by lazy {
         RewardsModel(
-            api = RewardsApi(httpClient, auth),
+            api = rewardsApi,
             refreshBus = refreshBus,
         )
     }
@@ -274,14 +293,110 @@ class AppContainer(context: Context) {
 
     // ---- Pantry ------------------------------------------------------------------
 
-    val pantryModel: PantryModel by lazy {
-        PantryModel(
-            api = PantryApi(httpClient, auth),
-            baseUrl = serverAddress.baseUrl(),
-            zone = syncManager.householdZone.value,
-            refreshBus = refreshBus,
-            clock = ::householdToday,
-        )
+    private var pantryCache: Pair<ZoneId, PantryModel>? = null
+
+    /**
+     * Pantry's expiry labels are formatted in the zone it was built with, and the household
+     * zone arrives after first use — so the model is rebuilt when the zone changes.
+     */
+    @Synchronized
+    fun pantryModel(zone: ZoneId): PantryModel =
+        pantryCache?.takeIf { it.first == zone }?.second
+            ?: PantryModel(
+                api = PantryApi(httpClient, auth),
+                baseUrl = serverAddress.baseUrl(),
+                zone = zone,
+                refreshBus = refreshBus,
+                clock = ::householdToday,
+            ).also { pantryCache = zone to it }
+
+    // ---- Session scope -----------------------------------------------------------
+
+    private val _sessionScope = MutableStateFlow(Any())
+
+    /**
+     * A fresh token per sign-in, household switch and server change. The Family models
+     * drop every cached feed when it changes, so one account never sees another's rows.
+     */
+    val sessionScope: StateFlow<Any> = _sessionScope.asStateFlow()
+
+    fun newSessionScope() {
+        _sessionScope.value = Any()
+    }
+
+    // ---- Settings ----------------------------------------------------------------
+
+    val settingsApi: SettingsApi by lazy { SettingsApi(httpClient, auth) }
+    val householdSettingsApi: SettingsHouseholdApi by lazy { SettingsHouseholdApi(httpClient, auth) }
+
+    /** Local event reminders, kept in step with the synced calendar for the process's life. */
+    val eventReminders: EventReminders by lazy {
+        EventReminders.create(appContext).also { it.bind(appScope, syncManager) }
+    }
+
+    val updateDismissal: UpdateDismissalStore = object : UpdateDismissalStore {
+        override fun dismissedTag(): String? = prefs.getString(UPDATE_DISMISSED, null)
+        override fun dismiss(tag: String) {
+            prefs.edit().putString(UPDATE_DISMISSED, tag).apply()
+        }
+    }
+
+    /**
+     * About → Server. A new server must never inherit the old one's local mirror, and
+     * `core:sync` cannot clear it yet — so every change is refused as a failed teardown
+     * rather than saved over stale rows.
+     */
+    val serverConnection: ServerConnection = object : ServerConnection {
+        override fun currentUrl(): String = serverAddress.baseUrl()
+        override val defaultUrl: String = BuildConfig.DEFAULT_SERVER_URL
+        override suspend fun change(input: String): ServerChange {
+            val verdict = ServerUrl.validate(input)
+            if (verdict !is ServerUrlVerdict.Ok) return ServerChange.Rejected(verdict)
+            if (pendingUploads() > 0) return ServerChange.PendingUploads(pendingUploads())
+            if (!clearLocalSync()) return ServerChange.TeardownFailed
+            serverAddress.set(verdict.url)
+            newSessionScope()
+            return ServerChange.Updated(verdict.url)
+        }
+    }
+
+    /** Queued PowerSync writes. `core:sync` exposes no count yet, so this reads 0. */
+    fun pendingUploads(): Int = 0
+
+    /** Stop sync and wipe the local mirror. `core:sync` has no wipe yet, so this fails safe. */
+    @Suppress("FunctionOnlyReturningConstant")
+    suspend fun clearLocalSync(): Boolean = false
+
+    // ---- Family ------------------------------------------------------------------
+
+    val familyApi: FamilyApi by lazy { FamilyApi(httpClient, auth) }
+    val familyHub: FamilyHubModel by lazy { FamilyHubModel.backedBy(familyApi) }
+
+    /** ONE queue for the hub badges, the banner and the screen, so all three agree. */
+    val approvals: ApprovalsModel by lazy { ApprovalsModel.backedBy(familyApi, refreshBus) }
+
+    // ---- Capture, Waffled-Bites, Family Night, Rhythms ---------------------------
+
+    val captureApi: CaptureApi by lazy { CaptureApi(httpClient, auth) }
+    val bitesApi: WaffledBitesApi by lazy { WaffledBitesApi(httpClient, auth) }
+    val familyNightApi: FamilyNightApi by lazy { FamilyNightApi(httpClient, auth) }
+    val familyNightModel: FamilyNightModel by lazy { FamilyNightModel(familyNightApi) }
+
+    val rhythmsModel: RhythmsModel by lazy {
+        RhythmsModel.from(RhythmsApi(httpClient, auth), zone = { syncManager.householdZone.value })
+    }
+
+    private val _countdownsRev = MutableStateFlow(0)
+
+    /** Bumped after a rhythm write: completion rhythms feed the countdown chips. */
+    val countdownsRev: StateFlow<Int> = _countdownsRev.asStateFlow()
+
+    fun bumpCountdowns() {
+        _countdownsRev.value += 1
+    }
+
+    private companion object {
+        const val UPDATE_DISMISSED = "waffled.update.dismissed"
     }
 }
 

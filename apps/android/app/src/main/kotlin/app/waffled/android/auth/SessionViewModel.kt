@@ -37,6 +37,8 @@ data class LoginUiState(
 class SessionViewModel(
     private val auth: WaffledAuth,
     private val api: AuthApi,
+    /** A new account context began or ended — the Family models re-scope on it. */
+    private val onSessionChanged: () -> Unit = {},
 ) : ViewModel() {
 
     private val _phase = MutableStateFlow<SessionPhase>(SessionPhase.Loading)
@@ -49,6 +51,7 @@ class SessionViewModel(
         // A rejected refresh token, or a household that is gone, ends the session out from
         // under us. Re-read the login methods: a null status hides an OIDC-only stack's button.
         auth.onAuthExpired = {
+            onSessionChanged()
             _phase.value = SessionPhase.SignedOut(null)
             viewModelScope.launch { _phase.value = SessionPhase.SignedOut(api.status()) }
         }
@@ -79,6 +82,7 @@ class SessionViewModel(
             when (val result = api.login(state.email, state.password)) {
                 is LoginResult.Success -> {
                     auth.adopt(result.tokens)
+                    onSessionChanged()
                     _login.value = LoginUiState() // don't keep the password around
                     _phase.value = SessionPhase.SignedIn(result.memberships)
                 }

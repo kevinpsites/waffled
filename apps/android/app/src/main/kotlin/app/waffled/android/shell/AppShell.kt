@@ -21,6 +21,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.waffled.android.AppContainer
 import app.waffled.core.design.WF
 import app.waffled.feature.recipes.CookModeScreen
+import androidx.activity.compose.LocalActivity
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.viewmodel.compose.viewModel
+import app.waffled.android.auth.SessionViewModel
+import app.waffled.core.model.WaffledModule
+import app.waffled.core.network.RefreshDomain
+import app.waffled.feature.capture.CaptureEnvironment
+import app.waffled.feature.capture.CaptureSheet
+import app.waffled.feature.capture.rememberCaptureModel
+import app.waffled.feature.settings.ServerUpdateModal
 import kotlinx.coroutines.launch
 
 /** Something the Activity's intent asks the shell to open. */
@@ -30,6 +40,9 @@ sealed interface LaunchRequest {
 
     /** A tapped cook-timer notification: Cook Mode is already resumed, just raise it. */
     data object Cook : LaunchRequest
+
+    /** A tapped event reminder. Calendar has no open-by-id hook yet, so it lands on the tab. */
+    data class Event(val eventId: String) : LaunchRequest
 }
 
 /**
@@ -39,13 +52,25 @@ sealed interface LaunchRequest {
 @Composable
 fun AppShell(
     container: AppContainer,
+    session: SessionViewModel,
     launch: LaunchRequest?,
     onLaunchHandled: () -> Unit,
 ) {
-    val modules by container.syncManager.modules.collectAsStateWithLifecycle()
+    val sync = container.syncManager
+    val modules by sync.modules.collectAsStateWithLifecycle()
+    val members by sync.members.collectAsStateWithLifecycle()
+    val zone by sync.householdZone.collectAsStateWithLifecycle()
+    val viewer by container.identity.viewer.collectAsStateWithLifecycle()
+    val rewardsSub by container.identity.rewardsEnabled.collectAsStateWithLifecycle()
+    val sessionScope by container.sessionScope.collectAsStateWithLifecycle()
+    val revisions by container.refreshBus.state.collectAsStateWithLifecycle()
     val tabs = remember(modules) { FlexSlot.tabs(modules) }
-    var nav by remember { mutableStateOf(NavState<AppRoute>(tab = TAB_TODAY)) }
-    var cookShown by remember { mutableStateOf(false) }
+    val shell: ShellViewModel = viewModel()
+    var nav by shell::nav
+    var cookShown by rememberSaveable { mutableStateOf(false) }
+    // null = closed; otherwise whether the mic starts on open.
+    var capture by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    val activity = LocalActivity.current
     val cook by container.cookStore.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val saveable = rememberSaveableStateHolder()
@@ -53,18 +78,33 @@ fun AppShell(
     // Only the synced tables go through PowerSync; identity + module flags are REST.
     LaunchedEffect(Unit) { container.syncManager.start() }
     LaunchedEffect(Unit) { container.refreshSurfaces() }
-    DisposableEffect(Unit) { onDispose { container.identity.clear() } }
+    // Touching it binds reminders to sync once per process.
+    LaunchedEffect(Unit) { container.eventReminders }
+    // A theme flip recreates the Activity; only a real exit (sign-out, session end) clears.
+    DisposableEffect(Unit) {
+        onDispose { if (activity?.isChangingConfigurations != true) container.identity.clear() }
+    }
+
+    val choresOn = modules.isOn(WaffledModule.Chores)
+    val rewardsOn = modules.rewardsOn(rewardsSub)
+    suspend fun loadApprovals() = container.approvals.load(sessionScope, choresOn, rewardsOn)
+    // The one approvals queue feeds the hub badges, Today's banner and the screen — load
+    // it here so none of them waits for a pull-to-refresh.
+    LaunchedEffect(sessionScope, choresOn, rewardsOn, revisions[RefreshDomain.Chores], revisions[RefreshDomain.Rewards]) {
+        loadApprovals()
+    }
 
     LaunchedEffect(launch) {
         when (launch) {
             is LaunchRequest.Route -> nav = nav.open(launch.tab, launch.route)
             LaunchRequest.Cook -> cookShown = true
+            is LaunchRequest.Event -> if (nav.tab != TAB_CALENDAR) nav = nav.select(TAB_CALENDAR)
             null -> return@LaunchedEffect
         }
         onLaunchHandled()
     }
 
-    val actions = remember {
+    val actions = remember(sessionScope, choresOn, rewardsOn) {
         ShellActions(
             push = { nav = nav.push(it) },
             pop = { nav = nav.pop() ?: nav },
@@ -76,6 +116,14 @@ fun AppShell(
                     cookShown = true
                 }
             },
+            capture = { capture = it },
+            signOut = {
+                container.eventReminders.clearEventReminders()
+                container.identity.clear()
+                container.newSessionScope()
+                session.signOut()
+            },
+            reloadApprovals = { loadApprovals() },
         )
     }
 
@@ -108,8 +156,7 @@ fun AppShell(
             tabs = tabs,
             selected = tabs.firstOrNull { it.id == nav.tab } ?: tabs.first(),
             onSelect = { actions.selectTab(it.id) },
-            // The capture sheet is Wave C.
-            onCapture = {},
+            onCapture = { capture = false },
             modifier = Modifier.align(Alignment.BottomCenter),
         )
 
@@ -120,4 +167,24 @@ fun AppShell(
             )
         }
     }
+
+    val captureModel = rememberCaptureModel(container.captureApi, container.refreshBus)
+    capture?.let { dictate ->
+        CaptureSheet(
+            model = captureModel,
+            environment = CaptureEnvironment(
+                members = members,
+                currentPersonId = viewer?.id,
+                zone = zone,
+                goalsOn = modules.isOn(WaffledModule.Goals),
+                pantryOn = modules.isOn(WaffledModule.Pantry),
+                rewardsOn = rewardsOn,
+            ),
+            onDismiss = { capture = null },
+            autoDictate = dictate,
+        )
+    }
+
+    // App-wide: the "newer server available" modal can appear over any screen.
+    ServerUpdateModal(container.settingsApi, container.updateDismissal)
 }
