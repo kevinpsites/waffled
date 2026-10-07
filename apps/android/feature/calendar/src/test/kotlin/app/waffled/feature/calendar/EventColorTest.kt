@@ -136,23 +136,22 @@ class EventColorTest {
 
     /**
      * Expectations are the WEB function's own output for each colour, so a drift on any
-     * platform fails here. White clears WCAG AA on only one of the eight preset member
-     * colours, so each chip picks black or white by the luminance of the fill it actually
-     * gets — which differs per theme, because dark mixes the fill 82% toward black.
+     * platform fails here. Each chip picks black or white by APCA contrast on the fill it
+     * actually gets — which differs per theme, because dark mixes the fill 82% toward black.
      */
     private data class Fixture(val hex: String, val darkFill: String, val lightInk: String, val darkInk: String)
 
     private val fixtures = listOf(
-        Fixture("#2F7FED", "#2768C2", "#000000", "#FFFFFF"),
-        Fixture("#EC6049", "#C24F3C", "#000000", "#FFFFFF"),
-        Fixture("#25A368", "#1E8655", "#000000", "#000000"),
-        Fixture("#8B5CF6", "#724BCA", "#000000", "#FFFFFF"),
-        Fixture("#E0A500", "#B88700", "#000000", "#000000"),
-        Fixture("#EC4899", "#C23B7D", "#000000", "#FFFFFF"),
-        Fixture("#14B8A6", "#109788", "#000000", "#000000"),
+        Fixture("#2F7FED", "#2768C2", "#FFFFFF", "#FFFFFF"),
+        Fixture("#EC6049", "#C24F3C", "#FFFFFF", "#FFFFFF"),
+        Fixture("#25A368", "#1E8655", "#FFFFFF", "#FFFFFF"),
+        Fixture("#8B5CF6", "#724BCA", "#FFFFFF", "#FFFFFF"),
+        Fixture("#E0A500", "#B88700", "#000000", "#FFFFFF"),
+        Fixture("#EC4899", "#C23B7D", "#FFFFFF", "#FFFFFF"),
+        Fixture("#14B8A6", "#109788", "#000000", "#FFFFFF"),
         Fixture("#6B7280", "#585D69", "#FFFFFF", "#FFFFFF"),
         // The default family colour, and the extremes.
-        Fixture("#F97316", "#CC5E12", "#000000", "#000000"),
+        Fixture("#F97316", "#CC5E12", "#FFFFFF", "#FFFFFF"),
         Fixture("#FFFFFF", "#D1D1D1", "#000000", "#000000"),
         Fixture("#000000", "#000000", "#FFFFFF", "#FFFFFF"),
     )
@@ -178,22 +177,27 @@ class EventColorTest {
     }
 
     @Test
-    fun theChosenInkAlwaysClearsWcagAA() {
-        // The point of the rule: whichever ink wins is never below 4.5:1 — the failure it
-        // replaces was a fixed white at 2.20:1 on gold.
-        for (f in fixtures.filter { it.hex != "#FFFFFF" }) {
+    fun theChosenInkIsAlwaysReadable() {
+        // Whichever ink wins reaches APCA Lc 50 on the fill it actually gets, in both themes.
+        for (f in fixtures) {
             assertTrue(
-                EventChipInk.contrastRatio(f.hex, f.lightInk) >= 4.5,
+                EventChipInk.apcaContrast(text = f.lightInk, background = EventChipInk.solidFill(f.hex, dark = false)!!) >= 50,
                 "light contrast for ${f.hex}",
             )
+            assertTrue(
+                EventChipInk.apcaContrast(text = f.darkInk, background = EventChipInk.solidFill(f.hex, dark = true)!!) >= 50,
+                "dark contrast for ${f.hex}",
+            )
         }
-        assertTrue(EventChipInk.contrastRatio("#E0A500", "#FFFFFF") < 2.5) // the old fixed white
-        assertTrue(EventChipInk.contrastRatio("#14B8A6", "#FFFFFF") < 2.6)
+        // WCAG 2's ratio narrowly prefers black on purple, which reads worse than white.
+        assertTrue(EventChipInk.contrastRatio("#8B5CF6", "#000000") > EventChipInk.contrastRatio("#8B5CF6", "#FFFFFF"))
+        assertTrue(EventChipInk.contrastRatio("#E0A500", "#FFFFFF") < 2.5) // why a fixed white failed on gold
     }
 
     @Test
     fun malformedInputFallsBackRatherThanCrashing() {
         assertNull(EventChipInk.solidFill("nonsense", dark = true))
         assertEquals(1.0, EventChipInk.contrastRatio("nonsense", "#FFFFFF"))
+        assertEquals(0.0, EventChipInk.apcaContrast(text = "nonsense", background = "#FFFFFF"))
     }
 }
