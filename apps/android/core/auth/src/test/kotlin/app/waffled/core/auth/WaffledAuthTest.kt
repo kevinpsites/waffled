@@ -73,6 +73,20 @@ class WaffledAuthTest {
     }
 
     @Test
+    fun aGoneHouseholdClearsTokensAndSendsTheAppToLogin() = runTest {
+        val backend = FakeBackend { null }
+        val (a, store) = auth(TokenPair("access-1", "refresh-1"), backend)
+        var expired = 0
+        a.onAuthExpired = { expired++ }
+
+        a.sessionEnded()
+
+        assertNull(store.load())
+        assertEquals(1, expired)
+        assertEquals(0, backend.calls.get(), "refreshing would mint a token for the same hole")
+    }
+
+    @Test
     fun signedInReflectsWhetherThereIsAToken() = runTest {
         val (signedIn, _) = auth(TokenPair("a", "r"), FakeBackend { null })
         val (signedOut, _) = auth(null, FakeBackend { null })

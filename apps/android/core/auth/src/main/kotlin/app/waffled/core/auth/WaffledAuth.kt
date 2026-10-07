@@ -32,6 +32,11 @@ class WaffledAuth(
     override suspend fun refreshAccessToken(failedToken: String?): String? =
         refresher.refresh(failedAccessToken = failedToken)?.accessToken
 
+    override fun sessionEnded() {
+        store.clear()
+        refresher.onAuthExpired?.invoke()
+    }
+
     fun isSignedIn(): Boolean = store.load() != null
 
     fun signOut() = store.clear()

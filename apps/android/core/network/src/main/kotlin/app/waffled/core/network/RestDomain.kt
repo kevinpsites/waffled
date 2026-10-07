@@ -79,6 +79,17 @@ object ApiErrorText {
         return fromServer ?: "Something went wrong ($status)."
     }
 
+    /**
+     * The server's error CODE (`{"error":"NoHousehold"}`), or null for a body that is not
+     * a JSON object with a string `error`. Clients key behaviour on this, never on prose.
+     */
+    fun code(body: String?): String? = body?.let {
+        runCatching {
+            val error = lenient.parseToJsonElement(it).jsonObject["error"]?.jsonPrimitive
+            error?.takeIf { p -> p.isString }?.content
+        }.getOrNull()
+    }
+
     private fun extractServerText(body: String): String? = runCatching {
         val obj = lenient.parseToJsonElement(body).jsonObject
         // `message` is the human-facing one; `error` is the code, used as a fallback.
