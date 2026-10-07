@@ -96,7 +96,7 @@ fun SettingsScreen(
     BackHandler(enabled = route != null) { route = null }
     val back = { route = null }
 
-    val rows = SettingsCatalog.rows(isAdmin, { ModuleCatalog.isOn(it, flags) }, extraPanels)
+    val rows = SettingsCatalog.rows(isAdmin, ModuleGate.fromServer(flags), extraPanels)
     val open = rows.firstOrNull { it.id == route }
     // A row can disappear under an open route (module switched off, admin revoked).
     if (route != null && (open == null || open.target is SettingsRowTarget.Soon)) {
