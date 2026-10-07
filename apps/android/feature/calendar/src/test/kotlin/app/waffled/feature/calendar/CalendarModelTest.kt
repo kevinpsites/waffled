@@ -138,6 +138,34 @@ class CalendarModelTest {
     }
 
     @Test
+    fun aFailedRefreshSaysSoWithTheServersMessageAndKeepsWhatItHad() = runTest {
+        val harness = app.waffled.core.testing.ApiTestHarness()
+        harness.start()
+        try {
+            val api = CalendarApi(
+                app.waffled.core.network.WaffledHttp.client(harness.tokens, harness.serverAddress),
+                harness.tokens,
+            )
+            val model = model(MutableStateFlow(emptyMap()), scope())
+            model.setMembers(listOf(Person(id = "p1", name = "Jerry")))
+
+            harness.enqueueError(503, "Unavailable", "Household settings are down for maintenance.")
+            harness.enqueueError(503, "Unavailable", "Household settings are down for maintenance.")
+            assertTrue(!model.refresh(api))
+
+            assertTrue(model.loadError.value.orEmpty().contains("down for maintenance"), model.loadError.value)
+            assertEquals(listOf("p1"), model.members.value.map { it.id })
+
+            harness.enqueueJson("""{"household":{"id":"h1","name":"X","timezone":"UTC"},"members":[]}""")
+            harness.enqueueJson("""{"household":{"settings":{}}}""")
+            assertTrue(model.refresh(api))
+            assertNull(model.loadError.value)
+        } finally {
+            harness.stop()
+        }
+    }
+
+    @Test
     fun aMondayHouseholdsMonthGridOpensOnMonday() {
         // June 2026 starts on a Monday, so a Monday-cut grid has no lead-in cells at all.
         val cells = CalendarModel.monthCells(LocalDate.of(2026, 6, 15), HouseholdWeekStart.Monday)

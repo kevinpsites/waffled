@@ -3,6 +3,7 @@ package app.waffled.feature.calendar
 import androidx.compose.runtime.Immutable
 import app.waffled.core.model.HouseholdWeekStart
 import app.waffled.core.model.Person
+import app.waffled.core.network.WaffledApiException
 import app.waffled.core.sync.SyncedEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -100,14 +101,36 @@ class CalendarModel(
         _zone.value = value
     }
 
-    /** Load everything REST owns. Safe to call again on resume. */
-    suspend fun refresh(api: CalendarApi) {
-        runCatching { api.householdSettings() }.getOrNull()?.let {
+    private val _loadError = MutableStateFlow<String?>(null)
+
+    /** Why the last REST refresh failed, in the server's words; null once one succeeds. */
+    val loadError: StateFlow<String?> = _loadError.asStateFlow()
+
+    fun clearLoadError() {
+        _loadError.value = null
+    }
+
+    /**
+     * Load everything REST owns. Safe to call again on resume. A failure keeps the last
+     * confirmed values and is reported through [loadError] rather than swallowed, so stale
+     * colours or a stale zone never look like a clean load. Returns whether both reads landed.
+     */
+    suspend fun refresh(api: CalendarApi): Boolean {
+        val settings = runCatching { api.householdSettings() }
+        settings.getOrNull()?.let {
             setZone(it.zone)
             setMembers(it.members)
             setRestWeekStart(it.weekStart)
         }
-        runCatching { api.householdDisplay() }.getOrNull()?.let(::setDisplay)
+        val display = runCatching { api.householdDisplay() }
+        display.getOrNull()?.let(::setDisplay)
+
+        val failure = settings.exceptionOrNull() ?: display.exceptionOrNull()
+        _loadError.value = failure?.let {
+            (it as? WaffledApiException)?.userMessage
+                ?: "Couldn't refresh the calendar's household settings. Check your connection and try again."
+        }
+        return failure == null
     }
 
     /** Today, in the household's zone — the agenda's cutoff and the grid's highlight. */

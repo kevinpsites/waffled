@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import app.waffled.core.design.DismissibleErrorBanner
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -89,6 +90,7 @@ fun CalendarScreen(
     val rows by model.rowsByDay.collectAsStateWithLifecycle()
     val members by model.members.collectAsStateWithLifecycle()
     val zone by model.zone.collectAsStateWithLifecycle()
+    val loadError by model.loadError.collectAsStateWithLifecycle()
     val countdownItems by countdowns.byDateState.collectAsStateWithLifecycle()
     val sleeps by countdowns.sleepsState.collectAsStateWithLifecycle()
 
@@ -142,6 +144,12 @@ fun CalendarScreen(
             selected = filterPerson,
             onSelect = { filterPerson = it },
         )
+
+        loadError?.let {
+            Box(Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) {
+                DismissibleErrorBanner(message = it, onDismiss = model::clearLoadError)
+            }
+        }
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
