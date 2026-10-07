@@ -83,6 +83,7 @@ import app.waffled.feature.settingshousehold.SettingsHouseholdApi
 import app.waffled.feature.settingshousehold.create
 import java.time.ZoneId
 import io.ktor.client.HttpClient
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -168,7 +169,13 @@ class AppContainer(context: Context) {
             context = context.applicationContext,
             connector = WaffledConnector(KtorSyncBackend(httpClient, auth)),
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-        )
+        ).also { manager ->
+            appScope.launch {
+                manager.lastUploadRejection.collect { r ->
+                    if (r != null) Log.w("WaffledSync", "Dropped a write the server refused (${r.status}): ${r.message}")
+                }
+            }
+        }
     }
 
     /**

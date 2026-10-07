@@ -1,8 +1,12 @@
 package app.waffled.core.sync
 
+import app.waffled.core.network.WaffledApiException
 import com.powersync.PowerSyncDatabase
 import com.powersync.connectors.PowerSyncBackendConnector
 import com.powersync.connectors.PowerSyncCredentials
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 
 /** One row operation drained from the local CRUD queue. */
@@ -55,23 +59,64 @@ class WaffledConnector(
         return PowerSyncCredentials(endpoint = endpoint, token = resp.token)
     }
 
+    private val _lastRejection = MutableStateFlow<UploadRejection?>(null)
+
+    /** The most recent transaction the server refused for good and that was dropped. */
+    val lastRejection: StateFlow<UploadRejection?> = _lastRejection.asStateFlow()
+
     override suspend fun uploadData(database: PowerSyncDatabase) {
-        while (true) {
-            val tx = database.getNextCrudTransaction() ?: break
-
-            val ops = tx.crud.map { entry ->
-                CrudOpDto(
-                    op = entry.op.toString(),
-                    table = entry.table,
-                    id = entry.id,
-                    data = entry.opData,
-                )
+        drain {
+            database.getNextCrudTransaction()?.let { tx ->
+                object : CrudBatch {
+                    override val ops = tx.crud.map { entry ->
+                        CrudOpDto(
+                            op = entry.op.toString(),
+                            table = entry.table,
+                            id = entry.id,
+                            data = entry.opData,
+                        )
+                    }
+                    override suspend fun complete() = tx.complete(null)
+                }
             }
-
-            // Throw on failure so PowerSync KEEPS the queue and retries — that is what
-            // makes offline writes safe. Swallowing here would silently drop them.
-            backend.uploadCrud(ops)
-            tx.complete(null)
         }
     }
+
+    internal suspend fun drain(next: suspend () -> CrudBatch?) {
+        while (true) {
+            val tx = next() ?: break
+            // Throw on failure so PowerSync KEEPS the queue and retries — that is what
+            // makes offline writes safe. The one exception is a refusal that can never
+            // succeed: retrying it would wedge every write behind it. iOS and web rethrow
+            // all of them and share that wedge.
+            try {
+                backend.uploadCrud(tx.ops)
+            } catch (e: WaffledApiException) {
+                if (!isPermanent(e.status)) throw e
+                _lastRejection.value = UploadRejection(e.status, e.userMessage, tx.ops)
+            }
+            tx.complete()
+        }
+    }
+
+    /** 4xx is the server's final word — except auth, timeouts and throttling, which pass. */
+    private fun isPermanent(status: Int): Boolean =
+        status in 400..499 && status !in RETRYABLE_4XX
+
+    private companion object {
+        val RETRYABLE_4XX = setOf(401, 403, 408, 429)
+    }
 }
+
+/** One queued CRUD transaction — a seam so the drain loop is testable without PowerSync. */
+internal interface CrudBatch {
+    val ops: List<CrudOpDto>
+    suspend fun complete()
+}
+
+/** A transaction the server refused with a non-retryable 4xx, dropped from the queue. */
+data class UploadRejection(
+    val status: Int,
+    val message: String,
+    val ops: List<CrudOpDto>,
+)
