@@ -89,7 +89,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun PlanningShell(
     env: PlanningEnvironment,
-    onBack: () -> Unit,
+    /** Null at a tablet rail root, where there is nowhere to go back to. */
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
     refreshKey: Any? = Unit,
     bottomClearance: Dp = WF.spacing.tabBarClearance,
@@ -128,9 +129,9 @@ fun PlanningShell(
                 title = "Nothing to run",
                 message = "Every step of the session reads a module that’s turned off. Turn one back on in Settings → Modules, or turn individual steps on under Weekly Planning.",
             )
-            state.showsRecord -> RecordScreen(model, state, ui, env, bottomClearance)
-            state.isPaused -> PausedScreen(model, state, ui, bottomClearance)
-            state.session == null -> LobbyScreen(model, state, ui, bottomClearance)
+            state.showsRecord -> WithBackRow(onBack, env.isKiosk) { RecordScreen(model, state, ui, env, bottomClearance) }
+            state.isPaused -> WithBackRow(onBack, env.isKiosk) { PausedScreen(model, state, ui, bottomClearance) }
+            state.session == null -> WithBackRow(onBack, env.isKiosk) { LobbyScreen(model, state, ui, bottomClearance) }
             else -> SessionScreen(model, state, ui, env, onBack, footerClearance)
         }
     }
@@ -178,6 +179,37 @@ private class ShellUi(val scope: CoroutineScope) {
 
     /** A write the STEP owns is in flight; the footer goes cold. */
     var stepBusy by mutableStateOf(false)
+}
+
+/**
+ * The back chevron above the lobby, "left for now" and the record. The session header draws
+ * its own; the others have no header, so without this the phone leans on the system Back.
+ */
+@Composable
+private fun WithBackRow(onBack: (() -> Unit)?, isKiosk: Boolean, content: @Composable () -> Unit) {
+    if (onBack == null || isKiosk) {
+        content()
+        return
+    }
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.padding(start = 16.dp, top = 6.dp)) { BackChevron(onBack) }
+        Box(Modifier.weight(1f).fillMaxWidth()) { content() }
+    }
+}
+
+@Composable
+private fun BackChevron(onBack: () -> Unit) {
+    Box(
+        Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(WF.colors.panel)
+            .clickable(onClick = onBack)
+            .semantics { contentDescription = "Back" },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null, tint = WF.colors.ink2, modifier = Modifier.size(20.dp))
+    }
 }
 
 // ---- lobby (no session yet) ----
@@ -330,7 +362,7 @@ private fun SessionScreen(
     state: PlanningState,
     ui: ShellUi,
     env: PlanningEnvironment,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     footerClearance: Dp,
 ) {
     val scope = ui.scope
@@ -385,7 +417,7 @@ private fun SessionScreen(
 }
 
 @Composable
-private fun SessionHeader(model: PlanningModel, state: PlanningState, ui: ShellUi, isKiosk: Boolean, onBack: () -> Unit) {
+private fun SessionHeader(model: PlanningModel, state: PlanningState, ui: ShellUi, isKiosk: Boolean, onBack: (() -> Unit)?) {
     Column(Modifier.fillMaxWidth()) {
         Column(
             Modifier
@@ -394,19 +426,7 @@ private fun SessionHeader(model: PlanningModel, state: PlanningState, ui: ShellU
             verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (!isKiosk) {
-                    Box(
-                        Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(WF.colors.panel)
-                            .clickable(onClick = onBack)
-                            .semantics { contentDescription = "Back" },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null, tint = WF.colors.ink2, modifier = Modifier.size(20.dp))
-                    }
-                }
+                if (!isKiosk && onBack != null) BackChevron(onBack)
                 Text(
                     state.current?.title.orEmpty(),
                     modifier = Modifier.weight(1f),
