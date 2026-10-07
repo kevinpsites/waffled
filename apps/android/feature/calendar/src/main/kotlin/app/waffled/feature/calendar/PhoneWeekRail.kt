@@ -123,16 +123,21 @@ internal fun PhoneWeekRail(
     }
 
     val stripDragged by pager.interactionSource.collectIsDraggedAsState()
+    val currentSelection by rememberUpdatedState(selectedDay)
     LaunchedEffect(pager, weeks) {
         var dragged = false
-        snapshotFlow { pager.settledPage to stripDragged }.collect { (page, dragging) ->
-            if (dragging) dragged = true
-            if (!dragging && dragged && !pager.isScrollInProgress) {
+        snapshotFlow { Triple(pager.settledPage, stripDragged, pager.isScrollInProgress) }
+            .collect { (page, dragging, scrolling) ->
+                if (dragging) dragged = true
+                if (dragging || scrolling) return@collect
+                // Cleared on every rest, so a drag that snapped back can't fire on a later
+                // programmatic page change.
+                val wasDragged = dragged
                 dragged = false
+                val week = weeks.getOrNull(page) ?: return@collect
                 // Paging the strip lands on that week's first day.
-                weeks.getOrNull(page)?.let(select)
+                if (wasDragged && week != weekStart.weekStart(currentSelection)) select(week)
             }
-        }
     }
 
     Column(modifier) {
