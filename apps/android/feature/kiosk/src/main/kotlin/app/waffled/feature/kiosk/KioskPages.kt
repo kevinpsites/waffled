@@ -121,7 +121,14 @@ fun KioskMoreView(visible: List<KioskNav>, navigate: (KioskNav) -> Unit, modifie
         }
         items(visible, key = { it.raw }) { nav ->
             val d = KioskMore.descriptor(nav)
-            KioskCard(Modifier.clip(RoundedCornerShape(WF.radius.lg)).clickable { navigate(nav) }) {
+            // No clip before the card: it would cut off WaffledCard's own shadow. Plain
+            // (ripple-less) press, like the iOS `.plain` button style.
+            KioskCard(
+                Modifier.clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null,
+                ) { navigate(nav) },
+            ) {
                 Row(verticalAlignment = Alignment.Top) {
                     Box(
                         Modifier.size(60.dp).background(d.accent.color(), RoundedCornerShape(16.dp)),

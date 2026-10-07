@@ -97,6 +97,16 @@ class ScreensaverModelTest {
         assertFalse(m.state.value.showing)
     }
 
+    @Test fun reEnteringTheShellRestartsTheIdleClock() = runTest {
+        // The model outlives the shell: time parked on the profile picker must not count,
+        // or the saver drops the instant someone claims a profile.
+        val m = model(DisplayConfig(screensaverMinutes = 2, content = "clock"))
+        m.load()
+        m.resetIdle(at("2026-10-07T12:30:00Z"))
+        m.tick(at("2026-10-07T12:30:01Z"), utc)
+        assertFalse(m.state.value.showing)
+    }
+
     @Test fun activityResetsTheIdleClockButNotWhileShowing() = runTest {
         val m = model(DisplayConfig(screensaverMinutes = 1, content = "clock"))
         m.load()

@@ -57,6 +57,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -146,7 +147,9 @@ fun KioskRoot(
 
     val booting = KioskBoot.isBooting(members.isEmpty(), syncState)
     var stalled by remember { mutableStateOf(false) }
-    LaunchedEffect(booting) {
+    // Keyed on retries too: a Retry that doesn't land must re-arm the escape.
+    var retries by remember { mutableStateOf(0) }
+    LaunchedEffect(booting, retries) {
         stalled = false
         if (booting) {
             delay(KioskBoot.STALL_AFTER_MS)
@@ -179,7 +182,7 @@ fun KioskRoot(
             )
         }
         AnimatedVisibility(visible = booting, enter = fadeIn(tween(400)), exit = fadeOut(tween(400))) {
-            KioskBootCover(stalled = stalled, detail = bootDetail, onRetry = { stalled = false; onRetry() }, onSignOut = onSignOut)
+            KioskBootCover(stalled = stalled, detail = bootDetail, onRetry = { retries++; onRetry() }, onSignOut = onSignOut)
         }
     }
 }
@@ -202,7 +205,8 @@ fun KioskShell(
     modifier: Modifier = Modifier,
     initial: KioskNav = KioskNav.Today,
 ) {
-    var nav by remember { mutableStateOf(KioskShellNav(selection = initial)) }
+    // Saveable: a rotation recreates the activity, and must not bounce the user to Today.
+    var nav by rememberSaveable(stateSaver = NavSaver) { mutableStateOf(KioskShellNav(selection = initial)) }
     val pinned = KioskRail.pinned(railRaw, modules, rewardsOn)
     LaunchedEffect(modules, rewardsOn) { nav = nav.corrected(modules, rewardsOn) }
 
@@ -214,7 +218,8 @@ fun KioskShell(
     val detail: @Composable () -> Unit = {
         val selection = nav.selection
         val page = KioskPage(selection, nav.resetKey(selection)) { nav = nav.navigate(it) }
-        Box(Modifier.fillMaxSize().background(WF.colors.canvas)) {
+        // Edge-to-edge: pages start below the status bar. Not the IME inset — pages own that.
+        Box(Modifier.fillMaxSize().background(WF.colors.canvas).windowInsetsPadding(WindowInsets.statusBars)) {
             key(selection, page.resetKey) {
                 when {
                     selection == KioskNav.More -> KioskMoreView(KioskRail.overflow(railRaw, modules, rewardsOn), page.navigate)
@@ -239,6 +244,11 @@ fun KioskShell(
         }
     }
 }
+
+private val NavSaver = androidx.compose.runtime.saveable.Saver<KioskShellNav, String>(
+    save = { it.selection.raw },
+    restore = { KioskShellNav(selection = KioskNav.fromRaw(it) ?: KioskNav.Today) },
+)
 
 @Composable
 private fun MissingPage(nav: KioskNav) {

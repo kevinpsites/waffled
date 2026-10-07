@@ -97,7 +97,10 @@ fun KioskScreensaverHost(
     val focus = LocalFocusManager.current
     val view = LocalView.current
 
-    LaunchedEffect(model) { model.load() }
+    LaunchedEffect(model) {
+        model.resetIdle()
+        model.load()
+    }
     // Config rarely changes and weather is hourly, so 15 min is plenty; nothing worth
     // fetching overnight.
     LaunchedEffect(model) {

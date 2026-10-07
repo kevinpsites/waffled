@@ -57,6 +57,9 @@ class ScreensaverModel(
         if (!_state.value.showing) lastActivity = now
     }
 
+    /** The shell (re)appeared — after a claim, say. Idle time spent elsewhere doesn't count. */
+    fun resetIdle(now: Instant = clock()) = wake(now)
+
     fun wake(now: Instant = clock()) {
         lastActivity = now
         _state.update { it.copy(showing = false) }
