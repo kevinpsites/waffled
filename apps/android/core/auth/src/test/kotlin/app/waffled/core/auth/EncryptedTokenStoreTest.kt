@@ -112,6 +112,33 @@ class EncryptedTokenStoreTest {
     }
 
     @Test
+    fun aKeyLostToARestoreClearsTheDeadBlob() {
+        val prefs = FakePrefs()
+        EncryptedTokenStore(prefs, TestCrypto()).save(TokenPair("a", "r"))
+
+        assertNull(EncryptedTokenStore(prefs, TestCrypto()).load()) // AEADBadTag
+        assertTrue(prefs.map.isEmpty())
+    }
+
+    @Test
+    fun aTransientKeystoreFailureKeepsTheTokensOnDisk() {
+        // The Keystore daemon can be briefly unavailable (boot, a busy device). That
+        // is not key loss: wiping here would sign the user out for nothing.
+        val prefs = FakePrefs()
+        val crypto = TestCrypto()
+        EncryptedTokenStore(prefs, crypto).save(TokenPair("a", "r"))
+
+        val flaky = object : TokenCrypto by crypto {
+            override fun decrypt(payload: ByteArray): ByteArray =
+                throw java.security.KeyStoreException("keystore busy")
+        }
+        assertNull(EncryptedTokenStore(prefs, flaky).load())
+        assertTrue(prefs.map.isNotEmpty(), "a transient failure must not delete the session")
+
+        assertEquals(TokenPair("a", "r"), EncryptedTokenStore(prefs, crypto).load())
+    }
+
+    @Test
     fun tokensContainingSeparatorsSurviveTheRoundTrip() {
         // JWTs are dot-separated and base64; the envelope must not be delimiter-fragile.
         val jwt = "eyJhbGci.eyJzdWIiOiIxIn0.sig-with-dots.and\nnewline"
