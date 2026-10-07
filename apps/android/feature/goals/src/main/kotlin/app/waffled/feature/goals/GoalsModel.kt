@@ -262,7 +262,10 @@ class GoalDetailModel(
         val fetched = runCatching {
             coroutineScope {
                 val detail = async { api.goalDetail(goal.id) }
-                val lists = async { api.goalLists() }
+                // Only the editor's group picker reads the lists, so a failed read must not
+                // drop the detail (the hero's THIS WEEK would fall back to 0). iOS keeps
+                // the detail the same way.
+                val lists = async { runCatching { api.goalLists() }.getOrNull() }
                 val activity = async { runCatching { api.goalActivity(goal.id) }.getOrNull() }
                 Triple(detail.await(), lists.await(), activity.await())
             }
@@ -276,7 +279,7 @@ class GoalDetailModel(
         val (detail, lists, activity) = loaded
         _state.value = State(
             detail = detail,
-            lists = lists,
+            lists = lists ?: _state.value.lists,
             series = seriesFrom(detail, activity),
             stats = activity?.let {
                 GoalStats.compute(
