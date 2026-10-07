@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,16 +32,15 @@ import app.waffled.core.design.WaffledSecondaryCTA
 import app.waffled.core.design.WaffledTextField
 import java.time.LocalDate
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 /**
  * Edit or delete a single logged entry — amount, who took part, note and date. The port of
  * the iOS `GoalEntryEditSheet`, mirroring the web EntryModal.
  *
- * A checklist tick is NOT editable here: it is a step, managed by the step rows.
- *
- * The note is the one field that can be CLEARED, and clearing it depends on an explicit
- * JSON null reaching the server (see [GoalsApi.editLog]) — so the sheet always passes the
- * note through, even when empty, rather than treating empty as "unchanged".
+ * An entry its source owns ([GoalEntryEdit.isLocked]) offers the note alone and no delete.
+ * A refused save or delete keeps the sheet OPEN with the server's reason, so the typed note
+ * is still there to retry with.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -51,13 +51,15 @@ fun GoalEntryEditSheet(
     unit: String?,
     today: LocalDate = LocalDate.now(),
     onDismiss: () -> Unit,
-    /** (amount, personIds, note, loggedOn) — nulls mean "leave this one alone". */
-    onSave: (Double?, List<String>?, String, String) -> Unit,
-    onDelete: () -> Unit,
+    /** Returns the server's refusal, or null once saved. */
+    onSave: suspend (GoalEntryEdit.Patch) -> String?,
+    onDelete: suspend () -> String?,
 ) {
+    val locked = GoalEntryEdit.isLocked(entry)
     val isCount = goalType == "count"
-    val numeric = goalType == "total" || isCount
-    val showWho = participants.size > 1
+    val numeric = !locked && GoalEntryEdit.isNumeric(goalType)
+    val showWho = !locked && participants.size > 1
+    val scope = rememberCoroutineScope()
 
     var amountText by remember { mutableStateOf(goalFmt(entry.amount)) }
     var note by remember { mutableStateOf(entry.note.orEmpty()) }
@@ -68,6 +70,8 @@ fun GoalEntryEditSheet(
         mutableStateOf(runCatching { GoalDateKey.parse(entry.dateKey) }.getOrDefault(today))
     }
     var confirmDelete by remember { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
 
     val amount = AmountEntry.value(amountText)
     val logAmount = if (isCount) maxOf(1.0, amount.roundToInt().toDouble()) else amount
@@ -101,17 +105,26 @@ fun GoalEntryEditSheet(
             }
         }
 
-        GoalSection("When?") {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(WF.spacing.sm),
-                verticalArrangement = Arrangement.spacedBy(WF.spacing.sm),
-            ) {
-                (0..6).map { today.minusDays(it.toLong()) }.forEach { day ->
-                    GoalChip(
-                        text = if (day == today) "Today" else day.toString(),
-                        selected = day == loggedOn,
-                        onClick = { loggedOn = day },
-                    )
+        if (locked) {
+            Text(
+                text = "This entry came from a checklist tick, a calendar event or Apple Health — " +
+                    "its amount and date are kept in step with that. You can still leave a note.",
+                style = WF.type.bodySmall,
+                color = WF.colors.ink3,
+            )
+        } else {
+            GoalSection("When?") {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(WF.spacing.sm),
+                    verticalArrangement = Arrangement.spacedBy(WF.spacing.sm),
+                ) {
+                    (0..6).map { today.minusDays(it.toLong()) }.forEach { day ->
+                        GoalChip(
+                            text = if (day == today) "Today" else day.toString(),
+                            selected = day == loggedOn,
+                            onClick = { loggedOn = day },
+                        )
+                    }
                 }
             }
         }
@@ -137,46 +150,111 @@ fun GoalEntryEditSheet(
             }
         }
 
-        GoalSection("Note") {
+        GoalSection("Note · optional") {
             WaffledTextField(
                 value = note,
                 onValueChange = { note = it },
-                placeholder = "Creek hike + fort building",
+                placeholder = "What happened",
             )
         }
 
+        error?.let { Text(it, style = WF.type.bodySmall, color = WF.colors.danger) }
+
         WaffledPrimaryCTA(
             label = "Save changes",
-            isDisabled = numeric && logAmount == 0.0,
+            isDisabled = saving || (numeric && logAmount == 0.0),
             onClick = {
-                onSave(
-                    if (numeric) logAmount else null,
-                    if (showWho) who.toList() else null,
-                    note.trim(),
-                    loggedOn.toString(),
-                )
-                onDismiss()
+                if (saving) return@WaffledPrimaryCTA
+                saving = true
+                error = null
+                scope.launch {
+                    val patch = GoalEntryEdit.patch(
+                        entry = entry,
+                        goalType = goalType,
+                        participantCount = participants.size,
+                        amount = amount,
+                        who = who,
+                        note = note,
+                        day = loggedOn,
+                    )
+                    val refusal = onSave(patch)
+                    saving = false
+                    if (refusal == null) onDismiss() else error = refusal
+                }
             },
         )
         WaffledSecondaryCTA(label = "Cancel", onClick = onDismiss)
 
         // Tap-twice rather than a dialog, matching the goal delete on the detail screen:
         // an entry is cheap to re-log, so a confirmation sheet is heavier than the risk.
-        Text(
-            text = if (confirmDelete) "Tap again to delete this entry" else "Delete entry",
-            style = WF.type.label,
-            color = if (confirmDelete) WF.colors.primary else WF.colors.ink3,
-            modifier = Modifier
-                .clip(RoundedCornerShape(WF.radius.sm))
-                .clickable {
-                    if (confirmDelete) {
-                        onDelete()
-                        onDismiss()
-                    } else {
-                        confirmDelete = true
+        if (!locked) {
+            Text(
+                text = if (confirmDelete) "Tap again to delete this entry" else "Delete entry",
+                style = WF.type.label,
+                color = if (confirmDelete) WF.colors.primary else WF.colors.ink3,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(WF.radius.sm))
+                    .clickable(enabled = !saving) {
+                        if (!confirmDelete) {
+                            confirmDelete = true
+                            return@clickable
+                        }
+                        saving = true
+                        error = null
+                        scope.launch {
+                            val refusal = onDelete()
+                            saving = false
+                            if (refusal == null) {
+                                onDismiss()
+                            } else {
+                                error = refusal
+                                confirmDelete = false
+                            }
+                        }
                     }
-                }
-                .padding(vertical = WF.spacing.sm, horizontal = WF.spacing.xxs),
+                    .padding(vertical = WF.spacing.sm, horizontal = WF.spacing.xxs),
+            )
+        }
+    }
+}
+
+/** The entry sheet's rules, kept out of the composable so they are testable on the JVM. */
+object GoalEntryEdit {
+
+    /** Only an explicit `false` locks — an older server's null stays fully editable. */
+    fun isLocked(entry: GoalsApi.GoalDetail.LogEntry): Boolean = entry.editable == false
+
+    fun isNumeric(goalType: String): Boolean = goalType == "total" || goalType == "count"
+
+    /** What a save sends. A null [amount] / [personIds] means "leave it alone". */
+    data class Patch(
+        val amount: Double?,
+        val personIds: List<String>?,
+        val note: String,
+        val loggedOn: String,
+    )
+
+    /**
+     * A locked entry re-sends its OWN day (the server accepts a note-only change when the
+     * day, amount and people are unchanged). The note always goes, so emptying it clears it.
+     */
+    fun patch(
+        entry: GoalsApi.GoalDetail.LogEntry,
+        goalType: String,
+        participantCount: Int,
+        amount: Double,
+        who: Set<String>,
+        note: String,
+        day: LocalDate,
+    ): Patch {
+        val locked = isLocked(entry)
+        val numeric = !locked && isNumeric(goalType)
+        val logAmount = if (goalType == "count") maxOf(1.0, amount.roundToInt().toDouble()) else amount
+        return Patch(
+            amount = if (numeric) logAmount else null,
+            personIds = if (!locked && participantCount > 1) who.toList() else null,
+            note = note.trim(),
+            loggedOn = if (locked) entry.dateKey.take(10) else day.toString(),
         )
     }
 }

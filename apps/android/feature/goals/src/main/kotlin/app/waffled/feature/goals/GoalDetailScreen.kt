@@ -324,10 +324,8 @@ fun GoalDetailScreen(
                 goalType = goalType,
                 unit = unit,
                 onDismiss = { editEntry = null },
-                onSave = { amount, ids, note, day ->
-                    scope.launch { model.editEntry(entry.id, amount, ids, note, day) }
-                },
-                onDelete = { scope.launch { model.deleteEntry(entry.id) } },
+                onSave = { p -> model.editEntry(entry.id, p.amount, p.personIds, p.note, p.loggedOn) },
+                onDelete = { model.deleteEntry(entry.id) },
             )
         }
     }

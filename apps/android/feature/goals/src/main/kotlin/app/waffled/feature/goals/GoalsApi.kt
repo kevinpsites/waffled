@@ -218,6 +218,14 @@ class GoalsApi(
              * this lists everyone credited (empty for a family/shared log).
              */
             val participants: List<Credited> = emptyList(),
+            /**
+             * False when the entry belongs to its source (a checklist tick, a calendar
+             * confirm, a Health sync): only its note can change, and it can't be deleted
+             * here. Null from an older server, which reads as fully editable.
+             */
+            val editable: Boolean? = null,
+            /** What wrote the entry (`manual`, `calendar`, …). Informational; gate on [editable]. */
+            val source: String? = null,
         ) {
             @Serializable
             data class Credited(
