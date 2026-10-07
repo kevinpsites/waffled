@@ -32,7 +32,7 @@ object WaffledDates {
      * [zone]. Returns null rather than throwing — these values come over the wire.
      */
     fun parseInstant(value: String?, zone: ZoneId = ZoneId.systemDefault()): Instant? {
-        val raw = value?.trim().orEmpty()
+        val raw = normalizeSqlText(value?.trim().orEmpty())
         if (raw.isEmpty()) return null
 
         // Full instant with an offset.
@@ -54,6 +54,24 @@ object WaffledDates {
         }
 
         return null
+    }
+
+    private val sqlText = Regex("""^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)(Z|[+-]\d{2}(?::?\d{2})?)?$""")
+
+    /**
+     * PowerSync's mirror stores Postgres text — a space for `T`, and offsets like `+00`
+     * that java.time rejects. Rewrite it to ISO-8601; anything else passes through.
+     */
+    private fun normalizeSqlText(raw: String): String {
+        val m = sqlText.matchEntire(raw) ?: return raw
+        val (date, clock, offset) = m.destructured
+        val iso = when {
+            offset.isEmpty() || offset == "Z" -> offset
+            offset.length == 3 -> "$offset:00"
+            !offset.contains(':') -> "${offset.take(3)}:${offset.drop(3)}"
+            else -> offset
+        }
+        return "${date}T$clock$iso"
     }
 
     /**

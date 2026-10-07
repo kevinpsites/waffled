@@ -114,4 +114,13 @@ class WaffledDatesTest {
             WaffledDates.noonIso("2026-08-21", nyc),
         )
     }
+
+    @Test
+    fun parsesTheSpaceSeparatedTextPowerSyncStores() {
+        val expected = java.time.Instant.parse("2026-08-11T19:30:00Z")
+        kotlin.test.assertEquals(expected, WaffledDates.parseInstant("2026-08-11 19:30:00Z"))
+        kotlin.test.assertEquals(expected, WaffledDates.parseInstant("2026-08-11 19:30:00+00"))
+        kotlin.test.assertEquals(expected, WaffledDates.parseInstant("2026-08-11 19:30:00.000+00:00"))
+        kotlin.test.assertEquals(expected, WaffledDates.parseInstant("2026-08-11 13:30:00-06"))
+    }
 }
