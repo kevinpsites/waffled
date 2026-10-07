@@ -49,10 +49,15 @@ fun PantryTodayCard(
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
     cap: Int = 5,
+    /**
+     * Today's pull-to-refresh revision. Keyed on it rather than `Unit`, which loads once
+     * per composition and would leave the card on launch-time data through every refresh.
+     */
+    refreshKey: Any? = Unit,
 ) {
     val snapshot by model.state.collectAsStateWithLifecycle()
 
-    LaunchedEffect(Unit) { model.load() }
+    LaunchedEffect(refreshKey) { model.load() }
 
     // The household turned this card off in Settings → Pantry. `showOnToday` defaults
     // true, so nothing flashes off before the config lands.
