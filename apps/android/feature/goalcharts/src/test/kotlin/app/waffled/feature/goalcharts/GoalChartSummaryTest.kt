@@ -3,11 +3,14 @@ package app.waffled.feature.goalcharts
 import app.waffled.core.model.GoalCadence
 import app.waffled.core.model.GoalPoint
 import app.waffled.core.model.GoalSeries
+import app.waffled.core.model.HouseholdWeekStart
 import java.time.LocalDate
 import java.time.YearMonth
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+
+private val Sun = HouseholdWeekStart.Sunday
 
 /**
  * The spoken form of each chart.
@@ -37,7 +40,7 @@ class GoalChartSummaryTest {
     @Test
     fun `the week summary names the range, the total and the active days`() {
         val s = stats(p("2026-08-17", 3), p("2026-08-19", 5))
-        val text = weekSummary(s, startOfWeek(today), "pages")
+        val text = weekSummary(s, startOfWeek(today, Sun), "pages")
         assertTrue(text.contains("8 pages"), text)
         assertTrue(text.contains("2 of 7"), text)
     }
@@ -173,7 +176,7 @@ class GoalChartSummaryTest {
     @Test
     fun `a fractional total is spoken, not rounded away`() {
         val s = stats(GoalPoint(LocalDate.of(2026, 8, 19), 1.0 / 3.0))
-        val text = weekSummary(s, startOfWeek(today), "hours")
+        val text = weekSummary(s, startOfWeek(today, Sun), "hours")
         assertTrue(text.contains("0.33 hours"), text)
         assertTrue(text.contains("1 of 7"), "a sub-unit log is still a day you showed up: $text")
     }

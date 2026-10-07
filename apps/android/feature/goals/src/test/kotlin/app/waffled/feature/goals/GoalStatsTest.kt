@@ -47,11 +47,15 @@ class GoalStatsTest {
     }
 
     @Test
-    fun startOfWeekAnchorsOnSunday() {
-        // 2026-07-17 is a Friday; its week starts Sunday 2026-07-12.
-        assertEquals("2026-07-12", GoalDateKey.startOfWeek("2026-07-17"))
-        // A Sunday is its own week start.
-        assertEquals("2026-07-12", GoalDateKey.startOfWeek("2026-07-12"))
+    fun startOfWeekCutsOnTheHouseholdsFirstDay() {
+        val sun = app.waffled.core.model.HouseholdWeekStart.Sunday
+        val mon = app.waffled.core.model.HouseholdWeekStart.Monday
+        // 2026-07-17 is a Friday; its week starts Sunday 2026-07-12, or Monday 2026-07-13.
+        assertEquals("2026-07-12", GoalDateKey.startOfWeek("2026-07-17", sun))
+        assertEquals("2026-07-13", GoalDateKey.startOfWeek("2026-07-17", mon))
+        // A Sunday is its own week start — or the LAST day of a Monday week.
+        assertEquals("2026-07-12", GoalDateKey.startOfWeek("2026-07-12", sun))
+        assertEquals("2026-07-06", GoalDateKey.startOfWeek("2026-07-12", mon))
     }
 
     // ---- heat ramp -------------------------------------------------------------

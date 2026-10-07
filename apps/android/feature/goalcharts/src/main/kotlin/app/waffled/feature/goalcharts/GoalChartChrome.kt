@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import app.waffled.core.design.WF
 import app.waffled.core.design.colorFromHex
 import app.waffled.core.model.GoalSeries
+import app.waffled.core.model.HouseholdWeekStart
 
 /**
  * The bundle every one of the eight views reads from.
@@ -47,6 +48,8 @@ class GoalChart(
     val personNames: Map<String, String> = emptyMap(),
     /** Avatar emoji by person id, for the drill-down sheets. */
     val personEmoji: Map<String, String> = emptyMap(),
+    /** The household's first day: the week, month, consistency and year views cut on it. */
+    val firstDay: HouseholdWeekStart = HouseholdWeekStart.Sunday,
 ) {
     val unit: String get() = series.unit
     val today get() = stats.today
@@ -61,13 +64,15 @@ fun rememberGoalChart(
     title: String = "",
     personNames: Map<String, String> = emptyMap(),
     personEmoji: Map<String, String> = emptyMap(),
-): GoalChart = remember(series, today, title, personNames, personEmoji) {
+    firstDay: HouseholdWeekStart = HouseholdWeekStart.Sunday,
+): GoalChart = remember(series, today, title, personNames, personEmoji, firstDay) {
     GoalChart(
         series = series,
         stats = computeGoalChartStats(series, today),
         title = title,
         personNames = personNames,
         personEmoji = personEmoji,
+        firstDay = firstDay,
     )
 }
 

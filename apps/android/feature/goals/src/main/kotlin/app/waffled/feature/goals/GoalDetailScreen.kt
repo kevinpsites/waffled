@@ -59,6 +59,7 @@ import app.waffled.core.design.WaffledTheme
 import app.waffled.core.design.wfField
 import app.waffled.core.model.GoalPoint
 import app.waffled.core.model.GoalSeries
+import app.waffled.core.model.HouseholdWeekStart
 import app.waffled.core.model.Person
 import java.time.LocalDate
 import kotlinx.coroutines.launch
@@ -75,8 +76,11 @@ import kotlinx.coroutines.launch
  * [GoalSeriesBuilder]) and hands it to a host-supplied slot —
  *
  * ```
- * dataView: @Composable (GoalSeries) -> Unit
+ * dataView: @Composable (GoalSeries, HouseholdWeekStart) -> Unit
  * ```
+ *
+ * The week start rides along because the week, month, consistency and year views cut on
+ * the HOUSEHOLD's first day; the host passes it as the switcher's `firstDay`.
  *
  * — so the integrator passes the real switcher and this module's own previews pass a
  * placeholder. The series is computed once per load in [GoalDetailModel], never in a
@@ -94,8 +98,13 @@ fun GoalDetailScreen(
     modifier: Modifier = Modifier,
     /** Open the calendar's event editor pre-linked to this goal. */
     onScheduleEvent: ((goalId: String, participantIds: List<String>) -> Unit)? = null,
+    /**
+     * `HouseholdWeekStart.of(...)` / `parse(sync.householdWeekStart.value)`; null until the
+     * household row arrives, which draws Sunday-first like the server's default.
+     */
+    householdWeekStart: HouseholdWeekStart? = null,
     /** The host-supplied visualisation. Defaults to nothing at all. */
-    dataView: @Composable (GoalSeries) -> Unit = {},
+    dataView: @Composable (GoalSeries, HouseholdWeekStart) -> Unit = { _, _ -> },
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -220,7 +229,7 @@ fun GoalDetailScreen(
             }
 
             // The host's visualisation, fed the already-derived series.
-            dataView(state.series)
+            dataView(state.series, householdWeekStart ?: HouseholdWeekStart.Sunday)
 
             if (!detail?.milestones.isNullOrEmpty()) {
                 MilestoneCard(milestones = detail.milestones, displayed = model.displayed)
