@@ -262,6 +262,9 @@ export function WeeklyPlanning() {
   const [error, setError] = useState<string | null>(null)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [parking, setParking] = useState(false)
+  const [parkingBetween, setParkingBetween] = useState(false)
+  // Bumped after a park between sessions so the record's read-back re-reads its last call.
+  const [recordRev, setRecordRev] = useState(0)
   // What the step wants kept on the record. A ref, not state: it only matters at the moment
   // the answer is sent, so keystrokes inside a step must not re-render the session.
   const decisionData = useRef<Record<string, unknown> | null>(null)
@@ -443,6 +446,27 @@ export function WeeklyPlanning() {
 
   const discardProps = { confirming: confirmDiscard, setConfirming: setConfirmDiscard, busy, onDiscard: discard }
 
+  // The record, "Left for now" and the lobby are what the page shows mid-week, which is when
+  // a note for the next session comes up. It parks with no session and no tag. The composer
+  // renders at the screen root, outside the footers, so their button rules can't reach it.
+  const parkBetween = (
+    <button type="button" className="btn btn-ghost wp-park-between" disabled={busy} onClick={() => setParkingBetween(true)}>
+      📌 Park a note
+    </button>
+  )
+  const parkBetweenComposer = parkingBetween && (
+    <ParkNoteComposer
+      tags={[]}
+      sessionId={null}
+      onClose={() => setParkingBetween(false)}
+      onParked={() => {
+        setParkingBetween(false)
+        setRecordRev((n) => n + 1)
+        refetch()
+      }}
+    />
+  )
+
   // ── Saved: the record ────────────────────────────────────────────────────────
   if (session?.status === 'completed') {
     const decided = runnable.filter((s) => s.status !== 'pending')
@@ -470,7 +494,7 @@ export function WeeklyPlanning() {
           <div className="wp-record-week">Plan another week <WeekStepper {...weekNav} /></div>
           {readBack && (
             <div className="wp-record-read">
-              <StepErrorBoundary key="record-recap" title="the week">{readBack}</StepErrorBoundary>
+              <StepErrorBoundary key={`record-recap-${recordRev}`} title="the week">{readBack}</StepErrorBoundary>
             </div>
           )}
           {/* The read-back already names what was left alone on purpose, skipped steps included;
@@ -488,6 +512,7 @@ export function WeeklyPlanning() {
             {!decided.length && <div className="wp-record-row"><div className="wp-record-main"><s>Nothing was decided in this session.</s></div></div>}
           </div>}
           <div className="wp-record-f">
+            {parkBetween}
             <button
               type="button" className="btn btn-ghost" disabled={busy}
               onClick={() => go(async () => {
@@ -500,6 +525,7 @@ export function WeeklyPlanning() {
           </div>
           <DiscardBlock {...discardProps} />
         </div>
+        {parkBetweenComposer}
       </div>
     )
   }
@@ -517,9 +543,11 @@ export function WeeklyPlanning() {
           <button type="button" className="btn btn-primary wp-lobby-go" disabled={busy} onClick={resume}>
             Resume the session
           </button>
+          {parkBetween}
           <div className="wp-record-week">Plan another week <WeekStepper {...weekNav} /></div>
           <DiscardBlock {...discardProps} />
         </div>
+        {parkBetweenComposer}
       </div>
     )
   }
@@ -543,7 +571,9 @@ export function WeeklyPlanning() {
           <button type="button" className="btn btn-primary wp-lobby-go" disabled={busy} onClick={start}>
             Start the session
           </button>
+          {parkBetween}
         </div>
+        {parkBetweenComposer}
       </div>
     )
   }

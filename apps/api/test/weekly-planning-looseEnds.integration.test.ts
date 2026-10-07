@@ -852,6 +852,18 @@ describe('loose ends · parked items', () => {
     await resolve({ kind: 'parked', id: json(res).item.id, action: 'drop' })
   })
 
+  // The summary screens offer "Park a note" between sessions, so a note can arrive with no
+  // session at all; the next session's Loose ends still has to raise it.
+  it('raises a note parked between sessions, with no session behind it', async () => {
+    const res = await park({ note: 'Book the cabin for spring break' })
+    expect(res.statusCode).toBe(200)
+    const id = json(res).item.id
+    const { rows } = await query(`select session_id, step_key from planning_parked_items where id = $1`, [id])
+    expect(rows[0]).toMatchObject({ session_id: null, step_key: null })
+    expect((await read()).parked.map((i) => i.id)).toContain(id)
+    await resolve({ kind: 'parked', id, action: 'drop' })
+  })
+
   it('refuses an empty note and a step tag that is not in the catalog', async () => {
     expect((await park({ note: '   ' })).statusCode).toBe(400)
     expect((await park({ note: 'ok', stepKey: 'lobby' })).statusCode).toBe(400)

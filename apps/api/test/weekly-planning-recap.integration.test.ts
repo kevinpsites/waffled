@@ -491,6 +491,14 @@ describe('planning · recap · the saved record', () => {
     expect((await recap()).groups.map((g) => g.key)).toEqual(before.groups.map((g) => g.key))
   })
 
+  // "The week is decided" offers "Park a note" mid-week. A note parked there carries no
+  // session, and the saved record's last call has to show it straight away.
+  it('shows a note parked mid-week, outside any session, in the saved record’s last call', async () => {
+    const res = await call('POST', '/api/weekly-planning/loose-ends/parked', kevin, { note: 'Renew the car registration' })
+    expect(res.statusCode).toBe(200)
+    expect((await recap()).lastCall.map((l) => l.note)).toContain('Renew the car registration')
+  })
+
   it('still resolves every line after the session is closed — the record is a pointer', async () => {
     const before = await recap()
     await call('POST', '/api/chores', kevin, { title: 'Passport', personId: lottieId, rrule: 'FREQ=DAILY' })

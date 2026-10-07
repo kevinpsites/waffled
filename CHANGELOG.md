@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Adding groceries in Weekly Planning keeps the cursor in the field.** After each item the
   Meals step's "Add to groceries" field is ready for the next one, so you no longer tap back
   into it (or reopen the keyboard on iPhone) between items.
+- **You can park a Weekly Planning note between sessions.** The saved week, "Left for now"
+  and the lobby each have **📌 Park a note**, so a thought that comes up mid-week doesn't
+  wait for Sunday. The note shows in the saved week's last call right away and comes back at
+  the next session's Loose ends. Web and iOS.
 
 ## [0.15.1] - 2026-09-15
 

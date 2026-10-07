@@ -528,6 +528,12 @@ current one, minus `looseEnds` and `recap` — so a tag always names a step stil
 tonight. It is hidden on `looseEnds` and `horizon`, which draw their own bar; a second one
 there would be two inputs for one table.
 
+**And between sessions.** The record, "Left for now" and the lobby each carry the same
+composer with no session and no tags (`sessionId: null` on web, `betweenSessions` on iOS):
+the note posts with neither, so it lands in the record's last call (the read is
+household-wide) and at the next session's Loose ends. The record re-keys its read-back after
+the park so the new note shows at once.
+
 ### Family night grew two columns, and one of them is subtler than it looks
 
 `assignments.detail` is the obvious half: the tables recorded only WHO had a part, and

@@ -6,6 +6,8 @@ import SwiftUI
 
 struct PlanningParkNoteSheet: View {
     let tags: [PlanningParkedTag]
+    /// Opened from a summary screen: no step is ahead of you, so no tags.
+    var betweenSessions = false
     /// The model's refusal line; a failed park leaves the sheet open on what was typed.
     var errorMessage: String?
     let onPark: (_ note: String, _ stepKey: String?) async -> Bool
@@ -19,6 +21,7 @@ struct PlanningParkNoteSheet: View {
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     private var says: String {
+        if betweenSessions { return "It waits in the recap and at the next session’s Loose ends." }
         if let label = tags.first(where: { $0.stepKey == tag })?.label {
             return "Comes back at \(label), later in this session."
         }
@@ -42,15 +45,17 @@ struct PlanningParkNoteSheet: View {
                         .wfField()
                         .accessibilityLabel("The note")
 
-                    ChipFlow(spacing: 6, lineSpacing: 6) {
-                        ForEach(tags) { t in
-                            PlanningTagChip(label: t.label, selected: tag == t.stepKey, disabled: saving) {
-                                tag = t.stepKey
+                    if !betweenSessions {
+                        ChipFlow(spacing: 6, lineSpacing: 6) {
+                            ForEach(tags) { t in
+                                PlanningTagChip(label: t.label, selected: tag == t.stepKey, disabled: saving) {
+                                    tag = t.stepKey
+                                }
                             }
+                            PlanningTagChip(label: "No tag", selected: tag == nil, disabled: saving) { tag = nil }
                         }
-                        PlanningTagChip(label: "No tag", selected: tag == nil, disabled: saving) { tag = nil }
+                        .accessibilityLabel("Which step should look at this?")
                     }
-                    .accessibilityLabel("Which step should look at this?")
 
                     Text(says)
                         .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink2)

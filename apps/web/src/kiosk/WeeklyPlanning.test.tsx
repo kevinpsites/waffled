@@ -702,3 +702,49 @@ describe('weekly planning · parking a note from any step', () => {
     }
   })
 })
+
+// Mid-week, the planning page is a summary — the saved record, "Left for now", or the lobby —
+// and that is exactly when "we need to book the cabin" comes up. A note parked there belongs
+// to no session: it waits in the recap's last call and at the next session's Loose ends.
+describe('weekly planning · parking a note between sessions', () => {
+  const completed = () => session({ status: 'completed', completedAt: '2026-09-06T17:40:00.000Z' })
+
+  it('parks from the saved record with no session and no step tag, then re-reads the record', async () => {
+    mockApi(baseView({ session: completed() }))
+    draw()
+    expect(await screen.findByText('The week is decided')).toBeTruthy()
+    const recapReads = sent('GET', '/api/weekly-planning/recap').length
+    fireEvent.click(screen.getByRole('button', { name: /park a note/i }))
+
+    const card = await screen.findByTestId('wp-park')
+    // No step is still ahead of you between sessions, so the only answer is no tag.
+    expect(within(card).queryByRole('group')).toBeNull()
+    expect(within(card).getByText(/next session’s Loose ends/)).toBeTruthy()
+    fireEvent.change(within(card).getByLabelText('The note'), { target: { value: 'book the cabin' } })
+    fireEvent.click(within(card).getByRole('button', { name: 'Park it' }))
+
+    await waitFor(() => expect(sent('POST', '/loose-ends/parked')[0]?.body).toEqual({ note: 'book the cabin' }))
+    await waitFor(() => expect(screen.queryByTestId('wp-park')).toBeNull())
+    await waitFor(() => expect(sent('GET', '/api/weekly-planning/recap').length).toBeGreaterThan(recapReads))
+  })
+
+  it('offers it on “Left for now”', async () => {
+    mockApi(baseView({ session: session() }))
+    draw()
+    fireEvent.click(await screen.findByTestId('wp-exit'))
+    const paused = await screen.findByTestId('wp-paused')
+    fireEvent.click(within(paused).getByRole('button', { name: /park a note/i }))
+    const card = await screen.findByTestId('wp-park')
+    fireEvent.change(within(card).getByLabelText('The note'), { target: { value: 'fix the gate' } })
+    fireEvent.click(within(card).getByRole('button', { name: 'Park it' }))
+    await waitFor(() => expect(sent('POST', '/loose-ends/parked')[0]?.body).toEqual({ note: 'fix the gate' }))
+  })
+
+  it('offers it in the lobby, before any session exists', async () => {
+    mockApi(baseView())
+    draw()
+    expect(await screen.findByText(/Sunday's session/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /park a note/i }))
+    expect(await screen.findByTestId('wp-park')).toBeTruthy()
+  })
+})

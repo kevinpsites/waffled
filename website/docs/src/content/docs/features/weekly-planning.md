@@ -50,6 +50,11 @@ Inside the session, every step looks the same:
 
 Skipping is a real answer. The record shows which steps you skipped on purpose.
 
+Between sessions the page is a summary: the saved record (**The week is decided**), **Left
+for now**, or the lobby. Each has its own **📌 Park a note**, for the thought that comes up
+on a Wednesday. No step is ahead of you then, so there's no tag: the note shows in the
+record's last call straight away and waits at the next session's Loose ends.
+
 **Leave for now** (in the header, and in the agenda) puts you back on the lobby with the
 session kept exactly where it was, a button to resume it, and the week arrows. Leaving is
 remembered on that device only, so someone else can pick the session up on another device at
