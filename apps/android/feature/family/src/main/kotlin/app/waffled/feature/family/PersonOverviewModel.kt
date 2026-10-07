@@ -12,7 +12,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import app.waffled.core.model.WaffledDates
 import java.time.LocalDate
+import java.time.ZoneId
+import java.util.Locale
 
 @Immutable
 data class PersonOverviewSnapshot(
@@ -163,6 +166,13 @@ object PersonSpotlight {
     /** An open photo chore can't finish from a tick — the Chores camera flow must. */
     fun needsPhotoToFinish(inst: FamilyApi.ChoreInstance): Boolean =
         inst.requiresPhoto && inst.status == "pending"
+
+    /** The day-list time column, in the household zone. */
+    fun eventTime(ev: SyncedEvent, zone: ZoneId, locale: Locale = Locale.getDefault()): String {
+        if (ev.allDay) return "All day"
+        val start = WaffledDates.parseInstant(ev.startsAt, zone) ?: return "—"
+        return WaffledDates.format(start, "h:mm a", zone, locale)
+    }
 
     /**
      * Today's events that are this person's own. iOS also matches joined participants;

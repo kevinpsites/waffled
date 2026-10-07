@@ -138,6 +138,15 @@ class PersonOverviewTest {
         assertTrue(PersonSpotlight.eventsFor("p1", emptyMap(), today).isEmpty())
     }
 
+    @Test fun eventTimeReadsAllDayAClockTimeOrADash() {
+        val zone = java.time.ZoneId.of("America/Denver")
+        fun ev(start: String?, allDay: Boolean = false) =
+            SyncedEvent(id = "e", householdId = "h", title = "t", startsAt = start, allDay = allDay)
+        assertEquals("All day", PersonSpotlight.eventTime(ev("2026-10-07T06:00:00Z", allDay = true), zone, java.util.Locale.US))
+        assertEquals("3:30 PM", PersonSpotlight.eventTime(ev("2026-10-07T21:30:00Z"), zone, java.util.Locale.US))
+        assertEquals("—", PersonSpotlight.eventTime(ev(null), zone, java.util.Locale.US))
+    }
+
     // ---- the model ----
 
     @Test fun loadKeepsOnlyThisPersonsChores() = runTest {
