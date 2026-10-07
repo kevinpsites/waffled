@@ -281,4 +281,59 @@ class EventDraftTest {
         assertTrue(draft.clearsRrule(null))
         assertFalse(draft.clearsRrule(EditScope.This))
     }
+
+    // ---- a prefilled NEW event (Weekly Planning's "Make an event") ----
+
+    @Test
+    fun aNewEventTakesThePrefilledTitleAndPeople() {
+        val draft = EventDraft.seed(
+            null, june16, denver,
+            prefillTitle = "Call the plumber",
+            prefillParticipantIds = listOf("p1", "p2"),
+        )
+        assertEquals("Call the plumber", draft.title)
+        assertEquals(listOf("p1", "p2"), draft.personIds)
+        assertEquals(june16, draft.date)
+    }
+
+    @Test
+    fun aPrefilledStartInstantIsReadOnTheHouseholdClock() {
+        // 01:30Z on the 17th is still 19:30 on the 16th in Denver.
+        val draft = EventDraft.seed(
+            null, june16.plusDays(5), denver,
+            prefillStart = java.time.Instant.parse("2026-06-17T01:30:00Z"),
+        )
+        assertEquals(june16, draft.date)
+        assertEquals(LocalTime.of(19, 30), draft.startTime)
+        assertEquals(june16, draft.lastDay)
+    }
+
+    @Test
+    fun aPrefilledStartBeatsTheTappedHour() {
+        val draft = EventDraft.seed(
+            null, june16, denver,
+            initialTime = LocalTime.of(8, 0),
+            prefillStart = java.time.Instant.parse("2026-06-16T20:00:00Z"),
+        )
+        assertEquals(LocalTime.of(14, 0), draft.startTime)
+    }
+
+    @Test
+    fun theTappedHourStillSeedsANewEventWithoutAPrefill() {
+        val draft = EventDraft.seed(null, june16, denver, initialTime = LocalTime.of(8, 0))
+        assertEquals(LocalTime.of(8, 0), draft.startTime)
+    }
+
+    @Test
+    fun prefillsNeverOverwriteAnExistingEvent() {
+        val draft = EventDraft.seed(
+            event(), june16, denver,
+            prefillTitle = "Other",
+            prefillParticipantIds = listOf("p9"),
+            prefillStart = java.time.Instant.parse("2026-06-20T20:00:00Z"),
+        )
+        assertEquals("Soccer practice", draft.title)
+        assertEquals(listOf("p1"), draft.personIds)
+        assertEquals(june16, draft.date)
+    }
 }

@@ -57,6 +57,7 @@ import app.waffled.core.model.Person
 import app.waffled.core.network.WaffledApiException
 import app.waffled.core.sync.SyncedEvent
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
@@ -108,6 +109,12 @@ fun EventEditSheet(
     onSaved: () -> Unit,
     /** A create's start time — the tapped hour on the Day grid; the editor's default otherwise. */
     initialTime: LocalTime? = null,
+    /** A create's title — e.g. a Weekly Planning note turned into an event. Ignored on edit. */
+    initialTitle: String? = null,
+    /** A create's people — Planning's Connection puts the pair on the event. Ignored on edit. */
+    initialParticipantIds: List<String> = emptyList(),
+    /** A create's exact start, read in [zone]; wins over [initialDate] + [initialTime]. Ignored on edit. */
+    initialStart: Instant? = null,
 ) {
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -115,9 +122,13 @@ fun EventEditSheet(
 
     var draft by remember {
         mutableStateOf(
-            EventDraft.seed(event, initialDate, zone).let { seeded ->
-                if (event == null && initialTime != null) seeded.copy(startTime = initialTime) else seeded
-            },
+            EventDraft.seed(
+                event, initialDate, zone,
+                initialTime = initialTime,
+                prefillTitle = initialTitle,
+                prefillParticipantIds = initialParticipantIds,
+                prefillStart = initialStart,
+            ),
         )
     }
     var busy by remember { mutableStateOf(false) }
