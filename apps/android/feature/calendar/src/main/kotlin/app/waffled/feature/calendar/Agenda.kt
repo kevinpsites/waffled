@@ -72,6 +72,8 @@ data class EventRow(
     val colorHex: String?,
     /** A multi-day all-day event's exclusive end day; null for anything on one day. */
     val exclusiveEndDay: LocalDate? = null,
+    /** The household-local day the event starts on — before [day] for a multi-day event. */
+    val startDay: LocalDate? = null,
 ) : CalendarEntry {
     override val id: String get() = event.id
     val title: String get() = event.title
@@ -137,6 +139,7 @@ object Agenda {
             people = people,
             colorHex = palette.hex(people),
             exclusiveEndDay = EventBucketing.exclusiveEndDay(event, zone),
+            startDay = startsAt?.let { WaffledDates.localDay(it, zone) },
         )
     }
 
