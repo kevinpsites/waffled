@@ -103,6 +103,15 @@ class ChoresApiTest {
     }
 
     @Test
+    fun `a null rewardAmount from the server reads as no reward`() = runTest {
+        harness.enqueueJson(
+            """{"instances":[{"id":"i1","choreId":"c1","choreTitle":"Tidy up","status":"pending","rewardAmount":null}]}""",
+        )
+
+        assertEquals(0, api.instances("2026-08-21").single().rewardAmount)
+    }
+
+    @Test
     fun `awaiting pulls the whole approvals queue, not one day`() = runTest {
         harness.enqueueJson(
             """{"instances":[{"id":"i9","choreId":"c9","choreTitle":"Dishes","status":"awaiting"}]}""",

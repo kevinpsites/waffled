@@ -62,6 +62,9 @@ val WaffledJson: Json = Json {
     ignoreUnknownKeys = true
     explicitNulls = false
     isLenient = true
+    // The API sends `null` for unset optional numbers; a DTO's default is the client's
+    // reading of "unset", so take it instead of failing the whole payload.
+    coerceInputValues = true
 }
 
 /**
