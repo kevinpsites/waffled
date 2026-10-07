@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   editor without its own amount used to show just the name ("onion"). It now shows that
   ingredient's amount and unit from the recipe ("2 onion"). An imported line with no parsed
   amount shows its full original text in the ingredient list. Web and iOS.
+- **Adding groceries in Weekly Planning keeps the cursor in the field.** After each item the
+  Meals step's "Add to groceries" field is ready for the next one, so you no longer tap back
+  into it (or reopen the keyboard on iPhone) between items.
 
 ## [0.15.1] - 2026-09-15
 
