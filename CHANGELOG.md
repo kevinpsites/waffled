@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   month the planned week fell in, so near the end of a month most of what it showed had
   already happened. It now starts on the week you're planning and the arrows step four weeks
   at a time, on web and iOS.
+- **Cook Mode's ingredient checklist shows how much.** A step ingredient picked in the recipe
+  editor without its own amount used to show just the name ("onion"). It now shows that
+  ingredient's amount and unit from the recipe ("2 onion"). An imported line with no parsed
+  amount shows its full original text in the ingredient list. Web and iOS.
 
 ## [0.15.1] - 2026-09-15
 

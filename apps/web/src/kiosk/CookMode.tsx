@@ -9,6 +9,7 @@ import {
   type RecipeMatch,
   type RecipeStep,
 } from '../lib/api'
+import { fmtAmt } from '../lib/amount'
 import { CHECK } from './components/CheckGlyph'
 import { CookConfirm } from './components/CookConfirm'
 import { CookTabs, type CookTabInfo } from './components/CookTabs'
@@ -58,6 +59,22 @@ export function ingredientKey(chip: string, ingredients: RecipeIngredient[]): st
     .filter(({ name }) => name && nameStartsAWord(lc, name))
     .sort((a, b) => b.name.length - a.name.length)[0]
   return match ? match.ing.id : `text:${lc}`
+}
+
+// "3 tbsp", or '' when the row has no parsed amount.
+function amountText(ing: RecipeIngredient): string {
+  return ing.amount != null ? `${fmtAmt(ing.amount)}${ing.unit ? ` ${ing.unit}` : ''}` : ''
+}
+
+// The editor writes a picked ingredient with no per-step amount as its bare NAME, so a chip
+// that IS a row's name borrows that row's measurement. Anything else ("Half the minced
+// garlic", "4 cloves garlic") is the author's own words and stays as written.
+export function chipLabel(chip: string, ingredients: RecipeIngredient[]): string {
+  const text = chip.trim()
+  const lc = text.toLowerCase()
+  const row = ingredients.find((ing) => ing.name.trim().toLowerCase() === lc)
+  const amt = row ? amountText(row) : ''
+  return amt ? `${amt} ${text}` : chip
 }
 
 const toggleKey = (keys: Set<string>, key: string): Set<string> => {
@@ -394,7 +411,7 @@ function CookSession({
                     onClick={() => onTick(key)}
                   >
                     <span className="cm-ing-box" aria-hidden="true">{on ? CHECK : null}</span>
-                    <span>{ig}</span>
+                    <span>{chipLabel(ig, ingredients)}</span>
                   </button>
                 )
               })}
@@ -451,8 +468,9 @@ function CookSession({
                     onClick={() => onTick(ing.id)}
                   >
                     <span className="cm-all-box" aria-hidden="true">{on ? CHECK : null}</span>
-                    <span className="cm-all-amt">{ing.amount != null ? `${ing.amount}${ing.unit ? ` ${ing.unit}` : ''}` : '—'}</span>
-                    <span className="cm-all-nm">{ing.sub ?? ing.name}</span>
+                    <span className="cm-all-amt">{amountText(ing) || '—'}</span>
+                    {/* With no parsed amount, an imported line keeps its quantity only in `display`. */}
+                    <span className="cm-all-nm">{ing.sub ?? (ing.amount == null && ing.display ? ing.display : ing.name)}</span>
                   </button>
                 )
               })}
