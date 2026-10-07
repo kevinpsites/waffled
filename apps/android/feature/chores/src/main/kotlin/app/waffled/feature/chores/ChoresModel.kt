@@ -173,6 +173,7 @@ class ChoresModel(
     private val _loading = MutableStateFlow(false)
     private val _error = MutableStateFlow(false)
     private val _proofError = MutableStateFlow<String?>(null)
+    private val toggling = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     /** The day being viewed, `yyyy-MM-dd`. */
     val date: StateFlow<String> = _date.asStateFlow()
@@ -264,6 +265,16 @@ class ChoresModel(
      * then reload to pick up the true stars, streak and status.
      */
     suspend fun toggle(row: ChoreRow) {
+        // A second tap mid-write would race the first one's rollback, so it is ignored.
+        if (!toggling.add(row.id)) return
+        try {
+            toggleOnce(row)
+        } finally {
+            toggling.remove(row.id)
+        }
+    }
+
+    private suspend fun toggleOnce(row: ChoreRow) {
         val previous = row.status
         val isComplete = previous == ChoresApi.STATUS_DONE || previous == ChoresApi.STATUS_AWAITING
         val next = when {

@@ -6,6 +6,8 @@ import app.waffled.core.network.RefreshDomain
 import app.waffled.core.network.WaffledHttp
 import app.waffled.core.testing.ApiTestHarness
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Before
@@ -244,6 +246,29 @@ class ChoresModelTest {
         model.toggle(model.rows.single())
 
         assertEquals("pending", model.rows.single().status)
+    }
+
+    @Test
+    fun `a second tap while the write is in flight is ignored`() = runTest {
+        // Translated from iOS TodayChoresTests.aSecondTapWhileTheWriteIsInFlightIsIgnored:
+        // two quick taps would race each other's rollback.
+        enqueueDay(instanceJson("a"))
+        val model = model()
+        model.load()
+        harness.takeRequest()
+        val row = model.rows.single()
+
+        harness.enqueueJson("{}")
+        enqueueDay(instanceJson("a", status = "done"))
+        val first = async { model.toggle(row) }
+        runCurrent()
+        model.toggle(row)
+        first.await()
+
+        assertEquals("/api/chore-instances/a/complete", harness.takeRequest().path)
+        assertTrue(harness.takeRequest().path.orEmpty().startsWith("/api/chore-instances/today"))
+        assertEquals(3, harness.server.requestCount)
+        assertEquals("done", model.rows.single().status)
     }
 
     @Test
