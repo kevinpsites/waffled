@@ -2,7 +2,9 @@
    step. Never hardcode a hex — the one literal colour on screen is a PERSON's, which arrives as
    data. Prefixed `wpm-` so nothing can collide with the shell's `wp-`. */
 
-.wpm { display: flex; flex-direction: column; gap: 16px; min-height: 0; }
+/* `flex: none` so the step keeps its full height inside the scrolling `.wp-body`: shrunk, its
+   content overflowed and the last row's bottom margin never counted toward the scroll. */
+.wpm { display: flex; flex-direction: column; gap: 16px; min-height: 0; flex: none; }
 
 .wpm-msg { color: var(--ink-3); font-weight: 600; padding: 14px 2px; }
 
@@ -94,8 +96,9 @@
   background: var(--panel); border-radius: var(--r-md); padding: 11px 14px;
 }
 .wpm-gro-i { font-size: 17px; line-height: 1; flex: none; }
-/* The grocery board's own add bar, compact, with a visible button for a touch screen. */
-.wpm-gro-add { flex: none; gap: 8px; }
+/* The grocery board's own add bar, with a visible button for a touch screen. It is the last
+   thing in the step, so it keeps room underneath for its shadow to clear the pinned footer. */
+.wpm-gro-add { flex: none; gap: 8px; margin-bottom: 16px; }
 .wpm-gro-add input { flex: 1; min-width: 0; }
 .wpm-gro-add .btn { flex: none; }
 .wpm-gro-m { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
