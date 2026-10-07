@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -34,6 +35,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -127,6 +129,12 @@ fun KioskTodayScreen(
     onOpenReview: () -> Unit = {},
     /** Reload what this page does not own (module flags, synced surfaces) — on resume and at midnight. */
     onRefreshSurfaces: suspend () -> Unit = {},
+    /**
+     * The Weekly Planning nudge, appended last in the meals column like iOS. A slot, because
+     * the card needs `feature:planning`'s environment, which only `app` can build; the host
+     * gates it on the `weeklyPlanning` module.
+     */
+    planningCard: (@Composable () -> Unit)? = null,
 ) {
     val chores by model.choresSnapshot.collectAsStateWithLifecycle()
     val meals by model.mealsSnapshot.collectAsStateWithLifecycle()
@@ -252,6 +260,7 @@ fun KioskTodayScreen(
                 if (familyNight != null && modules.isOn(WaffledModule.FamilyNight)) {
                     FamilyNightCard(familyNight, kiosk = true, refreshKey = surfaceRev)
                 }
+                planningCard?.invoke()
             }
 
             KioskColumn.ChoreGrocery -> Column(colModifier, verticalArrangement = Arrangement.spacedBy(22.dp)) {
@@ -417,26 +426,54 @@ private fun Header(
             .padding(start = 40.dp, end = 40.dp, top = 22.dp, bottom = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text(TodayFormat.greeting(now, zone), style = WF.type.serif(40.sp), color = WF.colors.ink)
-            Spacer(Modifier.weight(1f))
-            Box {
-                WaffledMenuPill(layout.label, Modifier.clickable { menuOpen = true })
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DashLayout.entries.forEach { l ->
-                        DropdownMenuItem(
-                            text = { Text(l.label) },
-                            onClick = { menuOpen = false; onLayout(l) },
-                            trailingIcon = if (l == layout) {
-                                { Icon(Icons.Filled.Check, contentDescription = "Selected") }
-                            } else {
-                                null
-                            },
-                        )
+        // Portrait: the bar can't share a row with the greeting without wrapping its own
+        // placeholder, so it drops to its own full-width line below.
+        BoxWithConstraints {
+            val stacked = KioskTodayRules.headerStacks(maxWidth.value)
+            val greeting: @Composable (Modifier) -> Unit = { m ->
+                Text(
+                    TodayFormat.greeting(now, zone),
+                    modifier = m,
+                    style = WF.type.serif(40.sp),
+                    color = WF.colors.ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            val layoutMenu: @Composable () -> Unit = {
+                Box {
+                    WaffledMenuPill(layout.label, Modifier.clickable { menuOpen = true })
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DashLayout.entries.forEach { l ->
+                            DropdownMenuItem(
+                                text = { Text(l.label) },
+                                onClick = { menuOpen = false; onLayout(l) },
+                                trailingIcon = if (l == layout) {
+                                    { Icon(Icons.Filled.Check, contentDescription = "Selected") }
+                                } else {
+                                    null
+                                },
+                            )
+                        }
                     }
                 }
             }
-            AICaptureBar(modifier = Modifier.weight(1f, fill = false).then(CaptureBarMaxWidth), onTap = onCapture, onMic = onDictate)
+            if (stacked) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        greeting(Modifier.weight(1f))
+                        layoutMenu()
+                    }
+                    AICaptureBar(modifier = Modifier.fillMaxWidth(), onTap = onCapture, onMic = onDictate)
+                }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    greeting(Modifier)
+                    Spacer(Modifier.weight(1f))
+                    layoutMenu()
+                    AICaptureBar(modifier = Modifier.weight(1f, fill = false).then(CaptureBarMaxWidth), onTap = onCapture, onMic = onDictate)
+                }
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(WaffledDates.format(now, "EEEE, MMMM d", zone), style = line, color = WF.colors.ink2)

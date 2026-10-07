@@ -134,6 +134,9 @@ fun KioskRoot(
     bootDetail: String? = null,
     screensaverMotion: Boolean = true,
     returnToPicker: suspend () -> Unit = { kiosk.returnToPicker() },
+    /** A rail destination `app` asks the shell to open (a reminder tap, a Today event). */
+    requestedNav: KioskNav? = null,
+    onRequestedNavConsumed: () -> Unit = {},
 ) {
     val members by sync.members.collectAsState()
     val syncState by sync.state.collectAsState()
@@ -179,6 +182,8 @@ fun KioskRoot(
                 pages = pages,
                 onCapture = onCapture,
                 onSwitchProfile = { pendingPicker = true },
+                requestedNav = requestedNav,
+                onRequestedNavConsumed = onRequestedNavConsumed,
             )
         }
         AnimatedVisibility(visible = booting, enter = fadeIn(tween(400)), exit = fadeOut(tween(400))) {
@@ -204,11 +209,19 @@ fun KioskShell(
     onSwitchProfile: () -> Unit,
     modifier: Modifier = Modifier,
     initial: KioskNav = KioskNav.Today,
+    requestedNav: KioskNav? = null,
+    onRequestedNavConsumed: () -> Unit = {},
 ) {
     // Saveable: a rotation recreates the activity, and must not bounce the user to Today.
     var nav by rememberSaveable(stateSaver = NavSaver) { mutableStateOf(KioskShellNav(selection = initial)) }
     val pinned = KioskRail.pinned(railRaw, modules, rewardsOn)
     LaunchedEffect(modules, rewardsOn) { nav = nav.corrected(modules, rewardsOn) }
+    // A jump, never a reset: the page keeps whatever it was showing.
+    LaunchedEffect(requestedNav) {
+        val target = requestedNav ?: return@LaunchedEffect
+        nav = nav.navigate(target)
+        onRequestedNavConsumed()
+    }
 
     // The WINDOW size, not this node's: the keyboard shrinks content but not the window,
     // so typing can't flip a portrait tablet into the landscape layout.

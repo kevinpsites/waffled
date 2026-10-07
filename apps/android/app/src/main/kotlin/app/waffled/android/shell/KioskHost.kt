@@ -25,6 +25,7 @@ import app.waffled.feature.kiosktoday.KioskTodayScreen
 import app.waffled.feature.lists.ListDetailModel
 import app.waffled.feature.lists.ListDetailScreen
 import app.waffled.feature.meals.MealDTO as MealsMeal
+import app.waffled.feature.planning.PlanningTodayCard
 import app.waffled.feature.recipes.RecipeSummary
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -53,6 +54,8 @@ fun KioskHost(container: AppContainer, shell: ShellViewModel, actions: ShellActi
                 countdowns = container.countdownsModel,
                 api = container.calendarApi,
                 kioskApi = container.kioskCalendarApi,
+                openEventId = shell.pendingEventId,
+                onOpenEventConsumed = { shell.pendingEventId = null },
             )
         },
         KioskNav.Tasks to page(KioskNav.Tasks) { a, _ -> RouteHost(AppRoute.Chores, container, a, showBack = false) },
@@ -79,6 +82,8 @@ fun KioskHost(container: AppContainer, shell: ShellViewModel, actions: ShellActi
         onCapture = onCapture,
         onRetry = { container.restartSync() },
         onSignOut = actions.signOut,
+        requestedNav = shell.kioskNavRequest,
+        onRequestedNavConsumed = { shell.kioskNavRequest = null },
     )
 }
 
@@ -105,8 +110,10 @@ private fun KioskPageBody(
             capture = actions.capture,
             signOut = actions.signOut,
             reloadApprovals = actions.reloadApprovals,
-            // KioskCalendarPage has no open-by-id hook yet: land on the page.
-            openEvent = { page.navigate(KioskNav.Calendar) },
+            openEvent = {
+                shell.pendingEventId = it
+                page.navigate(KioskNav.Calendar)
+            },
             isKiosk = true,
         )
     }
@@ -169,6 +176,17 @@ private fun KioskTodayPage(container: AppContainer, actions: ShellActions, navig
         onOpenApprovals = { actions.push(AppRoute.Approvals) },
         onOpenReview = { actions.push(AppRoute.ReviewEvents) },
         onRefreshSurfaces = { container.refreshSurfaces() },
+        planningCard = if (modules.isOn(WaffledModule.WeeklyPlanning)) {
+            {
+                PlanningTodayCard(
+                    env = container.planningEnv(true),
+                    onOpen = { navigateTo(KioskNav.Planning) },
+                    kiosk = true,
+                )
+            }
+        } else {
+            null
+        },
     )
 
     logging?.let { id ->
@@ -211,7 +229,7 @@ private fun KioskListsPage(container: AppContainer, actions: ShellActions) {
             val model = remember(summary.id) { ListDetailModel(summary, container.listsApi, container.refreshBus) }
             ListDetailScreen(
                 model = model,
-                onBack = {},
+                onBack = null,
                 onShare = { subject, text -> shareText(context, subject, text) },
                 onCopy = { copyText(context, it) },
             )

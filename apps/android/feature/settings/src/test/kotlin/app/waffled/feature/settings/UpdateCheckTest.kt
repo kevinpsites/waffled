@@ -50,6 +50,12 @@ class UpdateCheckTest {
     }
 
     @Test
+    fun `remind me later keeps the modal shut across an activity recreation`() {
+        assertFalse(ServerUpdateGate.shouldOpen(info(), dismissedTag = null, snoozedTag = "v0.16.0"))
+        assertTrue(ServerUpdateGate.shouldOpen(info(tag = "v0.17.0"), dismissedTag = null, snoozedTag = "v0.16.0"))
+    }
+
+    @Test
     fun `modal stays shut when checking is off or nothing is newer`() {
         assertFalse(ServerUpdateGate.shouldOpen(info(enabled = false), null))
         assertFalse(ServerUpdateGate.shouldOpen(info(available = false), null))

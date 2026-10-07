@@ -17,6 +17,9 @@ class ShellViewModel : ViewModel() {
     /** An event the Calendar tab opens on arrival; cleared once its detail is showing. */
     var pendingEventId by mutableStateOf<String?>(null)
 
+    /** A rail destination the tablet shell should jump to; cleared once it has. */
+    var kioskNavRequest by mutableStateOf<app.waffled.feature.kiosk.KioskNav?>(null)
+
     /** The tablet's per-rail-page drill-in stacks. */
     var kioskStacks by mutableStateOf(KioskPageStacks<AppRoute>())
 }

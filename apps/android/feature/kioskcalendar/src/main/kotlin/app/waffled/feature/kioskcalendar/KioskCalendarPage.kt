@@ -81,6 +81,13 @@ fun KioskCalendarPage(
     api: CalendarApi,
     kioskApi: KioskCalendarApi,
     modifier: Modifier = Modifier,
+    /**
+     * An event to open on arrival (a Today tap or a reminder tap). Retried as synced rows
+     * land, since the event may not have arrived yet; [onOpenEventConsumed] fires once its
+     * detail is showing.
+     */
+    openEventId: String? = null,
+    onOpenEventConsumed: () -> Unit = {},
 ) {
     val rows by model.rowsByDay.collectAsStateWithLifecycle()
     val members by model.members.collectAsStateWithLifecycle()
@@ -109,6 +116,14 @@ fun KioskCalendarPage(
         val today = model.today()
         pos = KioskCalendar.jumpToToday(today)
         miniAnchor = today
+    }
+
+    LaunchedEffect(openEventId, rows) {
+        val row = openEventId?.let { model.rowFor(it) } ?: return@LaunchedEffect
+        pos = KioskCalendar.jumpToToday(row.day)
+        miniAnchor = row.day
+        detailRow = row
+        onOpenEventConsumed()
     }
 
     // Ticks, because a wall display runs across midnight and every "today" read must follow.

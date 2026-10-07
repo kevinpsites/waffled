@@ -90,7 +90,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun ListDetailScreen(
     model: ListDetailModel,
-    onBack: () -> Unit,
+    /** Null where the screen is a page root (the tablet's Lists pane): no arrow is drawn. */
+    onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     /** Hands the shared text to the system share sheet; the host owns the Intent. */
     onShare: (subject: String, text: String) -> Unit = { _, _ -> },
@@ -462,7 +463,7 @@ fun ListDetailScreen(
             confirmButton = {
                 TextButton(onClick = {
                     confirmingDelete = false
-                    scope.launch { if (model.deleteList()) onBack() }
+                    scope.launch { if (model.deleteList()) onBack?.invoke() }
                 }) {
                     Text(
                         if (list.isTemplate) "Delete template" else "Delete list",
@@ -509,7 +510,7 @@ private fun ListDetailAppBar(
     list: ListSummary,
     shareText: String,
     shareMarkdown: String,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     onShare: (String, String) -> Unit,
     onCopy: (String) -> Unit,
     onEditList: () -> Unit,
@@ -530,12 +531,14 @@ private fun ListDetailAppBar(
             )
         },
         navigationIcon = {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint = WF.colors.ink,
-                modifier = Modifier.padding(horizontal = 12.dp).clickable(onClick = onBack),
-            )
+            if (onBack != null) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = WF.colors.ink,
+                    modifier = Modifier.padding(horizontal = 12.dp).clickable(onClick = onBack),
+                )
+            }
         },
         actions = {
             Box {

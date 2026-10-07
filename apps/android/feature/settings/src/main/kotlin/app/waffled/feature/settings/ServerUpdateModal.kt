@@ -51,6 +51,10 @@ import app.waffled.core.design.wfShadow3
 interface UpdateDismissalStore {
     fun dismissedTag(): String?
     fun dismiss(tag: String)
+
+    /** "Remind me later": held for the process's life, so it must outlive the Activity. */
+    fun snoozedTag(): String? = null
+    fun snooze(tag: String) {}
 }
 
 /**
@@ -66,13 +70,16 @@ fun ServerUpdateModal(api: SettingsApi, store: UpdateDismissalStore) {
     LaunchedEffect(Unit) {
         val r = ServerUpdateGate.fetchWithRetry(attempts = 8, delayMillis = 700) { api.updates() } ?: return@LaunchedEffect
         info = r
-        open = ServerUpdateGate.shouldOpen(r, store.dismissedTag())
+        open = ServerUpdateGate.shouldOpen(r, store.dismissedTag(), store.snoozedTag())
     }
 
     val latest = info?.latest
     if (!open || latest == null) return
 
-    val snooze = { open = false }
+    val snooze = {
+        store.snooze(latest.tag)
+        open = false
+    }
     val dismiss = {
         store.dismiss(latest.tag)
         open = false

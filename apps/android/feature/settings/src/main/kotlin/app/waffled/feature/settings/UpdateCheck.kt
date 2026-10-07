@@ -29,7 +29,9 @@ object VersionCompare {
 
 /**
  * When the admin-only "newer server available" modal opens. It pops once per release:
- * × remembers the tag so it stays shut until an even newer one ships.
+ * × remembers the tag so it stays shut until an even newer one ships; "Remind me later"
+ * ([snoozedTag]) keeps it shut for the rest of the process, so an Activity recreation
+ * (rotation, theme flip) does not bring it back.
  */
 object ServerUpdateGate {
 
@@ -37,9 +39,9 @@ object ServerUpdateGate {
     const val UPGRADE_GUIDE_URL = "https://docs.waffled.app/operations/upgrading/"
     const val UPGRADE_COMMAND = "./waffled upgrade"
 
-    fun shouldOpen(info: SettingsApi.UpdateInfo, dismissedTag: String?): Boolean {
+    fun shouldOpen(info: SettingsApi.UpdateInfo, dismissedTag: String?, snoozedTag: String? = null): Boolean {
         val tag = info.latest?.tag ?: return false
-        return info.enabled && info.updateAvailable == true && tag != dismissedTag
+        return info.enabled && info.updateAvailable == true && tag != dismissedTag && tag != snoozedTag
     }
 
     fun displayTag(tag: String): String =

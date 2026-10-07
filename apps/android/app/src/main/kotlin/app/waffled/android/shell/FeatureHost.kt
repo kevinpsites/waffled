@@ -327,7 +327,7 @@ fun RouteHost(
 
         AppRoute.Planning -> PlanningShell(
             env = container.planningEnv(actions.isKiosk),
-            onBack = actions.pop,
+            onBack = if (showBack) actions.pop else null,
             modifier = modifier,
             refreshKey = surfaceRev,
             bottomClearance = clearance,
@@ -358,7 +358,7 @@ fun RouteHost(
             members = members,
             modifier = modifier,
             refreshKey = surfaceRev,
-            onBack = actions.pop,
+            onBack = if (showBack) actions.pop else null,
             onRefreshModules = { container.identity.load() },
             onChanged = container::bumpCountdowns,
         )

@@ -20,6 +20,7 @@ import app.waffled.core.design.WF
 import app.waffled.core.model.WaffledModule
 import app.waffled.core.network.WaffledJson
 import app.waffled.feature.bites.WaffledBiteEntryCard
+import app.waffled.feature.planning.PlanningFocusCard
 import app.waffled.feature.family.ApprovalsScreen
 import app.waffled.feature.family.FamilyHubGates
 import app.waffled.feature.family.FamilyScreen
@@ -147,7 +148,7 @@ fun PersonHost(personId: String, container: AppContainer, actions: ShellActions,
                 }
             },
             goalTint = { goalCategoryColor(it) },
-            planningFocus = { PlanningFocusCard(it) },
+            planningFocus = { PlanningFocusCard(label = it.label, emoji = it.emoji, detail = it.detail) },
             waffledBite = if (bitesOn) {
                 { id, firstName ->
                     WaffledBiteEntryCard(

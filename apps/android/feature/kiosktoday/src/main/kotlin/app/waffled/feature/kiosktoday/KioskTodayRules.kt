@@ -62,6 +62,11 @@ object KioskGoalPick {
 
 /** The card-visibility and copy rules from `KioskDashboard`, kept out of the composables. */
 object KioskTodayRules {
+    const val HEADER_ONE_ROW_MIN_WIDTH = 720f
+
+    /** Narrower than this (dp) the capture bar gets its own line. */
+    fun headerStacks(width: Float): Boolean = width < HEADER_ONE_ROW_MIN_WIDTH
+
     /** The goal column shows tonight unless a fresh answer said there is none. */
     fun goalColumnShowsTonight(hasTonight: Boolean, mealsState: RestState): Boolean =
         hasTonight || !mealsState.isAuthoritative
