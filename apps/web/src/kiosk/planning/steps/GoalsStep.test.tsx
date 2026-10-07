@@ -214,6 +214,19 @@ describe('GoalsStep · the tabs are the goal lists', () => {
     expect(tab('Mom & Dad')).toHaveAttribute('data-private', 'true')
     expect(tab('Family')).not.toHaveAttribute('data-private', 'true')
   })
+
+  // The observer clicks before React flushes the first render's effects, i.e. while the
+  // default-tab effect still sees no tab chosen. Under CPU load a plain click lands there too.
+  it('keeps a tab picked the moment the tabs appear', async () => {
+    const seen = new MutationObserver(() => {
+      const t = screen.queryByRole('tab', { name: /Mom & Dad/ })
+      if (t) { seen.disconnect(); fireEvent.click(t) }
+    })
+    seen.observe(document.body, { childList: true, subtree: true })
+    renderStep()
+    expect(await screen.findByText('Date night')).toBeInTheDocument()
+    expect(tab('Mom & Dad')).toHaveAttribute('aria-selected', 'true')
+  })
 })
 
 describe('GoalsStep · the group card says what the group is', () => {
