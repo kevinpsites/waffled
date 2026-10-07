@@ -13,4 +13,10 @@ import androidx.lifecycle.ViewModel
  */
 class ShellViewModel : ViewModel() {
     var nav by mutableStateOf(NavState<AppRoute>(tab = TAB_TODAY))
+
+    /** An event the Calendar tab opens on arrival; cleared once its detail is showing. */
+    var pendingEventId by mutableStateOf<String?>(null)
+
+    /** The tablet's per-rail-page drill-in stacks. */
+    var kioskStacks by mutableStateOf(KioskPageStacks<AppRoute>())
 }

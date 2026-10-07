@@ -41,7 +41,7 @@ sealed interface LaunchRequest {
     /** A tapped cook-timer notification: Cook Mode is already resumed, just raise it. */
     data object Cook : LaunchRequest
 
-    /** A tapped event reminder. Calendar has no open-by-id hook yet, so it lands on the tab. */
+    /** A tapped event reminder: the phone's Calendar opens it. */
     data class Event(val eventId: String) : LaunchRequest
 }
 
@@ -52,9 +52,10 @@ sealed interface LaunchRequest {
 @Composable
 fun AppShell(
     container: AppContainer,
-    session: SessionViewModel,
     launch: LaunchRequest?,
     onLaunchHandled: () -> Unit,
+    /** The tablet kiosk shell instead of the phone's four tabs (see `KioskShellLayout.isTablet`). */
+    isTablet: Boolean = false,
 ) {
     val sync = container.syncManager
     val modules by sync.modules.collectAsStateWithLifecycle()
@@ -94,11 +95,20 @@ fun AppShell(
         loadApprovals()
     }
 
+    fun openEvent(id: String) {
+        shell.pendingEventId = id
+        if (nav.tab != TAB_CALENDAR) nav = nav.copy(tab = TAB_CALENDAR)
+    }
+
     LaunchedEffect(launch) {
         when (launch) {
-            is LaunchRequest.Route -> nav = nav.open(launch.tab, launch.route)
+            // The tablet's rail selection lives inside KioskShell, so a deep link lands on
+            // Today's page stack (Today is where the shell starts).
+            is LaunchRequest.Route ->
+                if (isTablet) shell.kioskStacks = shell.kioskStacks.push(app.waffled.feature.kiosk.KioskNav.Today, launch.route)
+                else nav = nav.open(launch.tab, launch.route)
             LaunchRequest.Cook -> cookShown = true
-            is LaunchRequest.Event -> if (nav.tab != TAB_CALENDAR) nav = nav.select(TAB_CALENDAR)
+            is LaunchRequest.Event -> if (!isTablet) openEvent(launch.eventId)
             null -> return@LaunchedEffect
         }
         onLaunchHandled()
@@ -117,22 +127,28 @@ fun AppShell(
                 }
             },
             capture = { capture = it },
-            signOut = {
-                container.eventReminders.clearEventReminders()
-                container.identity.clear()
-                container.newSessionScope()
-                session.signOut()
-            },
+            signOut = container::signOut,
             reloadApprovals = { loadApprovals() },
+            openEvent = ::openEvent,
         )
     }
 
     // Back leaves Cook Mode running (iOS minimises it the same way); the session ends only
     // from Cook Mode's own ✕ / Finish.
+    BackHandler(enabled = !isTablet && !cookShown && nav.top != null) { actions.pop() }
     BackHandler(enabled = cookShown && cook.session != null) { cookShown = false }
-    BackHandler(enabled = !cookShown && nav.top != null) { actions.pop() }
 
-    Box(
+    if (isTablet) {
+        Box(Modifier.fillMaxSize().background(WF.colors.canvas)) {
+            KioskHost(container, shell, actions, onCapture = { capture = false })
+            if (cookShown && cook.session != null) {
+                CookModeScreen(
+                    store = container.cookStore,
+                    modifier = Modifier.fillMaxSize().background(WF.colors.canvas),
+                )
+            }
+        }
+    } else Box(
         Modifier
             .fillMaxSize()
             .background(WF.colors.canvas),

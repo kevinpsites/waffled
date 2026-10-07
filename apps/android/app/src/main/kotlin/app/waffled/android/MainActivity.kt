@@ -2,6 +2,9 @@ package app.waffled.android
 
 import android.app.Application
 import android.content.Intent
+import android.content.pm.ActivityInfo
+import app.waffled.feature.kiosk.KioskGate
+import app.waffled.feature.kiosk.KioskShellLayout
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -49,6 +52,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val container = (application as WaffledApp).container
+        // Phones stay portrait; a tablet (the kiosk shell) rotates freely. Decided here, not
+        // in the manifest, because the manifest can't tell the two apart.
+        val tablet = KioskShellLayout.isTablet(resources.configuration.smallestScreenWidthDp)
+        requestedOrientation =
+            if (tablet) ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         // A recreation (theme flip) keeps the nav stack; replaying the launch intent would
         // re-push its route on top of wherever the user has since gone.
         if (savedInstanceState == null) handle(intent)
@@ -60,13 +68,16 @@ class MainActivity : ComponentActivity() {
                 darkTheme = forcedDark
                     ?: androidx.compose.foundation.isSystemInDarkTheme(),
             ) {
-                AuthGate(container) { session ->
-                    AppShell(
-                        container = container,
-                        session = session,
-                        launch = launchRequest,
-                        onLaunchHandled = { launchRequest = null },
-                    )
+                // A paired shared kiosk shows its profile picker instead of the login screen.
+                KioskGate(container.kioskMode, container.kioskServerAddress) {
+                    AuthGate(container) {
+                        AppShell(
+                            container = container,
+                            launch = launchRequest,
+                            onLaunchHandled = { launchRequest = null },
+                            isTablet = tablet,
+                        )
+                    }
                 }
             }
         }
