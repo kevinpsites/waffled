@@ -54,7 +54,13 @@ import app.waffled.feature.recipes.RecipeEditorScreen
 import app.waffled.feature.recipes.RecipePickerSheet
 import app.waffled.feature.recipes.RecipesLibraryScreen
 import app.waffled.feature.recipes.toRef
+import app.waffled.feature.rewards.RewardEditorSheet
+import app.waffled.feature.rewards.RewardShopScreen
+import app.waffled.feature.rewards.RewardsAccess
 import app.waffled.feature.rewards.RewardsScreen
+import app.waffled.feature.bites.WaffledBitesModel
+import app.waffled.feature.bites.WaffledBitesScreen
+import app.waffled.feature.rhythms.RhythmsScreen
 import kotlinx.coroutines.launch
 
 /**
@@ -79,6 +85,7 @@ fun TabRoot(
             countdowns = container.countdownsModel,
             api = container.calendarApi,
             modifier = modifier.padding(bottom = WF.spacing.tabBarClearance),
+            mealsEnabled = modules.isOn(WaffledModule.Meals),
         )
         // iOS self-corrects to Today when every flex candidate is off; the bar keeps a
         // placeholder here so the FAB stays centred, and the placeholder says why.
@@ -95,8 +102,7 @@ fun TabRoot(
                 modifier = modifier,
             )
         }
-        // ⚠️ TEMPORARY: the Family tab hosts Photos until the Family hub (Wave C) lands.
-        else -> RouteHost(AppRoute.Photos, container, actions, modifier, showBack = false)
+        else -> FamilyTab(container, actions, modifier)
     }
 }
 
@@ -170,6 +176,7 @@ fun RouteHost(
     val weekStart by container.identity.householdWeekStart.collectAsStateWithLifecycle()
     val modules by container.syncManager.modules.collectAsStateWithLifecycle()
     val zone by container.syncManager.householdZone.collectAsStateWithLifecycle()
+    val surfaceRev by container.surfaceRev.collectAsStateWithLifecycle()
     val bottom = Modifier.padding(bottom = WF.spacing.tabBarClearance)
 
     @Composable
@@ -272,7 +279,7 @@ fun RouteHost(
         AppRoute.Pantry -> withBack {
             PantryModuleGate(gate = modules) {
                 PantryScreen(
-                    model = container.pantryModel,
+                    model = container.pantryModel(zone),
                     modifier = (if (showBack) Modifier else modifier).then(bottom),
                     mealsEnabled = modules.isOn(WaffledModule.Meals),
                     hooks = CookHooks(
@@ -294,6 +301,35 @@ fun RouteHost(
                 model = container.photosModel,
                 modifier = (if (showBack) Modifier else modifier).then(bottom),
             )
+        }
+
+        AppRoute.Settings -> SettingsRoute(container, actions, modifier)
+
+        AppRoute.Approvals -> PageWithBack(onBack = actions.pop, modifier = modifier, title = "Approvals") {
+            ApprovalsHost(container)
+        }
+
+        AppRoute.Rhythms -> RhythmsScreen(
+            model = container.rhythmsModel,
+            members = members,
+            modifier = modifier,
+            refreshKey = surfaceRev,
+            onBack = actions.pop,
+            onRefreshModules = { container.identity.load() },
+            onChanged = container::bumpCountdowns,
+        )
+
+        is AppRoute.Person -> PageWithBack(onBack = actions.pop, modifier = modifier) {
+            PersonHost(route.personId, container, actions)
+        }
+
+        is AppRoute.RewardShop -> PageWithBack(onBack = actions.pop, modifier = modifier) {
+            RewardShopHost(route.personId, container, viewer)
+        }
+
+        is AppRoute.WaffledBites -> PageWithBack(onBack = actions.pop, modifier = modifier, title = route.personName.ifEmpty { null }) {
+            val model = remember(route.personId) { WaffledBitesModel(route.personId, container.bitesApi) }
+            WaffledBitesScreen(model = model, personName = route.personName, onUnpaired = actions.pop)
         }
 
         is AppRoute.Recipe -> {
@@ -394,7 +430,7 @@ fun RouteHost(
  * Hand-rolled: `core:design` has no navigation-bar component (reported as a gap).
  */
 @Composable
-private fun BackRow(onBack: () -> Unit) {
+internal fun BackRow(onBack: () -> Unit, title: String? = null) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -415,6 +451,30 @@ private fun BackRow(onBack: () -> Unit) {
             )
             Text("Back", color = WF.colors.primary, style = WF.type.bodySmall, modifier = Modifier.padding(start = 6.dp))
         }
+        title?.let {
+            Text(it, color = WF.colors.ink, style = WF.type.sectionTitle, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
+        }
+    }
+}
+
+/** One person's reward shop — `canManage` is load-bearing: without it a parent can't redeem in a kid's shop. */
+@Composable
+private fun RewardShopHost(personId: String, container: AppContainer, viewer: app.waffled.core.model.Person?) {
+    var editing by remember { mutableStateOf<app.waffled.feature.rewards.RewardsApi.Reward?>(null) }
+    RewardShopScreen(
+        personId = personId,
+        model = container.rewardsModel,
+        canManage = RewardsAccess.canManage(viewer),
+        maySpend = RewardsAccess.maySpend(viewer, personId),
+        onEdit = { editing = it },
+    )
+    editing?.let { reward ->
+        RewardEditorSheet(
+            editing = reward,
+            currencies = container.rewardsModel.spendableCurrencies,
+            model = container.rewardsModel,
+            onDismiss = { editing = null },
+        )
     }
 }
 
