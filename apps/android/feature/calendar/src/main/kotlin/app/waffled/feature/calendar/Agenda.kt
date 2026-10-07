@@ -91,8 +91,8 @@ data class DayGroup(val day: LocalDate, val items: List<EventRow>)
  * ⚠️ This does NOT re-bucket or re-filter. `core:sync` already streams
  * `SyncManager.eventsByDay`, bucketed in the household timezone, and
  * `SyncManager.visibleEvents`, filtered for the viewer; both are locked by their own tests
- * there. What lives here is only what the calendar screen adds on top: the agenda ORDER
- * within a day (which `EventBucketing` does not express) and the derived per-row values.
+ * there. What lives here is only what the calendar screen adds on top: the derived per-row
+ * values, and re-asserting the agenda ORDER over rows (the same order `EventBucketing` uses).
  */
 object Agenda {
 
