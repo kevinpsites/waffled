@@ -232,9 +232,17 @@ fun GoalsScreen(
                 noteSuggestions = runCatching { model.api.noteSuggestions(goal.id, me?.id) }
                     .getOrDefault(emptyList())
             }
+            // The card's goal may predate today's log; refetch who has ticked the habit off.
+            var freshLoggedTodayBy by remember(goal.id) { mutableStateOf<List<String>?>(null) }
+            LaunchedEffect(goal.id) {
+                if (goal.goalType == "habit") {
+                    freshLoggedTodayBy = runCatching { model.api.goalDetail(goal.id).loggedTodayBy }.getOrNull()
+                }
+            }
             GoalLogSheet(
                 goal = goal,
                 noteSuggestions = noteSuggestions,
+                freshLoggedTodayBy = freshLoggedTodayBy,
                 onDismiss = { logging = null },
                 onSave = { amount, hours, minutes, ids, note, loggedOn ->
                     scope.launch {
@@ -370,7 +378,20 @@ private fun GoalHero(goal: GoalsApi.Goal, onOpen: () -> Unit, onLog: () -> Unit)
     // Green for a shared pool, amber for "each tracks their own" — the same two hues iOS
     // uses, taken from the palette rather than fresh hexes.
     val base = if (eachTracks) WF.colors.gold else WF.colors.success
-    val fraction = goal.target?.takeIf { it > 0 }?.let { (goal.totalProgress / it).toFloat() } ?: 0f
+    // Each-tracks keeps the POOLED lifetime pair: the server's period count has no
+    // per-person filter, so a per-person cadence beside it could read "6/5".
+    val pooledTarget = GoalDisplay.pooledTarget(goal)
+    val fraction = if (eachTracks) {
+        pooledTarget?.takeIf { it > 0 }?.let { minOf(1.0, goal.totalProgress / it).toFloat() } ?: 0f
+    } else {
+        GoalDisplay.fraction(goal).toFloat()
+    }
+    val ringValue = if (eachTracks) goal.totalProgress else GoalDisplay.progress(goal)
+    val ringCaption = if (eachTracks) {
+        pooledTarget?.let { "of ${ringFmt(it)}${goal.unit?.let { u -> " $u" }.orEmpty()}" }
+    } else {
+        GoalDisplay.target(goal)?.let { GoalDisplay.targetCaption(goal, goal.unit, ::ringFmt) }
+    }
     val biggest = maxOf(1.0, goal.participants.maxOfOrNull { it.progress } ?: 1.0)
     val shape = RoundedCornerShape(WF.radius.lg)
 
@@ -396,14 +417,14 @@ private fun GoalHero(goal: GoalsApi.Goal, onOpen: () -> Unit, onLog: () -> Unit)
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = ringFmt(goal.totalProgress),
+                        text = ringFmt(ringValue),
                         style = TextStyle(fontSize = 23.sp, fontWeight = FontWeight.Black),
                         color = Color.White,
                         maxLines = 1,
                     )
-                    if (goal.target != null) {
+                    if (ringCaption != null) {
                         Text(
-                            text = "of ${ringFmt(goal.target)}${goal.unit?.let { " $it" }.orEmpty()}",
+                            text = ringCaption,
                             style = TextStyle(fontSize = 9.sp, fontWeight = FontWeight.Bold),
                             color = Color.White.copy(alpha = 0.85f),
                             maxLines = 1,
@@ -425,6 +446,14 @@ private fun GoalHero(goal: GoalsApi.Goal, onOpen: () -> Unit, onLog: () -> Unit)
                     style = WF.type.bodySmall,
                     color = Color.White.copy(alpha = 0.85f),
                 )
+                GoalDisplay.weekTargetLabel(goal)?.let { week ->
+                    Text(
+                        text = week,
+                        style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Bold),
+                        color = Color.White.copy(alpha = 0.92f),
+                        maxLines = 1,
+                    )
+                }
             }
         }
 
@@ -492,7 +521,7 @@ private fun GoalCard(
     onTogglePin: () -> Unit,
 ) {
     val tint = goalCategoryColor(goal.category)
-    val fraction = goal.target?.takeIf { it > 0 }?.let { (goal.totalProgress / it).toFloat() } ?: 0f
+    val fraction = GoalDisplay.fraction(goal).toFloat()
     val shape = RoundedCornerShape(WF.radius.md)
 
     Column(
@@ -535,9 +564,12 @@ private fun GoalCard(
                     color = WF.colors.ink3,
                     maxLines = 1,
                 )
+                GoalDisplay.weekTargetLabel(goal)?.let { week ->
+                    Text(text = week, style = WF.type.caption, color = WF.colors.ink2, maxLines = 1)
+                }
             }
             Text(
-                text = "${goalFmt(goal.totalProgress)}/${goalFmt(goal.target)}",
+                text = "${goalFmt(GoalDisplay.progress(goal))}/${goalFmt(GoalDisplay.target(goal))}",
                 style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Black),
                 color = WF.colors.ink,
             )

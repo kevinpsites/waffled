@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import app.waffled.core.model.GoalCadence
 import app.waffled.core.model.GoalSeries
+import app.waffled.core.model.HouseholdWeekStart
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.temporal.ChronoUnit
@@ -327,27 +328,34 @@ fun computeGoalChartStats(series: GoalSeries, today: LocalDate): GoalChartStats 
 // ---------------------------------------------------------------------------
 
 /**
- * The Sunday that starts the week containing [day].
+ * The day that starts the household week containing [day].
  *
- * Anchors the week strip to a fixed Sun-Sat calendar week rather than a rolling 7-day
- * window ending today, matching iOS. `DayOfWeek.value` is Mon=1..Sun=7, so `% 7` maps
- * Sunday to a zero step back.
+ * Anchors the week strip to a fixed calendar week rather than a rolling 7-day window.
+ * [firstDay] is required, not defaulted: every grid's week boundary has to agree with the
+ * others, so each caller names it.
  */
-fun startOfWeek(day: LocalDate): LocalDate = day.minusDays((day.dayOfWeek.value % 7).toLong())
+fun startOfWeek(day: LocalDate, firstDay: HouseholdWeekStart): LocalDate = firstDay.weekStart(day)
+
+/** A one-letter weekday header row opening on [firstDay]. */
+fun weekdayHeads(firstDay: HouseholdWeekStart): List<String> = firstDay.rotated(SUNDAY_FIRST_HEADS)
+
+private val SUNDAY_FIRST_HEADS = listOf("S", "M", "T", "W", "T", "F", "S")
 
 /** The seven cells of the calendar week beginning [weekStart]. */
 fun weekCells(stats: GoalChartStats, weekStart: LocalDate): List<DayCell> =
     (0L..6L).map { stats.cell(weekStart.plusDays(it)) }
 
-/** One month's cells, plus the empty leading slots that align the 1st under its weekday. */
-fun monthGrid(stats: GoalChartStats, month: YearMonth): MonthGrid {
-    val first = month.atDay(1)
-    return MonthGrid(
+/** One month's day cells, in order — no layout. */
+fun monthCells(stats: GoalChartStats, month: YearMonth): List<DayCell> =
+    (1..month.lengthOfMonth()).map { stats.cell(month.atDay(it)) }
+
+/** One month's cells, plus the leading slots that align the 1st under its weekday. */
+fun monthGrid(stats: GoalChartStats, month: YearMonth, firstDay: HouseholdWeekStart): MonthGrid =
+    MonthGrid(
         month = month,
-        lead = first.dayOfWeek.value % 7,
-        cells = (1..month.lengthOfMonth()).map { stats.cell(month.atDay(it)) },
+        lead = firstDay.monthLeadCells(month.atDay(1)),
+        cells = monthCells(stats, month),
     )
-}
 
 /**
  * The contribution grid: one column per calendar week, from the week containing Jan 1 of
@@ -356,10 +364,10 @@ fun monthGrid(stats: GoalChartStats, month: YearMonth): MonthGrid {
  * Days before Jan 1 are floored out rather than dropped, so every column stays 7 tall and
  * a view can index `columns[c][r]` without a bounds dance.
  */
-fun yearColumns(stats: GoalChartStats, today: LocalDate): List<List<DayCell>> {
+fun yearColumns(stats: GoalChartStats, today: LocalDate, firstDay: HouseholdWeekStart): List<List<DayCell>> {
     val jan1 = LocalDate.of(today.year, 1, 1)
     val columns = mutableListOf<List<DayCell>>()
-    var cursor = startOfWeek(jan1)
+    var cursor = startOfWeek(jan1, firstDay)
     while (!cursor.isAfter(today)) {
         val start = cursor
         columns += (0L..6L).map { stats.cell(start.plusDays(it), floor = jan1) }

@@ -70,7 +70,7 @@ fun weekSummary(stats: GoalChartStats, weekStart: LocalDate, unit: String): Stri
 }
 
 fun monthSummary(stats: GoalChartStats, month: YearMonth, unit: String): String {
-    val cells = monthGrid(stats, month).cells
+    val cells = monthCells(stats, month)
     val total = cells.sumOf { it.value }
     val label = "${monthName(month.monthValue - 1)} ${month.year}"
     if (total <= 0.0) return "Calendar heatmap for $label. Nothing logged yet."
@@ -108,7 +108,7 @@ fun paceSummary(stats: GoalChartStats, unit: String): String {
 }
 
 fun consistencySummary(stats: GoalChartStats, month: YearMonth): String {
-    val cells = monthGrid(stats, month).cells
+    val cells = monthCells(stats, month)
     val hits = cells.count { it.logged }
     val elapsed = cells.count { !it.future }
     return "Consistency for ${monthName(month.monthValue - 1)}: showed up on $hits of the " +

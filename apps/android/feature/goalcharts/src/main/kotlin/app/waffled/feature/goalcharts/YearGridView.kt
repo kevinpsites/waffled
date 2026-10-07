@@ -53,7 +53,7 @@ fun YearGridView(
 ) {
     // Built once per series change: every LocalDate this view needs already exists before
     // the draw scope runs, which is the whole point.
-    val columns = remember(chart) { yearColumns(chart.stats, chart.today) }
+    val columns = remember(chart) { yearColumns(chart.stats, chart.today, chart.firstDay) }
     val max = remember(chart) { scaleDenominator(chart.stats.yearMax) }
     val jan1 = remember(chart) { LocalDate.of(chart.today.year, 1, 1) }
     // The goal's own start scopes only the "% of days" denominator, not what is drawn.

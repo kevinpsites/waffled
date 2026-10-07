@@ -189,6 +189,23 @@ class ReviewEventsModel(
         }
     }
 
+    /**
+     * Stop suggesting events containing any picked word for this suggestion's goal, then
+     * reload the queue: every other event carrying the word drops out too.
+     */
+    suspend fun ignore(item: GoalsApi.GoalSuggestionItem, words: List<String>) {
+        if (!canIgnore(words)) return
+        guard.withClaim(item.id) {
+            val fresh = runCatching {
+                api.ignoreSuggestionWords(item.goalId, words)
+                api.suggestions()
+            }
+            _state.value = fresh.getOrNull()
+                ?.let { _state.value.copy(suggestions = it) }
+                ?: _state.value.copy(error = true)
+        }
+    }
+
     private suspend fun act(id: String, block: suspend () -> Unit) {
         guard.withClaim(id) {
             val done = runCatching { block() }
@@ -213,5 +230,9 @@ class ReviewEventsModel(
 
     fun dismissError() {
         _state.value = _state.value.copy(error = false)
+    }
+
+    companion object {
+        fun canIgnore(picked: List<String>): Boolean = picked.isNotEmpty()
     }
 }

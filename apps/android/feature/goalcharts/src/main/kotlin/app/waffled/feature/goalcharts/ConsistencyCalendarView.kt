@@ -40,7 +40,7 @@ fun ConsistencyCalendarView(
     headerRight: @Composable (RowScope.() -> Unit)? = null,
 ) {
     val month = remember(chart) { YearMonth.from(chart.today) }
-    val grid = remember(chart, month) { monthGrid(chart.stats, month) }
+    val grid = remember(chart, month) { monthGrid(chart.stats, month, chart.firstDay) }
     val rows = remember(grid) { (List(grid.lead) { null } + grid.cells).chunked(7) }
     val hits = grid.cells.count { it.logged }
     val elapsed = grid.cells.count { !it.future }

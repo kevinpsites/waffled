@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 import app.waffled.core.model.GoalCadence
 import app.waffled.core.model.GoalPoint
 import app.waffled.core.model.GoalSeries
+import app.waffled.core.model.HouseholdWeekStart
 import java.time.LocalDate
 import java.time.YearMonth
 import kotlin.test.Test
@@ -11,6 +12,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+
+private val Sun = HouseholdWeekStart.Sunday
+private val Mon = HouseholdWeekStart.Monday
 
 /**
  * The derivations behind the eight goal visualisations.
@@ -188,15 +192,36 @@ class GoalChartMathTest {
     @Test
     fun `startOfWeek anchors on Sunday`() {
         // 2026-08-21 is a Friday; its week starts Sunday 2026-08-16.
-        assertEquals(LocalDate.of(2026, 8, 16), startOfWeek(today))
-        assertEquals(LocalDate.of(2026, 8, 16), startOfWeek(LocalDate.of(2026, 8, 16)))
-        assertEquals(LocalDate.of(2026, 8, 16), startOfWeek(LocalDate.of(2026, 8, 22)))
+        assertEquals(LocalDate.of(2026, 8, 16), startOfWeek(today, Sun))
+        assertEquals(LocalDate.of(2026, 8, 16), startOfWeek(LocalDate.of(2026, 8, 16), Sun))
+        assertEquals(LocalDate.of(2026, 8, 16), startOfWeek(LocalDate.of(2026, 8, 22), Sun))
+    }
+
+    @Test
+    fun `a Monday household cuts every grid on Monday`() {
+        // The four week-bucketed views follow the household's first day, not a fixed Sunday.
+        assertEquals(LocalDate.of(2026, 8, 17), startOfWeek(today, Mon))
+        assertEquals(LocalDate.of(2026, 8, 10), startOfWeek(LocalDate.of(2026, 8, 16), Mon))
+
+        val stats = computeGoalChartStats(series(), today)
+        // 2026-08-01 is a Saturday: five blanks (Mon..Fri) before it on a Monday grid.
+        assertEquals(5, monthGrid(stats, YearMonth.of(2026, 8), Mon).lead)
+        // 2026-02-01 is a Sunday: the LAST column on a Monday grid.
+        assertEquals(6, monthGrid(stats, YearMonth.of(2026, 2), Mon).lead)
+        // 2026-01-01 is a Thursday, so the first column starts Monday 2025-12-29.
+        assertEquals(LocalDate.of(2025, 12, 29), yearColumns(stats, today, Mon).first().first().day)
+    }
+
+    @Test
+    fun `the weekday heads rotate with the first day`() {
+        assertEquals(listOf("S", "M", "T", "W", "T", "F", "S"), weekdayHeads(Sun))
+        assertEquals(listOf("M", "T", "W", "T", "F", "S", "S"), weekdayHeads(Mon))
     }
 
     @Test
     fun `a week grid is seven consecutive days from its Sunday`() {
         val stats = computeGoalChartStats(series(p("2026-08-18", 5)), today)
-        val cells = weekCells(stats, startOfWeek(today))
+        val cells = weekCells(stats, startOfWeek(today, Sun))
         assertEquals(7, cells.size)
         assertEquals(LocalDate.of(2026, 8, 16), cells.first().day)
         assertEquals(LocalDate.of(2026, 8, 22), cells.last().day)
@@ -208,11 +233,11 @@ class GoalChartMathTest {
     fun `a month grid leads with the right number of blanks`() {
         val stats = computeGoalChartStats(series(), today)
         // 2026-08-01 is a Saturday -> six leading slots (Sun..Fri).
-        val aug = monthGrid(stats, YearMonth.of(2026, 8))
+        val aug = monthGrid(stats, YearMonth.of(2026, 8), Sun)
         assertEquals(6, aug.lead)
         assertEquals(31, aug.cells.size)
         // 2026-02-01 is a Sunday -> no leading slots, and 2026 is not a leap year.
-        val feb = monthGrid(stats, YearMonth.of(2026, 2))
+        val feb = monthGrid(stats, YearMonth.of(2026, 2), Sun)
         assertEquals(0, feb.lead)
         assertEquals(28, feb.cells.size)
     }
@@ -220,7 +245,7 @@ class GoalChartMathTest {
     @Test
     fun `year columns run whole Sunday weeks from the week containing Jan 1 up to today`() {
         val stats = computeGoalChartStats(series(), today)
-        val cols = yearColumns(stats, today)
+        val cols = yearColumns(stats, today, Sun)
         assertTrue(cols.all { it.size == 7 })
         // 2026-01-01 is a Thursday, so the first column starts Sunday 2025-12-28.
         assertEquals(LocalDate.of(2025, 12, 28), cols.first().first().day)
@@ -237,10 +262,10 @@ class GoalChartMathTest {
             series(p("2026-08-18", 3), p("2026-08-25", 99)),
             today,
         )
-        val cells = weekCells(stats, startOfWeek(today))
+        val cells = weekCells(stats, startOfWeek(today, Sun))
         assertEquals(3.0, scaleMax(cells), EPS)
         assertEquals(1.0, scaleMax(emptyList()), EPS)
-        assertEquals(1.0, scaleMax(weekCells(stats, startOfWeek(LocalDate.of(2026, 7, 1)))), EPS)
+        assertEquals(1.0, scaleMax(weekCells(stats, startOfWeek(LocalDate.of(2026, 7, 1), Sun))), EPS)
     }
 
     @Test
@@ -253,7 +278,7 @@ class GoalChartMathTest {
             series(pf("2026-08-17", 1.0 / 3.0), pf("2026-08-18", 0.5)),
             today,
         )
-        val cells = weekCells(stats, startOfWeek(today))
+        val cells = weekCells(stats, startOfWeek(today, Sun))
         val max = scaleMax(cells)
         assertEquals(0.5, max, EPS)
         assertEquals(1f, heatIntensity(0.5, max), "the best day tops the ramp")

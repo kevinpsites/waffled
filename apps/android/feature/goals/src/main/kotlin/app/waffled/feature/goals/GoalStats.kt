@@ -1,5 +1,6 @@
 package app.waffled.feature.goals
 
+import app.waffled.core.model.HouseholdWeekStart
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
@@ -49,7 +50,12 @@ object GoalDateKey {
 
     fun toKey(date: LocalDate): String = date.toString()
 
-    fun parse(key: String): LocalDate = LocalDate.parse(key.trim().take(10))
+    /** Degrades to the device's today on a short or unparseable key — never throws. */
+    fun parse(key: String): LocalDate = parseOrNull(key) ?: LocalDate.now()
+
+    /** Strict: null for a short or unparseable key, for callers that must skip it. */
+    fun parseOrNull(key: String): LocalDate? =
+        runCatching { LocalDate.parse(key.trim().take(10)) }.getOrNull()
 
     fun addDays(key: String, n: Int): String = toKey(parse(key).plusDays(n.toLong()))
 
@@ -58,14 +64,11 @@ object GoalDateKey {
         ChronoUnit.DAYS.between(parse(b), parse(a)).toInt()
 
     /**
-     * The Sunday that starts the week containing [key]. Anchors the week heatmap to a
-     * fixed Sun–Sat calendar week rather than a rolling 7-day window.
+     * The day that starts the household week containing [key] — a fixed calendar week, not
+     * a rolling 7-day window. [firstDay] is required so every week boundary names its cut.
      */
-    fun startOfWeek(key: String): String {
-        // java.time's DayOfWeek is 1 = Monday … 7 = Sunday; iOS counts 1 = Sunday.
-        val sundayIndex = parse(key).dayOfWeek.value % 7
-        return addDays(key, -sundayIndex)
-    }
+    fun startOfWeek(key: String, firstDay: HouseholdWeekStart): String =
+        toKey(firstDay.weekStart(parse(key)))
 }
 
 /** How much window a goal covers, which decides which views are worth offering. */

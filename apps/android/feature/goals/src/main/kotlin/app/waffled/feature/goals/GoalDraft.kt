@@ -309,7 +309,7 @@ data class GoalDraft(
 
         /** Prefill from an existing goal, for the edit flow. */
         fun from(detail: GoalsApi.GoalDetail): GoalDraft {
-            val deadlineDay = detail.deadline?.let { runCatching { GoalDateKey.parse(it) }.getOrNull() }
+            val deadlineDay = detail.deadline?.let { GoalDateKey.parseOrNull(it) }
             return GoalDraft(
                 title = detail.title,
                 goalListId = detail.goalListId,

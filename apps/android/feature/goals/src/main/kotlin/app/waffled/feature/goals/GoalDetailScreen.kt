@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -39,6 +40,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -57,6 +59,7 @@ import app.waffled.core.design.WaffledTheme
 import app.waffled.core.design.wfField
 import app.waffled.core.model.GoalPoint
 import app.waffled.core.model.GoalSeries
+import app.waffled.core.model.HouseholdWeekStart
 import app.waffled.core.model.Person
 import java.time.LocalDate
 import kotlinx.coroutines.launch
@@ -73,8 +76,11 @@ import kotlinx.coroutines.launch
  * [GoalSeriesBuilder]) and hands it to a host-supplied slot —
  *
  * ```
- * dataView: @Composable (GoalSeries) -> Unit
+ * dataView: @Composable (GoalSeries, HouseholdWeekStart) -> Unit
  * ```
+ *
+ * The week start rides along because the week, month, consistency and year views cut on
+ * the HOUSEHOLD's first day; the host passes it as the switcher's `firstDay`.
  *
  * — so the integrator passes the real switcher and this module's own previews pass a
  * placeholder. The series is computed once per load in [GoalDetailModel], never in a
@@ -92,8 +98,13 @@ fun GoalDetailScreen(
     modifier: Modifier = Modifier,
     /** Open the calendar's event editor pre-linked to this goal. */
     onScheduleEvent: ((goalId: String, participantIds: List<String>) -> Unit)? = null,
+    /**
+     * `HouseholdWeekStart.of(...)` / `parse(sync.householdWeekStart.value)`; null until the
+     * household row arrives, which draws Sunday-first like the server's default.
+     */
+    householdWeekStart: HouseholdWeekStart? = null,
     /** The host-supplied visualisation. Defaults to nothing at all. */
-    dataView: @Composable (GoalSeries) -> Unit = {},
+    dataView: @Composable (GoalSeries, HouseholdWeekStart) -> Unit = { _, _ -> },
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -175,19 +186,27 @@ fun GoalDetailScreen(
             DetailHero(
                 title = model.goal.title,
                 category = detail?.category,
-                progress = progress,
-                target = target,
+                displayed = model.displayed,
                 unit = unit,
                 thisWeek = detail?.thisWeek ?: 0.0,
+                currentPlan = detail?.currentPlan,
+                laterPlans = detail?.laterPlans.orEmpty(),
                 subtitle = heroSubtitle(detail, model.goal),
             )
 
             // Logging is the primary action, so it gets a full-width button rather than
             // hiding in the header.
+            // Everyone has ticked the habit off today. Still opens: the sheet backdates a
+            // missed day.
+            val habitDoneToday = GoalDisplay.doneToday(
+                model.displayed,
+                GoalDisplay.logWho(model.displayed, model.participants.map { it.personId }.toSet()),
+            )
             PrimaryAction(
-                label = "Log progress",
-                icon = Icons.Filled.Add,
+                label = if (habitDoneToday) "Done for today" else "Log progress",
+                icon = if (habitDoneToday) Icons.Filled.CheckCircle else Icons.Filled.Add,
                 fill = WF.colors.success,
+                modifier = Modifier.alpha(if (habitDoneToday) 0.65f else 1f),
                 onClick = { logging = true },
             )
 
@@ -212,10 +231,10 @@ fun GoalDetailScreen(
             }
 
             // The host's visualisation, fed the already-derived series.
-            dataView(state.series)
+            dataView(state.series, householdWeekStart ?: HouseholdWeekStart.Sunday)
 
             if (!detail?.milestones.isNullOrEmpty()) {
-                MilestoneCard(milestones = detail.milestones, progress = progress)
+                MilestoneCard(milestones = detail.milestones, displayed = model.displayed)
             }
 
             RecentActivityCard(
@@ -258,7 +277,15 @@ fun GoalDetailScreen(
             participants = model.participants,
             participantMode = detail?.participantMode ?: model.goal.participantMode,
             trackingMode = detail?.trackingMode ?: model.goal.trackingMode,
+            targetBasis = detail?.targetBasis ?: model.goal.targetBasis,
+            habitPeriod = detail?.habitPeriod ?: model.goal.habitPeriod,
+            habitTargetPerPeriod = detail?.habitTargetPerPeriod ?: model.goal.habitTargetPerPeriod,
             goalType = goalType,
+            // The detail's own axes, so the sheet judges the habit on today's numbers.
+            periodDone = detail?.periodDone ?: model.goal.periodDone,
+            stepTotal = detail?.stepTotal ?: model.goal.stepTotal,
+            stepDone = detail?.stepDone ?: model.goal.stepDone,
+            loggedTodayBy = detail?.loggedTodayBy ?: model.goal.loggedTodayBy,
         )
         ModalBottomSheet(
             onDismissRequest = { logging = false },
@@ -272,8 +299,15 @@ fun GoalDetailScreen(
                 noteSuggestions = runCatching { model.api.noteSuggestions(model.goal.id, me?.id) }
                     .getOrDefault(emptyList())
             }
+            var freshLoggedTodayBy by remember(model.goal.id) { mutableStateOf<List<String>?>(null) }
+            LaunchedEffect(model.goal.id) {
+                if (goalType == "habit") {
+                    freshLoggedTodayBy = runCatching { model.api.goalDetail(model.goal.id).loggedTodayBy }.getOrNull()
+                }
+            }
             GoalLogSheet(
                 goal = logGoal,
+                freshLoggedTodayBy = freshLoggedTodayBy,
                 // The household's today, off the series the server built — not the
                 // DEVICE's date, which drifts across a timezone boundary.
                 today = state.series.today ?: LocalDate.now(),
@@ -317,10 +351,8 @@ fun GoalDetailScreen(
                 goalType = goalType,
                 unit = unit,
                 onDismiss = { editEntry = null },
-                onSave = { amount, ids, note, day ->
-                    scope.launch { model.editEntry(entry.id, amount, ids, note, day) }
-                },
-                onDelete = { scope.launch { model.deleteEntry(entry.id) } },
+                onSave = { p -> model.editEntry(entry.id, p.amount, p.personIds, p.note, p.loggedOn) },
+                onDelete = { model.deleteEntry(entry.id) },
             )
         }
     }
@@ -330,11 +362,10 @@ fun GoalDetailScreen(
 internal fun heroSubtitle(detail: GoalsApi.GoalDetail?, fallback: GoalsApi.Goal): String {
     val parts = mutableListOf<String>()
     detail?.createdAt?.takeIf { it.isNotBlank() }?.let { parts.add("Started ${monthDay(it)}") }
-    val target = detail?.target ?: fallback.target
-    val progress = detail?.totalProgress ?: fallback.totalProgress
-    if ((target ?: 0.0) > 0) {
-        parts.add("${minOf(100, ((progress / target!!) * 100).toInt())}% complete")
-    }
+    val displayed: GoalDisplayable = detail ?: fallback
+    val pct = (GoalDisplay.fraction(displayed) * 100).toInt()
+    // A habit's percent is of THIS period's cadence, so say which window.
+    parts.add("$pct% ${GoalDisplay.periodLabel(displayed) ?: "complete"}")
     val streak = detail?.streakDays ?: fallback.streakDays
     if (streak > 0) parts.add("🔥 $streak-day streak")
     (detail?.deadline ?: fallback.deadline)?.let { parts.add("by ${monthDay(it)}") }
@@ -345,7 +376,7 @@ internal fun heroSubtitle(detail: GoalsApi.GoalDetail?, fallback: GoalsApi.Goal)
 
 /** "Jan 1" from an ISO timestamp or a bare day. Falls back to nothing worth showing. */
 private fun monthDay(iso: String): String {
-    val day = runCatching { GoalDateKey.parse(iso) }.getOrNull() ?: return ""
+    val day = GoalDateKey.parseOrNull(iso) ?: return ""
     val month = day.month.getDisplayName(
         java.time.format.TextStyle.SHORT,
         java.util.Locale.getDefault(),
@@ -357,13 +388,14 @@ private fun monthDay(iso: String): String {
 private fun DetailHero(
     title: String,
     category: String?,
-    progress: Double,
-    target: Double?,
+    displayed: GoalDisplayable,
     unit: String?,
     thisWeek: Double,
+    currentPlan: GoalsApi.Goal.WeekTarget?,
+    laterPlans: List<GoalsApi.Goal.WeekTarget>,
     subtitle: String,
 ) {
-    val fraction = target?.takeIf { it > 0 }?.let { (progress / it).toFloat() } ?: 0f
+    val fraction = GoalDisplay.fraction(displayed).toFloat()
     val shape = RoundedCornerShape(WF.radius.lg)
     Row(
         Modifier
@@ -383,13 +415,13 @@ private fun DetailHero(
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = ringFmt(progress),
+                    text = ringFmt(GoalDisplay.progress(displayed)),
                     style = TextStyle(fontSize = 26.sp, fontWeight = FontWeight.Black),
                     color = Color.White,
                     maxLines = 1,
                 )
                 Text(
-                    text = "of ${ringFmt(target)}${unit?.let { " $it" }.orEmpty()}",
+                    text = GoalDisplay.targetCaption(displayed, unit, ::ringFmt),
                     style = TextStyle(fontSize = 9.sp, fontWeight = FontWeight.Bold),
                     color = Color.White.copy(alpha = 0.85f),
                     maxLines = 1,
@@ -415,9 +447,18 @@ private fun DetailHero(
                     color = Color.White.copy(alpha = 0.8f),
                 )
                 Text(
-                    text = "${goalFmt(thisWeek)}${unit?.let { " $it" }.orEmpty()}",
+                    // A week planned in Weekly Planning reads against its own target.
+                    text = currentPlan?.let { GoalDisplay.weekPlanAmount(it, unit) }
+                        ?: "${goalFmt(thisWeek)}${unit?.let { " $it" }.orEmpty()}",
                     style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Black),
                     color = Color.White,
+                )
+            }
+            laterPlans.forEach { plan ->
+                Text(
+                    text = GoalDisplay.weekPlanLabel(plan, unit),
+                    style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+                    color = Color.White.copy(alpha = 0.88f),
                 )
             }
         }
@@ -430,10 +471,11 @@ private fun PrimaryAction(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     fill: Color,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(WF.radius.md)
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .background(goalHeroBrush(fill), shape)
             .clip(shape)
@@ -487,7 +529,7 @@ private fun DetailCard(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun MilestoneCard(milestones: List<GoalsApi.GoalDetail.Milestone>, progress: Double) {
+private fun MilestoneCard(milestones: List<GoalsApi.GoalDetail.Milestone>, displayed: GoalDisplayable) {
     val firstUnreached = milestones.indexOfFirst { !it.reached }
     DetailCard {
         Text("Milestones", style = WF.type.cardTitle, color = WF.colors.ink)
@@ -523,7 +565,7 @@ private fun MilestoneCard(milestones: List<GoalsApi.GoalDetail.Milestone>, progr
                 Text(
                     text = when {
                         m.reached -> "reached"
-                        isNow -> "${goalFmt(m.threshold - progress)} to go"
+                        isNow -> GoalDisplay.milestoneToGo(displayed, m.threshold, ::goalFmt)
                         else -> m.rewardText?.takeIf { it.isNotBlank() } ?: "—"
                     },
                     style = WF.type.caption,
@@ -612,7 +654,7 @@ private fun RecentActivityCard(
 
 /** "Fri" from the entry's HOUSEHOLD-bucketed day key, never a re-parse of `loggedAt`. */
 private fun weekday(dateKey: String): String {
-    val day = runCatching { GoalDateKey.parse(dateKey) }.getOrNull() ?: return ""
+    val day = GoalDateKey.parseOrNull(dateKey) ?: return ""
     return day.dayOfWeek.getDisplayName(
         java.time.format.TextStyle.SHORT,
         java.util.Locale.getDefault(),

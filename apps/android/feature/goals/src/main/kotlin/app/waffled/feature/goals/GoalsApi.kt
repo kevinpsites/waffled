@@ -93,10 +93,10 @@ class GoalsApi(
         val title: String = "",
         val emoji: String? = null,
         val category: String? = null,
-        val goalType: String = "total",
-        val unit: String? = null,
-        val habitPeriod: String? = null,
-        val habitTargetPerPeriod: Int? = null,
+        override val goalType: String = "total",
+        override val unit: String? = null,
+        override val habitPeriod: String? = null,
+        override val habitTargetPerPeriod: Int? = null,
         val trackingMode: String = "shared_total",
         /**
          * How a SHARED goal counts a multi-person entry: `count_once` | `split`. Nullable
@@ -104,16 +104,16 @@ class GoalsApi(
          */
         val participantMode: String? = null,
         /** For `each_tracks`: `family` (flat target) | `per_person` (target × members). */
-        val targetBasis: String? = null,
+        override val targetBasis: String? = null,
         val deadline: String? = null,
         val isFeatured: Boolean = false,
         /** The one hero goal per list ("Spotlight"). [isFeatured] is the "Pinned" tier. */
         val isSpotlight: Boolean? = null,
-        val target: Double? = null,
-        val totalProgress: Double = 0.0,
+        override val target: Double? = null,
+        override val totalProgress: Double = 0.0,
         val milestoneTotal: Int = 0,
         val milestoneReached: Int = 0,
-        val streakDays: Int = 0,
+        override val streakDays: Int = 0,
         /** Opted in to counting matching calendar events (drives "Plan time"). */
         val autoFromCalendar: Boolean = false,
         /**
@@ -123,9 +123,32 @@ class GoalsApi(
         val healthMetric: String? = null,
         val createdAt: String? = null,
         val participants: List<Participant> = emptyList(),
-    ) {
+        /**
+         * Habit only: distinct days logged in the CURRENT period (household timezone) —
+         * what a habit displays. Null on an older payload. Read it through [GoalDisplay].
+         */
+        override val periodDone: Double? = null,
+        /** Checklist only: the axis a checklist displays on. Null on an older payload. */
+        override val stepTotal: Int? = null,
+        override val stepDone: Int? = null,
+        /** Who already logged TODAY — person ids plus the `__family__` sentinel. */
+        override val loggedTodayBy: List<String>? = null,
+        /** The target Weekly Planning set for the week under way, else the next one planned. */
+        val weekPlan: WeekTarget? = null,
+    ) : GoalDisplayable {
+        /** One week's planned target and what was logged inside it. */
+        @Serializable
+        data class WeekTarget(
+            val weekStart: String = "",
+            val target: Double = 0.0,
+            val done: Double = 0.0,
+            /** The week has started; before that the label names the week instead. */
+            val current: Boolean = false,
+        )
+
         val spotlight: Boolean get() = isSpotlight == true
         val countsOnce: Boolean get() = (participantMode ?: "count_once") == "count_once"
+        override val participantCount: Int get() = participants.size
     }
 
     /**
@@ -139,19 +162,19 @@ class GoalsApi(
         val title: String = "",
         val emoji: String? = null,
         val category: String? = null,
-        val goalType: String = "total",
-        val unit: String? = null,
-        val target: Double? = null,
+        override val goalType: String = "total",
+        override val unit: String? = null,
+        override val target: Double? = null,
         val trackingMode: String = "shared_total",
         val participantMode: String? = null,
-        val targetBasis: String? = null,
-        val habitPeriod: String? = null,
-        val habitTargetPerPeriod: Int? = null,
+        override val targetBasis: String? = null,
+        override val habitPeriod: String? = null,
+        override val habitTargetPerPeriod: Int? = null,
         val isFeatured: Boolean = false,
         val isSpotlight: Boolean? = null,
         val hasRewards: Boolean = false,
-        val totalProgress: Double = 0.0,
-        val streakDays: Int = 0,
+        override val totalProgress: Double = 0.0,
+        override val streakDays: Int = 0,
         val deadline: String? = null,
         val createdAt: String = "",
         val thisWeek: Double = 0.0,
@@ -163,7 +186,20 @@ class GoalsApi(
         val milestones: List<Milestone> = emptyList(),
         val steps: List<Step> = emptyList(),
         val recent: List<LogEntry> = emptyList(),
-    ) {
+        /** The same axes as [Goal], so the detail hero agrees with the card tapped. */
+        override val periodDone: Double? = null,
+        override val stepTotal: Int? = null,
+        override val stepDone: Int? = null,
+        override val loggedTodayBy: List<String>? = null,
+        /** The weeks Weekly Planning set a target for, from the one under way onward. */
+        val weekPlans: List<Goal.WeekTarget>? = null,
+    ) : GoalDisplayable {
+        override val participantCount: Int get() = participants.size
+
+        /** The plan for the week under way, which the hero's THIS WEEK line reads. */
+        val currentPlan: Goal.WeekTarget? get() = weekPlans?.firstOrNull { it.current }
+        val laterPlans: List<Goal.WeekTarget> get() = weekPlans.orEmpty().filterNot { it.current }
+
         /** A checklist goal's steps; empty for every other type. */
         @Serializable
         data class Step(
@@ -200,6 +236,14 @@ class GoalsApi(
              * this lists everyone credited (empty for a family/shared log).
              */
             val participants: List<Credited> = emptyList(),
+            /**
+             * False when the entry belongs to its source (a checklist tick, a calendar
+             * confirm, a Health sync): only its note can change, and it can't be deleted
+             * here. Null from an older server, which reads as fully editable.
+             */
+            val editable: Boolean? = null,
+            /** What wrote the entry (`manual`, `calendar`, …). Informational; gate on [editable]. */
+            val source: String? = null,
         ) {
             @Serializable
             data class Credited(
@@ -290,8 +334,21 @@ class GoalsApi(
         val goalEmoji: String? = null,
         /** memory | keyword | llm */
         val via: String? = null,
+        /** Title words the person can pick to ignore for this goal; empty from an older server. */
+        val ignoreWords: List<String> = emptyList(),
     ) {
         val id: String get() = eventId
+    }
+
+    /** One goal's ignored suggestion words — the Settings list. */
+    @Serializable
+    data class IgnoreGroup(
+        val goalId: String,
+        val goalTitle: String = "",
+        val goalEmoji: String? = null,
+        val words: List<String> = emptyList(),
+    ) {
+        val id: String get() = goalId
     }
 
     /** A live single-event goal match for the event editor's inline hint. Read-only. */
@@ -318,6 +375,7 @@ class GoalsApi(
     @Serializable private data class RecapEnvelope(val items: List<GoalRecapItem> = emptyList())
     @Serializable private data class SuggestEnvelope(val items: List<GoalSuggestionItem> = emptyList())
     @Serializable private data class SuggestOneEnvelope(val suggestion: GoalSuggestOne? = null)
+    @Serializable private data class IgnoreGroupsEnvelope(val groups: List<IgnoreGroup> = emptyList())
 
     // ---- lists -----------------------------------------------------------------
 
@@ -526,6 +584,33 @@ class GoalsApi(
     suspend fun dismissSuggestion(eventId: String) {
         sendUnit(HttpMethod.Post, "api/goal-calendar/suggestions/dismiss") {
             jsonBody(buildJsonObject { put("eventId", eventId) })
+        }
+    }
+
+    /** Never suggest events containing any of [words] for this goal again. */
+    suspend fun ignoreSuggestionWords(goalId: String, words: List<String>) {
+        sendUnit(HttpMethod.Post, "api/goal-calendar/suggestions/ignore") {
+            jsonBody(
+                buildJsonObject {
+                    put("goalId", goalId)
+                    put("words", stringArray(words))
+                },
+            )
+        }
+    }
+
+    /** The words ignored per goal for calendar suggestions (Settings → AI & Capture). */
+    suspend fun goalSuggestionIgnores(): List<IgnoreGroup> =
+        send<IgnoreGroupsEnvelope>(HttpMethod.Get, "api/goal-calendar/ignores").groups
+
+    suspend fun removeGoalSuggestionIgnore(goalId: String, word: String) {
+        sendUnit(HttpMethod.Post, "api/goal-calendar/ignores/remove") {
+            jsonBody(
+                buildJsonObject {
+                    put("goalId", goalId)
+                    put("word", word)
+                },
+            )
         }
     }
 

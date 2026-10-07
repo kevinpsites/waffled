@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import app.waffled.core.model.GoalSeries
 import app.waffled.core.network.RefreshBus
 import app.waffled.core.network.RefreshDomain
+import app.waffled.core.network.WaffledApiException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -241,7 +242,11 @@ class GoalDetailModel(
     // can be reached from a lightweight goal (the person spotlight carries no participants).
     val unit: String? get() = _state.value.detail?.unit ?: goal.unit
     val target: Double? get() = _state.value.detail?.target ?: goal.target
+    /** The raw LIFETIME total — the Log sheet's figure. Displays read [displayed]. */
     val progress: Double get() = _state.value.detail?.totalProgress ?: goal.totalProgress
+
+    /** What every measured line reads off, on the goal's own axis. */
+    val displayed: GoalDisplayable get() = _state.value.detail ?: goal
     val participants: List<GoalsApi.Participant>
         get() = _state.value.detail?.participants?.takeIf { it.isNotEmpty() } ?: goal.participants
 
@@ -335,15 +340,32 @@ class GoalDetailModel(
 
     suspend fun tickStep(stepId: String, done: Boolean) = write { api.tickStep(goal.id, stepId, done) }
 
+    /**
+     * Both entry writes return the server's own sentence when it refuses (null on success),
+     * so the entry sheet can stay open with the typed note intact.
+     */
     suspend fun editEntry(
         logId: String,
         amount: Double?,
         personIds: List<String>?,
         note: String?,
         loggedOn: String?,
-    ) = write { api.editLog(goal.id, logId, amount, personIds, note, loggedOn) }
+    ): String? = writeOrRefusal("Could not save this change.") {
+        api.editLog(goal.id, logId, amount, personIds, note, loggedOn)
+    }
 
-    suspend fun deleteEntry(logId: String) = write { api.deleteLog(goal.id, logId) }
+    suspend fun deleteEntry(logId: String): String? =
+        writeOrRefusal("Could not delete this entry.") { api.deleteLog(goal.id, logId) }
+
+    private suspend fun writeOrRefusal(fallback: String, block: suspend () -> Unit): String? {
+        val done = runCatching { block() }
+        done.exceptionOrNull()?.let { e ->
+            return (e as? WaffledApiException)?.userMessage?.takeIf { it.isNotBlank() } ?: fallback
+        }
+        refreshBus?.bump(RefreshDomain.Goals)
+        load()
+        return null
+    }
 
     /** Delete the goal. Returns whether the caller should pop back. */
     suspend fun delete(): Boolean {

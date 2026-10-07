@@ -22,6 +22,7 @@ import app.waffled.core.design.WF
 import app.waffled.core.design.WaffledMenuPill
 import app.waffled.core.design.wfField
 import app.waffled.core.model.GoalSeries
+import app.waffled.core.model.HouseholdWeekStart
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -60,13 +61,18 @@ fun GoalDataViewSwitcher(
     personEmoji: Map<String, String> = emptyMap(),
     selectedView: GoalViewKey? = null,
     onSelectView: (GoalViewKey) -> Unit = {},
+    /**
+     * The household's first day (`HouseholdWeekStart.parse(sync.householdWeekStart.value)`).
+     * Sunday until it is known, matching the server's default.
+     */
+    firstDay: HouseholdWeekStart = HouseholdWeekStart.Sunday,
 ) {
     val offered = remember(series, today, goalType) { offeredViews(series, today, goalType) }
     // A checklist-shaped goal has no meaningful visualisation; the existing steps card
     // already covers it, so draw nothing rather than an empty frame.
     if (offered.isEmpty()) return
 
-    val chart = rememberGoalChart(series, today, title, personNames, personEmoji)
+    val chart = rememberGoalChart(series, today, title, personNames, personEmoji, firstDay)
     var localView by remember(series, goalType) {
         mutableStateOf(defaultView(series, today, goalType))
     }

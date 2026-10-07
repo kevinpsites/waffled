@@ -67,7 +67,7 @@ fun GoalHeroCard(
         return
     }
 
-    val fraction = goal.target?.takeIf { it > 0 }?.let { (goal.totalProgress / it).toFloat() } ?: 0f
+    val fraction = GoalDisplay.fraction(goal).toFloat()
     val biggest = maxOf(1.0, goal.participants.maxOfOrNull { it.progress } ?: 1.0)
     val shape = RoundedCornerShape(WF.radius.lg)
 
@@ -112,14 +112,14 @@ fun GoalHeroCard(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = goalFmt(goal.totalProgress),
+                        text = goalFmt(GoalDisplay.progress(goal)),
                         style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Black),
                         color = Color.White,
                         maxLines = 1,
                     )
-                    if (goal.target != null) {
+                    if (GoalDisplay.target(goal) != null) {
                         Text(
-                            text = "of ${goalFmt(goal.target)}${goal.unit?.let { " $it" }.orEmpty()}",
+                            text = GoalDisplay.targetCaption(goal, goal.unit, ::goalFmt),
                             style = TextStyle(fontSize = 9.sp, fontWeight = FontWeight.Bold),
                             color = Color.White.copy(alpha = 0.85f),
                             maxLines = 1,
@@ -134,6 +134,13 @@ fun GoalHeroCard(
                     color = Color.White,
                     maxLines = 3,
                 )
+                GoalDisplay.weekTargetLabel(goal)?.let { week ->
+                    Text(
+                        text = week,
+                        style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Bold),
+                        color = Color.White.copy(alpha = 0.92f),
+                    )
+                }
                 if (goal.streakDays > 0) {
                     Text(
                         text = "🔥 ${goal.streakDays}-day streak",

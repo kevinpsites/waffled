@@ -27,6 +27,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -90,6 +92,7 @@ fun ReviewEventsScreen(
     val busy by model.busy.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var editingPeople by remember { mutableStateOf<GoalsApi.GoalRecapItem?>(null) }
+    var ignoring by remember { mutableStateOf<GoalsApi.GoalSuggestionItem?>(null) }
 
     LaunchedEffect(Unit) { model.load() }
 
@@ -189,6 +192,7 @@ fun ReviewEventsScreen(
                         busy = item.id in busy,
                         zone = zone,
                         onDismiss = { scope.launch { model.dismiss(item) } },
+                        onIgnore = { ignoring = item },
                         onLink = { scope.launch { model.link(item) } },
                     )
                 }
@@ -210,6 +214,71 @@ fun ReviewEventsScreen(
                 onSave = { model.setPeople(item, it) },
             )
         }
+    }
+
+    ignoring?.let { item ->
+        ModalBottomSheet(
+            onDismissRequest = { ignoring = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = WF.colors.canvas,
+        ) {
+            IgnoreWordsSheet(
+                item = item,
+                onDismiss = { ignoring = null },
+                onIgnore = { words -> scope.launch { model.ignore(item, words) } },
+            )
+        }
+    }
+}
+
+/**
+ * "Ignore events like this…": pick words from the event's title; a future event containing
+ * one is never suggested for this goal again. Removing a word lives in Settings.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun IgnoreWordsSheet(
+    item: GoalsApi.GoalSuggestionItem,
+    onDismiss: () -> Unit,
+    onIgnore: (List<String>) -> Unit,
+) {
+    // A list, not a set, so the words go to the server in the order they were tapped.
+    var picked by remember(item.id) { mutableStateOf(emptyList<String>()) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(WF.colors.canvas)
+            .verticalScroll(rememberScrollState())
+            .padding(WF.spacing.xxl),
+        verticalArrangement = Arrangement.spacedBy(WF.spacing.xxl),
+    ) {
+        Text("Ignore events like this", style = WF.type.title, color = WF.colors.ink)
+        Text(
+            text = "Stop suggesting events with these words for ${item.goalTitle}:",
+            style = WF.type.body,
+            color = WF.colors.ink2,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(WF.spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(WF.spacing.sm),
+        ) {
+            item.ignoreWords.forEach { word ->
+                GoalChip(
+                    text = word,
+                    selected = word in picked,
+                    onClick = { picked = if (word in picked) picked - word else picked + word },
+                )
+            }
+        }
+        WaffledPrimaryCTA(
+            label = "Ignore for this goal",
+            isDisabled = !ReviewEventsModel.canIgnore(picked),
+            onClick = {
+                onIgnore(picked)
+                onDismiss()
+            },
+        )
+        WaffledSecondaryCTA(label = "Cancel", onClick = onDismiss)
     }
 }
 
@@ -328,6 +397,7 @@ private fun SuggestionCard(
     busy: Boolean,
     zone: ZoneId,
     onDismiss: () -> Unit,
+    onIgnore: () -> Unit,
     onLink: () -> Unit,
 ) {
     QueueCard(borderTint = WF.colors.gold.copy(alpha = 0.40f)) {
@@ -341,7 +411,29 @@ private fun SuggestionCard(
         )
         Row(horizontalArrangement = Arrangement.spacedBy(WF.spacing.md)) {
             Box(Modifier.weight(1f)) {
-                WaffledSecondaryCTA(label = "Dismiss", isDisabled = busy, onClick = onDismiss)
+                var menuOpen by remember { mutableStateOf(false) }
+                val canIgnore = item.ignoreWords.isNotEmpty()
+                WaffledSecondaryCTA(
+                    label = if (canIgnore) "Dismiss ▾" else "Dismiss",
+                    isDisabled = busy,
+                    onClick = { if (canIgnore) menuOpen = true else onDismiss() },
+                )
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Dismiss this one", color = WF.colors.ink) },
+                        onClick = {
+                            menuOpen = false
+                            onDismiss()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Ignore events like this…", color = WF.colors.ink) },
+                        onClick = {
+                            menuOpen = false
+                            onIgnore()
+                        },
+                    )
+                }
             }
             Box(Modifier.weight(1f)) {
                 WaffledPrimaryCTA(label = "Link", isBusy = busy, onClick = onLink)

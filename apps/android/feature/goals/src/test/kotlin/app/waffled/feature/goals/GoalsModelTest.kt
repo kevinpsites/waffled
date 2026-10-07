@@ -459,6 +459,45 @@ class GoalsModelTest {
         assertTrue(m.current.error)
     }
 
+    @Test
+    fun `a refused entry edit hands back the server's reason and keeps the screen error-free`() = runTest {
+        harness.server.dispatcher = PathDispatcher().onError(
+            "/api/goals/g1/logs/l1", 400, "BadRequest",
+            "this entry is managed by its source",
+        )
+        val m = GoalDetailModel(api, GoalsApi.Goal(id = "g1"), bus)
+
+        val refusal = m.editEntry("l1", amount = 5.0, personIds = null, note = "x", loggedOn = "2026-08-31")
+
+        assertNotNull(refusal)
+        assertContains(refusal, "managed by its source")
+        assertFalse(m.current.error, "the sheet shows the reason; the screen banner stays quiet")
+        assertEquals(0, bus.revisionOf(RefreshDomain.Goals))
+    }
+
+    @Test
+    fun `a saved entry edit returns no refusal and tells the other screens`() = runTest {
+        harness.server.dispatcher = PathDispatcher()
+            .onNoContent("/api/goals/g1/logs/l1")
+            .on("/api/goals/g1", """{"goal":{"id":"g1","title":"Outside"}}""")
+            .on("/api/goal-lists", """{"lists":[]}""")
+            .on("/api/goals/g1/activity", """{"startDate":"2026-01-01","today":"2026-07-17","days":[]}""")
+        val m = GoalDetailModel(api, GoalsApi.Goal(id = "g1"), bus)
+
+        assertNull(m.editEntry("l1", amount = null, personIds = null, note = "x", loggedOn = "2026-08-31"))
+        assertEquals(1, bus.revisionOf(RefreshDomain.Goals))
+    }
+
+    @Test
+    fun `a refused entry delete hands back the server's reason`() = runTest {
+        harness.server.dispatcher = PathDispatcher().onError(
+            "/api/goals/g1/logs/l1", 400, "BadRequest", "this entry is managed by its source",
+        )
+        val m = GoalDetailModel(api, GoalsApi.Goal(id = "g1"), bus)
+
+        assertContains(m.deleteEntry("l1").orEmpty(), "managed by its source")
+    }
+
     // ---- the capability gate ---------------------------------------------------
 
     @Test

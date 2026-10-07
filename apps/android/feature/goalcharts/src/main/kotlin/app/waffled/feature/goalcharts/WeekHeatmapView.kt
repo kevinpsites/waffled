@@ -40,7 +40,7 @@ private val WEEKDAY_DAY: DateTimeFormatter =
  * Week — the heatmap strip. Only what was done is drawn; rest days sit light and quiet,
  * never "an empty bar = failure". Pages back and forth, clamped at the current week.
  *
- * Anchored to the fixed Sun-Sat calendar week containing today, NOT a rolling 7-day
+ * Anchored to the fixed household calendar week containing today, NOT a rolling 7-day
  * window — the same choice iOS makes.
  */
 @Composable
@@ -52,7 +52,7 @@ fun WeekHeatmapView(
 ) {
     var weekOffset by rememberSaveable(chart.today) { mutableIntStateOf(0) }
     val weekStart = remember(chart, weekOffset) {
-        startOfWeek(chart.today.plusDays(weekOffset * 7L))
+        startOfWeek(chart.today.plusDays(weekOffset * 7L), chart.firstDay)
     }
     // The whole week is resolved once per page, outside the draw scope.
     val cells = remember(chart, weekStart) { weekCells(chart.stats, weekStart) }

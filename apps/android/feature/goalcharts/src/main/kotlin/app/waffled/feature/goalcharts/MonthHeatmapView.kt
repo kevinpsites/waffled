@@ -38,8 +38,6 @@ import app.waffled.core.design.WF
 import java.time.LocalDate
 import java.time.YearMonth
 
-private val WEEKDAY_HEADS = listOf("S", "M", "T", "W", "T", "F", "S")
-
 /**
  * Month — the calendar heatmap. A familiar month grid where shade is how much was logged
  * that day. Pages back and forth, clamped so you can't walk past the current month.
@@ -56,7 +54,7 @@ fun MonthHeatmapView(
         YearMonth.from(chart.today).plusMonths(monthOffset.toLong())
     }
     // The month's cells and its scale are derived once per page — never per frame.
-    val grid = remember(chart, month) { monthGrid(chart.stats, month) }
+    val grid = remember(chart, month) { monthGrid(chart.stats, month, chart.firstDay) }
     val max = remember(grid) { scaleMax(grid.cells) }
     val total = grid.cells.filter { !it.future }.sumOf { it.value }
     val best = remember(grid) { grid.cells.filter { it.logged }.maxByOrNull { it.value } }
@@ -107,7 +105,7 @@ fun MonthHeatmapView(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(WF.spacing.xs),
         ) {
-            WEEKDAY_HEADS.forEach { head ->
+            weekdayHeads(chart.firstDay).forEach { head ->
                 Text(
                     text = head,
                     modifier = Modifier.weight(1f),
