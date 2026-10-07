@@ -45,6 +45,7 @@ import app.waffled.core.design.WaffledEmptyState
 import app.waffled.core.design.WaffledLoading
 import app.waffled.core.design.WaffledStatusBadge
 import app.waffled.core.model.WaffledModule
+import app.waffled.core.network.RefreshDomain
 import app.waffled.feature.calendar.CalendarApi
 import app.waffled.feature.calendar.EventChipPaint
 import app.waffled.feature.calendar.EventEditSheet
@@ -79,7 +80,11 @@ fun RecapStepBody(props: PlanningStepProps) {
             // Step 1's resolver owns parked notes; this step grows no second way to answer one.
             dropNote = { id, s -> env.api.resolveLooseEnd("parked", id, "drop", s) },
             settleNote = { id, s -> env.api.resolveLooseEnd("parked", id, "done", s) },
-            saveChore = { chores.createChore(it) },
+            saveChore = {
+                chores.createChore(it)
+                // Chores are REST-only; screens watching them re-fetch on this bump.
+                env.refreshBus.bump(RefreshDomain.Chores)
+            },
         )
     }
     val state by model.state.collectAsStateWithLifecycle()
