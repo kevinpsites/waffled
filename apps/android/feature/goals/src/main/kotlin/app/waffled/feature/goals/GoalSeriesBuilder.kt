@@ -129,6 +129,6 @@ object GoalSeriesBuilder {
     private fun parseDayOrNull(key: String?): LocalDate? {
         val raw = key?.trim().orEmpty()
         if (raw.isEmpty()) return null
-        return runCatching { GoalDateKey.parse(raw) }.getOrNull()
+        return GoalDateKey.parseOrNull(raw)
     }
 }

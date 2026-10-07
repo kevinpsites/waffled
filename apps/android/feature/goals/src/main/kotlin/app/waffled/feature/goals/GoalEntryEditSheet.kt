@@ -67,7 +67,7 @@ fun GoalEntryEditSheet(
         mutableStateOf(entry.participants.mapNotNull { it.personId }.toSet())
     }
     var loggedOn by remember {
-        mutableStateOf(runCatching { GoalDateKey.parse(entry.dateKey) }.getOrDefault(today))
+        mutableStateOf(GoalDateKey.parseOrNull(entry.dateKey) ?: today)
     }
     var confirmDelete by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }

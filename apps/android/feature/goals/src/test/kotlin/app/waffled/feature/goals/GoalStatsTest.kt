@@ -47,6 +47,18 @@ class GoalStatsTest {
     }
 
     @Test
+    fun aMalformedDayKeyDegradesInsteadOfThrowing() {
+        // Keys can come straight off the wire (an entry's dateKey); a short or unparseable
+        // one must degrade to something rather than crash. Reaching the end IS the assertion.
+        GoalDateKey.parse("")
+        GoalDateKey.parse("2026")
+        GoalDateKey.parse("2026-09")
+        GoalDateKey.parse("not-a-date")
+        // ...and a well-formed key still round-trips untouched.
+        assertEquals("2026-09-30", GoalDateKey.toKey(GoalDateKey.parse("2026-09-30")))
+    }
+
+    @Test
     fun startOfWeekCutsOnTheHouseholdsFirstDay() {
         val sun = app.waffled.core.model.HouseholdWeekStart.Sunday
         val mon = app.waffled.core.model.HouseholdWeekStart.Monday

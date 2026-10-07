@@ -50,7 +50,12 @@ object GoalDateKey {
 
     fun toKey(date: LocalDate): String = date.toString()
 
-    fun parse(key: String): LocalDate = LocalDate.parse(key.trim().take(10))
+    /** Degrades to the device's today on a short or unparseable key — never throws. */
+    fun parse(key: String): LocalDate = parseOrNull(key) ?: LocalDate.now()
+
+    /** Strict: null for a short or unparseable key, for callers that must skip it. */
+    fun parseOrNull(key: String): LocalDate? =
+        runCatching { LocalDate.parse(key.trim().take(10)) }.getOrNull()
 
     fun addDays(key: String, n: Int): String = toKey(parse(key).plusDays(n.toLong()))
 

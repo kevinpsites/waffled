@@ -374,7 +374,7 @@ internal fun heroSubtitle(detail: GoalsApi.GoalDetail?, fallback: GoalsApi.Goal)
 
 /** "Jan 1" from an ISO timestamp or a bare day. Falls back to nothing worth showing. */
 private fun monthDay(iso: String): String {
-    val day = runCatching { GoalDateKey.parse(iso) }.getOrNull() ?: return ""
+    val day = GoalDateKey.parseOrNull(iso) ?: return ""
     val month = day.month.getDisplayName(
         java.time.format.TextStyle.SHORT,
         java.util.Locale.getDefault(),
@@ -641,7 +641,7 @@ private fun RecentActivityCard(
 
 /** "Fri" from the entry's HOUSEHOLD-bucketed day key, never a re-parse of `loggedAt`. */
 private fun weekday(dateKey: String): String {
-    val day = runCatching { GoalDateKey.parse(dateKey) }.getOrNull() ?: return ""
+    val day = GoalDateKey.parseOrNull(dateKey) ?: return ""
     return day.dayOfWeek.getDisplayName(
         java.time.format.TextStyle.SHORT,
         java.util.Locale.getDefault(),
