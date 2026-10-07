@@ -371,6 +371,19 @@ class RhythmsModelTest {
         assertEquals("Every week · paused", RhythmsModel.detailLines(listOf(off), emptyMap(), metaNow, UTC)["p"])
     }
 
+    // ---- history ----
+
+    @Test
+    fun `history relays the read, and a failed read is absent rather than an error`() = runTest {
+        fun model(history: suspend (String) -> RhythmsApi.History) = RhythmsModel(
+            fetchAttention = { _, _ -> emptyList() }, fetchRhythms = { emptyList() },
+            complete = { _, _ -> }, skip = { _, _ -> }, book = { _, _, _, _ -> }, save = { _, _ -> },
+            remove = {}, fetchHistory = history, zone = { UTC }, now = { at("2026-08-18T12:00:00") },
+        )
+        assertEquals(3, model { RhythmsApi.History(total = 3) }.history("a")?.total)
+        assertNull(model { throw Rejected() }.history("a"))
+    }
+
     // ---- the booking period a register row offers ----
 
     @Test

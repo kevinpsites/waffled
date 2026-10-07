@@ -46,6 +46,8 @@ class RhythmsModel(
     /** Create when `id` is null, otherwise PATCH. */
     private val save: suspend (id: String?, body: JsonObject) -> Unit,
     private val remove: suspend (id: String) -> Unit,
+    /** The completion history, shown on a completion rhythm's editor. */
+    private val fetchHistory: suspend (id: String) -> RhythmsApi.History = { RhythmsApi.History() },
     /** The household's zone — the same one the other Today cards day-bucket in. */
     val zone: () -> ZoneId = { ZoneId.systemDefault() },
     val now: () -> Instant = { Instant.now() },
@@ -187,6 +189,9 @@ class RhythmsModel(
         refresh()
     }
 
+    /** How often it REALLY happens; null when the read failed — the editor simply omits it. */
+    suspend fun history(id: String): RhythmsApi.History? = runCatchingCancellable { fetchHistory(id) }
+
     private suspend fun <T> runCatchingCancellable(block: suspend () -> T): T? = try {
         block()
     } catch (e: CancellationException) {
@@ -209,6 +214,7 @@ class RhythmsModel(
             book = { id, startsAt, allDay, periodStart -> api.schedule(id, startsAt, allDay, periodStart) },
             save = { id, body -> if (id != null) api.update(id, body) else api.create(body) },
             remove = api::delete,
+            fetchHistory = { id -> api.completions(id, limit = 5) },
             zone = zone,
             now = now,
         )
