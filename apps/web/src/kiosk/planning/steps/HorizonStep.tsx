@@ -14,14 +14,15 @@ import {
 import { ApiSendError } from '../../../lib/api/client'
 import { EventModal } from '../../components/EventModal'
 import { MonthView } from '../../components/MonthView'
-import { MONTHS, addDays, monthGridStart, ymd } from '../../components/cal-utils'
+import { MONTHS_SHORT, addDays, ymd } from '../../components/cal-utils'
 import type { PlanningStepModule, StepBodyProps } from '../registry'
 import { ParkedNoteEditor } from '../ParkedNoteEditor'
 import '../../../styles/planning-horizon.css'
 
-// Step 3 · Horizon scan — THE MONTH YOU ALREADY SHIP, PLUS ONE BAR.
+// Step 3 · Horizon scan — THE NEXT FOUR WEEKS ON THE MONTH VIEW YOU ALREADY SHIP, PLUS ONE BAR.
 //
-// This file renders `MonthView`; it does not draw a calendar. The 42-cell grid, the owner-colour
+// Four weeks from the planned week rather than its calendar month: late in a month, most of
+// "this month" has already happened. This file renders `MonthView`; it does not draw a calendar. The 42-cell grid, the owner-colour
 // resolution (`lib/event-color.ts`), the ↻ on a repeat, the dashed edge on a meal-plan dinner, the
 // countdown badges and the day panel all come for free and stay identical to the calendar the
 // family already knows. A second month grid here would drift from that one.
@@ -57,9 +58,11 @@ function useHorizon(sessionId: string) {
   return { tags, parked, setParked, readFailed }
 }
 
-/** "September 2026" — the label between the month arrows. */
-export function monthLabel(year: number, month: number): string {
-  return `${MONTHS[month]} ${year}`
+const WINDOW_WEEKS = 4
+
+/** "Sep 6 – Oct 3" — the label between the arrows. */
+export function windowLabel(start: Date, end: Date): string {
+  return `${MONTHS_SHORT[start.getMonth()]} ${start.getDate()} – ${MONTHS_SHORT[end.getMonth()]} ${end.getDate()}`
 }
 
 function Body({ weekStart, sessionId, setDecisionData, refresh, busy }: StepBodyProps) {
@@ -68,19 +71,17 @@ function Body({ weekStart, sessionId, setDecisionData, refresh, busy }: StepBody
   const firstDay = household?.weekStart === 'monday' ? 1 : 0
   const tz = household?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
-  // The month the planned week falls in, and the floor for scanning: a horizon is what is AHEAD.
-  const floor = useMemo(() => {
-    const d = new Date(`${weekStart}T00:00:00`)
-    return { year: d.getFullYear(), month: d.getMonth() }
-  }, [weekStart])
+  // The planned week is the floor for scanning: a horizon is what is AHEAD. Read off the
+  // string as a LOCAL date — `new Date('YYYY-MM-DD')` is UTC midnight, the day before out west.
   const [ahead, setAhead] = useState(0)
-  const anchor = useMemo(() => new Date(floor.year, floor.month + ahead, 1), [floor, ahead])
-  const year = anchor.getFullYear()
-  const month = anchor.getMonth()
+  const range = useMemo(() => {
+    const [y, m, d] = weekStart.split('-').map(Number)
+    return { start: addDays(new Date(y, m - 1, d), ahead * WINDOW_WEEKS * 7), weeks: WINDOW_WEEKS }
+  }, [weekStart, ahead])
+  const windowEnd = useMemo(() => addDays(range.start, WINDOW_WEEKS * 7 - 1), [range])
 
-  // The fetch window is the 42 cells the grid draws, via the SAME `monthGridStart` the grid uses.
-  const gridStart = useMemo(() => monthGridStart(year, month, firstDay), [year, month, firstDay])
-  const { events, refetch } = useEventsRange(ymd(gridStart), ymd(addDays(gridStart, 41)))
+  // The fetch window is exactly the cells the grid draws.
+  const { events, refetch } = useEventsRange(ymd(range.start), ymd(windowEnd))
 
   const { countdowns } = useCountdowns()
   const countdownsByDate = useMemo(() => {
@@ -89,11 +90,11 @@ function Body({ weekStart, sessionId, setDecisionData, refresh, busy }: StepBody
     return m
   }, [countdowns])
 
-  // The panel focuses the first day of the planned week on its own month, else the 1st.
+  // The panel focuses the first day of whichever four weeks are on screen.
   const [selectedDay, setSelectedDay] = useState(weekStart)
   useEffect(() => {
-    setSelectedDay(ahead === 0 ? weekStart : ymd(new Date(year, month, 1)))
-  }, [ahead, weekStart, year, month])
+    setSelectedDay(ymd(range.start))
+  }, [range])
 
   // The shared event modal: `{ date }` creates on that day, `{ event }` edits in place.
   const [modal, setModal] = useState<{ date?: string; event?: AgendaEvent } | null>(null)
@@ -173,7 +174,7 @@ function Body({ weekStart, sessionId, setDecisionData, refresh, busy }: StepBody
     <div className="wph">
       {readFailed && (
         <div className="wp-err" role="alert">
-          Couldn’t read what’s parked in this session. The month above is fine — anything you
+          Couldn’t read what’s parked in this session. The calendar above is fine — anything you
           parked is still there; this board just couldn’t be fetched.
         </div>
       )}
@@ -181,17 +182,17 @@ function Body({ weekStart, sessionId, setDecisionData, refresh, busy }: StepBody
         <button
           type="button"
           className="wph-nav"
-          aria-label="Previous month"
+          aria-label="Previous 4 weeks"
           disabled={ahead === 0 || busy}
           onClick={() => setAhead((n) => Math.max(0, n - 1))}
         >
           ‹
         </button>
-        <div className="wph-month wf-serif">{monthLabel(year, month)}</div>
+        <div className="wph-month wf-serif">{windowLabel(range.start, windowEnd)}</div>
         <button
           type="button"
           className="wph-nav"
-          aria-label="Next month"
+          aria-label="Next 4 weeks"
           disabled={busy}
           onClick={() => setAhead((n) => n + 1)}
         >
@@ -201,8 +202,9 @@ function Body({ weekStart, sessionId, setDecisionData, refresh, busy }: StepBody
 
       <div className="wph-cal">
         <MonthView
-          year={year}
-          month={month}
+          year={range.start.getFullYear()}
+          month={range.start.getMonth()}
+          window={range}
           firstDay={firstDay}
           // Two, not three: the parked board underneath has to stay on screen and a chip is never
           // allowed to shrink to make room.
@@ -293,7 +295,7 @@ function Body({ weekStart, sessionId, setDecisionData, refresh, busy }: StepBody
       )}
 
       <p className="wph-note">
-        <b>Know the day it lands?</b> Tap that day on the month above and add it — you get a real
+        <b>Know the day it lands?</b> Tap that day on the calendar above and add it — you get a real
         calendar event. <b>Only know it&rsquo;s coming?</b> Park it in the bar: it stays off the
         calendar, and comes back at whichever step you tag it for &mdash; all of them still ahead
         of you tonight.

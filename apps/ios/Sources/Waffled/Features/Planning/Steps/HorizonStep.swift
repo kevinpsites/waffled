@@ -1,12 +1,12 @@
 import SwiftUI
 
-/// Weekly Planning · step 3 "Horizon scan" — the month view plus one bar that parks a
+/// Weekly Planning · step 3 "Horizon scan" — the next four weeks plus one bar that parks a
 /// NOTE (never a calendar entry) tagged for a step still ahead of you. Ported from
 /// `apps/web/src/kiosk/planning/steps/HorizonStep.tsx`; nothing here is a second calendar.
 ///
 /// Three rules: the ＋ writes a real event while the bar only parks a note; NOTHING
-/// NAVIGATES (the shell owns where the session is); and `props.weekStart` decides which
-/// month opens. Content-sized — the SHELL owns the scroll view.
+/// NAVIGATES (the shell owns where the session is); and `props.weekStart` is where the four
+/// weeks start. Content-sized — the SHELL owns the scroll view.
 struct HorizonStepView: View {
     let props: PlanningStepProps
 
@@ -29,22 +29,14 @@ struct HorizonStepView: View {
     private var disabled: Bool { props.busy || model.parking }
     private var trimmedNote: String { note.trimmingCharacters(in: .whitespacesAndNewlines) }
 
-    private var floorMonth: (year: Int, month: Int) {
-        if let m = PlanningMonth.month(of: props.weekStart) { return m }
-        let c = Cal.gregorian(tz).dateComponents([.year, .month], from: Date())
-        return (c.year ?? 2026, c.month ?? 1)
-    }
-
-    private var anchor: (year: Int, month: Int) {
-        PlanningMonth.advance(year: floorMonth.year, month: floorMonth.month, by: ahead)
-    }
-
-    private var anchorDate: Date {
-        Cal.gregorian(tz).date(from: DateComponents(year: anchor.year, month: anchor.month, day: 1)) ?? Date()
+    /// The first day on screen: the planned week, stepped four weeks at a time.
+    private var windowStart: String {
+        PlanningHorizonWindow.start(weekStart: props.weekStart, ahead: ahead) ?? props.weekStart
     }
 
     var body: some View {
-        let rows = PhoneCalendar.monthRows(anchorDate, tz: tz, firstDay: firstDay)
+        let rows = PhoneCalendar.weekRows(
+            from: windowStart, count: PlanningHorizonWindow.weeks, tz: tz, firstDay: firstDay)
 
         VStack(alignment: .leading, spacing: 14) {
             header
@@ -113,7 +105,7 @@ struct HorizonStepView: View {
         }
     }
 
-    // MARK: - Month header
+    // MARK: - Window header
 
     private var header: some View {
         HStack(spacing: 12) {
@@ -125,9 +117,9 @@ struct HorizonStepView: View {
             .buttonStyle(.plain)
             .foregroundStyle(ahead == 0 ? WF.ink3.opacity(0.4) : WF.ink2)
             .disabled(ahead == 0 || props.busy)
-            .accessibilityLabel("Previous month")
+            .accessibilityLabel("Previous 4 weeks")
 
-            Text(PlanningMonth.label(year: anchor.year, month: anchor.month))
+            Text(PlanningHorizonWindow.label(start: windowStart))
                 .font(WF.serif(20)).foregroundStyle(WF.ink)
 
             Button {
@@ -138,7 +130,7 @@ struct HorizonStepView: View {
             .buttonStyle(.plain)
             .foregroundStyle(WF.ink2)
             .disabled(props.busy)
-            .accessibilityLabel("Next month")
+            .accessibilityLabel("Next 4 weeks")
 
             Spacer(minLength: 0)
         }
@@ -264,7 +256,7 @@ struct HorizonStepView: View {
 
     private var explainer: some View {
         (Text("Know the day it lands?").bold()
-            + Text(" Tap that day on the month above and add it — you get a real calendar event. ")
+            + Text(" Tap that day on the calendar above and add it — you get a real calendar event. ")
             + Text("Only know it’s coming?").bold()
             + Text(" Park it in the bar: it stays off the calendar, and comes back at whichever step you tag it for — all of them still ahead of you tonight."))
             .font(.system(size: 12)).foregroundStyle(WF.ink3)
@@ -272,7 +264,7 @@ struct HorizonStepView: View {
     }
 
     /// Named, because the read returns every note parked this session whichever bar wrote
-    /// it — an unlabelled step-1 note would look like something the month put here.
+    /// it — an unlabelled step-1 note would look like something the calendar put here.
     @ViewBuilder private var board: some View {
         if !model.parked.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
@@ -370,9 +362,7 @@ struct HorizonStepView: View {
 
     // MARK: - Small formatting
 
-    private var focusDay: String {
-        ahead == 0 ? props.weekStart : String(format: "%04d-%02d-01", anchor.year, anchor.month)
-    }
+    private var focusDay: String { windowStart }
 
     private func dayDate(_ key: String) -> Date {
         DateFmt.date(key, "yyyy-MM-dd", tz) ?? Date()

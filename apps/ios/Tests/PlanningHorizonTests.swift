@@ -74,40 +74,23 @@ private let parkedNoteId = "44444444-4444-4444-8444-444444444444"
     }
 }
 
-// MARK: - The month arithmetic
+// MARK: - The four-week window
 
-@Suite struct PlanningMonthTests {
+@Suite struct PlanningHorizonWindowTests {
 
-    /// The month is read off the week-start STRING. A device in a negative offset parsing
-    /// "2026-09-01" as a local instant gets August back — hence no `Date` anywhere near it.
-    @Test func readsTheMonthOffTheWeekStartString() {
-        #expect(PlanningMonth.month(of: "2026-09-06")?.year == 2026)
-        #expect(PlanningMonth.month(of: "2026-09-06")?.month == 9)
-        #expect(PlanningMonth.month(of: "2027-01-01")?.month == 1)
-        #expect(PlanningMonth.month(of: "") == nil)
-        #expect(PlanningMonth.month(of: "not-a-date") == nil)
-        #expect(PlanningMonth.month(of: "2026-13-01") == nil)
+    /// Late in a month, "this month" is mostly behind you — so the window is four weeks from
+    /// the planned week, read off the week-start STRING and stepped four weeks at a time.
+    @Test func startsOnThePlannedWeekAndStepsFourWeeks() {
+        #expect(PlanningHorizonWindow.start(weekStart: "2026-09-06", ahead: 0) == "2026-09-06")
+        #expect(PlanningHorizonWindow.start(weekStart: "2026-09-06", ahead: 1) == "2026-10-04")
+        #expect(PlanningHorizonWindow.start(weekStart: "2026-12-27", ahead: 1) == "2027-01-24")
+        #expect(PlanningHorizonWindow.start(weekStart: "not-a-date", ahead: 0) == nil)
     }
 
-    @Test func stepsWholeMonthsAcrossTheYearBoundary() {
-        // Compared field by field: a labelled tuple and a bare one are different types.
-        let december = PlanningMonth.advance(year: 2026, month: 12, by: 1)
-        #expect(december.year == 2027)
-        #expect(december.month == 1)
-        let fourAhead = PlanningMonth.advance(year: 2026, month: 9, by: 4)
-        #expect(fourAhead.year == 2027)
-        #expect(fourAhead.month == 1)
-        let standingStill = PlanningMonth.advance(year: 2026, month: 1, by: 0)
-        #expect(standingStill.year == 2026)
-        #expect(standingStill.month == 1)
-        let aYear = PlanningMonth.advance(year: 2026, month: 9, by: 12)
-        #expect(aYear.year == 2027)
-        #expect(aYear.month == 9)
-    }
-
-    @Test func labelsTheMonth() {
-        #expect(PlanningMonth.label(year: 2026, month: 9) == "September 2026")
-        #expect(PlanningMonth.label(year: 2026, month: 1) == "January 2026")
+    @Test func labelsTheWindowByItsFirstAndLastDay() {
+        #expect(PlanningHorizonWindow.label(start: "2026-09-06") == "Sep 6 – Oct 3")
+        #expect(PlanningHorizonWindow.label(start: "2026-12-27") == "Dec 27 – Jan 23")
+        #expect(PlanningHorizonWindow.label(start: "") == "")
     }
 }
 

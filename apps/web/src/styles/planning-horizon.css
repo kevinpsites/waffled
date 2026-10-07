@@ -1,6 +1,6 @@
 /* Weekly Planning · step 3 — Horizon scan (kiosk/planning/steps/HorizonStep.tsx).
 
-   THIS FILE IS DELIBERATELY SHORT, and that is the whole design of the step. The month is the
+   THIS FILE IS DELIBERATELY SHORT, and that is the whole design of the step. The weeks are the
    SHIPPED month view (`MonthView` + `MonthDayPanel`), already styled in waffled.css /
    calendar.css, and none of its `.cal-*` classes are redefined here. If a `.cal-*` rule ever
    appears in this file, a second month grid has grown in the step: delete it. Adding an event
@@ -11,9 +11,9 @@
 /* `.wp-body` is a flex column with `min-height: 0` and its own scroll. */
 .wph { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
-/* ── The month being scanned ────────────────────────────────────────────────── */
-/* Arrows either side of the month: the step asks "anything FURTHER OUT?", and the answer often
-   isn't in the month the planned week falls in. Back is floored at that month. */
+/* ── The weeks being scanned ────────────────────────────────────────────────── */
+/* Arrows either side of the range: the step asks "anything FURTHER OUT?", and the answer often
+   isn't in the first four weeks. Back is floored at the planned week. */
 .wph-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex: none; }
 .wph-month { font-size: 23px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
 .wph-nav {
@@ -26,17 +26,17 @@
 
 /* THE MONTH TAKES WHAT IS LEFT, AND SCROLLS ITSELF.
    A fixed floor cannot work, and the measurement is why: `.wp-body` is ~500px on a 720px-tall
-   screen, and six rows holding two chips each without squeezing need ~582px on their own —
+   screen, and four rows holding two chips each without squeezing need ~368px on their own —
    before the bar, the note and the parked board. So `flex: 1` with a small floor lets the
-   month absorb the remainder while everything below stays `flex: none`, and when the six rows
+   month absorb the remainder while everything below stays `flex: none`, and when the rows
    don't fit the GRID scrolls inside itself rather than the rows compressing. */
 .wph-cal { flex: 1; display: flex; min-height: 260px; }
 /* `.cal-cell` is a flex COLUMN, so every child shrinks by default and at ~70px a row the day
    number and all three chips compressed below their natural height at once. `flex: none` IS
    the minimum — a chip is its content's height or it is not drawn — and the cell's existing
    `overflow: hidden` then clips one whole chip cleanly instead of shaving every chip.
-   A row costs ≈91px unsqueezed at two chips (padding + day number + chips + gaps), which is
-   the 582px below. Shorter means a chip FEWER (`maxChips={2}`), never a chip smaller. */
+   A row costs ≈91px unsqueezed at two chips (padding + day number + chips + gaps).
+   Shorter means a chip FEWER (`maxChips={2}`), never a chip smaller. */
 .wph-cal .cal-cell > * { flex: none; }
 .wph-cal .cal-grid {
   grid-auto-rows: minmax(92px, 1fr);

@@ -1,6 +1,6 @@
 // Weekly Planning · step 3 "Horizon scan" — this step's API client and its types.
 //
-// DELIBERATELY SMALL. The month is the real calendar, adding a day's event is the app's own
+// DELIBERATELY SMALL. The four weeks are the real calendar, adding a day's event is the app's own
 // `EventModal`, and PARKING A NOTE is step 1's `looseEndsApi.park`: a second way to talk to the
 // calendar is how the offline path and the REST path drift apart, and a second parked-item path
 // is how two writers leave rows a later step can't read the same way.

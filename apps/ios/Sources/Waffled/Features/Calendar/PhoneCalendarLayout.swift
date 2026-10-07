@@ -69,6 +69,26 @@ enum PhoneCalendar {
         }
     }
 
+    /// `count` whole weeks from the `YYYY-MM-DD` day `startKey`, which the caller has already
+    /// cut on the household's first day (Horizon passes the server's week start). Every day is
+    /// `inMonth`: a window has no "other month" to dim. Numbered like `monthRows`.
+    static func weekRows(from startKey: String, count: Int, tz: TimeZone, firstDay: HouseholdWeekStart) -> [MonthRow] {
+        let cal = Cal.gregorian(tz)
+        guard let start = DateFmt.date(startKey, "yyyy-MM-dd", tz) else { return [] }
+        var iso = Calendar(identifier: .iso8601)
+        iso.timeZone = tz
+        let mondayOffset = firstDay == .monday ? 0 : 1
+
+        return (0..<max(0, count)).map { row in
+            let days = (0..<7).compactMap { i -> MonthDay? in
+                guard let d = cal.date(byAdding: .day, value: row * 7 + i, to: start) else { return nil }
+                return MonthDay(key: EventTime.dayKey(d, tz), day: cal.component(.day, from: d), inMonth: true)
+            }
+            let monday = cal.date(byAdding: .day, value: row * 7 + mondayOffset, to: start) ?? start
+            return MonthRow(weekNumber: iso.component(.weekOfYear, from: monday), days: days)
+        }
+    }
+
     static let chipHeight: CGFloat = 16
     static let chipGap: CGFloat = 2
     static let dayNumberHeight: CGFloat = 18

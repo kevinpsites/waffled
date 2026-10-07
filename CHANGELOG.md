@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Weekly Planning's Horizon scan shows the next four weeks.** It used to show the calendar
+  month the planned week fell in, so near the end of a month most of what it showed had
+  already happened. It now starts on the week you're planning and the arrows step four weeks
+  at a time, on web and iOS.
+
 ## [0.15.1] - 2026-09-15
 
 ### Added

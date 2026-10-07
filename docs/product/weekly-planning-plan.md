@@ -125,7 +125,10 @@ port properly rather than transliterating:**
 
 **Month grid:** the Horizon scan draws the Calendar tab's own `PhoneMonthGrid`
 (`Features/Calendar/PhoneCalendarViews.swift`), so a change to the iPhone month view reaches
-the step too. Web's Horizon reuses `MonthView` the same way.
+the step too. Web's Horizon reuses `MonthView` the same way. It shows the **next four weeks
+from the planned week**, not the calendar month (late in a month most of it has already
+happened): iOS feeds the grid `PhoneCalendar.weekRows`, web passes `MonthView` a `window`.
+The arrows step four weeks; back is floored at the planned week.
 
 **Known debt found beside it (pre-existing, not the port's):** iOS's `RecipePickerSheet` —
 the Meals tab's own night picker, and the planner's manual pick — supplies no `onPickMeal`,
@@ -242,7 +245,7 @@ absent from the catalog, which is what makes the incremental build possible.
 |---|-----|-----|-------|
 | 1 | `looseEnds` | Intake | chores, lists, rhythms, goals |
 | 2 | `calendar` | Frame the week | events |
-| 3 | `horizon` | Frame the week | events (month) |
+| 3 | `horizon` | Frame the week | events (next 4 weeks) |
 | 4 | `familyNight` | Claim the good | familyNight |
 | 5 | `connection` | Claim the good | event_participants |
 | 6 | `goals` | Claim the good | goals / goal_lists |

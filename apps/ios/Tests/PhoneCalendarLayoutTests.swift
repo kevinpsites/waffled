@@ -84,6 +84,35 @@ private func timed(_ id: String, _ start: String, minutes: Double? = 60) -> Sync
     }
 }
 
+/// A run of whole weeks from a given first day — Horizon's next four weeks.
+@Suite struct PhoneCalendarWeekRowsTests {
+    @Test func drawsTheWeeksAskedForFromTheGivenDay() {
+        let rows = PhoneCalendar.weekRows(from: "2026-09-06", count: 4, tz: ny, firstDay: .sunday)
+        #expect(rows.count == 4)
+        #expect(rows.first?.days.first?.key == "2026-09-06")
+        #expect(rows.last?.days.last?.key == "2026-10-03")
+        #expect(rows.map(\.weekNumber) == [37, 38, 39, 40])
+    }
+
+    @Test func nothingInAWindowIsOutsideIt() {
+        let rows = PhoneCalendar.weekRows(from: "2026-09-27", count: 4, tz: ny, firstDay: .sunday)
+        #expect(rows.allSatisfy { $0.days.allSatisfy(\.inMonth) })
+        #expect(rows.first?.days[4].key == "2026-10-01")
+        #expect(rows.first?.days[4].day == 1)
+    }
+
+    @Test func crossesTheYearBoundary() {
+        let rows = PhoneCalendar.weekRows(from: "2026-12-28", count: 4, tz: ny, firstDay: .monday)
+        #expect(rows.first?.weekNumber == 53)
+        #expect(rows[1].days.first?.key == "2027-01-04")
+        #expect(rows.last?.days.last?.key == "2027-01-24")
+    }
+
+    @Test func anUnreadableStartDrawsNothing() {
+        #expect(PhoneCalendar.weekRows(from: "not-a-date", count: 4, tz: ny, firstDay: .sunday).isEmpty)
+    }
+}
+
 @Suite struct PhoneCalendarCellChipsTests {
     @Test func aTallCellShowsFourTitlesThenMore() {
         let c = PhoneCalendar.cellChips(eventCount: 7, countdownCount: 0, rowHeight: 128)
