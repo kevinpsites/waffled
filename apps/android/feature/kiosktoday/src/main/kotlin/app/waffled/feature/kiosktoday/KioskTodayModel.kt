@@ -37,7 +37,17 @@ class KioskTodayModel(
     private val fetchWeather: suspend () -> TodayApi.Weather?,
     private val addGroceryItem: suspend (String) -> Unit = {},
     private val setGroceryChecked: suspend (String, Boolean) -> Unit = { _, _ -> },
+    private val fetchRecap: suspend () -> List<TodayApi.GoalRecapItem> = { emptyList() },
+    private val fetchSuggestions: suspend () -> List<TodayApi.GoalSuggestionItem> = { emptyList() },
 ) {
+    private val recapD = RestDomain<List<TodayApi.GoalRecapItem>>()
+    private val suggestionsD = RestDomain<List<TodayApi.GoalSuggestionItem>>()
+    val recapSnapshot: StateFlow<RestDomain.Snapshot<List<TodayApi.GoalRecapItem>>> = recapD.state
+    val suggestionsSnapshot: StateFlow<RestDomain.Snapshot<List<TodayApi.GoalSuggestionItem>>> = suggestionsD.state
+    val reviewRecap: List<TodayApi.GoalRecapItem> get() = recapD.value.orEmpty()
+    val reviewSuggestions: List<TodayApi.GoalSuggestionItem> get() = suggestionsD.value.orEmpty()
+    val reviewState: RestState get() = RestState.combined(listOf(recapD.restState, suggestionsD.restState))
+
     private val choresD = RestDomain<List<TodayApi.PersonChores>>()
     private val mealsD = RestDomain<KioskMeals>(isEmpty = { it.tonight == null && it.week.isEmpty() })
     private val groceryD = RestDomain<List<ListItemDTO>>()
@@ -110,6 +120,13 @@ class KioskTodayModel(
         goalsD.apply(RestFetch.result { fetchGoals() })
     }
 
+    /** The goal↔calendar review queues behind the "Review & log" banner. */
+    suspend fun loadReview() = coroutineScope {
+        recapD.beginLoading(); suggestionsD.beginLoading()
+        launch { recapD.apply(RestFetch.result { fetchRecap() }) }
+        launch { suggestionsD.apply(RestFetch.result { fetchSuggestions() }) }
+    }
+
     suspend fun loadWeather() {
         RestFetch.result { fetchWeather() }.getOrNull()?.let { _weather.value = it }
     }
@@ -177,6 +194,8 @@ class KioskTodayModel(
             fetchWeather = { today.weather() },
             addGroceryItem = { lists.addGroceryItem(it) },
             setGroceryChecked = { id, checked -> lists.patchItem(id, checked = checked) },
+            fetchRecap = { today.goalRecap() },
+            fetchSuggestions = { today.goalSuggestions() },
         )
     }
 }

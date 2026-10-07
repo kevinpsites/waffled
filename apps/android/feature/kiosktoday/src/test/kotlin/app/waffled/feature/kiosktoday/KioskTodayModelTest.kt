@@ -206,6 +206,27 @@ class KioskTodayModelTest {
         assertEquals(listOf("Milk"), m.grocery.map { it.name })
     }
 
+    /** The goal↔calendar review banner's queues keep their rows through a failed refresh. */
+    @Test
+    fun reviewQueuesKeepPriorRowsOnFailure() = runTest {
+        var fail = false
+        val m = KioskTodayModel(
+            fetchChores = { emptyList() }, fetchMeals = { emptyList() },
+            fetchGrocery = { emptyList() }, fetchGoals = { emptyList() }, fetchWeather = { null },
+            fetchRecap = {
+                if (fail) offline() else listOf(TodayApi.GoalRecapItem("e1", title = "Swim", goalId = "g", goalTitle = "Swim 10x"))
+            },
+            fetchSuggestions = { if (fail) offline() else emptyList() },
+        )
+        m.loadReview()
+        assertEquals(listOf("Swim"), m.reviewRecap.map { it.title })
+        assertTrue(m.reviewState.isAuthoritative)
+        fail = true
+        m.loadReview()
+        assertEquals(listOf("Swim"), m.reviewRecap.map { it.title })
+        assertFalse(m.reviewState.isAuthoritative)
+    }
+
     /** Weather keeps its prior reading when a refresh fails. */
     @Test
     fun weatherKeepsPriorOnFailure() = runTest {
