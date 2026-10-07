@@ -6,6 +6,8 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import app.waffled.core.network.WaffledJson
 import kotlinx.serialization.json.put
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -90,11 +92,24 @@ class PlanningSharedLogicTest {
         )
         assertEquals(listOf("c1", "p1"), decoded.map { it.id })
         assertEquals("", decoded.last().title)
-        assertEquals("parked", decoded.last().resolvedSource)
+        assertEquals("parked", decoded.last().source)
+        assertEquals("notDone", PlanningRouteSeed.decode(buildJsonArray {
+            add(buildJsonObject { put("kind", "chore"); put("id", "c9"); put("to", "tasks") })
+        }).single().source)
 
         assertTrue(PlanningRouteSeed.decode(null).isEmpty())
         assertTrue(PlanningRouteSeed.decode(JsonNull).isEmpty())
         assertTrue(PlanningRouteSeed.decode(buildJsonObject { put("routes", "not an array") }).isEmpty())
+    }
+
+    @Test fun `a route written back keeps every key even when it holds the default`() {
+        // Step 1 re-sends routes through decideStep, which replaces the row's data.
+        val encoded = WaffledJson.encodeToJsonElement(
+            LooseEndRoute.serializer(),
+            LooseEndRoute(kind = "chore", id = "c1", to = "tasks"),
+        ).jsonObject
+        assertEquals(setOf("kind", "id", "title", "source", "to"), encoded.keys)
+        assertEquals(JsonPrimitive("notDone"), encoded["source"])
     }
 
     // ---- the Horizon window ----

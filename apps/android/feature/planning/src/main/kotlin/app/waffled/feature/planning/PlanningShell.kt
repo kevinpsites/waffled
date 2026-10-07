@@ -7,7 +7,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -74,7 +79,12 @@ import kotlinx.coroutines.launch
  *
  * [onBack] pops the screen and leaves the session current (re-opening resumes it); "Leave
  * for now" is the separate control that parks it. [refreshKey] re-reads the view when it
- * changes. [bottomClearance] is what the host's bottom bar needs.
+ * changes.
+ *
+ * Two clearances, as on iOS: [bottomClearance] for screens that SCROLL under the tab bar,
+ * and [footerClearance] for the session footer PINNED flush on top of it — the bar's own
+ * height (64dp; the navigation-bar inset is added here). Pass 0.dp for both on the kiosk,
+ * which has no bar. The footer drops its clearance while the keyboard is up.
  */
 @Composable
 fun PlanningShell(
@@ -83,13 +93,19 @@ fun PlanningShell(
     modifier: Modifier = Modifier,
     refreshKey: Any? = Unit,
     bottomClearance: Dp = WF.spacing.tabBarClearance,
+    footerClearance: Dp = 64.dp,
 ) {
     val model = remember(env) { env.newModel() }
     val state by model.state.collectAsStateWithLifecycle()
     val modules by env.sync.modules.collectAsStateWithLifecycle()
     LaunchedEffect(model, refreshKey) { model.load() }
 
-    val ui = remember { ShellUi() }
+    // ONE scope for every model write, owned by the shell. A write often flips the screen
+    // it was launched from (discard leaves "Left for now", reopen leaves the record, a
+    // jump closes the agenda); a sub-screen's own scope would be cancelled with it,
+    // dropping the request or the reload. Do not push scopes back down into the screens.
+    val scope = rememberCoroutineScope()
+    val ui = remember(scope) { ShellUi(scope) }
 
     Box(modifier.fillMaxSize().background(WF.colors.canvas)) {
         when {
@@ -115,7 +131,7 @@ fun PlanningShell(
             state.showsRecord -> RecordScreen(model, state, ui, env, bottomClearance)
             state.isPaused -> PausedScreen(model, state, ui, bottomClearance)
             state.session == null -> LobbyScreen(model, state, ui, bottomClearance)
-            else -> SessionScreen(model, state, ui, env, onBack, bottomClearance)
+            else -> SessionScreen(model, state, ui, env, onBack, footerClearance)
         }
     }
 
@@ -145,8 +161,8 @@ fun PlanningShell(
     }
 }
 
-/** Screen-local UI state — the iOS view's `@State` fields. */
-private class ShellUi {
+/** Screen-local UI state — the iOS view's `@State` fields — and the shell's write scope. */
+private class ShellUi(val scope: CoroutineScope) {
     var agenda by mutableStateOf(false)
     var parking by mutableStateOf(false)
     var parkingBetween by mutableStateOf(false)
@@ -168,7 +184,7 @@ private class ShellUi {
 
 @Composable
 private fun LobbyScreen(model: PlanningModel, state: PlanningState, ui: ShellUi, bottomClearance: Dp) {
-    val scope = rememberCoroutineScope()
+    val scope = ui.scope
     ScrollColumn(bottomClearance) {
         ErrorBanner(model, state)
         Text("${state.sessionDayName}’s session", style = WF.type.serif(26.sp, FontWeight.Bold), color = WF.colors.ink)
@@ -231,7 +247,7 @@ private fun RecordScreen(
     env: PlanningEnvironment,
     bottomClearance: Dp,
 ) {
-    val scope = rememberCoroutineScope()
+    val scope = ui.scope
     ScrollColumn(bottomClearance) {
         ErrorBanner(model, state)
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -315,9 +331,9 @@ private fun SessionScreen(
     ui: ShellUi,
     env: PlanningEnvironment,
     onBack: () -> Unit,
-    bottomClearance: Dp,
+    footerClearance: Dp,
 ) {
-    val scope = rememberCoroutineScope()
+    val scope = ui.scope
     val step = state.current
     val sessionId = state.session?.id
     val week = state.view?.weekStart
@@ -364,7 +380,7 @@ private fun SessionScreen(
                 key(props.step.key, props.weekStart) { PlanningStepBody(props) }
             }
         }
-        SessionFooter(model, state, ui, props, env.isKiosk, bottomClearance)
+        SessionFooter(model, state, ui, props, env.isKiosk, footerClearance)
     }
 }
 
@@ -439,16 +455,16 @@ private fun SessionFooter(
     ui: ShellUi,
     props: PlanningStepProps?,
     isKiosk: Boolean,
-    bottomClearance: Dp,
+    footerClearance: Dp,
 ) {
-    val scope = rememberCoroutineScope()
+    val scope = ui.scope
     val cold = state.busy || ui.stepBusy
     Column(Modifier.fillMaxWidth().background(WF.colors.card)) {
         HorizontalDivider(color = WF.colors.hair)
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp + bottomClearance),
+                .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp + footerInset(footerClearance)),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -517,7 +533,7 @@ private fun PrimaryAnswerButton(state: PlanningState, cold: Boolean, isKiosk: Bo
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AgendaSheet(model: PlanningModel, state: PlanningState, ui: ShellUi) {
-    val scope = rememberCoroutineScope()
+    val scope = ui.scope
     val close = {
         ui.agenda = false
         ui.confirmDiscard = false
@@ -621,7 +637,7 @@ private fun AgendaRow(step: PlanningStep, state: PlanningState, enabled: Boolean
 /** The week stepper. The back arrow floors at the household's current week. */
 @Composable
 private fun WeekStepper(model: PlanningModel, state: PlanningState, ui: ShellUi) {
-    val scope = rememberCoroutineScope()
+    val scope = ui.scope
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         StepperArrow(
             icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
@@ -680,7 +696,7 @@ private fun PlanAnotherWeek(model: PlanningModel, state: PlanningState, ui: Shel
  */
 @Composable
 private fun DiscardBlock(model: PlanningModel, state: PlanningState, ui: ShellUi) {
-    val scope = rememberCoroutineScope()
+    val scope = ui.scope
     if (ui.confirmDiscard) {
         Column(
             Modifier
@@ -762,6 +778,14 @@ private fun ParkBetweenButton(state: PlanningState, ui: ShellUi) {
 @Composable
 private fun ErrorBanner(model: PlanningModel, state: PlanningState) {
     state.errorMessage?.let { DismissibleErrorBanner(message = it, onDismiss = model::dismissError) }
+}
+
+/** The pinned footer's clearance: the bar plus the nav-bar inset, none while typing. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun footerInset(footerClearance: Dp): Dp {
+    if (footerClearance == 0.dp || WindowInsets.isImeVisible) return 0.dp
+    return footerClearance + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 }
 
 @Composable

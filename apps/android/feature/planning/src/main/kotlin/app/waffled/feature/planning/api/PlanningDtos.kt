@@ -1,5 +1,7 @@
 package app.waffled.feature.planning.api
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 
@@ -132,19 +134,19 @@ data class WeeklyPlanningCompletion(
  * [PlanningRouteSeed]. Import this; do not redefine it in a step.
  *
  * `title`/`source` are tolerant: the server's guard checks only kind/id/to, so an older
- * row can lack them.
+ * row can lack them. `source` is never null, because step 1 writes these back through
+ * `decideStep` (which REPLACES the row's data) and a dropped key would be lost for good —
+ * hence `@EncodeDefault`, since `WaffledJson` otherwise omits a value equal to its default.
  */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class LooseEndRoute(
     val kind: String,
     val id: String,
-    val title: String = "",
-    val source: String? = null,
+    @EncodeDefault val title: String = "",
+    @EncodeDefault val source: String = if (kind == "parked") "parked" else "notDone",
     val to: String,
-) {
-    /** The source with the server's own default applied. */
-    val resolvedSource: String get() = source ?: if (kind == "parked") "parked" else "notDone"
-}
+)
 
 /** A parked note as the park/update routes return it. */
 @Serializable
