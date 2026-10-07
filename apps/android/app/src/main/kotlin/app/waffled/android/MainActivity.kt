@@ -49,7 +49,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val container = (application as WaffledApp).container
-        handle(intent)
+        // A recreation (theme flip) keeps the nav stack; replaying the launch intent would
+        // re-push its route on top of wherever the user has since gone.
+        if (savedInstanceState == null) handle(intent)
 
         setContent {
             val themePref by container.themeStore.prefFlow.collectAsStateWithLifecycle()

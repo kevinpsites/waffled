@@ -461,13 +461,24 @@ internal fun BackRow(onBack: () -> Unit, title: String? = null) {
 @Composable
 private fun RewardShopHost(personId: String, container: AppContainer, viewer: app.waffled.core.model.Person?) {
     var editing by remember { mutableStateOf<app.waffled.feature.rewards.RewardsApi.Reward?>(null) }
-    RewardShopScreen(
-        personId = personId,
-        model = container.rewardsModel,
-        canManage = RewardsAccess.canManage(viewer),
-        maySpend = RewardsAccess.maySpend(viewer, personId),
-        onEdit = { editing = it },
-    )
+    // The shop reads the shared economy but never loads it (RewardsScreen does, and a
+    // spotlight Redeem can reach the shop first).
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (!container.rewardsModel.loaded) container.rewardsModel.load()
+    }
+    // RewardShopScreen reads `model.economy`, a plain getter, and strong skipping keeps it
+    // from recomposing when the load lands. Re-keying on the first load is the least
+    // disruptive nudge (a later reload would reset the redeem celebration).
+    val economy by container.rewardsModel.state.collectAsStateWithLifecycle()
+    androidx.compose.runtime.key(economy.loaded) {
+        RewardShopScreen(
+            personId = personId,
+            model = container.rewardsModel,
+            canManage = RewardsAccess.canManage(viewer),
+            maySpend = RewardsAccess.maySpend(viewer, personId),
+            onEdit = { editing = it },
+        )
+    }
     editing?.let { reward ->
         RewardEditorSheet(
             editing = reward,
