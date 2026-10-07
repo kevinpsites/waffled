@@ -31,10 +31,34 @@ import app.waffled.feature.photos.PhotosApi
 import app.waffled.feature.photos.PhotosModel
 import app.waffled.feature.rewards.RewardsApi
 import app.waffled.feature.rewards.RewardsModel
+import app.waffled.android.session.HouseholdApi
+import app.waffled.android.session.IdentityStore
+import app.waffled.feature.goals.GoalsApi
+import app.waffled.feature.goals.GoalsModel
+import app.waffled.feature.lists.TodayListModel
+import app.waffled.feature.meals.MealsApi
+import app.waffled.feature.meals.MonthPlannerModel
+import app.waffled.feature.meals.WeekPlannerModel
+import app.waffled.feature.pantry.PantryApi
+import app.waffled.feature.pantry.PantryModel
+import app.waffled.feature.recipes.CookApi
+import app.waffled.feature.recipes.CookSessionStore
+import app.waffled.feature.recipes.CookTimerAlarm
+import app.waffled.feature.recipes.RecipesApi
+import app.waffled.feature.recipes.RecipesModel
+import app.waffled.feature.recipes.SharedPrefsCookStateStore
+import app.waffled.feature.today.DashboardModel
+import app.waffled.feature.today.TodayApi
+import app.waffled.feature.today.TodayLayoutModel
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 /**
  * Hand-rolled dependency container.
@@ -47,6 +71,8 @@ import kotlinx.coroutines.SupervisorJob
  * as constructor arguments.
  */
 class AppContainer(context: Context) {
+
+    private val appContext: Context = context.applicationContext
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences("waffled.prefs", Context.MODE_PRIVATE)
@@ -62,6 +88,12 @@ class AppContainer(context: Context) {
 
     /** Bumped by writers so REST-backed screens know to re-fetch. */
     val refreshBus = RefreshBus()
+
+    /** Long-lived glue (flow → model plumbing) that should live as long as the process. */
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** Per-device choices — the iOS `@AppStorage` keys, so the meaning matches. */
+    val devicePrefs: DevicePrefs = DevicePrefs(prefs)
 
     val serverAddress: MutableServerAddress = MutableServerAddress(prefs)
 
@@ -113,14 +145,20 @@ class AppContainer(context: Context) {
     val calendarModel: CalendarModel by lazy {
         CalendarModel(
             eventsByDay = syncManager.eventsByDay,
-            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-        )
+            scope = appScope,
+            syncedWeekStart = syncManager.householdWeekStart,
+        ).also { model ->
+            // The model takes these as inputs rather than reading SyncManager itself.
+            appScope.launch { syncManager.members.collect(model::setMembers) }
+            appScope.launch { syncManager.householdZone.collect(model::setZone) }
+            appScope.launch { identity.householdWeekStart.collect(model::setRestWeekStart) }
+        }
     }
 
     val countdownsModel: CountdownsModel by lazy { CountdownsModel.backedBy(calendarApi) }
 
     val listsModel: ListsIndexModel by lazy {
-        ListsIndexModel(api = ListsApi(httpClient, auth), refreshBus = refreshBus)
+        ListsIndexModel(api = listsApi, refreshBus = refreshBus)
     }
 
     val choresModel: ChoresModel by lazy {
@@ -146,6 +184,124 @@ class AppContainer(context: Context) {
             refreshBus = refreshBus,
         )
     }
+
+    // ---- session -----------------------------------------------------------------
+
+    val identity: IdentityStore by lazy {
+        IdentityStore(HouseholdApi(httpClient, auth), syncManager, appScope)
+    }
+
+    /**
+     * Bumped on every deliberate refresh (pull-down, return to foreground) — the iOS
+     * `SyncManager.refreshRev`. Self-loading Today cards key their load on it.
+     */
+    private val _surfaceRev = MutableStateFlow(0)
+    val surfaceRev: StateFlow<Int> = _surfaceRev.asStateFlow()
+
+    /** iOS `refreshRestSurfaces()`: wake the self-loading cards, then re-read identity. */
+    suspend fun refreshSurfaces() {
+        _surfaceRev.value += 1
+        identity.load()
+        runCatching { calendarApi.householdDisplay() }.getOrNull()?.let(calendarModel::setDisplay)
+    }
+
+    // ---- Today -------------------------------------------------------------------
+
+    private val todayApi: TodayApi by lazy { TodayApi(httpClient, auth) }
+    val dashboardModel: DashboardModel by lazy { DashboardModel.from(todayApi) }
+    val todayLayoutModel: TodayLayoutModel by lazy { TodayLayoutModel(todayApi) }
+
+    val listsApi: ListsApi by lazy { ListsApi(httpClient, auth) }
+
+    val todayListModel: TodayListModel by lazy {
+        TodayListModel(
+            api = listsApi,
+            pinStore = object : TodayListModel.PinStore {
+                override fun pinnedListId(): String? = devicePrefs.todayListPick.ifEmpty { null }
+                override fun setPinnedListId(id: String) {
+                    devicePrefs.todayListPick = id
+                }
+            },
+        )
+    }
+
+    // ---- Goals -------------------------------------------------------------------
+
+    val goalsApi: GoalsApi by lazy { GoalsApi(httpClient, auth) }
+    val goalsModel: GoalsModel by lazy { GoalsModel(goalsApi, refreshBus) }
+
+    // ---- Meals + Recipes ---------------------------------------------------------
+
+    val mealsApi: MealsApi by lazy { MealsApi(httpClient, auth) }
+
+    /** "Today" for the planners — the household's day, not the device's. */
+    private fun householdToday(): LocalDate = LocalDate.now(syncManager.householdZone.value)
+
+    val weekPlannerModel: WeekPlannerModel by lazy {
+        WeekPlannerModel(
+            api = mealsApi,
+            zone = syncManager.householdZone.value,
+            firstDay = { identity.householdWeekStart.value },
+            refreshBus = refreshBus,
+            today = ::householdToday,
+        )
+    }
+
+    val monthPlannerModel: MonthPlannerModel by lazy {
+        MonthPlannerModel(
+            api = mealsApi,
+            zone = syncManager.householdZone.value,
+            firstDay = { identity.householdWeekStart.value },
+            refreshBus = refreshBus,
+            today = ::householdToday,
+        )
+    }
+
+    val recipesApi: RecipesApi by lazy { RecipesApi(httpClient, auth) }
+
+    val recipesModel: RecipesModel by lazy {
+        RecipesModel(api = recipesApi, baseUrl = serverAddress.baseUrl(), refreshBus = refreshBus)
+    }
+
+    /** App-wide, like iOS: one cook session survives navigation and process death. */
+    val cookStore: CookSessionStore by lazy {
+        CookSessionStore(
+            api = CookApi.live(recipesApi),
+            alarm = CookTimerAlarm(appContext),
+            persistence = SharedPrefsCookStateStore(appContext),
+        )
+    }
+
+    // ---- Pantry ------------------------------------------------------------------
+
+    val pantryModel: PantryModel by lazy {
+        PantryModel(
+            api = PantryApi(httpClient, auth),
+            baseUrl = serverAddress.baseUrl(),
+            zone = syncManager.householdZone.value,
+            refreshBus = refreshBus,
+            clock = ::householdToday,
+        )
+    }
+}
+
+/** Per-device UI choices, under the same keys iOS keeps in `@AppStorage`. */
+class DevicePrefs(private val prefs: SharedPreferences) {
+
+    /** Today chores card: "" = me, "family" = the summary, else a person id. */
+    var todayChorePersonId: String
+        get() = prefs.getString("waffled.todayChorePersonId", null).orEmpty()
+        set(value) = prefs.edit().putString("waffled.todayChorePersonId", value).apply()
+
+    /** Today goal hero: the pinned goal id, "" = automatic. */
+    var todayGoalId: String
+        get() = prefs.getString("waffled.todayGoalId", null).orEmpty()
+        set(value) = prefs.edit().putString("waffled.todayGoalId", value).apply()
+
+    /** Today lists card: the pinned list id. */
+    var todayListPick: String
+        get() = prefs.getString("waffled.todayListPick", null).orEmpty()
+        set(value) = prefs.edit().putString("waffled.todayListPick", value).apply()
 }
 
 private class SharedPrefsKeyValueStore(

@@ -99,6 +99,17 @@ class FlexSlotTest {
     }
 
     @Test
+    fun theFlexTabKeepsOneIdWhateverFillsIt() {
+        // Selection and the tab's push stack are keyed by id; a module toggle must not
+        // strand them on a tab that no longer exists.
+        val meals = FlexSlot.tabs(gate(WaffledModule.Meals to true))[2]
+        val goals = FlexSlot.tabs(gate(WaffledModule.Meals to false, WaffledModule.Goals to true))[2]
+        assertEquals(TAB_FLEX, meals.id)
+        assertEquals(TAB_FLEX, goals.id)
+        assertEquals("Goals", goals.label)
+    }
+
+    @Test
     fun defaultsApplyBeforeModuleFlagsLoad() {
         // Meals defaults on, so a cold start shows Meals rather than an empty slot.
         assertEquals(WaffledModule.Meals, FlexSlot.resolve(ModuleGate(loaded = false)))

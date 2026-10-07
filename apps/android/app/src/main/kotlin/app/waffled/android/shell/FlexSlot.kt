@@ -36,12 +36,14 @@ object FlexSlot {
     /** The four fixed tabs, with the flex slot resolved (or a placeholder). */
     fun tabs(gate: ModuleGate): List<TabSlot> {
         val flex = resolve(gate)
+        // The flex tab's id is stable whatever fills it, so a module toggle never strands
+        // the selection or its push stack on a tab that no longer exists.
         return listOf(
-            TabSlot("today", "Today", Icons.Filled.Today),
-            TabSlot("calendar", "Calendar", Icons.Filled.CalendarMonth),
-            flex?.let { TabSlot(it.key, it.tabLabel, it.tabIcon) }
-                ?: TabSlot("flex", "More", Icons.Filled.ListAlt),
-            TabSlot("family", "Family", Icons.Filled.Group),
+            TabSlot(TAB_TODAY, "Today", Icons.Filled.Today),
+            TabSlot(TAB_CALENDAR, "Calendar", Icons.Filled.CalendarMonth),
+            flex?.let { TabSlot(TAB_FLEX, it.tabLabel, it.tabIcon) }
+                ?: TabSlot(TAB_FLEX, "More", Icons.Filled.ListAlt),
+            TabSlot(TAB_FAMILY, "Family", Icons.Filled.Group),
         )
     }
 }
