@@ -3,6 +3,7 @@ package app.waffled.feature.calendar
 import androidx.compose.runtime.Immutable
 import app.waffled.core.design.LockNoteText
 import app.waffled.core.model.WaffledDates
+import app.waffled.core.sync.EventBucketing
 import app.waffled.core.sync.SyncedEvent
 import java.time.Instant
 import java.time.LocalDate
@@ -69,6 +70,8 @@ data class EventRow(
     override val people: EventPeople,
     /** The resolved chip colour, or null for unassigned (the call site keeps its grey). */
     val colorHex: String?,
+    /** A multi-day all-day event's exclusive end day; null for anything on one day. */
+    val exclusiveEndDay: LocalDate? = null,
 ) : CalendarEntry {
     override val id: String get() = event.id
     val title: String get() = event.title
@@ -133,6 +136,7 @@ object Agenda {
             },
             people = people,
             colorHex = palette.hex(people),
+            exclusiveEndDay = EventBucketing.exclusiveEndDay(event, zone),
         )
     }
 
@@ -155,13 +159,16 @@ object Agenda {
         byDay.keys.filter { !it.isBefore(from) }.sorted().map { DayGroup(it, byDay.getValue(it)) }
 
     /**
-     * Has this event already ended? All-day events are "past" only once their DAY is behind
-     * today (in the household zone — an evening UTC timestamp is still today locally);
-     * timed events once their end, or their start if open-ended, is behind now. Mirrors the
-     * web's `isPastEvent`; drives the subtle fade on finished rows.
+     * Has this event already ended? All-day events are "past" only once their LAST covered
+     * day is behind today (in the household zone — an evening UTC timestamp is still today
+     * locally); timed events once their end, or their start if open-ended, is behind now.
+     * Mirrors the web's `isPastEvent`; drives the subtle fade on finished rows.
      */
     fun isPast(row: EventRow, zone: ZoneId, now: Instant = Instant.now()): Boolean {
-        if (row.allDay) return row.day.isBefore(WaffledDates.localDay(now, zone))
+        if (row.allDay) {
+            val today = WaffledDates.localDay(now, zone)
+            return row.exclusiveEndDay?.let { !it.isAfter(today) } ?: row.day.isBefore(today)
+        }
         val end = row.endsAt ?: row.startsAt ?: return false
         return end.isBefore(now)
     }

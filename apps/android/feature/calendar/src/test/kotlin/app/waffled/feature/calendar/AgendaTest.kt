@@ -119,4 +119,14 @@ class AgendaTest {
         assertFalse(Agenda.isPast(byDay.getValue(LocalDate.of(2026, 6, 16)).first(), denver, now))
         assertTrue(Agenda.isPast(byDay.getValue(LocalDate.of(2026, 6, 15)).first(), denver, now))
     }
+
+    @Test
+    fun aMultiDayTripFadesOnlyOnceItsLastDayIsBehindUs() {
+        // Its first-day row must not fade on the strength of its own bucket day.
+        val byDay = rows(event("trip", "2026-07-27T06:00:00Z", allDay = true, endsAt = "2026-08-03T06:00:00Z"))
+        val firstDay = byDay.getValue(LocalDate.of(2026, 7, 27)).first()
+        assertEquals(7, byDay.size)
+        assertFalse(Agenda.isPast(firstDay, denver, Instant.parse("2026-08-02T18:00:00Z")))
+        assertTrue(Agenda.isPast(firstDay, denver, Instant.parse("2026-08-03T18:00:00Z")))
+    }
 }

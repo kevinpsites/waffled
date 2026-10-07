@@ -107,13 +107,71 @@ object EventVisibility {
  */
 object EventBucketing {
 
+    /** Longest span an all-day event is spread across, so a corrupt end can't build a huge index. */
+    const val MAX_SPAN_DAYS: Int = 366
+
+    /**
+     * Each event under every household-local day it covers, each day ordered timed
+     * before all-day, then by start — the twin of iOS `Agenda.byDay`.
+     */
     fun byDay(events: List<SyncedEvent>, zone: ZoneId): Map<LocalDate, List<SyncedEvent>> {
         val withInstant = events.mapNotNull { e ->
             val at: Instant = WaffledDates.parseInstant(e.startsAt, zone) ?: return@mapNotNull null
-            at to e
+            Triple(at, e, dayKeys(e, zone))
         }
-        return withInstant
-            .sortedBy { it.first }
-            .groupBy({ WaffledDates.localDay(it.first, zone) }, { it.second })
+        val grouped = linkedMapOf<LocalDate, MutableList<SyncedEvent>>()
+        withInstant
+            .sortedWith(compareBy<Triple<Instant, SyncedEvent, List<LocalDate>>> { it.second.allDay }.thenBy { it.first })
+            .forEach { (_, e, days) -> days.forEach { grouped.getOrPut(it) { mutableListOf() }.add(e) } }
+        return grouped
+    }
+
+    /** The household-local day an event starts on; null when its start is unreadable. */
+    fun startDay(event: SyncedEvent, zone: ZoneId): LocalDate? =
+        WaffledDates.parseInstant(event.startsAt, zone)?.let { WaffledDates.localDay(it, zone) }
+
+    /**
+     * The exclusive end day of an all-day event whose end falls after its start day; null
+     * otherwise. The all-day end is exclusive (Google's shape, and what the editor writes).
+     */
+    fun exclusiveEndDay(event: SyncedEvent, zone: ZoneId): LocalDate? {
+        if (!event.allDay) return null
+        val start = startDay(event, zone) ?: return null
+        val end = WaffledDates.parseInstant(event.endsAt, zone)?.let { WaffledDates.localDay(it, zone) } ?: return null
+        return end.takeIf { it.isAfter(start) }
+    }
+
+    /** Every day an event covers: all-day runs up to its exclusive end; timed stays on its start day. */
+    fun dayKeys(event: SyncedEvent, zone: ZoneId): List<LocalDate> {
+        val start = startDay(event, zone) ?: return emptyList()
+        val end = exclusiveEndDay(event, zone) ?: return listOf(start)
+        return generateSequence(start) { it.plusDays(1) }
+            .takeWhile { it.isBefore(end) }
+            .take(MAX_SPAN_DAYS)
+            .toList()
+    }
+
+    /** Answered by comparing days, without building the span. */
+    fun covers(event: SyncedEvent, day: LocalDate, zone: ZoneId): Boolean {
+        val start = startDay(event, zone) ?: return false
+        val end = exclusiveEndDay(event, zone) ?: return day == start
+        return !day.isBefore(start) && day.isBefore(end)
+    }
+
+    /**
+     * Has this event finished? All-day: once its last covered day is behind today in the
+     * household zone. Timed: once its end — or its start, if open-ended — is behind now.
+     */
+    fun isPast(event: SyncedEvent, zone: ZoneId, now: Instant = Instant.now()): Boolean {
+        if (event.allDay) {
+            val start = startDay(event, zone) ?: return false
+            val today = WaffledDates.localDay(now, zone)
+            val end = exclusiveEndDay(event, zone) ?: return start.isBefore(today)
+            return !end.isAfter(today)
+        }
+        val end = WaffledDates.parseInstant(event.endsAt, zone)
+            ?: WaffledDates.parseInstant(event.startsAt, zone)
+            ?: return false
+        return end.isBefore(now)
     }
 }
