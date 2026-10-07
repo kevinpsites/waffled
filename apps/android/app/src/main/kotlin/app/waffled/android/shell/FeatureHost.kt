@@ -358,7 +358,7 @@ fun RouteHost(
             members = members,
             modifier = modifier,
             refreshKey = surfaceRev,
-            onBack = actions.pop,
+            onBack = if (showBack) actions.pop else null,
             onRefreshModules = { container.identity.load() },
             onChanged = container::bumpCountdowns,
         )

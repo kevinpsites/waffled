@@ -229,7 +229,7 @@ private fun KioskListsPage(container: AppContainer, actions: ShellActions) {
             val model = remember(summary.id) { ListDetailModel(summary, container.listsApi, container.refreshBus) }
             ListDetailScreen(
                 model = model,
-                onBack = {},
+                onBack = null,
                 onShare = { subject, text -> shareText(context, subject, text) },
                 onCopy = { copyText(context, it) },
             )
