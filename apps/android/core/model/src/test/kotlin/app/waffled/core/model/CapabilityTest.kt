@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
  * anything — it *hides* an action the user is actually allowed to take, which reads as a
  * broken app rather than a permission error.
  *
- * Transcribed from `permissions.ts:10-11`, which declares **six**.
+ * Transcribed from `permissions.ts` `CAPABILITIES`, which declares **seven**.
  */
 class CapabilityTest {
 
@@ -26,6 +26,7 @@ class CapabilityTest {
                 "reward.approve",
                 "reward.grant",
                 "goal.manage",
+                "planning.manage",
             ),
             Capability.all,
         )

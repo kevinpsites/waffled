@@ -19,6 +19,8 @@ enum class WaffledModule(
     Pantry("pantry", defaultOn = false),
     FamilyNight("familyNight", defaultOn = false),
     WaffledBites("waffledBites", defaultOn = false),
+    Rhythms("rhythms", defaultOn = false),
+    WeeklyPlanning("weeklyPlanning", defaultOn = false),
     Quotes("quotes", defaultOn = false, isAvailable = false);
 
     companion object {
@@ -29,7 +31,7 @@ enum class WaffledModule(
 /**
  * The capabilities a non-admin person can be granted.
  *
- * ⚠️ KEEP IN SYNC with `apps/api/src/platform/permissions.ts` (`CAPABILITIES`, line 11).
+ * ⚠️ KEEP IN SYNC with `apps/api/src/platform/permissions.ts` (`CAPABILITIES`).
  * The server is the authority and enforces independently; this is a UX gate. Omitting one
  * grants nothing — it *hides* an action the user is genuinely allowed to take, which
  * reads to them as a broken app rather than a permission error. Locked by
@@ -50,6 +52,12 @@ object Capability {
     /** Create and edit household goals. */
     const val GOAL_MANAGE = "goal.manage"
 
+    /**
+     * Household-wide weekly-planning choices (which lists the session asks about). It
+     * does NOT gate running a session — anyone in the household can.
+     */
+    const val PLANNING_MANAGE = "planning.manage"
+
     val all = listOf(
         CHORE_MANAGE,
         CHORE_APPROVE,
@@ -57,6 +65,7 @@ object Capability {
         REWARD_APPROVE,
         REWARD_GRANT,
         GOAL_MANAGE,
+        PLANNING_MANAGE,
     )
 }
 
