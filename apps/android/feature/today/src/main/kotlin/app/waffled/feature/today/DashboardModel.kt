@@ -6,9 +6,13 @@ import app.waffled.core.network.RefreshDomain
 import app.waffled.core.network.RestDomain
 import app.waffled.core.network.RestFetch
 import app.waffled.core.network.RestState
+import app.waffled.core.model.Person
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Tonight's dinner, derived from the planned week. Handles a recipe, a Meal Builder
@@ -139,6 +143,9 @@ class DashboardModel(
      * know nothing about weather, construct the model unchanged.
      */
     private val fetchWeather: suspend () -> TodayApi.Weather? = { null },
+    private val fetchChoreInstances: suspend (String) -> List<TodayApi.ChoreInstance> = { emptyList() },
+    /** (instance id, true = complete / false = uncomplete). */
+    private val setChoreComplete: suspend (String, Boolean) -> Unit = { _, _ -> },
 ) {
 
     private val tonightD = RestDomain<List<TonightMeal>>()
@@ -188,6 +195,22 @@ class DashboardModel(
     private var loadGeneration = 0
     private var goalsGeneration = 0
 
+    /**
+     * Today's individual chores, behind the card's one-person view. The per-person totals
+     * above stay the server's (stars are approval-aware), never summed from these.
+     */
+    private val choreInstancesD = RestDomain<List<TodayApi.ChoreInstance>>()
+    val choreInstancesSnapshot: StateFlow<RestDomain.Snapshot<List<TodayApi.ChoreInstance>>> =
+        choreInstancesD.state
+    val choreInstances: List<TodayApi.ChoreInstance> get() = choreInstancesD.value.orEmpty()
+    val choreInstancesState: RestState get() = choreInstancesD.restState
+
+    /** Everyone the chores call knows, including people with nothing due — the picker. */
+    private val _choreRoster = MutableStateFlow<List<TodayApi.PersonChores>>(emptyList())
+    val choreRoster: StateFlow<List<TodayApi.PersonChores>> = _choreRoster.asStateFlow()
+
+    private val togglingChoreIds = mutableSetOf<String>()
+
     /** Aggregate chore progress across the family (for the compact summary card). */
     val choreDone: Int get() = chores.sumOf { it.done }
     val choreTotal: Int get() = chores.sumOf { it.total }
@@ -201,12 +224,18 @@ class DashboardModel(
     suspend fun load(todayKey: String) = coroutineScope {
         val generation = ++loadGeneration
         tonightD.beginLoading(); choresD.beginLoading(); groceryD.beginLoading()
+        choreInstancesD.beginLoading()
         // Each fetch is wrapped inside its own async: a bare throw would cancel siblings.
         val meals = async { RestFetch.result { fetchMeals(todayKey) } }
         val people = async { RestFetch.result { fetchChores() } }
         val grocery = async { RestFetch.result { fetchGrocery() } }
+        val instances = async { RestFetch.result { fetchChoreInstances(todayKey) } }
         val m = meals.await(); val c = people.await(); val g = grocery.await()
+        val i = instances.await()
         if (generation != loadGeneration) return@coroutineScope
+
+        c.getOrNull()?.let { _choreRoster.value = it }
+        choreInstancesD.apply(i)
 
         tonightD.apply(
             m.map { entries ->
@@ -219,6 +248,35 @@ class DashboardModel(
         // as a bug, not as "nothing assigned".
         choresD.apply(c.map { all -> all.filter { it.total > 0 } })
         groceryD.apply(g.map { items -> items.count { !it.checked } })
+    }
+
+    /**
+     * Tick or untick in place, optimistically; a failed write puts the row back. The caller
+     * bumps the chores bus on success so the totals and approvals reload. A second tap
+     * mid-write would race the first one's rollback, so it is ignored.
+     */
+    suspend fun toggleChore(inst: TodayApi.ChoreInstance): Boolean {
+        if (inst.id in togglingChoreIds) return false
+        val current = choreInstances.firstOrNull { it.id == inst.id } ?: return false
+        togglingChoreIds += inst.id
+        try {
+            val previous = current.status
+            setInstanceStatus(inst.id, TodayChoreRules.toggledStatus(current))
+            val sent = try {
+                RestFetch.result { setChoreComplete(inst.id, previous == TodayApi.STATUS_PENDING) }
+            } catch (cancelled: CancellationException) {
+                setInstanceStatus(inst.id, previous)
+                throw cancelled
+            }
+            if (sent.isFailure) setInstanceStatus(inst.id, previous)
+            return sent.isSuccess
+        } finally {
+            togglingChoreIds -= inst.id
+        }
+    }
+
+    private fun setInstanceStatus(id: String, status: String) {
+        choreInstancesD.mutate { rows -> rows?.map { if (it.id == id) it.copy(status = status) else it } }
     }
 
     /**
@@ -254,7 +312,48 @@ class DashboardModel(
             fetchRecap = { api.goalRecap() },
             fetchSuggestions = { api.goalSuggestions() },
             fetchWeather = { api.weather() },
+            fetchChoreInstances = { api.choreInstances(it) },
+            setChoreComplete = { id, complete ->
+                if (complete) api.completeChore(id) else api.uncompleteChore(id)
+            },
         )
+
+        /** The stored pick that means "the whole family" rather than one person. */
+        const val FAMILY_CHORES_KEY = "family"
+
+        /**
+         * Everyone the chores card can show: the synced members, then anyone the chores
+         * call knows that sync hasn't delivered yet, so the picker works before first sync.
+         */
+        fun chorePeople(synced: List<Person>, roster: List<TodayApi.PersonChores>): List<ChorePerson> {
+            val fromSync = synced.map { ChorePerson(it.id, it.name, it.avatarEmoji, it.colorHex) }
+            val known = fromSync.mapTo(HashSet()) { it.id }
+            return fromSync + roster.filter { it.id !in known }
+                .map { ChorePerson(it.id, it.name, it.avatarEmoji, it.colorHex) }
+        }
+
+        /**
+         * Whose chores the card shows; null is the family summary. An empty [stored] means
+         * "me", and a pick who is no longer a member falls back the same way.
+         */
+        fun chorePersonId(
+            stored: String,
+            currentPersonId: String?,
+            fallbackId: String?,
+            memberIds: Set<String>,
+        ): String? = when {
+            stored == FAMILY_CHORES_KEY -> null
+            stored in memberIds -> stored
+            currentPersonId != null && currentPersonId in memberIds -> currentPersonId
+            fallbackId != null && fallbackId in memberIds -> fallbackId
+            else -> null
+        }
+
+        /** One person's chores. Up-for-grabs rows stay on the Chores screen, which claims them. */
+        fun chores(personId: String, instances: List<TodayApi.ChoreInstance>): List<TodayApi.ChoreInstance> =
+            TodayChoreRules.sort(instances.filter { it.personId == personId })
+
+        fun needsPhotoToFinish(inst: TodayApi.ChoreInstance): Boolean = TodayChoreRules.needsPhotoToFinish(inst)
 
         /**
          * Which [RefreshDomain] bumps should re-run which load. A chore ticked or a

@@ -129,6 +129,21 @@ class TodayCardsTest {
         assertEquals(listOf(TodayCards.CardRow.Single("chores")), rows)
     }
 
+    /** Chores only pairs up in its family summary; one person's list needs the full width. */
+    @Test
+    fun aOnePersonChoresCardTakesTheFullWidth() {
+        val rows = TodayCards.rows(
+            order = listOf("chores", "grocery"),
+            hidden = emptySet(),
+            modules = allOn,
+            wideChores = true,
+        )
+        assertEquals(
+            listOf(TodayCards.CardRow.Single("chores"), TodayCards.CardRow.Single("grocery")),
+            rows,
+        )
+    }
+
     /** Gating (not just hiding) also breaks a pair. */
     @Test
     fun aModuleGateBreaksAPair() {

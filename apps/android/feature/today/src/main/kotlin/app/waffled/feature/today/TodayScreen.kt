@@ -47,7 +47,9 @@ import app.waffled.core.design.FamilyColor
 import app.waffled.core.design.WF
 import app.waffled.core.model.Person
 import app.waffled.core.model.WaffledModule
+import androidx.compose.runtime.saveable.rememberSaveable
 import app.waffled.core.network.RefreshBus
+import app.waffled.core.network.RefreshDomain
 import app.waffled.core.network.RestNotice
 import app.waffled.core.network.RestState
 import app.waffled.core.sync.ModuleGate
@@ -106,6 +108,12 @@ fun TodayScreen(
     onCookRecipe: (TonightRecipe) -> Unit = {},
     onOpenMeal: (TonightMeal) -> Unit = {},
     onCookMeal: (TonightMeal) -> Unit = {},
+    /**
+     * Whose chores the chores card shows, persisted per device by the host: "" = me,
+     * [DashboardModel.FAMILY_CHORES_KEY] = the family summary, else a person id.
+     */
+    chorePick: String = "",
+    onChorePick: (String) -> Unit = {},
 ) {
     val tonight by dash.tonightSnapshot.collectAsStateWithLifecycle()
     val chores by dash.choresSnapshot.collectAsStateWithLifecycle()
@@ -114,6 +122,10 @@ fun TodayScreen(
     val recap by dash.recapSnapshot.collectAsStateWithLifecycle()
     val suggestions by dash.suggestionsSnapshot.collectAsStateWithLifecycle()
     val weather by dash.weatherSnapshot.collectAsStateWithLifecycle()
+    val choreInstances by dash.choreInstancesSnapshot.collectAsStateWithLifecycle()
+    val choreRoster by dash.choreRoster.collectAsStateWithLifecycle()
+    // A host that does not persist the pick still gets one that survives rotation.
+    var pick by rememberSaveable(chorePick) { mutableStateOf(chorePick) }
     val layoutState by layout.state.collectAsStateWithLifecycle()
 
     // "Today" in the household's zone, re-derived only when the zone changes or the day
@@ -166,7 +178,24 @@ fun TodayScreen(
 
     var showCustomize by remember { mutableStateOf(false) }
 
-    val rows = remember(layoutState, modules, cardContent.keys) {
+    val greetingMember = remember(members, currentPersonId) {
+        members.firstOrNull { it.id == currentPersonId }
+            ?: members.firstOrNull { it.memberType == "adult" }
+            ?: members.firstOrNull()
+    }
+
+    val chorePeople = remember(members, choreRoster) { DashboardModel.chorePeople(members, choreRoster) }
+    val chorePerson = remember(pick, chorePeople, currentPersonId, greetingMember) {
+        val id = DashboardModel.chorePersonId(
+            stored = pick,
+            currentPersonId = currentPersonId,
+            fallbackId = greetingMember?.id,
+            memberIds = chorePeople.mapTo(HashSet()) { it.id },
+        )
+        chorePeople.firstOrNull { it.id == id }
+    }
+
+    val rows = remember(layoutState, modules, cardContent.keys, chorePerson != null) {
         TodayCards.rows(
             order = layoutState.order,
             hidden = layoutState.hidden,
@@ -175,14 +204,29 @@ fun TodayScreen(
             available = setOf(
                 TodayCards.AGENDA, TodayCards.TONIGHT, TodayCards.CHORES, TodayCards.GROCERY,
             ) + cardContent.keys,
+            wideChores = chorePerson != null,
         )
     }
 
-    val greetingMember = remember(members, currentPersonId) {
-        members.firstOrNull { it.id == currentPersonId }
-            ?: members.firstOrNull { it.memberType == "adult" }
-            ?: members.firstOrNull()
-    }
+    val choreCard = ChoreCardData(
+        people = chorePeople,
+        person = chorePerson,
+        currentPersonId = currentPersonId,
+        rows = remember(chorePerson, choreInstances.value) {
+            chorePerson?.let { DashboardModel.chores(it.id, choreInstances.value.orEmpty()) }.orEmpty()
+        },
+        instancesState = choreInstances.rest,
+        onPick = { picked -> pick = picked; onChorePick(picked) },
+        onTick = { chore ->
+            if (DashboardModel.needsPhotoToFinish(chore)) {
+                onOpenChores()
+            } else {
+                scope.launch {
+                    if (dash.toggleChore(chore)) refreshBus?.bump(RefreshDomain.Chores)
+                }
+            }
+        },
+    )
 
     val todaysEvents = TodayFormat.eventsOn(eventsByDay, today)
 
@@ -268,6 +312,7 @@ fun TodayScreen(
                         groceryState = grocery.rest,
                         goalsState = goals.rest,
                         events = todaysEvents,
+                        choreCard = choreCard,
                     )
                     when (row) {
                         is TodayCards.CardRow.Single ->
@@ -320,6 +365,19 @@ private data class CardData(
     val groceryState: RestState,
     val goalsState: RestState,
     val events: List<SyncedEvent>,
+    val choreCard: ChoreCardData,
+)
+
+/** The chores card's person picker and one-person list. */
+private class ChoreCardData(
+    val people: List<ChorePerson>,
+    /** Null = the family summary. */
+    val person: ChorePerson?,
+    val currentPersonId: String?,
+    val rows: List<TodayApi.ChoreInstance>,
+    val instancesState: RestState,
+    val onPick: (String) -> Unit,
+    val onTick: (TodayApi.ChoreInstance) -> Unit,
 )
 
 /** Every tap a card can make. Bundled so the dispatcher isn't a fifteen-argument function. */
@@ -373,16 +431,33 @@ private fun CardView(
         // read drives the whole card — reading them off the model would recompose only by
         // luck of a sibling parameter changing.
         TodayCards.CHORES -> Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            RestStateNotice(cards.choresState, retry = actions.onRetryDashboard, compact = true)
-            ChoresCard(
-                people = cards.chores,
-                done = cards.chores.sumOf { it.done },
-                total = cards.chores.sumOf { it.total },
-                stars = cards.chores.sumOf { it.stars },
-                state = cards.choresState,
-                onOpen = actions.onOpenChores,
-                modifier = if (stretch) Modifier.weight(1f) else Modifier,
-            )
+            val c = cards.choreCard
+            val menu: @Composable () -> Unit = {
+                ChorePersonMenu(c.people, c.person, c.currentPersonId, onPick = c.onPick)
+            }
+            if (c.person != null) {
+                PersonChoresCard(
+                    rows = c.rows,
+                    summary = cards.chores.firstOrNull { it.id == c.person.id },
+                    state = RestState.combined(listOf(cards.choresState, c.instancesState)),
+                    menu = menu,
+                    onOpenAll = actions.onOpenChores,
+                    onTick = c.onTick,
+                    onRetry = actions.onRetryDashboard,
+                )
+            } else {
+                RestStateNotice(cards.choresState, retry = actions.onRetryDashboard, compact = true)
+                ChoresCard(
+                    people = cards.chores,
+                    done = cards.chores.sumOf { it.done },
+                    total = cards.chores.sumOf { it.total },
+                    stars = cards.chores.sumOf { it.stars },
+                    state = cards.choresState,
+                    onOpen = actions.onOpenChores,
+                    modifier = if (stretch) Modifier.weight(1f) else Modifier,
+                    header = menu,
+                )
+            }
         }
 
         TodayCards.GROCERY -> Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {

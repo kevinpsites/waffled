@@ -87,16 +87,19 @@ object TodayCards {
         hidden: Set<String>,
         modules: ModuleGate,
         available: Set<String> = labels.keys,
+        /** The chores card is showing one person's list, which needs the full width. */
+        wideChores: Boolean = false,
     ): List<CardRow> {
         val visible = order.filter {
             it !in hidden && moduleAllows(it, modules) && it in available
         }
+        val small = if (wideChores) smallCards - CHORES else smallCards
         val out = mutableListOf<CardRow>()
         var i = 0
         while (i < visible.size) {
             val key = visible[i]
             val next = visible.getOrNull(i + 1)
-            if (key in smallCards && next != null && next in smallCards) {
+            if (key in small && next != null && next in small) {
                 out += CardRow.Pair(key, next)
                 i += 2
             } else {

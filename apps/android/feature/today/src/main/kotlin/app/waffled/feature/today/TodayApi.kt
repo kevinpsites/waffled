@@ -11,6 +11,8 @@ import io.ktor.http.contentType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
+import androidx.compose.runtime.Immutable
 
 /**
  * The Today dashboard's slice of the API — the Kotlin port of the Today-dashboard reads
@@ -101,6 +103,33 @@ class TodayApi(
         val done: Int = 0,
         val stars: Int = 0,
     )
+
+    /**
+     * One of today's chores, as the one-person chores card renders it. A lean copy of the
+     * chores feature's instance (Today does not depend on that module); every field past
+     * the identity trio defaults so an older self-hosted server still decodes.
+     */
+    @Immutable
+    @Serializable
+    data class ChoreInstance(
+        val id: String,
+        val choreId: String,
+        val choreTitle: String,
+        val emoji: String? = null,
+        val personId: String? = null,
+        /** `pending` | `done` | `awaiting`. */
+        val status: String = STATUS_PENDING,
+        val rewardAmount: Int = 0,
+        val rewardCurrency: String? = null,
+        /** `HH:mm`, 24h; null = no set time. */
+        val dueTime: String? = null,
+        val requiresApproval: Boolean = false,
+        val requiresPhoto: Boolean = false,
+    ) {
+        val isDone: Boolean get() = status == STATUS_DONE
+        val isAwaiting: Boolean get() = status == STATUS_AWAITING
+        val isPending: Boolean get() = status == STATUS_PENDING
+    }
 
     /** Only the two fields the Today count needs — the board itself is the lists feature. */
     @Serializable
@@ -202,6 +231,7 @@ class TodayApi(
 
     @Serializable private data class WeekEnvelope(val entries: List<WeekEntry> = emptyList())
     @Serializable private data class ChoresEnvelope(val people: List<PersonChores> = emptyList())
+    @Serializable private data class InstancesEnvelope(val instances: List<ChoreInstance> = emptyList())
     @Serializable private data class GroceryEnvelope(val items: List<GroceryItem> = emptyList())
     @Serializable private data class GoalsEnvelope(val goals: List<Goal> = emptyList())
     @Serializable private data class GoalListsEnvelope(val lists: List<GoalList> = emptyList())
@@ -217,6 +247,23 @@ class TodayApi(
     /** Per-person chore progress for today. */
     suspend fun choresToday(): List<PersonChores> =
         send<ChoresEnvelope>(HttpMethod.Get, "api/chores/today").people
+
+    /** Today's chore instances (`yyyy-MM-dd`), behind the one-person chores card. */
+    suspend fun choreInstances(date: String): List<ChoreInstance> =
+        send<InstancesEnvelope>(HttpMethod.Get, "api/chore-instances/today?date=$date").instances
+
+    /**
+     * Tick a chore off. Never call this for a photo-required chore — the server answers
+     * 422 without a proof; the card sends those to the Chores board instead.
+     */
+    suspend fun completeChore(id: String) {
+        sendUnit(HttpMethod.Post, "api/chore-instances/$id/complete") { emptyJsonBody() }
+    }
+
+    /** Un-tick a chore (also how an awaiting one is taken back). */
+    suspend fun uncompleteChore(id: String) {
+        sendUnit(HttpMethod.Post, "api/chore-instances/$id/uncomplete") { emptyJsonBody() }
+    }
 
     /** The grocery board's items — Today only counts the unchecked ones. */
     suspend fun groceryItems(): List<GroceryItem> =
@@ -267,6 +314,17 @@ class TodayApi(
     }
 
     // ---- request plumbing -------------------------------------------------------
+
+    private fun io.ktor.client.request.HttpRequestBuilder.emptyJsonBody() {
+        contentType(ContentType.Application.Json)
+        setBody(JsonObject(emptyMap()))
+    }
+
+    companion object {
+        const val STATUS_PENDING = "pending"
+        const val STATUS_DONE = "done"
+        const val STATUS_AWAITING = "awaiting"
+    }
 
     private suspend inline fun <reified T> send(
         method: HttpMethod,

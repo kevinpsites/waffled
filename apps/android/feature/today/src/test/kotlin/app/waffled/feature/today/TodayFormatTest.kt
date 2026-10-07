@@ -144,6 +144,16 @@ class TodayFormatTest {
         assertEquals(0, TodayFormat.eventsOn(byDay, today.plusDays(1)).size)
     }
 
+    // ---- the chores card's title ---------------------------------------------------
+
+    @Test
+    fun theChoresTitleNamesWhoseListItIs() {
+        val june = ChorePerson("p1", "June Bug", null, null)
+        assertEquals("Family chores", TodayFormat.choresTitle(null, currentPersonId = "p1"))
+        assertEquals("My chores", TodayFormat.choresTitle(june, currentPersonId = "p1"))
+        assertEquals("June’s chores", TodayFormat.choresTitle(june, currentPersonId = "p2"))
+    }
+
     // ---- empty copy only on an authoritative answer ------------------------------
 
     @Test

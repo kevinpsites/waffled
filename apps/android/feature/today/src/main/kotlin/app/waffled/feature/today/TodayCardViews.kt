@@ -19,9 +19,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CheckCircleOutline
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -376,14 +388,18 @@ fun ChoresCard(
     state: RestState,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
+    /** The title row — the person picker when the host can offer one. */
+    header: @Composable () -> Unit = {
+        Text(
+            text = "Family chores",
+            style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Bold),
+            color = WF.colors.ink2,
+        )
+    },
 ) {
     WaffledCard(modifier = modifier.clickable(onClick = onOpen), padding = 15.dp) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = "Family chores",
-                style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Bold),
-                color = WF.colors.ink2,
-            )
+            header()
             Row(horizontalArrangement = Arrangement.spacedBy((-8).dp)) {
                 if (people.isEmpty()) {
                     AvatarFromHex(colorHex = null, emoji = "🙂", size = 30.dp)
@@ -419,6 +435,193 @@ fun ChoresCard(
                     color = WF.colors.ink3,
                 )
             }
+        }
+    }
+}
+
+/**
+ * Whose chores the card shows — Family or one person. Styled as the card's own title
+ * rather than a `WaffledMenuPill`: it IS the title, and the half-width family card has no
+ * room for a 15sp pill beside it (the iOS `choreMenuLabel` makes the same call).
+ */
+@Composable
+fun ChorePersonMenu(
+    people: List<ChorePerson>,
+    selected: ChorePerson?,
+    currentPersonId: String?,
+    onPick: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var open by remember { mutableStateOf(false) }
+    Box(modifier) {
+        Row(
+            modifier = Modifier.clickable { open = true }.padding(vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (selected != null) {
+                AvatarFromHex(colorHex = selected.colorHex, emoji = selected.emoji ?: "🙂", size = 22.dp)
+            }
+            Text(
+                text = TodayFormat.choresTitle(selected, currentPersonId),
+                style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Bold),
+                color = WF.colors.ink2,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Icon(
+                imageVector = Icons.Filled.KeyboardArrowDown,
+                contentDescription = "Whose chores",
+                tint = WF.colors.ink3,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text("Family") },
+                leadingIcon = { Icon(Icons.Filled.Groups, contentDescription = null) },
+                onClick = { open = false; onPick(DashboardModel.FAMILY_CHORES_KEY) },
+            )
+            people.forEach { p ->
+                DropdownMenuItem(
+                    text = { Text("${p.emoji ?: "🙂"} ${p.name}") },
+                    onClick = { open = false; onPick(p.id) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * One person's chores, tickable in place. The tallies stay the server's (stars are
+ * approval-aware); one combined notice covers both fetches behind the card.
+ */
+@Composable
+fun PersonChoresCard(
+    rows: List<TodayApi.ChoreInstance>,
+    summary: TodayApi.PersonChores?,
+    state: RestState,
+    menu: @Composable () -> Unit,
+    onOpenAll: () -> Unit,
+    onTick: (TodayApi.ChoreInstance) -> Unit,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    WaffledCard(modifier = modifier, padding = 15.dp) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { menu() }
+                Row(
+                    modifier = Modifier.clickable(onClick = onOpenAll).padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "All chores",
+                        style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold),
+                        color = WF.colors.ink3,
+                    )
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = WF.colors.ink3,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+            }
+            if (summary != null && summary.total > 0) {
+                ProgressBar(value = summary.done.toDouble() / summary.total)
+                Row {
+                    Text(
+                        text = "${summary.done} of ${summary.total} · ",
+                        style = TextStyle(fontSize = 12.5.sp),
+                        color = WF.colors.ink3,
+                    )
+                    Text(
+                        text = "★ ${summary.stars}",
+                        style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Bold),
+                        color = WF.colors.gold,
+                    )
+                }
+            }
+            RestStateNotice(state, retry = onRetry, compact = true)
+            if (rows.isEmpty()) {
+                Text(
+                    text = TodayFormat.unavailableCopy(state, empty = "Nothing on the list today"),
+                    modifier = Modifier.padding(top = 2.dp),
+                    style = TextStyle(fontSize = 12.5.sp),
+                    color = WF.colors.ink3,
+                )
+            } else {
+                Column {
+                    rows.forEach { row -> ChoreCheckRow(row, onTap = { onTick(row) }) }
+                }
+            }
+        }
+    }
+}
+
+/** A tickable chore line: tick, title, reward. */
+@Composable
+private fun ChoreCheckRow(chore: TodayApi.ChoreInstance, onTap: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onTap)
+            .padding(vertical = 9.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ChoreTick(chore)
+        Text(
+            text = (chore.emoji?.let { "$it " } ?: "") + chore.choreTitle,
+            modifier = Modifier.weight(1f),
+            style = TextStyle(
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                textDecoration = if (chore.isDone) TextDecoration.LineThrough else null,
+            ),
+            color = if (chore.isDone) WF.colors.ink3 else WF.colors.ink,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (chore.rewardAmount > 0) {
+            // Today has no currency list, so every reward reads in the default star.
+            Text(
+                text = "★ ${chore.rewardAmount}",
+                style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold),
+                color = WF.colors.ink3,
+            )
+        }
+    }
+}
+
+/**
+ * The check circle: done, waiting on a parent's OK, needs a photo, or open. A copy of the
+ * chores feature's private tick (that module is not a dependency) — see `TodayChores.kt`.
+ */
+@Composable
+private fun ChoreTick(chore: TodayApi.ChoreInstance) {
+    Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) {
+        when {
+            chore.isAwaiting -> Text("⏳", style = TextStyle(fontSize = 16.sp))
+            chore.isDone -> Icon(
+                imageVector = Icons.Filled.CheckCircle,
+                contentDescription = "Done",
+                tint = WF.colors.success,
+                modifier = Modifier.size(22.dp),
+            )
+            TodayChoreRules.needsPhotoToFinish(chore) -> Icon(
+                imageVector = Icons.Filled.PhotoCamera,
+                contentDescription = "Needs a photo",
+                tint = WF.colors.primary,
+                modifier = Modifier.size(22.dp),
+            )
+            else -> Icon(
+                imageVector = Icons.Filled.CheckCircleOutline,
+                contentDescription = "Mark done",
+                tint = WF.colors.ink3,
+                modifier = Modifier.size(22.dp),
+            )
         }
     }
 }

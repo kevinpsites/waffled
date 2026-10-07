@@ -80,6 +80,13 @@ object TodayFormat {
         day: LocalDate,
     ): List<SyncedEvent> = byDay[day].orEmpty()
 
+    /** The chores card's title: the family summary, "My chores", or "June’s chores". */
+    fun choresTitle(person: ChorePerson?, currentPersonId: String?): String = when {
+        person == null -> "Family chores"
+        person.id == currentPersonId -> "My chores"
+        else -> "${person.name.trim().split(" ").first().ifEmpty { person.name }}’s chores"
+    }
+
     /**
      * A card's copy when it has nothing to show. Domain empty copy ("No chores today") is
      * only true on an authoritative answer; a failure must never read as empty.
