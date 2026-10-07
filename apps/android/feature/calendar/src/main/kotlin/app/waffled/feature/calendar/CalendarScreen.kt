@@ -96,6 +96,14 @@ fun CalendarScreen(
     modifier: Modifier = Modifier,
     /** The Meals module flag: the Week cards close on tonight's dinner only when it is on. */
     mealsEnabled: Boolean = true,
+    /**
+     * An event to open on arrival — a tap on Today's event or countdown (iOS
+     * `CalendarView(openEventId:)`). Retried as synced rows land, since the event may not
+     * have arrived yet; [onOpenEventConsumed] fires once its detail is showing, so the host
+     * clears the id and a later return to the tab doesn't reopen it.
+     */
+    openEventId: String? = null,
+    onOpenEventConsumed: () -> Unit = {},
 ) {
     val rows by model.rowsByDay.collectAsStateWithLifecycle()
     val members by model.members.collectAsStateWithLifecycle()
@@ -134,6 +142,12 @@ fun CalendarScreen(
         val today = model.today()
         monthAnchor = today
         selectedDay = today
+    }
+
+    LaunchedEffect(openEventId, rows) {
+        val row = openEventId?.let { model.rowFor(it) } ?: return@LaunchedEffect
+        detailRow = row
+        onOpenEventConsumed()
     }
 
     // The root, not `mode`: remembering a tapped-open Day would reopen the tab on it.

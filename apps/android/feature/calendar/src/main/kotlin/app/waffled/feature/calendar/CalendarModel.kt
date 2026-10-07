@@ -136,6 +136,17 @@ class CalendarModel(
     /** Today, in the household's zone — the agenda's cutoff and the grid's highlight. */
     fun today(): LocalDate = LocalDate.now(_zone.value)
 
+    /**
+     * The row an id opened from outside the calendar (a Today tap) should show: its first
+     * occurrence on or after [from], else its latest one. Null when it isn't synced yet.
+     */
+    fun rowFor(eventId: String, from: LocalDate = today()): EventRow? {
+        val occurrences = rowsByDay.value.entries
+            .sortedBy { it.key }
+            .mapNotNull { (_, day) -> day.firstOrNull { it.id == eventId } }
+        return occurrences.firstOrNull { !it.day.isBefore(from) } ?: occurrences.lastOrNull()
+    }
+
     /** Upcoming days, ascending, from [from]. */
     fun upcoming(from: LocalDate): List<DayGroup> = Agenda.upcoming(rowsByDay.value, from)
 
