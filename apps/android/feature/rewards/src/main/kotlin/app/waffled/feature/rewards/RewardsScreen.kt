@@ -134,6 +134,7 @@ fun RewardsScreen(
                 personId = activePerson,
                 model = model,
                 canManage = canManage,
+                maySpend = RewardsAccess.maySpend(me, walletOwnerId = activePerson),
                 onEdit = { editing = EditorTarget.Edit(it) },
             )
 

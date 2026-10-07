@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import app.waffled.core.network.RefreshBus
 import app.waffled.core.network.RefreshDomain
 import app.waffled.core.network.RestDomain
+import app.waffled.core.network.WaffledApiException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -154,11 +155,14 @@ class RewardsModel(
      * change and rejected only the response, and re-reading costs one request next to
      * showing a stale approvals queue.
      */
-    private suspend fun write(block: suspend () -> Unit): Boolean {
-        val ok = runCatching { block() }.isSuccess
+    private suspend fun write(block: suspend () -> Unit): Boolean = attempt(block) == null
+
+    /** As [write], handing back the failure for a caller that must say why. */
+    private suspend fun attempt(block: suspend () -> Unit): Throwable? {
+        val failure = runCatching { block() }.exceptionOrNull()
         invalidate()
         load()
-        return ok
+        return failure
     }
 
     /** Create (id == null) or edit a reward. */
@@ -184,7 +188,20 @@ class RewardsModel(
 
     suspend fun restoreReward(id: String): Boolean = write { api.restoreReward(id) }
 
-    suspend fun redeem(rewardId: String, personId: String): Boolean = write { api.redeem(rewardId, personId) }
+    /**
+     * Redeem only — never approve. The server debits at once when the household has
+     * approval off and leaves the redemption pending for a parent when it's on.
+     *
+     * Returns null on success, else the text to show: the server's reason when it gave
+     * one, so a refusal never passes for a celebration.
+     */
+    suspend fun redeem(rewardId: String, personId: String): String? {
+        return when (val f = attempt { api.redeem(rewardId, personId) }) {
+            null -> null
+            is WaffledApiException -> f.userMessage
+            else -> REDEEM_FAILED
+        }
+    }
 
     suspend fun approve(redemptionId: String): Boolean = write { api.approveRedemption(redemptionId) }
 
@@ -196,4 +213,8 @@ class RewardsModel(
     /** Pin (or clear, with a null [rewardId]) what a person is saving toward. */
     suspend fun setSavingToward(personId: String, rewardId: String?): Boolean =
         write { api.setSavingToward(personId, rewardId) }
+
+    companion object {
+        const val REDEEM_FAILED = "That didn't go through. Check your connection and try again."
+    }
 }

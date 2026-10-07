@@ -74,6 +74,14 @@ object RewardsAccess {
     /** Creating, editing and archiving rewards. */
     fun canManage(person: Person?): Boolean = person?.can(Capability.REWARD_MANAGE) == true
 
+    /**
+     * Whether [viewer] may redeem from [walletOwnerId]'s balance: their own, or anyone's
+     * with `reward.manage` — the server's `assertSelfOrCapability`. Gating the button on
+     * this keeps the shop from offering a redeem that would come back 403.
+     */
+    fun maySpend(viewer: Person?, walletOwnerId: String): Boolean =
+        viewer != null && (viewer.id == walletOwnerId || canManage(viewer))
+
     /** Approving or denying a pending redemption. */
     fun canApprove(person: Person?): Boolean = person?.can(Capability.REWARD_APPROVE) == true
 

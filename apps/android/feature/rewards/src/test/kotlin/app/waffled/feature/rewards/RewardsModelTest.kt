@@ -9,6 +9,7 @@ import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.RecordedRequest
+import okhttp3.mockwebserver.SocketPolicy
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -34,6 +35,9 @@ class RewardsModelTest {
     /** Path prefix → response body. A path with no entry answers 404. */
     private val routes = linkedMapOf<String, MockResponse>()
 
+    /** Every path the server was asked for, in order. */
+    private val paths = java.util.Collections.synchronizedList(mutableListOf<String>())
+
     private fun route(prefix: String, body: String, status: Int = 200) {
         routes[prefix] = MockResponse()
             .setResponseCode(status)
@@ -47,6 +51,7 @@ class RewardsModelTest {
         harness.server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 val path = request.path.orEmpty()
+                paths += path
                 // LONGEST prefix wins: `/api/rewards/r1/redeem` also starts with
                 // `/api/rewards`, and matching in insertion order would answer a redeem
                 // with the catalog.
@@ -198,9 +203,42 @@ class RewardsModelTest {
         route("/api/rewards/r1/redeem", """{"redemption":$REDEMPTION}""")
         route("/api/balances", BALANCES.replace("\"balance\":12", "\"balance\":2"))
 
-        assertTrue(model.redeem(rewardId = "r1", personId = "p1"))
+        assertNull(model.redeem(rewardId = "r1", personId = "p1"))
 
         assertEquals(2, model.balance("p1", "stars"))
+    }
+
+    @Test
+    fun `redeeming never approves its own request`() = runTest {
+        // r1 requires a parent's OK: the server leaves it pending, and chaining an
+        // approve would walk it straight past the parent queue.
+        model.load()
+        route("/api/rewards/r1/redeem", """{"redemption":$REDEMPTION}""")
+        route("/api/redemptions/x1/approve", """{"redemption":$REDEMPTION}""")
+
+        assertNull(model.redeem(rewardId = "r1", personId = "p1"))
+
+        assertTrue(paths.none { it.contains("/approve") }, "unexpected approve in $paths")
+    }
+
+    @Test
+    fun `a refused redeem reports the server's reason`() = runTest {
+        model.load()
+        route(
+            "/api/rewards/r1/redeem",
+            """{"error":"Forbidden","message":"Only a parent can redeem for Sib."}""",
+            status = 403,
+        )
+
+        assertEquals("Only a parent can redeem for Sib.", model.redeem(rewardId = "r1", personId = "p2"))
+    }
+
+    @Test
+    fun `a redeem that never reached the server says to check the connection`() = runTest {
+        model.load()
+        routes["/api/rewards/r1/redeem"] = MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START)
+
+        assertEquals(RewardsModel.REDEEM_FAILED, model.redeem(rewardId = "r1", personId = "p1"))
     }
 
     @Test

@@ -25,8 +25,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -66,6 +68,8 @@ fun RewardShopScreen(
     personId: String,
     model: RewardsModel,
     canManage: Boolean,
+    /** Whether the viewer may redeem from this wallet — see [RewardsAccess.maySpend]. */
+    maySpend: Boolean,
     onEdit: (RewardsApi.Reward) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -77,6 +81,7 @@ fun RewardShopScreen(
     var celebration by remember { mutableStateOf<Celebrated?>(null) }
     var showSavingPicker by remember { mutableStateOf(false) }
     var giving by remember { mutableStateOf(false) }
+    var redeemError by remember { mutableStateOf<String?>(null) }
 
     val economy = model.economy
     val rewards = economy.rewards
@@ -143,6 +148,7 @@ fun RewardShopScreen(
                 // Anyone may choose their own target — the pin is a personal nudge, not
                 // a catalog edit, so it is not gated on `reward.manage`.
                 canPick = rewards.isNotEmpty(),
+                canRedeem = maySpend,
                 onChange = { showSavingPicker = true },
                 onRedeem = {
                     // Route the hero's Redeem through the same confirm sheet a tile uses,
@@ -192,6 +198,9 @@ fun RewardShopScreen(
                         symbol = model.symbol(reward.currency),
                         balance = model.balance(personId, reward.currency),
                         canManage = canManage,
+                        maySpend = maySpend,
+                        ownerFirstName = model.person(personId)?.name?.substringBefore(' ')
+                            ?.takeIf { it.isNotBlank() } ?: "them",
                         busy = giving,
                         onRedeem = { redeemFor = reward },
                         onEdit = { onEdit(reward) },
@@ -214,15 +223,31 @@ fun RewardShopScreen(
                     // Captured BEFORE the write, so the celebration's "13 → 3" line is
                     // still true once the reload has landed.
                     val before = model.balance(personId, reward.currency)
-                    val ok = model.redeem(rewardId = reward.id, personId = personId)
+                    val failure = model.redeem(rewardId = reward.id, personId = personId)
                     giving = false
                     redeemFor = null
-                    if (ok) {
+                    if (failure != null) {
+                        redeemError = failure
+                    } else {
                         // Let the confirm sheet finish dismissing before the celebration
                         // takes the screen; two sheets mid-transition fight each other.
                         delay(350)
                         celebration = Celebrated(reward, reward.requiresApproval, before)
                     }
+                }
+            },
+        )
+    }
+
+    redeemError?.let { message ->
+        AlertDialog(
+            onDismissRequest = { redeemError = null },
+            containerColor = WF.colors.card,
+            title = { Text("Couldn't redeem", style = WF.type.sectionTitle, color = WF.colors.ink) },
+            text = { Text(message, style = WF.type.bodySmall, color = WF.colors.ink2) },
+            confirmButton = {
+                TextButton(onClick = { redeemError = null }) {
+                    Text("OK", color = WF.colors.primary, style = WF.type.label)
                 }
             },
         )
@@ -398,6 +423,8 @@ private fun RewardTile(
     symbol: String,
     balance: Int,
     canManage: Boolean,
+    maySpend: Boolean,
+    ownerFirstName: String,
     busy: Boolean,
     onRedeem: () -> Unit,
     onEdit: () -> Unit,
@@ -495,7 +522,7 @@ private fun RewardTile(
                 ),
                 color = WF.colors.ink3,
             )
-            if (can) {
+            if (can && maySpend) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -520,6 +547,15 @@ private fun RewardTile(
                         color = androidx.compose.ui.graphics.Color.White,
                     )
                 }
+            } else if (can) {
+                // Affordable, but not the viewer's to spend: say who can rather than offer
+                // a button the server would refuse.
+                Text(
+                    text = "Ask a parent to redeem for $ownerFirstName",
+                    modifier = Modifier.padding(top = 2.dp),
+                    style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
+                    color = WF.colors.ink3,
+                )
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Box(
