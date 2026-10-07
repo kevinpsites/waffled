@@ -9,6 +9,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -32,7 +33,7 @@ class KtorSyncBackend(
     private val tokens: TokenProvider,
 ) : SyncBackend {
 
-    override suspend fun fetchPowerSyncToken(): PowerSyncTokenResponse? = runCatching {
+    override suspend fun fetchPowerSyncToken(): PowerSyncTokenResponse? = try {
         WaffledHttp.authorized(
             client = client,
             tokens = tokens,
@@ -44,7 +45,11 @@ class KtorSyncBackend(
                 response.bodyAsText(),
             )
         }
-    }.getOrNull()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
 
     override suspend fun uploadCrud(ops: List<CrudOpDto>) {
         val body: JsonObject = buildJsonObject {

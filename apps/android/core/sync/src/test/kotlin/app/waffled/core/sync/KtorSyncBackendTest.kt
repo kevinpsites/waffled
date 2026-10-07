@@ -121,4 +121,16 @@ class KtorSyncBackendTest {
             backend.uploadCrud(listOf(CrudOpDto("PUT", "events", "e1", null)))
         }
     }
+
+    @Test
+    fun aCancelledTokenFetchPropagatesTheCancellationInsteadOfReturningNull() = runTest {
+        // A swallowed CancellationException keeps a cancelled sync coroutine running as if
+        // the server had merely said "not now".
+        val cancelling = object : app.waffled.core.network.TokenProvider {
+            override suspend fun accessToken(): String? = throw kotlinx.coroutines.CancellationException("torn down")
+            override suspend fun refreshAccessToken(failedToken: String?): String? = null
+        }
+        val backend = KtorSyncBackend(WaffledHttp.client(cancelling, harness.serverAddress), cancelling)
+        assertFailsWith<kotlinx.coroutines.CancellationException> { backend.fetchPowerSyncToken() }
+    }
 }
