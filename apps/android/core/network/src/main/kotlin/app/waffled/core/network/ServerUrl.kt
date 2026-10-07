@@ -34,16 +34,23 @@ object ServerUrl {
         val raw = input?.trim()?.trimEnd('/') ?: return null
         if (raw.isEmpty()) return null
 
-        val withScheme = when {
-            raw.startsWith("http://", ignoreCase = true) -> raw
-            raw.startsWith("https://", ignoreCase = true) -> raw
+        val (scheme, authority) = when {
+            raw.startsWith("http://", ignoreCase = true) -> "http" to raw.substring(7)
+            raw.startsWith("https://", ignoreCase = true) -> "https" to raw.substring(8)
             // Any other explicit scheme is not something we can talk to.
             raw.contains("://") -> return null
-            else -> "http://$raw"
+            else -> "http" to raw
         }
+        // An origin only: userinfo would let `localhost:80@evil.com` pass as a local host.
+        if (authority.isEmpty() || authority.any { it in "@/?#" || it.isWhitespace() }) return null
 
-        val host = hostOf(withScheme) ?: return null
-        if (host.isEmpty() || host.any { it.isWhitespace() }) return null
+        val host = hostOf("$scheme://$authority") ?: return null
+        val portPart = authority.substring(host.length).let { if (it.isEmpty()) null else it }
+        if (portPart != null) {
+            val port = portPart.removePrefix(":").takeIf { portPart.startsWith(":") }?.toIntOrNull()
+            if (port == null || port !in 1..65535) return null
+        }
+        val withScheme = "$scheme://$host${portPart ?: ""}"
 
         val allowed: (Char) -> Boolean = if (host.startsWith("[")) {
             // IPv6 literal — hex groups, colons, and the enclosing brackets.

@@ -130,4 +130,27 @@ class ServerUrlTest {
     fun ipv6RoundTripsThroughNormalize() {
         assertEquals("http://[fd00::1]:8080", ServerUrl.normalize("[fd00::1]:8080"))
     }
+
+    @Test
+    fun userinfoCannotDisguiseAPublicHostAsLocal() {
+        // The real host is after the `@`; reading it as localhost would allow cleartext.
+        assertNull(ServerUrl.normalize("http://localhost:80@evil.com"))
+        assertTrue(ServerUrl.validate("http://localhost:80@evil.com") is ServerUrlVerdict.Invalid)
+        assertNull(ServerUrl.normalize("https://user:secret@family.example.com"))
+    }
+
+    @Test
+    fun rejectsPathsQueriesFragmentsAndBadPorts() {
+        assertNull(ServerUrl.normalize("https://family.example.com/path"))
+        assertNull(ServerUrl.normalize("https://family.example.com?debug=1"))
+        assertNull(ServerUrl.normalize("https://family.example.com#x"))
+        assertNull(ServerUrl.normalize("https:///missing-host"))
+        assertNull(ServerUrl.normalize("http://192.168.1.50:http"))
+        assertNull(ServerUrl.normalize("http://192.168.1.50:99999"))
+    }
+
+    @Test
+    fun lowercasesSchemeAndHost() {
+        assertEquals("http://localhost:8080", ServerUrl.normalize("HTTP://LOCALHOST:8080/"))
+    }
 }
