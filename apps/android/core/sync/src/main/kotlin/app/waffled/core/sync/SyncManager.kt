@@ -70,9 +70,9 @@ class SyncManager(
     private val _pendingUploads = MutableStateFlow(0)
 
     /**
-     * Writes still queued for upload (`ps_crud`), refreshed on every sync-status tick.
-     * Readable synchronously for gates like "switch household"; [pendingUploadCount]
-     * re-reads it on demand.
+     * Writes still queued for upload (`ps_crud`), refreshed on every sync-status tick —
+     * for display. It can lag a just-queued offline write, so gate on the suspend
+     * [pendingUploadCount]; a clearing [stop] also refuses on its own while any are queued.
      */
     val pendingUploads: StateFlow<Int> = _pendingUploads.asStateFlow()
 
@@ -254,7 +254,8 @@ class SyncManager(
      * `clearLocal` also wipes the local mirror (PowerSync `disconnectAndClear`) and the
      * household-scoped state — what a server or household change needs, since the local
      * SQLite is one shared file. Returns false only when that wipe failed; the caller must
-     * then refuse the change rather than adopt a new scope over the old rows.
+     * then refuse the change rather than adopt a new scope over the old rows. A wipe is also
+     * refused (false) while uploads are queued, since it would delete them.
      */
     suspend fun stop(clearLocal: Boolean = false): Boolean = lifecycle.stop(clearLocal)
 

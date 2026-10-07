@@ -90,6 +90,12 @@ internal class SyncLifecycle<D : Any>(
         val current = db
         val stopped = when {
             current == null -> true
+            // The wipe deletes ps_crud too: never clear while an offline write is queued
+            // (iOS gates every clearing caller on pending == 0). Read fresh, not the flow.
+            clearLocal && pendingOrUnknown(current) -> {
+                runCatchingNonCancel { disconnect(current) }
+                false
+            }
             clearLocal -> runCatchingNonCancel { clear(current) }
             else -> {
                 runCatchingNonCancel { disconnect(current) }
@@ -100,6 +106,15 @@ internal class SyncLifecycle<D : Any>(
         onReset(clearLocal && stopped)
         onState(if (stopped) SyncState.Idle else SyncState.Offline)
         return stopped
+    }
+
+    /** True when uploads are queued — or when the count can't be read, which is no proof of none. */
+    private suspend fun pendingOrUnknown(current: D): Boolean = try {
+        countPending(current) > 0
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        true
     }
 
     private suspend fun runCatchingNonCancel(block: suspend () -> Unit): Boolean = try {

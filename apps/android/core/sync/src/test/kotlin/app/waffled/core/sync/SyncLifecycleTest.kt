@@ -153,6 +153,21 @@ class SyncLifecycleTest {
     }
 
     @Test
+    fun aClearNeverWipesQueuedUploads() = runTest {
+        val rig = rig()
+        rig.lifecycle.start()
+        rig.db.pending = 2
+
+        assertFalse(rig.lifecycle.stop(clearLocal = true))
+        assertEquals(0, rig.db.clears)
+        assertFalse(rig.lifecycle.rescope(clearLocal = true) {})
+
+        // A plain stop has nothing to lose and still goes through.
+        rig.lifecycle.start()
+        assertTrue(rig.lifecycle.stop())
+    }
+
+    @Test
     fun pendingUploadsReadTheCrudQueue() = runTest {
         val rig = rig()
         assertEquals(0, rig.lifecycle.pendingUploadCount())
