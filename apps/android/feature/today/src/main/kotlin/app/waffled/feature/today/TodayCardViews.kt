@@ -38,6 +38,7 @@ import app.waffled.core.design.FamilyColor
 import app.waffled.core.design.WF
 import app.waffled.core.design.WaffledCard
 import app.waffled.core.design.wfShadow1
+import app.waffled.core.network.RestState
 import app.waffled.core.sync.SyncedEvent
 import java.time.ZoneId
 
@@ -372,7 +373,7 @@ fun ChoresCard(
     done: Int,
     total: Int,
     stars: Int,
-    loaded: Boolean,
+    state: RestState,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -412,8 +413,8 @@ fun ChoresCard(
                 }
             } else {
                 Text(
-                    // "No chores today" is only true once the fetch has landed.
-                    text = if (loaded) "No chores today" else "Loading…",
+                    // "No chores today" is only true on an authoritative answer.
+                    text = TodayFormat.unavailableCopy(state, empty = "No chores today"),
                     style = TextStyle(fontSize = 12.5.sp),
                     color = WF.colors.ink3,
                 )
@@ -425,7 +426,7 @@ fun ChoresCard(
 @Composable
 fun GroceryCard(
     remaining: Int,
-    loaded: Boolean,
+    state: RestState,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -436,7 +437,8 @@ fun GroceryCard(
                 style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Bold),
                 color = WF.colors.ink2,
             )
-            if (loaded) {
+            // A saved count still reads truthfully under its stale/offline notice.
+            if (state.isAuthoritative || state.updatedAt != null) {
                 Text(
                     text = "$remaining",
                     style = TextStyle(fontSize = 26.sp, fontWeight = FontWeight.Bold),
@@ -448,9 +450,9 @@ fun GroceryCard(
                     color = WF.colors.ink3,
                 )
             } else {
-                // Don't claim "0 items to buy" while the count is still loading.
+                // Don't claim "0 items to buy" while the count is loading or unknown.
                 Text(
-                    text = "Loading…",
+                    text = TodayFormat.unavailableCopy(state, empty = "Loading…"),
                     style = TextStyle(fontSize = 12.5.sp),
                     color = WF.colors.ink3,
                 )

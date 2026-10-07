@@ -48,6 +48,8 @@ import app.waffled.core.design.WF
 import app.waffled.core.model.Person
 import app.waffled.core.model.WaffledModule
 import app.waffled.core.network.RefreshBus
+import app.waffled.core.network.RestNotice
+import app.waffled.core.network.RestState
 import app.waffled.core.sync.ModuleGate
 import app.waffled.core.sync.SyncedEvent
 import kotlinx.coroutines.flow.collectLatest
@@ -105,12 +107,13 @@ fun TodayScreen(
     onOpenMeal: (TonightMeal) -> Unit = {},
     onCookMeal: (TonightMeal) -> Unit = {},
 ) {
-    val tonight by dash.tonightState.collectAsStateWithLifecycle()
-    val chores by dash.choresState.collectAsStateWithLifecycle()
-    val grocery by dash.groceryState.collectAsStateWithLifecycle()
-    val recap by dash.recapState.collectAsStateWithLifecycle()
-    val suggestions by dash.suggestionsState.collectAsStateWithLifecycle()
-    val weather by dash.weatherState.collectAsStateWithLifecycle()
+    val tonight by dash.tonightSnapshot.collectAsStateWithLifecycle()
+    val chores by dash.choresSnapshot.collectAsStateWithLifecycle()
+    val grocery by dash.grocerySnapshot.collectAsStateWithLifecycle()
+    val goals by dash.goalsSnapshot.collectAsStateWithLifecycle()
+    val recap by dash.recapSnapshot.collectAsStateWithLifecycle()
+    val suggestions by dash.suggestionsSnapshot.collectAsStateWithLifecycle()
+    val weather by dash.weatherSnapshot.collectAsStateWithLifecycle()
     val layoutState by layout.state.collectAsStateWithLifecycle()
 
     // "Today" in the household's zone, re-derived only when the zone changes or the day
@@ -185,11 +188,13 @@ fun TodayScreen(
 
     val actions = remember(
         onOpenCalendar, onOpenEvent, onOpenChores, onOpenGrocery,
-        onOpenRecipe, onCookRecipe, onOpenMeal, onCookMeal,
+        onOpenRecipe, onCookRecipe, onOpenMeal, onCookMeal, today,
     ) {
         TodayActions(
             onOpenCalendar, onOpenEvent, onOpenChores, onOpenGrocery,
             onOpenRecipe, onCookRecipe, onOpenMeal, onCookMeal,
+            onRetryDashboard = { scope.launch { dash.load(today.toString()) } },
+            onRetryGoals = { scope.launch { dash.loadGoals() } },
         )
     }
 
@@ -235,6 +240,12 @@ fun TodayScreen(
                 // goals so it can't surface for a disabled feature.
                 val recapRows = recap.value.orEmpty()
                 val suggestionRows = suggestions.value.orEmpty()
+                val reviewState = RestState.combined(listOf(recap.rest, suggestions.rest))
+                if (modules.isOn(WaffledModule.Goals) && RestNotice.of(reviewState) != null) {
+                    item(key = "reviewNotice") {
+                        RestStateNotice(reviewState, retry = actions.onRetryGoals)
+                    }
+                }
                 if (modules.isOn(WaffledModule.Goals) &&
                     (recapRows.isNotEmpty() || suggestionRows.isNotEmpty())
                 ) {
@@ -250,11 +261,12 @@ fun TodayScreen(
                 items(rows, key = { it.id }) { row ->
                     val cards = CardData(
                         tonightMeal = tonight.value?.firstOrNull(),
-                        tonightLoaded = tonight.loaded,
+                        tonightState = tonight.rest,
                         chores = chores.value.orEmpty(),
-                        choresLoaded = chores.loaded,
+                        choresState = chores.rest,
                         groceryRemaining = grocery.value ?: 0,
-                        groceryLoaded = grocery.loaded,
+                        groceryState = grocery.rest,
+                        goalsState = goals.rest,
                         events = todaysEvents,
                     )
                     when (row) {
@@ -276,6 +288,7 @@ fun TodayScreen(
                                     cardContent = cardContent,
                                     actions = actions,
                                     modifier = Modifier.weight(1f).fillMaxHeight(),
+                                    stretch = true,
                                 )
                             }
                         }
@@ -300,11 +313,12 @@ fun TodayScreen(
 /** Everything the four locally-owned cards render, gathered once per row. */
 private data class CardData(
     val tonightMeal: TonightMeal?,
-    val tonightLoaded: Boolean,
+    val tonightState: RestState,
     val chores: List<TodayApi.PersonChores>,
-    val choresLoaded: Boolean,
+    val choresState: RestState,
     val groceryRemaining: Int,
-    val groceryLoaded: Boolean,
+    val groceryState: RestState,
+    val goalsState: RestState,
     val events: List<SyncedEvent>,
 )
 
@@ -318,6 +332,8 @@ class TodayActions(
     val onCookRecipe: (TonightRecipe) -> Unit = {},
     val onOpenMeal: (TonightMeal) -> Unit = {},
     val onCookMeal: (TonightMeal) -> Unit = {},
+    val onRetryDashboard: () -> Unit = {},
+    val onRetryGoals: () -> Unit = {},
 )
 
 /** Dispatch one card key to its content. An unknown or unwired key renders nothing. */
@@ -329,6 +345,8 @@ private fun CardView(
     cardContent: Map<String, @Composable () -> Unit>,
     actions: TodayActions,
     modifier: Modifier = Modifier,
+    /** In a 2-up pair: the card fills what its notice leaves, so the pair lines up. */
+    stretch: Boolean = false,
 ) {
     when (key) {
         TodayCards.AGENDA -> AgendaCard(
@@ -339,38 +357,55 @@ private fun CardView(
             modifier = modifier,
         )
 
-        TodayCards.TONIGHT -> TonightCard(
-            meal = cards.tonightMeal,
-            loaded = cards.tonightLoaded,
-            onOpenRecipe = actions.onOpenRecipe,
-            onCookRecipe = actions.onCookRecipe,
-            onOpenMeal = actions.onOpenMeal,
-            onCookMeal = actions.onCookMeal,
-            modifier = modifier,
-        )
+        TodayCards.TONIGHT -> Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            RestStateNotice(cards.tonightState, retry = actions.onRetryDashboard)
+            TonightCard(
+                meal = cards.tonightMeal,
+                loaded = cards.tonightState.isAuthoritative,
+                onOpenRecipe = actions.onOpenRecipe,
+                onCookRecipe = actions.onCookRecipe,
+                onOpenMeal = actions.onOpenMeal,
+                onCookMeal = actions.onCookMeal,
+            )
+        }
 
         // The tallies are derived from the same list the avatars come from, so one snapshot
         // read drives the whole card — reading them off the model would recompose only by
         // luck of a sibling parameter changing.
-        TodayCards.CHORES -> ChoresCard(
-            people = cards.chores,
-            done = cards.chores.sumOf { it.done },
-            total = cards.chores.sumOf { it.total },
-            stars = cards.chores.sumOf { it.stars },
-            loaded = cards.choresLoaded,
-            onOpen = actions.onOpenChores,
-            modifier = modifier,
-        )
+        TodayCards.CHORES -> Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            RestStateNotice(cards.choresState, retry = actions.onRetryDashboard, compact = true)
+            ChoresCard(
+                people = cards.chores,
+                done = cards.chores.sumOf { it.done },
+                total = cards.chores.sumOf { it.total },
+                stars = cards.chores.sumOf { it.stars },
+                state = cards.choresState,
+                onOpen = actions.onOpenChores,
+                modifier = if (stretch) Modifier.weight(1f) else Modifier,
+            )
+        }
 
-        TodayCards.GROCERY -> GroceryCard(
-            remaining = cards.groceryRemaining,
-            loaded = cards.groceryLoaded,
-            onOpen = actions.onOpenGrocery,
-            modifier = modifier,
-        )
+        TodayCards.GROCERY -> Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            RestStateNotice(cards.groceryState, retry = actions.onRetryDashboard, compact = true)
+            GroceryCard(
+                remaining = cards.groceryRemaining,
+                state = cards.groceryState,
+                onOpen = actions.onOpenGrocery,
+                modifier = if (stretch) Modifier.weight(1f) else Modifier,
+            )
+        }
 
-        // Countdowns, lists, pantry, Family Night and the goals hero belong to other feature
-        // modules; the host supplies them through `cardContent`.
+        // The goals hero belongs to the goals feature; Today owns the fetch, so the notice
+        // about that fetch sits above whatever the host draws.
+        TodayCards.GOALS -> cardContent[key]?.let { content ->
+            Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                RestStateNotice(cards.goalsState, retry = actions.onRetryGoals)
+                content()
+            }
+        }
+
+        // Countdowns, lists, pantry and Family Night belong to other feature modules; the
+        // host supplies them through `cardContent`.
         else -> cardContent[key]?.invoke()
     }
 }

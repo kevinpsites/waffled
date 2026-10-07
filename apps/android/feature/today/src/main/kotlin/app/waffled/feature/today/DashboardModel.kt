@@ -4,6 +4,8 @@ import androidx.compose.runtime.Immutable
 import app.waffled.core.network.RefreshBus
 import app.waffled.core.network.RefreshDomain
 import app.waffled.core.network.RestDomain
+import app.waffled.core.network.RestFetch
+import app.waffled.core.network.RestState
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.StateFlow
@@ -111,11 +113,10 @@ data class TonightRecipe(
  * PowerSync; these domains aren't synced tables, so they load over the API — refreshed on
  * appear, pull-down, the [RefreshBus], and on returning to the foreground.
  *
- * Each domain lives in its own [RestDomain], which carries the loading-state contract the
- * cards rely on: `loaded` / `goalsLoaded` flip true only after their fetch completes, so a
- * card can tell "still loading" (placeholder) apart from "loaded and empty" (empty state).
- * A failed fetch (offline, expired token) keeps the prior values rather than blanking the
- * cards.
+ * Each domain lives in its own [RestDomain] and exposes its [RestState] independently. A
+ * failed fetch keeps confirmed values and reports why (stale, offline, sign-in); only a
+ * successful response authorises empty copy. The fetchers THROW rather than return null,
+ * so the failure can be classified.
  *
  * ⚠️ Tonight is a `RestDomain<List<TonightMeal>>`, not a nullable single value, and that
  * is load-bearing: `RestDomain.apply(null)` means "the fetch FAILED, keep what we had", so
@@ -127,12 +128,12 @@ data class TonightRecipe(
  * JVM test — same reasoning as `PhotosModel`: no scope, no main-dispatcher rule.
  */
 class DashboardModel(
-    private val fetchMeals: suspend (String) -> List<TodayApi.WeekEntry>?,
-    private val fetchChores: suspend () -> List<TodayApi.PersonChores>?,
-    private val fetchGrocery: suspend () -> List<TodayApi.GroceryItem>?,
-    private val fetchGoals: suspend () -> List<TodayApi.Goal>?,
-    private val fetchRecap: suspend () -> List<TodayApi.GoalRecapItem>?,
-    private val fetchSuggestions: suspend () -> List<TodayApi.GoalSuggestionItem>?,
+    private val fetchMeals: suspend (String) -> List<TodayApi.WeekEntry>,
+    private val fetchChores: suspend () -> List<TodayApi.PersonChores>,
+    private val fetchGrocery: suspend () -> List<TodayApi.GroceryItem>,
+    private val fetchGoals: suspend () -> List<TodayApi.Goal>,
+    private val fetchRecap: suspend () -> List<TodayApi.GoalRecapItem>,
+    private val fetchSuggestions: suspend () -> List<TodayApi.GoalSuggestionItem>,
     /**
      * Current conditions for the greeting row. Defaulted so the ported spec tests, which
      * know nothing about weather, construct the model unchanged.
@@ -142,41 +143,50 @@ class DashboardModel(
 
     private val tonightD = RestDomain<List<TonightMeal>>()
     private val choresD = RestDomain<List<TodayApi.PersonChores>>()
-    private val groceryD = RestDomain<Int>()
+    private val groceryD = RestDomain<Int>(isEmpty = { it == 0 })
     private val goalsD = RestDomain<List<TodayApi.Goal>>()
     private val recapD = RestDomain<List<TodayApi.GoalRecapItem>>()
     private val suggestionsD = RestDomain<List<TodayApi.GoalSuggestionItem>>()
     private val weatherD = RestDomain<TodayApi.Weather>()
 
-    /** Per-card state the composables collect, so one slow card never blocks another. */
-    val tonightState: StateFlow<RestDomain.Snapshot<List<TonightMeal>>> = tonightD.state
-    val choresState: StateFlow<RestDomain.Snapshot<List<TodayApi.PersonChores>>> = choresD.state
-    val groceryState: StateFlow<RestDomain.Snapshot<Int>> = groceryD.state
-    val goalsState: StateFlow<RestDomain.Snapshot<List<TodayApi.Goal>>> = goalsD.state
-    val recapState: StateFlow<RestDomain.Snapshot<List<TodayApi.GoalRecapItem>>> = recapD.state
-    val suggestionsState: StateFlow<RestDomain.Snapshot<List<TodayApi.GoalSuggestionItem>>> =
+    /** Per-card snapshots the composables collect, so one slow card never blocks another. */
+    val tonightSnapshot: StateFlow<RestDomain.Snapshot<List<TonightMeal>>> = tonightD.state
+    val choresSnapshot: StateFlow<RestDomain.Snapshot<List<TodayApi.PersonChores>>> = choresD.state
+    val grocerySnapshot: StateFlow<RestDomain.Snapshot<Int>> = groceryD.state
+    val goalsSnapshot: StateFlow<RestDomain.Snapshot<List<TodayApi.Goal>>> = goalsD.state
+    val recapSnapshot: StateFlow<RestDomain.Snapshot<List<TodayApi.GoalRecapItem>>> = recapD.state
+    val suggestionsSnapshot: StateFlow<RestDomain.Snapshot<List<TodayApi.GoalSuggestionItem>>> =
         suggestionsD.state
-    val weatherState: StateFlow<RestDomain.Snapshot<TodayApi.Weather>> = weatherD.state
+    val weatherSnapshot: StateFlow<RestDomain.Snapshot<TodayApi.Weather>> = weatherD.state
 
     val tonight: TonightMeal? get() = tonightD.value?.firstOrNull()
     val chores: List<TodayApi.PersonChores> get() = choresD.value.orEmpty()
     val groceryRemaining: Int get() = groceryD.value ?: 0
 
-    /** Whether the meals/chores/grocery load has completed at least once. */
-    val loaded: Boolean get() = tonightD.loaded && choresD.loaded && groceryD.loaded
+    val mealsState: RestState get() = tonightD.restState
+    val choresState: RestState get() = choresD.restState
+    val groceryState: RestState get() = groceryD.restState
+    val goalsState: RestState get() = goalsD.restState
+    val reviewState: RestState get() = RestState.combined(listOf(recapD.restState, suggestionsD.restState))
+
+    /** The meals/chores/grocery domains all hold an authoritative answer. */
+    val loaded: Boolean
+        get() = mealsState.isAuthoritative && choresState.isAuthoritative && groceryState.isAuthoritative
 
     val goals: List<TodayApi.Goal> get() = goalsD.value.orEmpty()
     val reviewRecap: List<TodayApi.GoalRecapItem> get() = recapD.value.orEmpty()
     val reviewSuggestions: List<TodayApi.GoalSuggestionItem> get() = suggestionsD.value.orEmpty()
 
     /**
-     * Whether the goals load has completed at least once — the goals card must key its
-     * empty state off THIS flag, not [loaded] (the dash fetch usually finishes first,
-     * which used to flash "Set a family goal →" before goals arrived).
+     * The goals card keys its empty state off THIS, not [loaded]: the dash fetch usually
+     * finishes first, which used to flash "Set a family goal →" before goals arrived.
      */
-    val goalsLoaded: Boolean get() = goalsD.loaded && recapD.loaded && suggestionsD.loaded
+    val goalsLoaded: Boolean get() = goalsState.isAuthoritative
 
     val weather: TodayApi.Weather? get() = weatherD.value
+
+    private var loadGeneration = 0
+    private var goalsGeneration = 0
 
     /** Aggregate chore progress across the family (for the compact summary card). */
     val choreDone: Int get() = chores.sumOf { it.done }
@@ -189,12 +199,17 @@ class DashboardModel(
      * tonight's dinner was removed elsewhere → back to "No dinner planned").
      */
     suspend fun load(todayKey: String) = coroutineScope {
-        val meals = async { fetchMeals(todayKey) }
-        val people = async { fetchChores() }
-        val grocery = async { fetchGrocery() }
+        val generation = ++loadGeneration
+        tonightD.beginLoading(); choresD.beginLoading(); groceryD.beginLoading()
+        // Each fetch is wrapped inside its own async: a bare throw would cancel siblings.
+        val meals = async { RestFetch.result { fetchMeals(todayKey) } }
+        val people = async { RestFetch.result { fetchChores() } }
+        val grocery = async { RestFetch.result { fetchGrocery() } }
+        val m = meals.await(); val c = people.await(); val g = grocery.await()
+        if (generation != loadGeneration) return@coroutineScope
 
         tonightD.apply(
-            meals.await()?.let { entries ->
+            m.map { entries ->
                 entries.filter { it.mealType == "dinner" && it.date == todayKey }
                     .take(1)
                     .map { TonightMeal(it) }
@@ -202,8 +217,8 @@ class DashboardModel(
         )
         // People with nothing on today's board are dropped — an empty avatar row reads
         // as a bug, not as "nothing assigned".
-        choresD.apply(people.await()?.filter { it.total > 0 })
-        groceryD.apply(grocery.await()?.count { !it.checked })
+        choresD.apply(c.map { all -> all.filter { it.total > 0 } })
+        groceryD.apply(g.map { items -> items.count { !it.checked } })
     }
 
     /**
@@ -211,30 +226,34 @@ class DashboardModel(
      * semantics as [load].
      */
     suspend fun loadGoals() = coroutineScope {
-        val goalRows = async { fetchGoals() }
-        val recapRows = async { fetchRecap() }
-        val suggestionRows = async { fetchSuggestions() }
+        val generation = ++goalsGeneration
+        goalsD.beginLoading(); recapD.beginLoading(); suggestionsD.beginLoading()
+        val goalRows = async { RestFetch.result { fetchGoals() } }
+        val recapRows = async { RestFetch.result { fetchRecap() } }
+        val suggestionRows = async { RestFetch.result { fetchSuggestions() } }
+        val g = goalRows.await(); val r = recapRows.await(); val s = suggestionRows.await()
+        if (generation != goalsGeneration) return@coroutineScope
 
-        goalsD.apply(goalRows.await())
-        recapD.apply(recapRows.await())
-        suggestionsD.apply(suggestionRows.await())
+        goalsD.apply(g)
+        recapD.apply(r)
+        suggestionsD.apply(s)
     }
 
     /** The greeting's temperature chip. Its own load: nothing else waits on the weather. */
     suspend fun loadWeather() {
-        weatherD.apply(fetchWeather())
+        weatherD.apply(RestFetch.result { fetchWeather() }.getOrNull())
     }
 
     companion object {
-        /** The production wiring: every fetcher swallows its error so [RestDomain] sees null. */
+        /** The production wiring. Fetchers throw; the model classifies the failure. */
         fun from(api: TodayApi) = DashboardModel(
-            fetchMeals = { runCatching { api.mealsWeek(it) }.getOrNull() },
-            fetchChores = { runCatching { api.choresToday() }.getOrNull() },
-            fetchGrocery = { runCatching { api.groceryItems() }.getOrNull() },
-            fetchGoals = { runCatching { api.goals() }.getOrNull() },
-            fetchRecap = { runCatching { api.goalRecap() }.getOrNull() },
-            fetchSuggestions = { runCatching { api.goalSuggestions() }.getOrNull() },
-            fetchWeather = { runCatching { api.weather() }.getOrNull() },
+            fetchMeals = { api.mealsWeek(it) },
+            fetchChores = { api.choresToday() },
+            fetchGrocery = { api.groceryItems() },
+            fetchGoals = { api.goals() },
+            fetchRecap = { api.goalRecap() },
+            fetchSuggestions = { api.goalSuggestions() },
+            fetchWeather = { api.weather() },
         )
 
         /**

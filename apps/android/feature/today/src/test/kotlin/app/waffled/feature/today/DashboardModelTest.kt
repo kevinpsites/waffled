@@ -1,9 +1,12 @@
 package app.waffled.feature.today
 
+import app.waffled.core.network.RestState
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -32,13 +35,16 @@ private class StubFeed {
     var suggestions: List<TodayApi.GoalSuggestionItem>? = emptyList()
 }
 
+/** The Swift `URLError(.notConnectedToInternet)`: a null feed fails like a dead network. */
+internal fun offline(): Nothing = throw java.net.UnknownHostException("offline")
+
 private fun model(feed: StubFeed) = DashboardModel(
-    fetchMeals = { feed.meals },
-    fetchChores = { feed.chores },
-    fetchGrocery = { feed.grocery },
-    fetchGoals = { feed.goals },
-    fetchRecap = { feed.recap },
-    fetchSuggestions = { feed.suggestions },
+    fetchMeals = { feed.meals ?: offline() },
+    fetchChores = { feed.chores ?: offline() },
+    fetchGrocery = { feed.grocery ?: offline() },
+    fetchGoals = { feed.goals ?: offline() },
+    fetchRecap = { feed.recap ?: offline() },
+    fetchSuggestions = { feed.suggestions ?: offline() },
 )
 
 private var seq = 0
@@ -79,6 +85,75 @@ private const val TODAY = "2026-07-16"
 // ---- loading state --------------------------------------------------------------
 
 class DashboardModelLoadingStateTest {
+
+    @Test
+    fun firstOfflineLoadIsUnavailableAndNeverAuthoritative() = runTest {
+        val feed = StubFeed()
+        feed.meals = null; feed.chores = null; feed.grocery = null; feed.goals = null
+        val m = model(feed)
+        m.load(TODAY)
+        m.loadGoals()
+        assertEquals(RestState.Offline(null), m.mealsState)
+        assertEquals(RestState.Offline(null), m.choresState)
+        assertEquals(RestState.Offline(null), m.groceryState)
+        assertEquals(RestState.Offline(null), m.goalsState)
+        assertFalse(m.loaded)
+        assertFalse(m.goalsLoaded)
+    }
+
+    @Test
+    fun aFailedRefreshIsStaleRatherThanAuthoritative() = runTest {
+        val feed = StubFeed()
+        feed.chores = listOf(person("June", total = 2))
+        val m = model(feed)
+        m.load(TODAY)
+        assertTrue(m.choresState.isAuthoritative)
+
+        feed.chores = null
+        m.load(TODAY)
+
+        assertIs<RestState.Offline>(m.choresState)
+        assertNotNull(m.choresState.updatedAt, "offline after a success still knows its age")
+        assertEquals(1, m.chores.size)
+    }
+
+    @Test
+    fun theReviewQueuesShareOneState() = runTest {
+        val feed = StubFeed()
+        feed.recap = null
+        val m = model(feed)
+        m.loadGoals()
+        assertEquals(RestState.Offline(null), m.reviewState)
+        assertTrue(m.goalsLoaded, "the goals card does not wait on the review queues")
+    }
+
+    @Test
+    fun anOlderLoadFinishingLastCannotOverwriteANewerOne() = runTest {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var calls = 0
+        val m = DashboardModel(
+            fetchMeals = { emptyList() },
+            fetchChores = {
+                calls++
+                if (calls == 1) {
+                    gate.await()
+                    listOf(person("Old", total = 1))
+                } else {
+                    listOf(person("New", total = 1))
+                }
+            },
+            fetchGrocery = { emptyList() },
+            fetchGoals = { emptyList() },
+            fetchRecap = { emptyList() },
+            fetchSuggestions = { emptyList() },
+        )
+        val first = launch { m.load(TODAY) }
+        testScheduler.runCurrent()
+        m.load(TODAY)
+        gate.complete(Unit)
+        first.join()
+        assertEquals(listOf("New"), m.chores.map { it.name })
+    }
 
     /**
      * The bug: cards must be able to tell "still loading" apart from "loaded and empty".

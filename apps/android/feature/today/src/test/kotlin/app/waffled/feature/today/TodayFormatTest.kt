@@ -1,5 +1,6 @@
 package app.waffled.feature.today
 
+import app.waffled.core.network.RestState
 import app.waffled.core.sync.SyncedEvent
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -141,5 +142,18 @@ class TodayFormatTest {
         )
         assertEquals(2, TodayFormat.eventsOn(byDay, today).size)
         assertEquals(0, TodayFormat.eventsOn(byDay, today.plusDays(1)).size)
+    }
+
+    // ---- empty copy only on an authoritative answer ------------------------------
+
+    @Test
+    fun emptyCopyNeedsAnAuthoritativeAnswer() {
+        val now = java.time.Instant.EPOCH
+        val empty = "No chores today"
+        assertEquals(empty, TodayFormat.unavailableCopy(RestState.Empty(now), empty))
+        assertEquals("Loading…", TodayFormat.unavailableCopy(RestState.Loading, empty))
+        assertEquals("Unavailable", TodayFormat.unavailableCopy(RestState.Offline(null), empty))
+        assertEquals("Unavailable", TodayFormat.unavailableCopy(RestState.Stale(now, "x"), empty))
+        assertEquals("Unavailable", TodayFormat.unavailableCopy(RestState.Error("x"), empty))
     }
 }
