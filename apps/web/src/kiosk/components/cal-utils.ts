@@ -33,9 +33,26 @@ export function addDays(d: Date, n: number): Date {
   return r
 }
 
-// The Sunday that starts the week containing d.
-export function startOfWeek(d: Date): Date {
-  return addDays(new Date(d.getFullYear(), d.getMonth(), d.getDate()), -d.getDay())
+// The day that starts the week containing `d`, cut on the household's own first day
+// (0 = Sunday, 1 = Monday). `firstDay` is required rather than defaulted: every caller
+// is a week boundary that has to agree with the others, and a silent default is how a
+// grid ends up cut one day off from the range that was fetched for it.
+export function startOfWeek(d: Date, firstDay: number): Date {
+  const back = (d.getDay() - firstDay + 7) % 7
+  return addDays(new Date(d.getFullYear(), d.getMonth(), d.getDate()), -back)
+}
+
+// The first day of the 6-week (42-day) month grid: the household's first day on or
+// before the 1st. Shared so the fetch window and the rendered grid can never disagree
+// — they used to hold separate copies of this formula.
+export function monthGridStart(year: number, month: number, firstDay: number): Date {
+  return startOfWeek(new Date(year, month, 1), firstDay)
+}
+
+// The weekday headings for a grid, read from the household's first day. Pass the
+// labels you want (`DOW`, or a one-letter set) — only the ORDER is shared.
+export function dowFrom<T>(labels: T[], firstDay: number): T[] {
+  return labels.map((_, i) => labels[(firstDay + i) % 7])
 }
 
 // "4:00 PM" / "4:30 PM"; "all day" for all-day events.

@@ -155,6 +155,20 @@ describe('POST /api/persons', () => {
     expect(names).toContain('Kevin')
   })
 
+  it('carries a birthday through the roster as a bare day', async () => {
+    // The roster is built from `select * from persons`, so a wildcard can never cast
+    // the `birthday` date column at the call site — the driver has to hand it over as
+    // the day it is, or every read of it drifts by the API server's own timezone.
+    const res = await call('POST', '/api/persons', kevin, {
+      name: 'Birthday Kid', memberType: 'kid', birthday: '2015-11-02',
+    })
+    expect(res.statusCode).toBe(201)
+    expect(JSON.parse(res.body).person.birthday).toBe('2015-11-02')
+
+    const roster = JSON.parse((await call('GET', '/api/persons', kevin)).body).persons
+    expect(roster.find((p: { name: string }) => p.name === 'Birthday Kid').birthday).toBe('2015-11-02')
+  })
+
   it('rejects a missing or invalid memberType (400)', async () => {
     expect((await call('POST', '/api/persons', kevin, { name: 'NoType' })).statusCode).toBe(400)
     expect(

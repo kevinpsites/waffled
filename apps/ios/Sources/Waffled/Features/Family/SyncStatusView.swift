@@ -118,14 +118,21 @@ struct SyncStatusView: View {
                 }
                 field("Dev token", text: $token, secure: true)
                 Button {
-                    guard AppConfig.setApiBaseURL(baseURL) else {
-                        serverError = "Enter a full server address beginning with http:// or https://."
-                        return
+                    Task {
+                        switch await sync.updateConnection(apiBaseURL: baseURL, devToken: token) {
+                        case .updated:
+                            baseURL = AppConfig.apiBaseURL
+                            serverError = nil
+                        case .invalidURL:
+                            serverError = "Enter a full server address beginning with http:// or https://."
+                        case let .pendingUploads(n):
+                            serverError = "Wait for \(n) pending change\(n == 1 ? "" : "s") to sync before reconnecting."
+                        case .transitionInProgress:
+                            serverError = "A connection change is already in progress."
+                        case .teardownFailed:
+                            serverError = "Couldn’t safely clear the previous connection. Try again before changing accounts."
+                        }
                     }
-                    baseURL = AppConfig.apiBaseURL
-                    serverError = nil
-                    AppConfig.setDevToken(token)
-                    Task { await sync.reconnect() }
                 } label: {
                     Text("Save & reconnect")
                         .font(.system(size: 14, weight: .semibold))

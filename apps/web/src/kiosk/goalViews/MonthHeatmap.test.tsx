@@ -28,14 +28,14 @@ const days: DayEntry[] = [
 describe('MonthHeatmap', () => {
   it('renders a 7-col grid with leading blanks and all 31 July days', () => {
     const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
-    const { container } = render(<MonthHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    const { container } = render(<MonthHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     expect(container.querySelectorAll('.gdv-month-cell')).toHaveLength(31)
     expect(container.querySelectorAll('.gdv-month-lead')).toHaveLength(3) // Jul 1 2026 is a Wednesday
   })
 
   it('shows future days as muted/dashed with no total', () => {
     const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
-    const { container } = render(<MonthHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    const { container } = render(<MonthHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     const future = container.querySelector('.gdv-month-cell.future')
     expect(future).toBeTruthy()
     expect(future?.textContent).not.toMatch(/\d+\.\d/) // no decimal total rendered
@@ -43,14 +43,14 @@ describe('MonthHeatmap', () => {
 
   it('shows the month total and best day in the footer', () => {
     const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
-    render(<MonthHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    render(<MonthHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     expect(screen.getByText(/12\.8/)).toBeInTheDocument() // 2 + 8.3 + 2.5 month total
     expect(screen.getByText(/Best day/)).toBeInTheDocument()
   })
 
   it('marks today (Jul 17) with a today ring, and only today', () => {
     const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
-    const { container } = render(<MonthHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    const { container } = render(<MonthHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     const marked = container.querySelectorAll('.gdv-month-daynum.today')
     expect(marked).toHaveLength(1)
     expect(marked[0].textContent).toBe('17')
@@ -59,14 +59,14 @@ describe('MonthHeatmap', () => {
   it('calls onDayClick with the tapped day\'s dateKey', () => {
     const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
     const onDayClick = vi.fn()
-    render(<MonthHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={onDayClick} onMonthClick={() => {}} />)
+    render(<MonthHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={onDayClick} onMonthClick={() => {}} firstDay={0} />)
     fireEvent.click(screen.getByText('10'))
     expect(onDayClick).toHaveBeenCalledWith('2026-07-10')
   })
 
   it('navigates to the previous month, and blocks paging past the current month', () => {
     const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
-    render(<MonthHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    render(<MonthHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     expect(screen.getByRole('button', { name: 'Next month' })).toBeDisabled()
 
     fireEvent.click(screen.getByRole('button', { name: 'Previous month' }))

@@ -26,7 +26,7 @@ describe('YearGrid', () => {
   const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
 
   it('renders one <rect> per day from the goal start through today, at least', () => {
-    const { container } = render(<YearGrid goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    const { container } = render(<YearGrid goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     const rects = container.querySelectorAll('rect')
     // Jan 1 through Jul 17 2026 is 198 days; the grid may include a few blank
     // leading cells (padding to the first Sunday) but never fewer than the real days.
@@ -37,13 +37,13 @@ describe('YearGrid', () => {
     // BUG: a goal created 2026-07-01 collapsed the grid to only July. The year grid
     // should still paint Jan 1 → today (198 days), with the pre-July squares empty.
     const midYear = computeGoalStats({ today: '2026-07-17', startDate: '2026-07-01', endDate: null, target: 1000, days })
-    const { container } = render(<YearGrid goal={makeGoal({ createdAt: '2026-07-01T00:00:00Z' })} stats={midYear} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    const { container } = render(<YearGrid goal={makeGoal({ createdAt: '2026-07-01T00:00:00Z' })} stats={midYear} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     const rects = container.querySelectorAll('rect')
     expect(rects.length).toBeGreaterThanOrEqual(198)
   })
 
   it('shows the streak + active-day footer stats', () => {
-    render(<YearGrid goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    render(<YearGrid goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     expect(screen.getByText(/current streak/)).toBeInTheDocument()
     expect(screen.getByText(/longest streak/)).toBeInTheDocument()
     expect(screen.getAllByText(/active days/).length).toBeGreaterThan(0)
@@ -60,7 +60,7 @@ describe('YearGrid', () => {
       { dateKey: '2026-01-04', total: 1, perMember: {} },
     ]
     const longStats = computeGoalStats({ today: '2026-01-05', startDate: '2025-01-01', endDate: null, target: 1000, days: longDays })
-    render(<YearGrid goal={makeGoal()} stats={longStats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    render(<YearGrid goal={makeGoal()} stats={longStats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     // In-view (Jan 1 - Jan 5, 2026): 2 active days out of 5 -> 40%, not the
     // lifetime 32-active-day count against a 5-day span (640%).
     expect(screen.getByText('40%')).toBeInTheDocument()

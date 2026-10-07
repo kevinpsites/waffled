@@ -17,7 +17,7 @@ Meals is your recipe library and your planner in one — pick what's for dinner 
 - 📋 **Paste-markdown import** — drop in a markdown recipe, and Waffled parses it to fill the editor before you save.
 - 🔀 **Per-recipe overrides** — ingredient substitutions that feed the grocery build, plus per-step and whole-recipe notes.
 - 📝 **Two kinds of notes** — editing a recipe gives you **Recipe notes** (the recipe's own, what a re-import rewrites) and **Your notes** (your household's, kept across re-imports) in separate boxes, so a personal note never ends up in the recipe itself.
-- 👨‍🍳 **Cook mode** — step-by-step with the screen kept awake, a recipe overview to jump between steps and ingredients, and **finish → mark cooked**.
+- 👨‍🍳 **Cook mode** — step-by-step with the screen kept awake, the step's ingredients in a tick-off column on the left (under the step on a phone), a recipe overview to jump between steps and ingredients, and **finish → mark cooked**.
 - ⏲️ **Per-step timers** — set them in the editor; in cook mode they ride along in a floating dock with a looping alarm (and a local-notification fallback). Need one on a timer-less step? Spin up an on-the-spot timer with wheel pickers — it's ephemeral.
 - 🧺 **Auto-built groceries** — the week's dinners become a shopping list that honors your substitutions (see [Lists & groceries](/features/lists/)).
 - ✨ **AI "Plan my week/month"** — draws only from your library, works to a theme, and fills the gaps; **"Try New Recipe"** (a "Try something new" toggle plus "Dishes to try" chips) nudges the plan toward novelty, and AI metadata auto-fill guesses cuisine, protein, vegetables, and tags.
@@ -118,6 +118,23 @@ Paste-markdown import (**Use template** / **See example** in the editor) reads a
 ```
 
 Durations accept minutes / hours / seconds and compound or short forms — `20 minutes`, `1 hour 30 min`, `1.5 hrs`, `90s`. You can also drop a timer **inline** anywhere in the step text as `{timer: 20 minutes}` (equivalent, also stripped). Parsed timers become the per-step timer in [cook mode](#highlights), and the in-editor **Use template** / **See example** both include a `**Timer:**` line to copy. This works the same on web and iOS (iOS uses the same server-side parser).
+
+## Which day your week starts on
+
+**Settings → Family & People → Week starts on** (Sunday or Monday) sets the day every
+household week is cut on, and the meal planner follows it: the weekly grid runs from
+that day, the monthly grid leads with that column, and the "Plan my week / Plan my
+month" review groups its nights the same way. Scheduling straight from a recipe or a
+saved meal follows it too, so the "This week" you pick there is the same seven days the
+planner is showing.
+
+It matters for more than the layout. The [grocery list](/features/lists/) is keyed by
+the household's week, so the planner and the list have to agree on where a week ends —
+if they don't, a planned week straddles two grocery weeks and only one of them gets
+built. Change the setting and the planner re-cuts immediately on every device.
+
+The setting is household-wide, not per-device: the [calendar](/features/calendar/)
+grids and the goal heatmaps follow it too, on every screen.
 
 ## Settings
 

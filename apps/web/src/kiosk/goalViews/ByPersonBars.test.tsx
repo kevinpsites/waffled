@@ -29,12 +29,12 @@ describe('ByPersonBars', () => {
   const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
 
   it('shows a month column for every month from Jan through the current month', () => {
-    const { container } = render(<ByPersonBars goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    const { container } = render(<ByPersonBars goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     expect(container.querySelectorAll('.gdv-byperson-col')).toHaveLength(7) // Jan..Jul
   })
 
   it('renders a per-person total chip with each person\'s lifetime total', () => {
-    const { container } = render(<ByPersonBars goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    const { container } = render(<ByPersonBars goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     const chips = container.querySelectorAll('.gdv-byperson-chip')
     expect(chips).toHaveLength(2)
     expect(chips[0].textContent).toContain('Wally')

@@ -688,16 +688,26 @@ describe('grocery: a plate on the list', () => {
     expect(chicken.sourceRecipeIds).toContain(bbqChicken)
   })
 
+  it('dates a planned meal by the day it is on, not an instant', async () => {
+    // `meal_plan_entries.date` is a `date` column — a bare calendar day. Handed back as
+    // a timestamp it is read as an instant, and the day it lands on then depends on the
+    // API server's own timezone: on a server ahead of UTC the day label goes backwards.
+    // The board's day is a day.
+    const board = json(await call('GET', `/api/lists/grocery/board?weekStart=${WEEK}`, kevin))
+    for (const m of board.meals) expect(m.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(board.meals.some((m: { date: string }) => m.date === '2026-07-06')).toBe(true)
+  })
+
   it('the board’s planned meals carry the plate and its dishes', async () => {
     const board = json(await call('GET', `/api/lists/grocery/board?weekStart=${WEEK}`, kevin))
-    const meal = board.meals.find((m: { date: string }) => String(m.date).startsWith('2026-07-06'))
+    const meal = board.meals.find((m: { date: string }) => m.date === '2026-07-06')
     expect(meal).toMatchObject({ mealType: 'dinner', title: 'Scheduled plate', recipeId: null })
     expect(meal.mealId).toBe(scheduledPlate)
     expect(meal.recipes.map((r: { recipeId: string }) => r.recipeId)).toEqual([bbqChicken, peachCobbler])
     expect(meal.recipes[0]).toMatchObject({ title: 'BBQ Chicken', emoji: '🍗' })
     // a plain single-recipe slot still reports no child rows
     const single = json(await call('GET', '/api/lists/grocery/board?weekStart=2026-06-07', kevin)).meals.find(
-      (m: { date: string }) => String(m.date).startsWith('2026-06-11')
+      (m: { date: string }) => m.date === '2026-06-11'
     )
     expect(single.mealId).toBe(null)
     expect(single.recipes).toEqual([])

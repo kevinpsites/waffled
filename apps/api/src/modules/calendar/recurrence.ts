@@ -151,4 +151,55 @@ export function isValidRrule(rrule: string): boolean {
   }
 }
 
+/**
+ * The first slot a rule allows at or after `from`, in the given timezone.
+ *
+ * For picking where a generated series should actually start. An anchor date and a repeat
+ * rule are separate answers to separate questions, so nothing stops them disagreeing —
+ * anchor a weekly series on a Wednesday under `BYDAY=MO` and the master starts on a day
+ * its own rule excludes, which reads as the day picker having been ignored.
+ *
+ * Walks in the floating domain like `expand`, so a DST boundary between `from` and the
+ * slot doesn't shift the wall-clock time.
+ *
+ * Returns null if the rule can't be parsed or yields nothing — callers should fall back to
+ * `from` rather than refusing to book at all.
+ */
+export function firstSlotOnOrAfter(from: Date, rrule: string, tz: string): Date | null {
+  try {
+    const opts = RRule.parseString(rrule.replace(/^RRULE:/i, '').trim())
+    if (opts.freq === undefined || opts.freq === null) return null
+    const floatFrom = toFloating(from, tz)
+    opts.dtstart = floatFrom
+    const slot = new RRule(opts).after(floatFrom, true) // inclusive: `from` itself may qualify
+    return slot ? fromFloating(slot, tz) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Every slot a rule produces in `[from, to)`, given the DTSTART it would be created with.
+ *
+ * A thinner `expand` for callers that only want the pattern: no overrides, no rdate/exdate,
+ * no durations. It exists so the rhythms module can ask the one question a period grid and
+ * a repeat rule never agreed on — how many occurrences actually land inside each period —
+ * without inventing a second, subtly different walk of the same rule.
+ *
+ * Walks in the floating domain like `expand`, so a DST boundary inside the range doesn't
+ * shift the wall-clock time and quietly move a slot across a period boundary.
+ */
+export function slotsBetween(rrule: string, dtstart: Date, tz: string, from: Date, to: Date): Date[] {
+  const opts = RRule.parseString(rrule.replace(/^RRULE:/i, '').trim())
+  if (opts.freq === undefined || opts.freq === null) return []
+  opts.dtstart = toFloating(dtstart, tz)
+  // `to` is exclusive — a period's end boundary is the next period's start, and counting
+  // it in both would report a period as filled by an occurrence belonging to the next one.
+  return new RRule(opts)
+    .between(toFloating(from, tz), toFloating(to, tz), true)
+    .slice(0, MAX_OCCURRENCES)
+    .map((f) => fromFloating(f, tz))
+    .filter((d) => d >= from && d < to)
+}
+
 export { toFloating, fromFloating, localDayKey }

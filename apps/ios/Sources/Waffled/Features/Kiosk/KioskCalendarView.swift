@@ -24,18 +24,15 @@ struct KioskCalendarView: View {
     @State private var editingCountdown: WaffledAPI.Countdown?
 
     private var tz: TimeZone { sync.householdTz }
+    /// The household's first day of the week — the week columns, the month grid and
+    /// both weekday header rows follow it rather than a fixed Sunday.
+    private var firstDay: HouseholdWeekStart { sync.householdWeekStart ?? .sunday }
 
     /// The shared prebuilt day index (`SyncManager.eventsByDay`), person-filtered.
     /// With no filter chip this is the index verbatim (no copy, no scan); with one
     /// it's a single pass — either way no per-cell re-scan of the full event list.
     private var filteredByDay: [String: [SyncedEvent]] {
-        guard let p = filterPerson else { return sync.eventsByDay }
-        var out: [String: [SyncedEvent]] = [:]
-        for (day, items) in sync.eventsByDay {
-            let kept = items.filter { $0.personId == p || $0.participantIds.contains(p) }
-            if !kept.isEmpty { out[day] = kept }
-        }
-        return out
+        Agenda.filtered(byDay: sync.eventsByDay, person: filterPerson)
     }
     private var selectedItems: [SyncedEvent] { filteredByDay[selectedDay] ?? [] }
 
@@ -292,28 +289,35 @@ struct KioskCalendarView: View {
         let today = Agenda.todayKey(tz)
         return VStack(spacing: 6) {
             HStack(spacing: 6) {
-                ForEach(Array(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].enumerated()), id: \.offset) { _, d in
+                ForEach(Array(Cal.rotated(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], from: firstDay).enumerated()), id: \.offset) { _, d in
                     Text(d).font(.system(size: 12, weight: .heavy)).foregroundStyle(WF.ink3).frame(maxWidth: .infinity)
                 }
             }
             ForEach(0..<6, id: \.self) { row in
+                let rowCells = Array(cells[min(row * 7, cells.count)..<min(row * 7 + 7, cells.count)])
+                let spans = PhoneCalendar.weekSpans(rowCells.map(\.key), byDay: byDay, tz: tz)
                 HStack(spacing: 6) {
                     ForEach(0..<7, id: \.self) { col in
-                        let idx = row * 7 + col
-                        if idx < cells.count {
-                            monthCell(cells[idx], items: byDay[cells[idx].key] ?? [], today: today)
+                        if col < rowCells.count {
+                            monthCell(rowCells[col], items: spans.chipsByDay[rowCells[col].key] ?? [],
+                                      lanes: spans.lanes, today: today)
                         } else { Color.clear }
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .topLeading) {
+                    MonthSpanBars(spans: spans, inMonth: rowCells.map(\.inMonth), kiosk: true)
+                }
             }
         }
         .frame(maxHeight: .infinity)
     }
 
-    private func monthCell(_ cell: CalendarView.MonthCell, items: [SyncedEvent], today: String) -> some View {
+    /// `items` are the day's events the row's bars didn't take; `lanes` rows stay empty for the bars.
+    private func monthCell(_ cell: PhoneCalendar.MonthDay, items: [SyncedEvent], lanes: Int, today: String) -> some View {
         let isSelected = cell.key == selectedDay
         let isToday = cell.key == today
+        let chips = PhoneCalendar.cappedChips(eventCount: items.count, cap: 3, reserved: lanes)
         return Button { withAnimation { selectedDay = cell.key } } label: {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
@@ -332,9 +336,12 @@ struct KioskCalendarView: View {
                         .background(WF.warnT).clipShape(Capsule())
                     }
                 }
-                ForEach(items.prefix(3)) { ev in eventChip(ev) }
-                if items.count > 3 {
-                    Text("+\(items.count - 3) more").font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
+                if lanes > 0 {
+                    Color.clear.frame(height: MonthSpanBars.reservedHeight(lanes: lanes, kiosk: true))
+                }
+                ForEach(items.prefix(chips.shown)) { ev in eventChip(ev) }
+                if chips.more > 0 {
+                    Text("+\(chips.more) more").font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 0)
             }
@@ -352,6 +359,7 @@ struct KioskCalendarView: View {
         let paint = sync.eventPalette.chip(for: ev)
         return HStack(spacing: 5) {
             RoundedRectangle(cornerRadius: 99).fill(paint.color).frame(width: 3, height: 13)
+            RhythmEventMark(event: ev, size: 10)
             Text(chipLabel(ev)).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(paint.foreground).lineLimit(1)
             Spacer(minLength: 0)
         }
@@ -464,7 +472,7 @@ struct KioskCalendarView: View {
                 Button { stepMini(1) } label: { miniChevron("chevron.right") }
             }
             HStack(spacing: 0) {
-                ForEach(Array(["S", "M", "T", "W", "T", "F", "S"].enumerated()), id: \.offset) { _, d in
+                ForEach(Array(Cal.rotated(["S", "M", "T", "W", "T", "F", "S"], from: firstDay).enumerated()), id: \.offset) { _, d in
                     Text(d).font(.system(size: 11, weight: .heavy)).foregroundStyle(WF.ink3).frame(maxWidth: .infinity)
                 }
             }
@@ -479,7 +487,7 @@ struct KioskCalendarView: View {
         .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
-    private func miniCell(_ cell: CalendarView.MonthCell, events: [SyncedEvent], today: String) -> some View {
+    private func miniCell(_ cell: PhoneCalendar.MonthDay, events: [SyncedEvent], today: String) -> some View {
         let isToday = cell.key == today
         let colors = dotColors(events)
         return Button { withAnimation { selectedDay = cell.key; mode = .day } } label: {
@@ -600,12 +608,11 @@ struct KioskCalendarView: View {
 
     private func dayKeyToDate(_ key: String) -> Date? { DateFmt.date(key, "yyyy-MM-dd", tz) }
 
-    /// The Sun-led week (7 day keys) containing `key`.
+    /// The 7 day keys of the week containing `key`, cut on the household's first day.
     private func weekDays(_ key: String) -> [String] {
         let cal = Cal.gregorian(tz)
         guard let d = dayKeyToDate(key) else { return [] }
-        let weekday = cal.component(.weekday, from: d) - 1   // 0=Sun
-        guard let start = cal.date(byAdding: .day, value: -weekday, to: d) else { return [] }
+        let start = Cal.weekStart(d, tz, firstDay)
         return (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: start).map { EventTime.dayKey($0, tz) } }
     }
 
@@ -623,16 +630,15 @@ struct KioskCalendarView: View {
         return DateFmt.string(d, "MMM d", tz)
     }
 
-    private func monthCells(_ anchor: Date) -> [CalendarView.MonthCell] {
+    private func monthCells(_ anchor: Date) -> [PhoneCalendar.MonthDay] {
         let cal = Cal.gregorian(tz)
         let comps = cal.dateComponents([.year, .month], from: anchor)
         guard let first = cal.date(from: comps) else { return [] }
         let anchorMonth = cal.component(.month, from: first)
-        let leading = cal.component(.weekday, from: first) - 1
-        guard let start = cal.date(byAdding: .day, value: -leading, to: first) else { return [] }
+        let start = Cal.weekStart(first, tz, firstDay)
         return (0..<42).compactMap { i in
             guard let d = cal.date(byAdding: .day, value: i, to: start) else { return nil }
-            return CalendarView.MonthCell(key: EventTime.dayKey(d, tz), day: cal.component(.day, from: d),
+            return PhoneCalendar.MonthDay(key: EventTime.dayKey(d, tz), day: cal.component(.day, from: d),
                                           inMonth: cal.component(.month, from: d) == anchorMonth)
         }
     }
@@ -868,7 +874,12 @@ struct CalTimeGrid: View {
     /// household's event style applies.
     private func miniChip(_ ev: SyncedEvent) -> some View {
         let paint = sync.eventPalette.chip(for: ev)
-        return Text(ev.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(paint.foreground).lineLimit(1)
+        // The glyph goes in the STRING here, not into an HStack: the padding and
+        // background below are chained onto this `Text`, so wrapping it would move where
+        // the chip's fill lands.
+        return Text(RhythmMark.prefixed(ev.title, isRhythm: ev.isRhythm))
+            .font(.system(size: 11, weight: .semibold)).foregroundStyle(paint.foreground).lineLimit(1)
+            .accessibilityLabel(RhythmMark.accessibilityLabel(ev.title, isRhythm: ev.isRhythm))
             .padding(.horizontal, 6).padding(.vertical, 3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(paint.background).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -905,43 +916,9 @@ struct CalTimeGrid: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    /// An event placed into a lane within its overlap cluster.
-    struct PlacedEvent { let event: SyncedEvent; let lane: Int; let lanes: Int }
+    typealias PlacedEvent = TimeLanes.Placed
 
-    /// Lay a day's timed events into side-by-side lanes so overlaps don't obscure each
-    /// other (interval partitioning: cluster transitively-overlapping events, then
-    /// greedily assign each the first free lane).
-    private func placedEvents(_ key: String) -> [PlacedEvent] {
-        func startOf(_ e: SyncedEvent) -> Date { e.startsAt ?? .distantPast }
-        func endOf(_ e: SyncedEvent) -> Date {
-            let s = e.startsAt ?? .distantPast
-            let dur = e.endsAt.map { max(1800, $0.timeIntervalSince(s)) } ?? 3600   // ≥30 min
-            return s.addingTimeInterval(dur)
-        }
-        let sorted = timed(key)
-        var result: [PlacedEvent] = []
-        var i = 0
-        while i < sorted.count {
-            var clusterEnd = endOf(sorted[i])
-            var j = i + 1
-            while j < sorted.count, startOf(sorted[j]) < clusterEnd {
-                clusterEnd = max(clusterEnd, endOf(sorted[j])); j += 1
-            }
-            let cluster = Array(sorted[i..<j])
-            var laneEnds: [Date] = []
-            var assigned: [(SyncedEvent, Int)] = []
-            for e in cluster {
-                if let li = laneEnds.firstIndex(where: { startOf(e) >= $0 }) {
-                    laneEnds[li] = endOf(e); assigned.append((e, li))
-                } else {
-                    laneEnds.append(endOf(e)); assigned.append((e, laneEnds.count - 1))
-                }
-            }
-            for (e, li) in assigned { result.append(PlacedEvent(event: e, lane: li, lanes: laneEnds.count)) }
-            i = j
-        }
-        return result
-    }
+    private func placedEvents(_ key: String) -> [PlacedEvent] { TimeLanes.place(timed(key)) }
 
     @ViewBuilder private func block(_ placed: PlacedEvent, colWidth: CGFloat) -> some View {
         let ev = placed.event
@@ -956,8 +933,11 @@ struct CalTimeGrid: View {
                 HStack(spacing: 5) {
                     RoundedRectangle(cornerRadius: 99).fill(paint.color).frame(width: 3)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(ev.title).font(.system(size: placed.lanes > 1 ? 12 : 13, weight: .bold))
-                            .foregroundStyle(paint.foreground).lineLimit(placed.lanes > 2 ? 1 : 2)
+                        HStack(spacing: 3) {
+                            RhythmEventMark(event: ev, size: placed.lanes > 1 ? 10 : 11)
+                            Text(ev.title).font(.system(size: placed.lanes > 1 ? 12 : 13, weight: .bold))
+                                .foregroundStyle(paint.foreground).lineLimit(placed.lanes > 2 ? 1 : 2)
+                        }
                         if height > 38, placed.lanes < 3 {
                             Text(EventTime.timeLabel(start, tz)).font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(paint.foreground.opacity(0.75))

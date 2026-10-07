@@ -17,6 +17,16 @@ gated off**.
 ## Highlights
 - 📅 **Native events** — create / edit / delete, with **multiple participants per
   event** (stacked avatars, each in the person's color) and a **per-person filter**.
+- 🧳 **Multi-day events** — an all-day event that runs several days (a trip synced from
+  Google, say) draws as one bar across its days in the month view on iPhone, iPad and web, and
+  across the web week view's all-day strip; a trip that runs into the next week continues as a
+  bar on that row. On iPhone and iPad it also
+  shows on each day of the week cards, day view, agenda and Today, and only fades as past once its
+  last day is over; on web it shows in Day view and Agenda on each of its days, and picking any of
+  its days lists it in the month's day panel. On web,
+  iPhone and iPad the event editor's **When** card holds **All day**, **Starts** and **Ends**: a
+  last day for an all-day event, or an end date and time for a timed one. Tap a date or time to
+  pick it from a calendar or a list of times.
 - 🎨 **Color you control** — solid or tinted event chips, any custom hex per person,
   and a **family color** for events that involve everyone. See
   [Colors on the calendar](#colors-on-the-calendar).
@@ -24,6 +34,16 @@ gated off**.
   - a live red **"now" line** on Week & Day
   - month cells show **event titles** (tap a day for times)
   - agenda **dims past events** so today reads first
+- 📱 **On iPhone: Month → Week → Day** — Month is home: a full-height grid with week
+  numbers down the side and up to four event titles a day (a countdown takes one of those
+  slots; the rest reads "+N more"). Tap a day to open its **Day** timeline — "‹ September"
+  or a swipe from the screen edge brings you back. **Week** is a row of day cards: swipe
+  through the days, keep swiping past the last one (or swipe the day strip above) to reach
+  the next week's first day, and tap an event to edit it. With **Meals** on, planned dinners
+  show as amber chips, thaw reminders as faint grey ones, and each week card ends with that
+  night's dinner. Switch views from the header's view button — its icon shows the view
+  you're on — or pinch to zoom between Month, Week and Day. **Agenda** (with the "Add an
+  event…" bar) and the **per-person filter** are in the same menu.
 - **Full-screen event detail** — location with **Directions**, repeats, notes, and
   an activity timeline.
 - 🔁 **Recurring events** — full RRULE support:
@@ -35,7 +55,9 @@ gated off**.
   cursor) plus outbound push to each person's **write-target** calendar (reader-only
   calendars are never a target). The push lifecycle runs `pending_push → synced` or
   `push_failed` (retried). Google and Microsoft accounts can be mixed in one household;
-  each shows which provider it came from.
+  each shows which provider it came from. An event made with nobody on it stays in Waffled
+  only; add someone with a connected calendar later and it moves to their write-target
+  calendar. An event you saved as **Waffled only** on purpose stays there.
 - 📡 **Calendar feeds (ICS)** — subscribe to any published `.ics` / `webcal://` link, no
   sign-in needed; refreshed every 15 minutes. See [below](#calendar-feeds-ics).
 - 📶 **Fully offline via PowerSync** — the calendar is the *one* fully-offline domain:
@@ -43,6 +65,9 @@ gated off**.
 - ✨ **AI "Heads up this week"** digest plus a per-event insight.
 - 🎯 **"Counts toward a goal"** tag on an event — feeds goal auto-counting (see
   [Goals](/features/goals/)).
+- 🔁 **Rhythm marker** — an event booked to keep a [rhythm](/features/rhythms/) wears a
+  small 🔁 before its title in every view, and its detail page says *"This slot keeps a
+  rhythm"*. It's an ordinary event in every other respect.
 
 ## Where it works
 | Surface | Support |
@@ -152,8 +177,11 @@ plan B when a workplace won't approve calendar OAuth access.
 ## Settings
 - **Settings → Calendars** — connect Google or Outlook, add calendar feeds, set
   each person's **write-target** calendar, and **"sync now"**.
-- **Household settings** — week start, timezone, and location (which also feeds
-  weather). Provider sync and feed polling run **server-side**, on a schedule.
+- **Household settings** — **week start**, timezone, and location (which also feeds
+  weather). Provider sync and feed polling run **server-side**, on a schedule. Set the
+  week to start on Monday and the calendar follows: the month grid leads with Monday,
+  the week view runs Mon–Sun, and the mini-month and "whose week is busy" summary are
+  cut the same way.
 
 ## Module
 None — Calendar is **core** and never gated. See [Modules](/administration/modules/)

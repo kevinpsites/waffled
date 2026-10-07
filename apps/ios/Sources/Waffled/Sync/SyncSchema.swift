@@ -40,6 +40,11 @@ enum SyncSchema {
             // 'family' (shared kiosk) | 'personal' (only owner_person_id sees it)
             .text("visibility"),
             .text("owner_person_id"),
+            // The rhythm this slot was booked for. Read-only on the device: the app
+            // never writes it, and only the booking route sets it. PowerSync projects
+            // ONLY the columns declared here, so leaving it out doesn't error — every
+            // read just comes back NULL and the 🔁 marker never appears.
+            .text("rhythm_id"),
             .text("updated_at"),
         ]),
         Table(name: "event_participants", columns: [

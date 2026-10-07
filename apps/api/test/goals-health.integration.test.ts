@@ -155,6 +155,24 @@ describe('goals — /health-sync counting (total/count)', () => {
     expect((await getGoal(a)).totalProgress).toBe(12000)
     expect((await getGoal(b)).totalProgress).toBe(9000)
   })
+
+  it('keeps a note written on a synced day when that day syncs again', async () => {
+    // A Health entry is the one derived entry that rewrites itself on a schedule — the
+    // iPhone re-syncs the day every time the goal detail appears. The note is the user's
+    // own text on an entry Health owns, so the day's replace has to leave it alone; if it
+    // didn't, the note would quietly vanish the next time they opened the goal.
+    const id = await createGoal({ title: 'Steps with a note', goalType: 'total', unit: 'steps', targetValue: 1000000, healthMetric: 'steps' })
+    expect((await sync(id, '2026-07-08', 7000)).statusCode).toBe(200)
+    const entry = (await getGoal(id)).recent[0]
+    expect(entry.editable).toBe(false)
+
+    expect((await call('PATCH', `/api/goals/${id}/logs/${entry.id}`, kevin, { note: 'walked the loop twice' })).statusCode).toBe(200)
+    expect((await sync(id, '2026-07-08', 9000)).statusCode).toBe(200)
+
+    const after = await getGoal(id)
+    expect(after.totalProgress).toBe(9000)
+    expect(after.recent[0]).toMatchObject({ id: entry.id, note: 'walked the loop twice', amount: 9000 })
+  })
 })
 
 describe('goals — /health-sync counting (fractional distance, Tier 1)', () => {

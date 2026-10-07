@@ -508,7 +508,9 @@ struct CaptureSheet: View {
             let typeLabel = goalType == "count" ? "Count" : (goalType == "total" ? "Total" : (goalType == "checklist" ? "Checklist" : "Habit"))
             let measured = goalType == "count" || goalType == "total"
             let target = measured && !goalTarget.isEmpty ? [goalTarget, goalUnit].filter { !$0.isEmpty }.joined(separator: " ") : ""
-            let by = goalDeadlineOn ? "by " + DateFmt.string(goalDeadline, "MMM d", sync.householdTz) : ""
+            // Same zone the picker shows and the commit writes, so this summary can't
+            // name a different day than the field right above it.
+            let by = goalDeadlineOn ? "by " + DateFmt.string(goalDeadline, "MMM d", .current) : ""
             return [typeLabel, target, by].filter { !$0.isEmpty }.joined(separator: " · ")
         case "pantry":
             let expires = pantryExpiresOn ? "expires " + DateFmt.string(pantryExpires, "MMM d", sync.householdTz) : ""
@@ -1025,8 +1027,12 @@ struct CaptureSheet: View {
             goalAssignEveryone = audience == "everyone" && sync.can("goal.manage")
             goalUnit = unit ?? ""
             goalTarget = targetValue.map { $0 == $0.rounded() ? String(Int($0)) : String($0) } ?? ""
-            // Parse the deadline in the HOUSEHOLD tz (matching commit) so it doesn't shift.
-            if let deadline, let d = DateFmt.date(deadline, "yyyy-MM-dd", sync.householdTz) {
+            // Read in the DEVICE's zone, because that is the zone the DatePicker below
+            // renders this day in and the zone the commit formats it back out in. Using
+            // the household's zone here put the day a step out of line with the picker
+            // whenever the two zones differ, which is the same off-by-one as reading a
+            // bare day as UTC — just narrower.
+            if let deadline, let d = DateFmt.date(deadline, "yyyy-MM-dd", .current) {
                 goalDeadlineOn = true; goalDeadline = d
             } else {
                 goalDeadlineOn = false
@@ -1129,7 +1135,9 @@ struct CaptureSheet: View {
                 let target = measured ? Double(goalTarget.trimmingCharacters(in: .whitespaces)) : nil
                 let type = measured && target == nil ? "habit" : goalType
                 let unit = (measured && !goalUnit.trimmingCharacters(in: .whitespaces).isEmpty) ? goalUnit.trimmingCharacters(in: .whitespaces) : nil
-                let deadline = goalDeadlineOn ? DateFmt.string(goalDeadline, "yyyy-MM-dd", sync.householdTz) : nil
+                // Written back in the zone the picker showed the day in — see the parse
+                // above. A deadline is a bare calendar day, not an instant.
+                let deadline = goalDeadlineOn ? DateFmt.string(goalDeadline, "yyyy-MM-dd", .current) : nil
                 // Just me → the current viewer; Everyone → all household members. A viewer
                 // without `goal.manage` (kids) may only assign themselves — POST /api/goals
                 // 403s if a non-manager includes other participants — so clamp to just-me.

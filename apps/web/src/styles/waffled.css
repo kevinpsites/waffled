@@ -324,6 +324,8 @@
   /* portal'd to <body> (outside .wf), so set the sans stack explicitly — otherwise
      `font: inherit` falls back to the browser default serif. */
   font-family: var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
+/* Below the outage strip (z 300): start under it, not behind it. */
+.server-unreachable .cap-overlay { top: var(--unreachable-h, 56px); }
 .cap-composer { width: min(680px, 94vw); background: var(--card); border-radius: 22px;
   box-shadow: 0 28px 70px rgba(0,0,0,.30); border: 1px solid var(--hair-2); padding: 16px 18px; }
 .cap-comp-row { display: flex; align-items: flex-start; gap: 12px; }
@@ -422,7 +424,16 @@ select.cap-edit-sub { cursor: pointer; }
   border-top: 1px solid var(--hair); border-left: 1px solid var(--hair); }
 .cal-cell { border-right: 1px solid var(--hair); border-bottom: 1px solid var(--hair);
   padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; min-height: 0; overflow: hidden; }
-.cal-cell .dn { font-size: 14px; color: var(--ink-2); font-weight: 600; }
+.cal-cell .dn { font-size: 14px; color: var(--ink-2); font-weight: 600; min-height: 26px; line-height: 26px; }
+/* Multi-day bars (month-spans.ts): grid siblings of the cells, laid over the space each cell
+   reserves under its day number. Top = cell padding + day number + gap; a lane is a chip + gap. */
+.cal-span-gap { flex: none; height: calc(var(--lanes) * 23px - 3px); }
+.cal-span { grid-row: var(--span-row); grid-column: var(--span-col) / span var(--span-len);
+  align-self: start; z-index: 1; box-sizing: border-box; height: 20px; line-height: 14px;
+  margin: calc(35px + var(--lane) * 23px) 5px 0; cursor: pointer; }
+.cal-span.cont-before { margin-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.cal-span.cont-after { margin-right: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.cal-span.dim { opacity: .5; }
 .cal-cell.dim .dn { color: var(--ink-3); }
 .cal-cell.today .dn { background: var(--primary); color: var(--on-accent); width: 26px; height: 26px;
   border-radius: 999px; display: grid; place-items: center; }
@@ -474,10 +485,10 @@ select.cap-edit-sub { cursor: pointer; }
    (stamped from the household setting) so the solid↔tinted switch is pure CSS
    and the `--ev` mechanism above is untouched. Dark mode mixes toward black so
    solid chips keep depth against dark cards.
-   The text is NOT a fixed white — white clears WCAG AA on only one of the eight
-   member colors (gold manages 2.2:1). Each chip carries the ink that wins on its
-   own fill as `--ev-on` / `--ev-on-dark` (see lib/event-color.ts `evVars`); the
-   hardcoded fallbacks are the readable ink for the `--ink-3` fill above. */
+   The text is NOT a fixed white — gold and teal are too light for it. Each chip
+   carries the ink that wins on its own fill as `--ev-on` / `--ev-on-dark` (see
+   lib/event-color.ts `evVars` for the rule); the hardcoded fallbacks are the
+   readable ink for the `--ink-3` fill above. */
 :root[data-ev-style="solid"] .ev-tint {
   background: var(--ev, var(--ink-3));
   color: var(--ev-on, #000000);

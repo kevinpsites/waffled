@@ -5,7 +5,6 @@ import SwiftUI
 /// week strip" variant, offered alongside this for habit goals.)
 struct ConsistencyCalendarView: View {
     let ctx: GoalDataContext
-    var headerRight: AnyView?
 
     private static let columns = Array(repeating: GridItem(.flexible(), spacing: 5), count: 7)
 
@@ -13,7 +12,7 @@ struct ConsistencyCalendarView: View {
     private var year: Int { GoalDateKey.calendar.component(.year, from: todayDate) }
     private var month: Int { GoalDateKey.calendar.component(.month, from: todayDate) - 1 }
     private var daysInMonth: Int { GoalDateKey.calendar.range(of: .day, in: .month, for: todayDate)!.count }
-    private var lead: Int { GoalDateKey.calendar.component(.weekday, from: GoalDateKey.calendar.date(from: DateComponents(year: year, month: month + 1, day: 1))!) - 1 }
+    private var lead: Int { GoalDateKey.monthLeadCells(GoalDateKey.calendar.date(from: DateComponents(year: year, month: month + 1, day: 1))!, ctx.firstDay) }
     private var dayOfMonth: Int { GoalDateKey.calendar.component(.day, from: todayDate) }
 
     private struct DayInfo { let day: Int; let dateKey: String; let future: Bool; let hit: Bool }
@@ -30,13 +29,9 @@ struct ConsistencyCalendarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(GoalViewFmt.monthName(month)).font(WF.serif(17, .semibold)).foregroundStyle(WF.ink)
-                    Text(ctx.goal.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
-                }
-                Spacer()
-                headerRight
+            VStack(alignment: .leading, spacing: 2) {
+                Text(GoalViewFmt.monthName(month)).font(WF.serif(17, .semibold)).foregroundStyle(WF.ink)
+                Text(ctx.goal.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
             }
 
             LazyVGrid(columns: Self.columns, spacing: 5) {

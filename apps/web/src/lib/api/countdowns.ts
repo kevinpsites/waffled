@@ -1,10 +1,13 @@
-// Countdowns domain — "N days until X". A merged, read-only list from three sources
-// (standalone items, is_countdown events, member birthdays); standalone items are CRUD.
+// Countdowns domain — "N days until X". A merged, read-only list from four sources
+// (standalone items, is_countdown events, member birthdays, and completion-shape rhythms
+// counting down to their next due date); standalone items are CRUD. A 'rhythm' item is a
+// synthetic `rhythm:<id>` row — not editable here, and only present when the household has
+// the rhythms module on.
 import { useEffect, useState } from 'react'
 import { apiGet, apiSend, apiDelete } from './client'
 import { useRefetchOn, emit } from './bus'
 
-export type CountdownSource = 'standalone' | 'event' | 'birthday'
+export type CountdownSource = 'standalone' | 'event' | 'birthday' | 'rhythm'
 export interface Countdown {
   id: string
   title: string
@@ -52,7 +55,11 @@ export function useCountdowns() {
   const [loading, setLoading] = useState(true)
   const [nonce, setNonce] = useState(0)
   const refetch = () => setNonce((n) => n + 1)
-  useRefetchOn(['countdowns'], refetch)
+  // 'rhythms' too: a completion rhythm's next due date is a countdown source ("18 days
+  // until the air filter"), so marking one done supersedes a countdown that is on screen
+  // right beside it. Without this the register updated and the countdown kept counting to
+  // the old date until the page was reloaded by hand.
+  useRefetchOn(['countdowns', 'rhythms'], refetch)
   useEffect(() => {
     let alive = true
     countdownsApi.list().then((d) => {

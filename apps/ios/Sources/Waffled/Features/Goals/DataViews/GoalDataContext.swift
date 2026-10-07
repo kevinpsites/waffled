@@ -8,6 +8,9 @@ struct GoalDataContext {
     let personMap: [String: WaffledAPI.Goal.Participant]
     let onDayTap: (String) -> Void
     let onMonthTap: (_ year: Int, _ month: Int) -> Void
+    /// Which day starts the week, from the household setting. The week/month/
+    /// consistency/year views are cut on it; the rest ignore it.
+    let firstDay: HouseholdWeekStart
 }
 
 /// Local, non-networking date/number formatting shared by the data views —

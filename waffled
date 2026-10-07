@@ -23,8 +23,11 @@
 #   ./waffled observability up|down   run a local Grafana/OTEL stack + point the api at it
 #   ./waffled web       run the Vite dev server (HMR) on :5175
 #   ./waffled release check   verify main, changelog, versions, builds, and tests
-#   ./waffled release X.Y.Z   run those checks, then bump every version site in one
-#                    commit + tag vX.Y.Z; run locally so the tag triggers CI (no PAT)
+#   ./waffled release X.Y.Z [--no-mac]   run those checks, then bump every version site in
+#                    one commit + tag vX.Y.Z; run locally so the tag triggers CI (no PAT).
+#                    On the Mac that holds the signing keys it then offers to run the Mac
+#                    half too (apps/mac/Scripts/release-mac.sh: DMG, notarization, upload);
+#                    --no-mac declines up front and just prints the reminder
 #
 # Everything is driven off infra/compose so you never type the long flags.
 set -euo pipefail
@@ -317,7 +320,11 @@ maybe_reexec_upgrade() {
     return 0
   fi
   echo "${c_dim}./waffled was updated — restarting the upgrade with the new version…${c_reset}"
-  WAFFLED_UPGRADE_REEXEC=1 exec "$ROOT/waffled" upgrade "$@"
+  # The global parse already took --override out of "$@"; without handing it back, the
+  # new copy would recreate the stack from the base compose file alone.
+  local _o override_args=()
+  for _o in ${COMPOSE_OVERRIDES[@]+"${COMPOSE_OVERRIDES[@]}"}; do override_args+=(--override "$_o"); done
+  WAFFLED_UPGRADE_REEXEC=1 exec "$ROOT/waffled" upgrade ${override_args[@]+"${override_args[@]}"} "$@"
 }
 
 run_pre_upgrade_backup() {
@@ -360,11 +367,34 @@ EOF
   }
 }
 
+# Portable in-place edit (BSD/macOS + GNU sed): rewrite to a temp file, then move. An
+# expression that matches nothing leaves the file identical, and `sed` reports that as
+# success — during a release that is a version site left behind, committed and tagged. The
+# release gate only ever asks for a version strictly newer than the current one, so an
+# unchanged file always means the edit missed.
+bump_line() { # bump_line <file> <sed-expression>
+  local f="$1" expr="$2" tmp
+  tmp="$(mktemp)"
+  if ! sed -E "$expr" "$f" > "$tmp"; then
+    rm -f "$tmp"
+    echo "${c_red}Could not rewrite $f with: $expr${c_reset}" >&2
+    exit 1
+  fi
+  if cmp -s "$f" "$tmp"; then
+    rm -f "$tmp"
+    echo "${c_red}$f is unchanged — nothing matched: $expr${c_reset}" >&2
+    echo "Nothing was committed or tagged. Earlier version sites may already be bumped;" >&2
+    echo "discard them with: git checkout -- apps infra" >&2
+    exit 1
+  fi
+  mv "$tmp" "$f"
+}
+
 # Verify release metadata and prove this checkout is exactly the reviewed main branch.
 # `git fetch` updates remote refs, but no worktree files, commits, or tags are changed.
 release_repository_ready() {
   local target="${1:-}" branch head remote counts ahead behind body entries
-  local api_ver web_ver compose_ver ios_ver
+  local api_ver web_ver compose_ver ios_ver mac_ver
 
   if ! command -v git >/dev/null 2>&1 || ! command -v node >/dev/null 2>&1; then
     echo "${c_red}Release checks require git and Node.js.${c_reset}"
@@ -419,9 +449,14 @@ release_repository_ready() {
   web_ver="$(package_version "$ROOT/apps/web/package.json")"
   compose_ver="$(grep -E '^WAFFLED_VERSION=' "$ROOT/infra/compose/.env.example" | head -1 | cut -d= -f2-)"
   ios_ver="$(sed -nE 's/^[[:space:]]*MARKETING_VERSION:[[:space:]]*"?([^"[:space:]]+)"?.*/\1/p' "$ROOT/apps/ios/project.yml" | head -1)"
+  # The Mac app is a version site like any other, and the one with the sharpest failure:
+  # Sparkle decides "is this newer?" from CFBundleVersion, which follows MARKETING_VERSION
+  # here, so a release that left it behind is one no installed copy can see.
+  mac_ver="$(sed -nE 's/^[[:space:]]*MARKETING_VERSION:[[:space:]]*"?([^"[:space:]]+)"?.*/\1/p' "$ROOT/apps/mac/project.yml" | head -1)"
   if [ -z "$api_ver" ] || [ "$api_ver" != "$web_ver" ] || \
-     [ "$api_ver" != "$compose_ver" ] || [ "$api_ver" != "$ios_ver" ]; then
-    echo "${c_red}Current versions disagree:${c_reset} api=$api_ver web=$web_ver compose=$compose_ver ios=$ios_ver"
+     [ "$api_ver" != "$compose_ver" ] || [ "$api_ver" != "$ios_ver" ] || \
+     [ "$api_ver" != "$mac_ver" ]; then
+    echo "${c_red}Current versions disagree:${c_reset} api=$api_ver web=$web_ver compose=$compose_ver ios=$ios_ver mac=$mac_ver"
     echo "Fix the drift before cutting another release."
     return 1
   fi
@@ -756,6 +791,94 @@ release_project_checks() {
   [ "$checks_rc" -eq 0 ] || return 1
   echo "${c_grn}All available release project checks passed.${c_reset}"
 }
+
+# ── the Mac half of a release ───────────────────────────────────────────────
+# apps/mac/Scripts/release-mac.sh builds, signs, notarizes and uploads the DMG. It needs
+# one particular Mac's login Keychain, so `./waffled release` can only chain it where this
+# IS that Mac — everywhere else it prints the hand-off note and the release stands.
+# Both paths are variables so the tests can point them at a temp dir and a stub.
+MAC_RELEASE_SCRIPT="${MAC_RELEASE_SCRIPT:-$ROOT/apps/mac/Scripts/release-mac.sh}"
+MAC_SIGNING_CONF="${MAC_SIGNING_CONF:-$HOME/.config/waffled/signing.conf}"
+mac_release_skip=no
+
+# `[ -t 0 ]` behind a name so a test can say "pretend there is a terminal".
+stdin_is_terminal() { [ -t 0 ]; }
+
+# Why the Mac step cannot run here, in a few words — empty output means it can.
+# Stricter than release-mac.sh, which also accepts WAFFLED_SIGN_IDENTITY from the
+# environment: a missing conf here only costs the operator one typed command, while a
+# wrong guess costs them forty minutes of build before it dies.
+mac_sign_blocker() {
+  [ "$(uname -s)" = "Darwin" ] || { printf '%s' "this is not a Mac"; return 0; }
+  [ -x "${MAC_RELEASE_SCRIPT:-}" ] || { printf '%s' "no executable ${MAC_RELEASE_SCRIPT:-}"; return 0; }
+  [ -f "${MAC_SIGNING_CONF:-}" ] || { printf '%s' "no signing config at ${MAC_SIGNING_CONF:-}"; return 0; }
+  command -v gh >/dev/null 2>&1 || { printf '%s' "gh is not on PATH"; return 0; }
+}
+
+mac_can_sign() { [ -z "$(mac_sign_blocker)" ]; }
+
+mac_release_note() {
+  echo "${c_ylw}Still to do on the signing Mac:${c_reset} ${c_dim}apps/mac/Scripts/release-mac.sh $1${c_reset}"
+  echo "${c_dim}  Builds, signs, notarizes and uploads Waffled-$1.dmg + appcast.xml to the"
+  echo "  GitHub Release this tag creates. Until it runs there is no Mac download, and"
+  echo "  Check for updates… in every installed copy still sees the previous release.${c_reset}"
+}
+
+# Position-independent `--no-mac`: sets mac_release_skip and leaves the rest in REL_ARGS.
+# The empty-array expansion at the call site is the bash 3.2 dance, not style.
+release_mac_flag_scan() {
+  local a
+  mac_release_skip=no
+  REL_ARGS=()
+  for a in "$@"; do
+    case "$a" in
+      --no-mac) mac_release_skip=yes ;;
+      *)        REL_ARGS+=("$a") ;;
+    esac
+  done
+}
+
+# Offer the Mac half once the tag is pushed. Never fails a release it did not cause:
+# every reason not to run is the hand-off note and a zero exit.
+mac_release_step() {
+  local ver="$1" blocker ans rc=0
+  if [ "${mac_release_skip:-no}" = yes ]; then
+    mac_release_note "$ver"
+    return 0
+  fi
+  blocker="$(mac_sign_blocker)"
+  if [ -n "$blocker" ]; then
+    mac_release_note "$ver"
+    echo "${c_dim}  (not offered here: $blocker)${c_reset}"
+    return 0
+  fi
+  if ! stdin_is_terminal; then
+    mac_release_note "$ver"
+    echo "${c_dim}  (not offered here: nothing on stdin to ask)${c_reset}"
+    return 0
+  fi
+  echo
+  echo "This Mac can sign. Running it now takes tens of minutes: it waits for the GitHub"
+  echo "Release the tag creates, builds a ~670 MB app and notarizes it — and the first"
+  echo "codesign may raise a Keychain dialog no headless shell can answer."
+  printf "Run ${c_dim}release-mac.sh %s${c_reset} now? [Y/n] " "$ver"
+  # A failed read is Ctrl-D — someone leaving, not someone agreeing. Enter is the only
+  # silence that means yes.
+  read -r ans || ans="n"
+  case "$ans" in
+    n|N|no|NO) mac_release_note "$ver"; return 0 ;;
+  esac
+  "${MAC_RELEASE_SCRIPT:-}" "$ver" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "${c_red}release-mac.sh failed (status $rc) — but the release did not: v$ver is"
+    echo "committed, tagged and pushed.${c_reset} ${c_dim}Fix what it reported and re-run"
+    echo "  apps/mac/Scripts/release-mac.sh $ver"
+    echo "It is idempotent: every step replaces what it wrote last time for this version.${c_reset}"
+    return "$rc"
+  fi
+  echo "${c_grn}Mac release published for v$ver.${c_reset}"
+}
+
 # Restore a dump into a short-lived, isolated Postgres container. This exercises the
 # real gunzip -> psql recovery path without stopping or writing to the live stack.
 verify_backup_restore() (
@@ -1199,6 +1322,11 @@ case "$cmd" in
     # (CURRENT_PROJECT_VERSION) is left alone — Xcode Cloud auto-increments that.
     # Also finalizes CHANGELOG.md: dates the [Unreleased] notes as this version, opens a
     # fresh [Unreleased], and adds the compare link — so the tag carries the release notes.
+    #
+    # On the Mac that holds the signing keys it then offers to run the other half,
+    # apps/mac/Scripts/release-mac.sh; `--no-mac` declines up front.
+    release_mac_flag_scan "$@"
+    set -- ${REL_ARGS[@]+"${REL_ARGS[@]}"}
     if [ "${1:-}" = "check" ]; then
       [ "$#" -eq 1 ] || { echo "usage: ./waffled release check"; exit 1; }
       release_repository_ready || exit 1
@@ -1211,7 +1339,7 @@ case "$cmd" in
 
     ver="${1:-}"
     if ! printf '%s' "$ver" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
-      echo "${c_red}usage: ./waffled release check|X.Y.Z${c_reset} (semver, no leading v)"; exit 1
+      echo "${c_red}usage: ./waffled release check|X.Y.Z [--no-mac]${c_reset} (semver, no leading v)"; exit 1
     fi
     tag="v$ver"
     release_repository_ready "$ver" || exit 1
@@ -1248,13 +1376,12 @@ case "$cmd" in
         '') [ "$n" -gt 0 ] && break ;;
       esac
     done
-    # Portable in-place edit (BSD/macOS + GNU sed): rewrite to a temp file, then move.
-    bump_line() { local f="$1" expr="$2" tmp; tmp="$(mktemp)"; sed -E "$expr" "$f" > "$tmp" && mv "$tmp" "$f"; }
     echo "${c_dim}Bumping to ${ver}…${c_reset}"
     ( cd "$ROOT/apps/api" && npm version "$ver" --no-git-tag-version --allow-same-version >/dev/null )
     ( cd "$ROOT/apps/web" && npm version "$ver" --no-git-tag-version --allow-same-version >/dev/null )
     bump_line "$ROOT/infra/compose/.env.example" "s/^WAFFLED_VERSION=.*/WAFFLED_VERSION=$ver/"
     bump_line "$ROOT/apps/ios/project.yml" "s/^([[:space:]]*MARKETING_VERSION:[[:space:]]*).*/\\1\"$ver\"/"
+    bump_line "$ROOT/apps/mac/project.yml" "s/^([[:space:]]*MARKETING_VERSION:[[:space:]]*).*/\\1\"$ver\"/"
     # Finalize the CHANGELOG so the release commit (and its tag) carries the notes:
     # date the [Unreleased] entries (already reviewed above) as this version, open a fresh
     # [Unreleased], and add the compare link. Repo URL + previous tag are derived (nothing
@@ -1275,12 +1402,12 @@ case "$cmd" in
       echo "${c_ylw}⚠ No CHANGELOG [Unreleased] section — skipping changelog finalize.${c_reset}"
     fi
     git -C "$ROOT" --no-pager diff -- CHANGELOG.md apps/api/package.json apps/web/package.json \
-      infra/compose/.env.example apps/ios/project.yml
+      infra/compose/.env.example apps/ios/project.yml apps/mac/project.yml
     git -C "$ROOT" add -A
     git -C "$ROOT" commit -q -m "release: $tag
 
-Bump api, web, compose (WAFFLED_VERSION), and iOS MARKETING_VERSION to $ver,
-and finalize the CHANGELOG [$ver] section."
+Bump api, web, compose (WAFFLED_VERSION), and the iOS and Mac MARKETING_VERSION
+to $ver, and finalize the CHANGELOG [$ver] section."
     git -C "$ROOT" tag -a "$tag" -m "Waffled $tag"
     echo "${c_grn}Committed + tagged $tag locally.${c_reset}"
     printf "Push '%s' + %s to origin now? [y/N] " "$branch" "$tag"
@@ -1290,8 +1417,13 @@ and finalize the CHANGELOG [$ver] section."
         git -C "$ROOT" push origin "$branch"
         git -C "$ROOT" push origin "$tag"
         echo "${c_grn}Pushed. → Xcode Cloud builds iOS; publish-images.yml builds the server images.${c_reset}"
+        mac_release_step "$ver" || exit $?
         ;;
-      *) echo "Not pushed. When ready:  ${c_dim}git push origin $branch && git push origin $tag${c_reset}" ;;
+      *)
+        # No offer here: release-mac.sh uploads to the Release the tag push creates, and
+        # there is no tag on origin yet.
+        echo "Not pushed. When ready:  ${c_dim}git push origin $branch && git push origin $tag${c_reset}"
+        echo "${c_dim}Then, on the signing Mac:  apps/mac/Scripts/release-mac.sh $ver${c_reset}" ;;
     esac
     ;;
   help|-h|--help|*)

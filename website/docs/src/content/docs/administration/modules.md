@@ -20,7 +20,9 @@ gated**.
 | Meals | ON | Recipes & planning |
 | Lists | ON | Lists & groceries |
 | Family Night | OFF | Recurring gathering |
-| Waffled-Bites | **OFF** | Kid companion device pairing + control panel — 🚧 pending hardware bring-up, [details](/features/waffled-bites/) |
+| Rhythms | **OFF** | The things that should keep happening — [details](/features/rhythms/) |
+| Weekly Planning | **OFF** | A guided session for deciding the week ahead — [details](/features/weekly-planning/) |
+| Waffled-Bites | **OFF** | Kid companion device pairing + control panel — 🚧 running on the real board, not yet something you can buy, [details](/features/waffled-bites/) |
 | Quotes | 🚧 planned | Not togglable yet |
 
 ## Rewards is not its own module

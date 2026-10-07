@@ -30,6 +30,30 @@ serves the built SPA.
   PowerSync sync rules (and optionally Postgres RLS).
 - UUID primary keys everywhere (client-generatable so the phone can mint ids offline).
 
+## iOS REST read states
+
+`RestDomain` separates loading, confirmed empty/ready, failed refresh with saved data,
+unreachable server, expired authentication, and initial failure. Today and Family on
+both phone and kiosk, Approvals, and Photos use this contract. Only a successful empty
+response permits definitive empty copy; a failed approvals fetch keeps its entry point
+visible. Retry reloads the affected read domain and preserves confirmed values.
+
+A failed domain owns its saved-data timestamp. A sibling's newer successful read never
+supplies a timestamp to an error or an offline domain with no confirmed data. Combined
+states prioritize expired authentication, connectivity failure, initial error, and stale
+data ahead of pending-write states. `queued` and `conflict` are deliberately ahead of the
+feature: no production call site constructs either state. They do not claim that REST
+writes are queued today; real queue/conflict producers must be added before wiring them.
+
+REST data is scoped to server, household, session and active profile. Serialized account
+transitions clear the old local data before applying a server change and rotating the
+scope. If teardown fails, the new server and scope are not applied. PowerSync mirror
+isolation and notification cleanup are separate follow-up concerns.
+
+Remaining migration batches cover person detail, goal detail, recipes and settings, plus
+other REST-backed kiosk cards. See [visual review evidence](review/pr141/README.md) for
+both device layouts and the four read-state scenarios.
+
 ## Calendar (a core tenet)
 
 - **2-way Google Calendar sync, day one.** Not deferrable.

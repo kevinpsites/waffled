@@ -20,6 +20,11 @@ const events = new Table({
   person_id: column.text,
   goal_id: column.text,
   goal_step_id: column.text,
+  // Set by the rhythm booking flow over REST, read here so the calendar can mark which
+  // events are somebody's rhythm. Declared but never written locally: the server treats an
+  // absent rhythm_id on an upload as "leave it alone", so a client that only reads it can
+  // never accidentally un-book a period.
+  rhythm_id: column.text,
   origin: column.text,
   origin_ref_id: column.text,
   rrule: column.text, // non-null marks a recurring master (its occurrences render instead)

@@ -332,12 +332,14 @@ struct PlanMonthSheet: View {
         .buttonStyle(.plain)
     }
 
+    /// Groups the review's nights under a week heading, cut where the household cuts its
+    /// week so the headings match the planner grid behind them. Heading only — the
+    /// rebuild boundaries come from `GroceryWeeks`, which treats an unknown household
+    /// very differently (it covers both cuts rather than guessing).
     private func weekKey(_ ymd: String) -> String {
-        let cal = Cal.gregorian(sync.householdTz)
         guard let d = DateFmt.date(ymd, "yyyy-MM-dd", sync.householdTz) else { return ymd }
-        let weekdayIdx = cal.component(.weekday, from: d) - 1   // Sunday → 0
-        let sunday = cal.date(byAdding: .day, value: -weekdayIdx, to: d) ?? d
-        return DateFmt.string(sunday, "yyyy-MM-dd", sync.householdTz)
+        let start = Cal.weekStart(d, sync.householdTz, sync.householdWeekStart ?? .sunday)
+        return DateFmt.string(start, "yyyy-MM-dd", sync.householdTz)
     }
     private func weekLabel(_ key: String) -> String {
         guard let d = DateFmt.date(key, "yyyy-MM-dd", sync.householdTz) else { return key }

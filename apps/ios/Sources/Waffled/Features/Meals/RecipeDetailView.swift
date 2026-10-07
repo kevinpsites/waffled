@@ -705,6 +705,7 @@ struct RecipeScheduleSheet: View {
     var onScheduled: (String) -> Void = { _ in }
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(SyncManager.self) private var sync
     private let api = WaffledAPI()
     @State private var meal = "dinner"
     @State private var weekOffset = 0
@@ -716,11 +717,15 @@ struct RecipeScheduleSheet: View {
         f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"; return f
     }()
 
+    /// "This week" has to name the same seven days the planner is showing, so the week
+    /// is cut on the household's own first day rather than a fixed Sunday — otherwise,
+    /// on a Sunday in a Monday household, the planner calls that day the LAST day of
+    /// the week and this sheet calls it the FIRST, and scheduling from here lands the
+    /// night in a different week than the one the planner was showing. Still the
+    /// device's timezone, as before; only the cut day changes.
     private var weekStart: Date {
-        let cal = Cal.current
-        let today = cal.startOfDay(for: Date())
-        let sunday = cal.date(byAdding: .day, value: -(cal.component(.weekday, from: today) - 1), to: today)!
-        return cal.date(byAdding: .day, value: weekOffset * 7, to: sunday)!
+        let start = Cal.weekStart(Date(), TimeZone.current, sync.householdWeekStart ?? .sunday)
+        return Cal.current.date(byAdding: .day, value: weekOffset * 7, to: start)!
     }
     private var days: [Date] { (0..<7).compactMap { Cal.current.date(byAdding: .day, value: $0, to: weekStart) } }
     private var weekLabel: String {

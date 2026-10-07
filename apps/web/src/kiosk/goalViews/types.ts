@@ -18,4 +18,7 @@ export interface DataViewProps {
   // The segmented view-switcher control, rendered into this view's own header
   // (each view keeps its own title/subtitle — only the switcher is shared).
   headerRight?: ReactNode
+  // Which day starts the week (0 = Sunday, 1 = Monday), from the household setting.
+  // The week/month/consistency/year views are cut on it; the rest ignore it.
+  firstDay: number
 }

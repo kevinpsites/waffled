@@ -1,17 +1,17 @@
 // Habit's signature view — a consistency dot-calendar. Did you show up? A month
 // of hit/miss dots plus streak stats. (The 7-dot Week strip is the compact variant —
 // see WeekHeatmap, offered alongside this for habit goals.)
-import { toLocalDateKey } from '../../lib/goalStats'
+import { monthLeadCells, toLocalDateKey } from '../../lib/goalStats'
 import type { DataViewProps } from './types'
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
-export function ConsistencyCalendar({ goal, stats, onDayClick, headerRight }: DataViewProps) {
+export function ConsistencyCalendar({ goal, stats, onDayClick, headerRight, firstDay }: DataViewProps) {
   const todayDate = new Date(stats.today + 'T00:00:00')
   const year = todayDate.getFullYear()
   const month = todayDate.getMonth()
   const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const lead = new Date(year, month, 1).getDay()
+  const lead = monthLeadCells(year, month, firstDay)
 
   let hitsThisMonth = 0
   const cells = Array.from({ length: daysInMonth }, (_, i) => {

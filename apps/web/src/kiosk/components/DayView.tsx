@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { type AgendaEvent, type Countdown } from '../../lib/api'
 import { evVars, useEventColor } from '../../lib/event-color'
-import { DOW_FULL, MONTHS, ymd, localDate, fmtHour, fmtTime, minutesOfDay, durationMin, packLanes } from './cal-utils'
+import { DOW_FULL, MONTHS, ymd, fmtHour, fmtTime, minutesOfDay, durationMin, packLanes } from './cal-utils'
 import { CountdownChip } from './CountdownChip'
+import { RhythmMark } from './RhythmMark'
+import { eventCoversDay } from './month-spans'
 
 const DAY_START = 0 // midnight — top of the grid (full day so early events are reachable)
 const DAY_END = 23 // 11 PM — bottom
@@ -31,7 +33,8 @@ export function DayView({
   const key = ymd(day)
   const hours = useMemo(() => Array.from({ length: DAY_END - DAY_START + 1 }, (_, i) => DAY_START + i), [])
 
-  const todays = useMemo(() => events.filter((e) => localDate(e.startsAt, tz) === key), [events, tz, key])
+  // A multi-day all-day event is on every day it covers; timed events stay on their start day.
+  const todays = useMemo(() => events.filter((e) => eventCoversDay(e, key, tz)), [events, tz, key])
   const allDay = todays.filter((e) => e.allDay)
   const dayCountdowns = countdownsByDate?.[key] ?? []
   const timed = useMemo(() => todays.filter((e) => !e.allDay), [todays])
@@ -74,6 +77,7 @@ export function DayView({
               const color = colorOf(e)
               return (
                 <div key={e.id} className="dv-allday-ev ev-tint" style={evVars(color)} onClick={() => onOpenEvent(e)}>
+                  <RhythmMark event={e} />
                   {e.title}
                 </div>
               )
@@ -118,7 +122,7 @@ export function DayView({
                   onClick={(ev) => { ev.stopPropagation(); onOpenEvent(e) }}
                 >
                   <div className="dv-ev-t">{fmtTime(e)}</div>
-                  <div className="dv-ev-title">{e.occurrenceStart && <span className="ev-rep" title="Repeats">↻ </span>}{e.title}</div>
+                  <div className="dv-ev-title">{e.occurrenceStart && <span className="ev-rep" title="Repeats">↻ </span>}<RhythmMark event={e} />{e.title}</div>
                   {e.location && <div className="dv-ev-loc">📍 {e.location}</div>}
                 </div>
               )

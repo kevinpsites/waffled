@@ -14,7 +14,7 @@ options:
 
 settings:
   base:
-    MARKETING_VERSION: "0.13.1"
+    MARKETING_VERSION: "0.15.3"
     CURRENT_PROJECT_VERSION: "1"
     # Swift 5 language mode for the scaffold — avoids strict-concurrency churn while
     # we stand the app up. Bump to 6 once the sync layer settles.
@@ -99,6 +99,14 @@ targets:
           # Same non-text trick for dragging a planned meal between week-planner slots.
           - UTTypeIdentifier: app.waffled.meal-slot
             UTTypeDescription: Waffled planned meal slot
+            UTTypeConformsTo:
+              - public.data
+          # And again for dragging a task card onto a person in Weekly Planning's Tasks
+          # step. MUST stay declared here: UTType(exportedAs:) silently falls back to an
+          # undeclared type if this entry goes missing, so no test can catch its absence —
+          # the drops just quietly stop being accepted.
+          - UTTypeIdentifier: app.waffled.planning-task
+            UTTypeDescription: Waffled weekly-planning task card
             UTTypeConformsTo:
               - public.data
     # HealthKit capability. Required for the read-authorization prompt to work at runtime

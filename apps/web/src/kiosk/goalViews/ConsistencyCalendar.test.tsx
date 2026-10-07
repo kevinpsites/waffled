@@ -24,14 +24,14 @@ describe('ConsistencyCalendar', () => {
   const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: null, days })
 
   it('renders one cell per day of the current month, hits filled and future days dashed', () => {
-    const { container } = render(<ConsistencyCalendar goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    const { container } = render(<ConsistencyCalendar goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     expect(container.querySelectorAll('.gdv-consistency-cell')).toHaveLength(31)
     expect(container.querySelectorAll('.gdv-consistency-cell.hit')).toHaveLength(6)
     expect(container.querySelectorAll('.gdv-consistency-cell.future').length).toBeGreaterThan(0)
   })
 
   it('shows current/longest streak and this-month completion %', () => {
-    render(<ConsistencyCalendar goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    render(<ConsistencyCalendar goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     expect(screen.getByText(/🔥 3/)).toBeInTheDocument() // current streak from computeGoalStats
     expect(screen.getByText(/this month/)).toBeInTheDocument()
   })

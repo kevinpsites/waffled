@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { mealsApi, type RecipeDetail } from '../../lib/api'
+import { mealsApi, useHousehold, type RecipeDetail } from '../../lib/api'
 
 const MEALS = [
   { key: 'breakfast', label: 'Breakfast' },
@@ -18,14 +18,20 @@ export function ScheduleModal({ recipe, onClose, onScheduled }: { recipe: Recipe
   const [meal, setMeal] = useState('dinner')
   const [saving, setSaving] = useState('')
 
-  const sunday = (() => {
+  // "This week" has to mean the same seven days the planner is showing, so the week
+  // is cut on the household's own first day. Sunday until the setting arrives, which
+  // is what this picker always assumed.
+  const { household } = useHousehold()
+  const firstDay = household?.weekStart === 'monday' ? 1 : 0
+
+  const weekStart = (() => {
     const d = new Date()
     d.setHours(0, 0, 0, 0)
-    d.setDate(d.getDate() - d.getDay() + weekOffset * 7)
+    d.setDate(d.getDate() - ((d.getDay() - firstDay + 7) % 7) + weekOffset * 7)
     return d
   })()
   const days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(sunday)
+    const d = new Date(weekStart)
     d.setDate(d.getDate() + i)
     return d
   })

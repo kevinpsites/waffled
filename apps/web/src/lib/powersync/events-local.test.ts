@@ -74,6 +74,14 @@ describe('rowToAgenda', () => {
     expect(a.seriesId).toBe('master-1') // the master/series handle
     expect(a.occurrenceStart).toBe('2026-09-08T14:00:00Z') // the edit-scope slot
   })
+
+  // A scheduling-shape rhythm books an ordinary event carrying rhythm_id, so the
+  // offline read has to carry the back-reference through — otherwise the calendar's
+  // rhythm marker vanishes the moment the kiosk reads locally instead of over REST.
+  it('carries the rhythm back-reference, defaulting to null', () => {
+    expect(rowToAgenda(row({ rhythm_id: 'rh-1' })).rhythmId).toBe('rh-1')
+    expect(rowToAgenda(row({})).rhythmId).toBeNull()
+  })
 })
 
 describe('eventsForDay', () => {
@@ -109,6 +117,15 @@ describe('eventsForRange', () => {
   it('includes events whose local date is within [from,to], ordered by start', () => {
     const out = eventsForRange(rows, tz, '2026-06-23', '2026-06-30')
     expect(out.map((e) => e.id)).toEqual(['a', 'b'])
+  })
+
+  // A week or month grid draws a trip that began before it (month-spans.ts), so the range read has
+  // to hand it over. All-day ends are exclusive: `ended`'s last day is Jun 22.
+  it('includes an all-day trip that started before the range and is still on in it', () => {
+    const trip = row({ id: 'trip', all_day: 1, starts_at: '2026-06-20T05:00:00Z', ends_at: '2026-06-25T05:00:00Z' })
+    const ended = row({ id: 'ended', all_day: 1, starts_at: '2026-06-19T05:00:00Z', ends_at: '2026-06-23T05:00:00Z' })
+    const out = eventsForRange([trip, ended, ...rows], tz, '2026-06-23', '2026-06-30')
+    expect(out.map((e) => e.id)).toEqual(['trip', 'a', 'b'])
   })
 })
 

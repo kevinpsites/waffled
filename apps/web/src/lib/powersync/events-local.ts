@@ -82,6 +82,7 @@ export interface LocalEventRow {
   person_id: string | null
   goal_id?: string | null
   goal_step_id?: string | null
+  rhythm_id?: string | null
   origin: string | null
   origin_ref_id: string | null
   visibility?: string | null // 'family' | 'personal'
@@ -143,6 +144,7 @@ export function rowToAgenda(r: LocalEventRow): AgendaEvent {
     personId: r.person_id,
     goalId: r.goal_id ?? null,
     goalStepId: r.goal_step_id ?? null,
+    rhythmId: r.rhythm_id ?? null,
     origin: r.origin,
     originRefId: r.origin_ref_id,
     personName: r.person_name,
@@ -166,13 +168,16 @@ export function eventsForDay(rows: LocalEventRow[], tz: string, day: string): Ag
     .sort((a, b) => (a.allDay === b.allDay ? byStart(a, b) : a.allDay ? 1 : -1))
 }
 
-// A date range (Calendar screen) — ordered by start, like the server.
+// A date range (Calendar screen) — ordered by start, like the server. An all-day event that began
+// before the range is included while it is still on: its end is exclusive, so it covers `from`
+// only when that end is after it. The grids draw it as a bar (month-spans.ts).
 export function eventsForRange(rows: LocalEventRow[], tz: string, from: string, to: string): AgendaEvent[] {
   return rows
     .filter((r) => {
       if (!isVisibleToViewer(r)) return false
       const d = localDate(r.starts_at, tz)
-      return d >= from && d <= to
+      if (d >= from && d <= to) return true
+      return !!r.all_day && !!r.ends_at && d < from && localDate(r.ends_at, tz) > from
     })
     .map(rowToAgenda)
     .sort(byStart)
@@ -193,7 +198,7 @@ const participantsJson = (idExpr: string) => `
 // Single events (and Google-expanded instances). Also the detail-by-id source.
 const SINGLE_SELECT = `
   select e.id as id, e.id as series_id, null as occurrence_start,
-         e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.is_countdown, e.person_id, e.goal_id, e.goal_step_id,
+         e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.is_countdown, e.person_id, e.goal_id, e.goal_step_id, e.rhythm_id,
          e.origin, e.origin_ref_id, e.visibility, e.owner_person_id,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          ${participantsJson('e.id')}
@@ -201,11 +206,11 @@ const SINGLE_SELECT = `
     left join persons p on p.id = e.person_id`
 
 // Materialized occurrences of a recurring master (m) — inherits the master's
-// participants/goal; o carries the (possibly overridden) time/title/location/owner.
+// participants/goal/rhythm; o carries the (possibly overridden) time/title/location/owner.
 const OCC_SELECT = `
   select o.id as id, m.id as series_id, o.original_start as occurrence_start,
          coalesce(o.title, m.title) as title, m.description, coalesce(o.location, m.location) as location,
-         o.starts_at, o.ends_at, o.all_day, m.is_countdown, o.person_id, m.goal_id, m.goal_step_id,
+         o.starts_at, o.ends_at, o.all_day, m.is_countdown, o.person_id, m.goal_id, m.goal_step_id, m.rhythm_id,
          m.origin, m.origin_ref_id, o.visibility, o.owner_person_id,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          ${participantsJson('m.id')}
@@ -261,6 +266,10 @@ export interface EventDraft {
   personIds: string[]
   goalId?: string | null // calendar→goal link; null = not linked
   goalStepId?: string | null // for a checklist goal, which step this event completes
+  // Which rhythm this event settles; null = not linked. Written on BOTH paths on purpose:
+  // the upload sink treats an absent rhythm_id on a PUT as "leave it alone", so the only
+  // thing that can unlink is an UPDATE that names the column and sets it null.
+  rhythmId?: string | null
   calendarId?: string | null // create only; null = let the server auto-route
 }
 
@@ -282,9 +291,9 @@ export async function createEventLocal(draft: EventDraft): Promise<boolean> {
   await db.execute(
     `insert into events
        (id, household_id, title, description, location, starts_at, ends_at, all_day, is_countdown, timezone,
-        person_id, goal_id, goal_step_id, calendar_id, origin)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`,
-    [id, hh, draft.title, null, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, draft.isCountdown ? 1 : 0, tz, draft.personIds[0] ?? null, draft.goalId ?? null, draft.goalStepId ?? null, draft.calendarId ?? null]
+        person_id, goal_id, goal_step_id, rhythm_id, calendar_id, origin)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`,
+    [id, hh, draft.title, null, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, draft.isCountdown ? 1 : 0, tz, draft.personIds[0] ?? null, draft.goalId ?? null, draft.goalStepId ?? null, draft.rhythmId ?? null, draft.calendarId ?? null]
   )
   for (const pid of [...new Set(draft.personIds)]) {
     await db.execute(`insert into event_participants (id, household_id, event_id, person_id) values (?, ?, ?, ?)`, [
@@ -302,8 +311,8 @@ export async function updateEventLocal(id: string, draft: EventDraft): Promise<b
   if (!db) return false
   const hh = await householdRowId()
   const res = await db.execute(
-    `update events set title = ?, location = ?, starts_at = ?, ends_at = ?, all_day = ?, is_countdown = ?, person_id = ?, goal_id = ?, goal_step_id = ? where id = ?`,
-    [draft.title, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, draft.isCountdown ? 1 : 0, draft.personIds[0] ?? null, draft.goalId ?? null, draft.goalStepId ?? null, id]
+    `update events set title = ?, location = ?, starts_at = ?, ends_at = ?, all_day = ?, is_countdown = ?, person_id = ?, goal_id = ?, goal_step_id = ?, rhythm_id = ? where id = ?`,
+    [draft.title, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, draft.isCountdown ? 1 : 0, draft.personIds[0] ?? null, draft.goalId ?? null, draft.goalStepId ?? null, draft.rhythmId ?? null, id]
   )
   // Row not in the local DB yet (PowerSync hasn't synced it) → the update matched
   // nothing and would never upload. Bail so the caller saves via REST instead.

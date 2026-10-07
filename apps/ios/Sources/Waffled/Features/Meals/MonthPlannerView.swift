@@ -20,7 +20,10 @@ struct MonthPlannerView: View {
     /// The planned night whose action sheet (Open / Change / Remove) is showing.
     @State private var actionTarget: WaffledAPI.WeekEntryDTO?
 
-    private let weekdaySymbols = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
+    /// Read from the household's own first-day-of-week, so the columns match the week
+    /// the planner (and the grocery list keyed off it) actually runs on.
+    private var weekdaySymbols: [String] { Cal.weekdaySymbols(from: firstDay) }
+    private var firstDay: HouseholdWeekStart { sync.householdWeekStart ?? .sunday }
     private var columns: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 5), count: 7) }
 
     var body: some View {
@@ -329,7 +332,7 @@ struct MonthPlannerView: View {
         return ["eat", "dining", "takeout", "take-out", "take out", "delivery", "order", "out"].contains { t.contains($0) }
     }
 
-    // MARK: month math (Sunday-start grid, household tz)
+    // MARK: month math (household-start grid, household tz)
 
     private var dinnerByDate: [String: WaffledAPI.WeekEntryDTO] {
         Dictionary(entries.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
@@ -340,10 +343,9 @@ struct MonthPlannerView: View {
     private var monthStart: Date {
         cal.date(from: cal.dateComponents([.year, .month], from: anchor)) ?? anchor
     }
-    /// The Sunday on or before the 1st — top-left of the 6×7 grid.
+    /// The household's first day, on or before the 1st — top-left of the 6×7 grid.
     private var gridStart: Date {
-        let weekdayIdx = cal.component(.weekday, from: monthStart) - 1   // Sunday → 0
-        return cal.date(byAdding: .day, value: -weekdayIdx, to: monthStart) ?? monthStart
+        Cal.weekStart(monthStart, sync.householdTz, firstDay)
     }
     private var gridDays: [Date] { (0..<42).compactMap { cal.date(byAdding: .day, value: $0, to: gridStart) } }
     private var isCurrentMonth: Bool { cal.isDate(anchor, equalTo: Date(), toGranularity: .month) }

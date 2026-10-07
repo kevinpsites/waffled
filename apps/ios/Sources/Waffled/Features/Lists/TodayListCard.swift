@@ -51,7 +51,10 @@ struct TodayListCard: View {
                 content
             }
         }
-        .task { await load() }
+        // Keyed on the refresh signal, not a bare `.task`: SwiftUI runs a bare one
+        // once per appearance, so this card sat on launch-time data through every
+        // pull-to-refresh. See SyncManager.refreshRev.
+        .task(id: sync.refreshRev) { await load() }
         .onChange(of: sync.listsRev) { _, _ in Task { await load() } }
         .onChange(of: pick) { _, _ in Task { await loadItems() } }
     }

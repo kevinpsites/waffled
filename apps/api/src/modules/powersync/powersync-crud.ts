@@ -41,14 +41,21 @@ async function applyEventPut(tenant: Tenant, id: string, data: Record<string, un
   const ins = await query<{ inserted: boolean }>(
     `insert into events
        (id, household_id, title, description, location, starts_at, ends_at, all_day, timezone,
-        person_id, goal_id, goal_step_id, is_countdown, origin, sync_state)
+        person_id, goal_id, goal_step_id, rhythm_id, is_countdown, origin, sync_state)
      values ($1,$2,$3,$4,$5,$6,$7,$8,
              coalesce($9, (select timezone from households where id = $2)),
-             $10, $11, $12, coalesce($13, false), 'manual', 'local_only')
+             $10, $11, $12, $13, coalesce($14, false), 'manual', 'local_only')
      on conflict (id) do update set
        title = excluded.title, description = excluded.description, location = excluded.location,
        starts_at = excluded.starts_at, ends_at = excluded.ends_at, all_day = excluded.all_day,
        person_id = excluded.person_id, goal_id = excluded.goal_id, goal_step_id = excluded.goal_step_id,
+       -- Kept, never cleared, unlike its neighbours above. A PUT rewrites the whole row,
+       -- so any column listed here is one a client can blank simply by not knowing it
+       -- exists — and the web bundle ships through a service worker, so "a client on last
+       -- week's schema" is routine. Blanking this one has no visible failure: the event
+       -- stays, and the rhythm quietly goes back to asking you to book what you booked.
+       -- Unlinking is deliberate, so it goes through a PATCH carrying an explicit null.
+       rhythm_id = coalesce(excluded.rhythm_id, events.rhythm_id),
        is_countdown = excluded.is_countdown
      where events.household_id = $2
      returning (xmax::text = '0') as inserted`,
@@ -65,6 +72,7 @@ async function applyEventPut(tenant: Tenant, id: string, data: Record<string, un
       asStr(data.person_id),
       asStr(data.goal_id),
       asStr(data.goal_step_id),
+      asStr(data.rhythm_id),
       asBool(data.is_countdown),
     ]
   )
@@ -110,6 +118,9 @@ async function applyEventPatch(tenant: Tenant, id: string, data: Record<string, 
   if ('person_id' in data) patch.personId = asStr(data.person_id)
   if ('goal_id' in data) patch.goalId = asStr(data.goal_id)
   if ('goal_step_id' in data) patch.goalStepId = asStr(data.goal_step_id)
+  // Presence, not truthiness: an explicit null here is the deliberate unlink that the
+  // PUT path refuses to infer from an absent column.
+  if ('rhythm_id' in data) patch.rhythmId = asStr(data.rhythm_id)
   if (Object.keys(patch).length) await updateEvent(tenant.householdId, id, patch)
 }
 
@@ -130,6 +141,7 @@ function eventReferenceInput(data: Record<string, unknown>): Record<string, unkn
   if ('goal_id' in data) input.goalId = asStr(data.goal_id)
   if ('goal_step_id' in data) input.goalStepId = asStr(data.goal_step_id)
   if ('calendar_id' in data) input.calendarId = asStr(data.calendar_id)
+  if ('rhythm_id' in data) input.rhythmId = asStr(data.rhythm_id)
   return input
 }
 

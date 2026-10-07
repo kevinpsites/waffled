@@ -60,6 +60,12 @@ final class CookSessionStore {
         set { session?.index = newValue }
     }
 
+    /// Ingredients ticked off as they go in — per dish, like `index`, and for the same
+    /// reason: switching dishes must not disturb the one you left.
+    func isTicked(_ key: String) -> Bool { session?.isTicked(key) ?? false }
+    func toggleTick(_ key: String) { session?.toggleTick(key) }
+    var tickedCount: Int { session?.tickedCount ?? 0 }
+
     /// One dish's timers — the tab badges and any per-dish view.
     func dishTimers(_ dishId: String) -> [CookTimer] { CookSession.timers(timers, for: dishId) }
 

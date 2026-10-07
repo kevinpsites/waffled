@@ -22,14 +22,14 @@ describe('CollectionGrid', () => {
   const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 20, days })
 
   it('renders `target` slots, the first `done` filled', () => {
-    const { container } = render(<CollectionGrid goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    const { container } = render(<CollectionGrid goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     const slots = container.querySelectorAll('.gdv-collection-slot')
     expect(slots).toHaveLength(20)
     expect(container.querySelectorAll('.gdv-collection-slot.filled')).toHaveLength(12)
   })
 
   it('shows the "N of target" caption', () => {
-    render(<CollectionGrid goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    render(<CollectionGrid goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     expect(screen.getByText(/12/)).toBeInTheDocument()
     expect(screen.getByText(/of 20/)).toBeInTheDocument()
   })

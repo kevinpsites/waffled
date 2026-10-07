@@ -9,10 +9,15 @@ import {
   type RecipeMatch,
   type RecipeStep,
 } from '../lib/api'
+import { fmtAmt } from '../lib/amount'
+import { CHECK } from './components/CheckGlyph'
 import { CookConfirm } from './components/CookConfirm'
 import { CookTabs, type CookTabInfo } from './components/CookTabs'
 import { useCookPlate } from './components/CookDishes'
 import { fmt, useCookTimers, type CookTimer } from './components/CookTimers'
+// The add-timer controls borrow the recipe page's .re-timer-* styles; import them here too, or
+// opening cook mode directly (a refresh, a link) leaves them unstyled.
+import './../styles/recipe.css'
 import './../styles/cookmode.css'
 
 // Full-screen, step-by-step cooking view for the kiosk — large type for across-the-
@@ -30,12 +35,68 @@ export function CookMode() {
   return <CookRecipe recipeId={id ?? null} />
 }
 
+// Ticked ingredients are a set of keys. A step names its ingredients as free text
+// ("4 cloves garlic") while the recipe's list holds rows with ids, so the two views
+// are tied together by the longest ingredient name the chip actually contains — the
+// same longest-name-wins rule the editor uses to parse a pasted recipe. A chip that
+// matches no row ("a pinch of salt") keys off its own text: still tickable, just not
+// tied to a row. Ticks are for the session only — like step position, nothing is
+// written to the server.
+// Does `name` appear in `text` starting where a word starts? Plain containment was
+// too eager: it matched a name buried inside a longer word — "oil" inside "boiling",
+// "ice" inside "rice" — so a step chip struck an ingredient the step never named.
+// The END is deliberately left unchecked, which is what keeps a plural matching its
+// singular ("onion" in "2 onions"). Both sides are already lowercased.
+// Mirrored by `namesWordIn` in CookSession.swift — keep the two in step.
+function nameStartsAWord(text: string, name: string): boolean {
+  for (let i = text.indexOf(name); i !== -1; i = text.indexOf(name, i + 1)) {
+    if (i === 0 || !/[\p{L}\p{N}]/u.test(text[i - 1])) return true
+  }
+  return false
+}
+
+export function ingredientKey(chip: string, ingredients: RecipeIngredient[]): string {
+  const lc = chip.trim().toLowerCase()
+  const match = ingredients
+    .map((ing) => ({ ing, name: ing.name.trim().toLowerCase() }))
+    .filter(({ name }) => name && nameStartsAWord(lc, name))
+    .sort((a, b) => b.name.length - a.name.length)[0]
+  return match ? match.ing.id : `text:${lc}`
+}
+
+// "3 tbsp", or '' when the row has no parsed amount.
+function amountText(ing: RecipeIngredient): string {
+  return ing.amount != null ? `${fmtAmt(ing.amount)}${ing.unit ? ` ${ing.unit}` : ''}` : ''
+}
+
+// The editor writes a picked ingredient with no per-step amount as its bare NAME, so a chip
+// that IS a row's name borrows that row's measurement. Anything else ("Half the minced
+// garlic", "4 cloves garlic") is the author's own words and stays as written.
+export function chipLabel(chip: string, ingredients: RecipeIngredient[]): string {
+  const text = chip.trim()
+  const lc = text.toLowerCase()
+  const row = ingredients.find((ing) => ing.name.trim().toLowerCase() === lc)
+  const amt = row ? amountText(row) : ''
+  return amt ? `${amt} ${text}` : chip
+}
+
+const toggleKey = (keys: Set<string>, key: string): Set<string> => {
+  const next = new Set(keys)
+  if (!next.delete(key)) next.add(key)
+  return next
+}
+
+// Stable empty set so a dish with nothing ticked doesn't re-render on every pass.
+const NO_TICKS: ReadonlySet<string> = new Set<string>()
+
 // ── one recipe ────────────────────────────────────────────────────────────────
 function CookRecipe({ recipeId }: { recipeId: string | null }) {
   const navigate = useNavigate()
   const { recipe, ingredients, steps, loading, error } = useRecipe(recipeId)
   const [i, setI] = useState(0)
   const [done, setDone] = useState(false)
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(NO_TICKS)
+  const toggleTick = useCallback((key: string) => setTicked((s) => toggleKey(s as Set<string>, key)), [])
   // Timers live above the cooking body here too, so both routes share one store —
   // with a single dish there's nothing to switch between, so this is invisible.
   const timers = useCookTimers()
@@ -83,6 +144,8 @@ function CookRecipe({ recipeId }: { recipeId: string | null }) {
         setI={setI}
         done={done}
         setDone={setDone}
+        ticked={ticked}
+        onTick={toggleTick}
         onExit={exit}
         exitLabel="Back to recipe"
         onStartTimer={(stepIndex, totalSeconds) =>
@@ -108,6 +171,7 @@ function CookPlate({ mealId }: { mealId: string | null }) {
   const [active, setActive] = useState(0)
   const [stepByDish, setStepByDish] = useState<Record<string, number>>({})
   const [doneByDish, setDoneByDish] = useState<Record<string, boolean>>({})
+  const [tickedByDish, setTickedByDish] = useState<Record<string, ReadonlySet<string>>>({})
   const timers = useCookTimers()
 
   // Tapping a timer anywhere on the plate takes you to ITS dish and ITS step —
@@ -130,7 +194,18 @@ function CookPlate({ mealId }: { mealId: string | null }) {
   const rid = dish?.recipeId ?? null
   const i = rid ? stepByDish[rid] ?? 0 : 0
   const done = rid ? !!doneByDish[rid] : false
+  const ticked = (rid ? tickedByDish[rid] : null) ?? NO_TICKS
   const total = dish?.steps.length ?? 0
+
+  // Ticked ingredients are per dish and belong up here for the same reason the step
+  // position does: the session below remounts on every tab switch.
+  const toggleTick = useCallback(
+    (key: string) => {
+      if (!rid) return
+      setTickedByDish((m) => ({ ...m, [rid]: toggleKey((m[rid] ?? NO_TICKS) as Set<string>, key) }))
+    },
+    [rid]
+  )
 
   // Controlled per-dish setters with the same shape as useState's, so the session
   // body can keep using setI((n) => n + 1) without knowing it's on a plate.
@@ -203,6 +278,8 @@ function CookPlate({ mealId }: { mealId: string | null }) {
         setI={setI}
         done={done}
         setDone={setDone}
+        ticked={ticked}
+        onTick={toggleTick}
         onExit={exit}
         exitLabel="Back to the plate"
         header={<CookTabs tabs={tabs} activeIndex={index} onSelect={setActive} />}
@@ -231,6 +308,8 @@ function CookSession({
   setI,
   done,
   setDone,
+  ticked,
+  onTick,
   onExit,
   exitLabel,
   header,
@@ -244,6 +323,8 @@ function CookSession({
   setI: Dispatch<SetStateAction<number>>
   done: boolean
   setDone: Dispatch<SetStateAction<boolean>>
+  ticked: ReadonlySet<string>
+  onTick: (key: string) => void
   onExit: () => void
   exitLabel: string
   header?: ReactNode
@@ -312,20 +393,36 @@ function CookSession({
       {header}
       <div className="cm-progress"><span style={{ width: `${pct}%` }} /></div>
 
+      {/* The step's ingredients get their own column on the LEFT, as on the iPad
+          (CookModeView.ingredientsSidebar): a full-width row per ingredient whose text wraps,
+          where a pill would cut a long name mid-word. Stacks under the step on a narrow screen. */}
+      <div className={`cm-body${step.ingredients.length > 0 ? ' has-side' : ''}`}>
+      {step.ingredients.length > 0 && (
+        <aside className="cm-side" aria-label="Ingredients for this step">
+          <div className="cm-side-label">Ingredients</div>
+          {step.ingredients.map((ig, k) => {
+            const key = ingredientKey(ig, ingredients)
+            const on = ticked.has(key)
+            return (
+              <button
+                key={k}
+                type="button"
+                role="checkbox"
+                aria-checked={on}
+                className={`cm-side-row ${on ? 'on' : ''}`}
+                onClick={() => onTick(key)}
+              >
+                <span className="cm-ing-box" aria-hidden="true">{on ? CHECK : null}</span>
+                <span className="cm-side-nm">{chipLabel(ig, ingredients)}</span>
+              </button>
+            )
+          })}
+        </aside>
+      )}
+
       <div className="cm-stage">
         <div className="cm-step-n">Step {at + 1}</div>
         <div className="cm-instruction wf-serif">{step.instruction}</div>
-
-        {step.ingredients.length > 0 && (
-          <div className="cm-ings">
-            <div className="cm-ings-label">For this step</div>
-            <div className="cm-ings-row">
-              {step.ingredients.map((ig, k) => (
-                <span key={k} className="cm-ing-chip">{ig}</span>
-              ))}
-            </div>
-          </div>
-        )}
 
         {step.note && <div className="cm-note">📝 {step.note}</div>}
 
@@ -339,6 +436,7 @@ function CookSession({
         ) : (
           <AddTimer key={at} onStart={(secs) => onStartTimer(at, secs)} />
         )}
+      </div>
       </div>
 
       <div className="cm-controls">
@@ -355,14 +453,33 @@ function CookSession({
         <div className="modal-overlay" onClick={() => setShowAll(false)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
             <button type="button" className="modal-close" aria-label="Close" onClick={() => setShowAll(false)}>×</button>
-            <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 12 }}>All ingredients</div>
-            <div className="cm-all-list">
-              {ingredients.map((ing) => (
-                <div key={ing.id} className="cm-all-row">
-                  <span className="cm-all-amt">{ing.amount != null ? `${ing.amount}${ing.unit ? ` ${ing.unit}` : ''}` : '—'}</span>
-                  <span>{ing.sub ?? ing.name}</span>
+            <div className="cm-all-head">
+              <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600 }}>All ingredients</div>
+              {ingredients.length > 0 && (
+                <div className="tiny muted cm-all-count">
+                  {ingredients.filter((ing) => ticked.has(ing.id)).length} of {ingredients.length}
                 </div>
-              ))}
+              )}
+            </div>
+            <div className="cm-all-list">
+              {ingredients.map((ing) => {
+                const on = ticked.has(ing.id)
+                return (
+                  <button
+                    key={ing.id}
+                    type="button"
+                    role="checkbox"
+                    aria-checked={on}
+                    className={`cm-all-row ${on ? 'done' : ''}`}
+                    onClick={() => onTick(ing.id)}
+                  >
+                    <span className="cm-all-box" aria-hidden="true">{on ? CHECK : null}</span>
+                    <span className="cm-all-amt">{amountText(ing) || '—'}</span>
+                    {/* With no parsed amount, an imported line keeps its quantity only in `display`. */}
+                    <span className="cm-all-nm">{ing.sub ?? (ing.amount == null && ing.display ? ing.display : ing.name)}</span>
+                  </button>
+                )
+              })}
             </div>
           </div>
         </div>

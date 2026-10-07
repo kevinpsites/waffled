@@ -1,31 +1,40 @@
 import SwiftUI
 
-/// The AI "Plan my week ✨" flow. A short config (meal · days · who you're cooking
-/// for · keep-in-mind · use-up) → `POST /api/meals/plan-week` → a review of the
-/// per-night cards you curate the way the web kiosk does: **lock** a night you like,
-/// **swap** to let the AI re-roll one night, manually **pick** a recipe, or
-/// **reshuffle** every unlocked night. Nothing is saved until you tap Add; then each
-/// card is applied via `SyncManager.setMealPlan` and the grocery list is rebuilt.
+/// The AI "Plan my week ✨" flow: a short config → `POST /api/meals/plan-week` → a review of
+/// per-night cards you curate as the web kiosk does. Nothing is saved until Add; then each
+/// card goes through `SyncManager.setMealPlan`, or to a host's `onApply` endpoint.
 struct PlanWeekSheet: View {
     let start: String
     let weekLabel: String
-    /// The seven days of the week being planned (in household order, Sun→Sat).
     let weekDays: [Date]
-    /// Household size — labels the "whole family" cooking-for option.
     let familySize: Int
-    /// The Recipes library, reused by the manual-pick sheet.
     let recipes: RecipesModel
-    /// Pantry "use up soon" names to pre-seed the use-up list (from Cook-from-pantry's
-    /// "Plan my week"). Empty by default; applied once on appear.
     var seedUseUp: [String] = []
-    /// Called after suggestions are applied, so the planner reloads.
+
+    // MARK: …and the three a NARROWED host supplies
+    //
+    // A caller may reuse this planner for part of a week rather than growing a worse second
+    // one (Weekly Planning's Meals step). All three default to today's behaviour.
+
+    /// Which meals may be planned. One entry ⇒ no picker: one segment is a dead affordance.
+    var mealTypes: [String] = ["breakfast", "lunch", "dinner"]
+    /// The nights to arrive pre-selected, as `yyyy-MM-dd` in the HOUSEHOLD's zone; `nil` keeps
+    /// Mon–Fri. These MUST agree with `weekDays` or no chip is selected and Plan sits disabled.
+    var initialDays: [String]? = nil
+    var note: String? = nil
+    /// Where an approved week goes INSTEAD of the per-slot writes below.
+    ///
+    /// Supplying this REPLACES the apply path rather than running alongside it: a host that
+    /// owns its own endpoint must not also have `setMealPlan` write every card behind its
+    /// back. `@MainActor` on the closure TYPE, not just where it is written, because a host's
+    /// hook lands in an `@Observable` model and inferred isolation could leave the main actor.
+    var onApply: (@MainActor ([WaffledAPI.PlanCardDTO]) async -> Bool)? = nil
     let onApplied: () -> Void
 
     @Environment(SyncManager.self) private var sync
     @Environment(\.dismiss) private var dismiss
 
     private enum Phase { case config, loading, review, empty, failed }
-    private let mealTypes = ["breakfast", "lunch", "dinner"]
 
     @State private var phase: Phase = .config
     @State private var mealType = "dinner"
@@ -75,8 +84,7 @@ struct PlanWeekSheet: View {
         }
     }
 
-    /// iPad: a wide two-column sheet — requirements on the left, the AI-drafted meals
-    /// on the right (web-style). iPhone: the sequential config → result phases.
+    /// iPad: a wide two-column sheet. iPhone: the sequential config → result phases.
     @ViewBuilder private var content: some View {
         if isKiosk {
             HStack(spacing: 0) {
@@ -117,10 +125,17 @@ struct PlanWeekSheet: View {
         }
     }
 
-    /// Default to weekdays (Mon–Fri), matching the web kiosk.
+    /// Default to weekdays (Mon–Fri) as the web kiosk does, unless the host named nights.
     private func seedDaysIfNeeded() {
         if useUp.isEmpty, !seedUseUp.isEmpty { useUp = Array(seedUseUp.prefix(12)) }
+                // A host that narrowed the meals may have narrowed away the default: planning
+                // "dinner" when only lunch is on offer would draft the wrong meal.
+        if !mealTypes.contains(mealType), let only = mealTypes.first { mealType = only }
         guard selectedDays.isEmpty else { return }
+        if let initialDays {
+            selectedDays = Set(initialDays)
+            return
+        }
         for d in weekDays where (2...6).contains(cal.component(.weekday, from: d)) {
             selectedDays.insert(ymd(d))
         }
@@ -132,40 +147,52 @@ struct PlanWeekSheet: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
+                    // The host's narrowing, said out loud: which nights are in play is
+                    // otherwise only implied by which chips exist.
+                    if let note {
+                        Text(note)
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.aiD)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 12).padding(.vertical, 9)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(WF.ai.opacity(0.10))
+                            .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                    }
+
                     Text("Tell Waffled the guardrails — it drafts the meals and the grocery list in one go.")
                         .font(.system(size: 14)).foregroundStyle(WF.ink3)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    // Plan which meal?
-                    WaffledFieldCard(title: "Plan which meal?") {
-                        HStack(spacing: 0) {
-                            ForEach(mealTypes, id: \.self) { m in
-                                Button { mealType = m } label: {
-                                    Text(m.capitalized)
-                                        .font(.system(size: 14, weight: mealType == m ? .bold : .medium))
-                                        .foregroundStyle(mealType == m ? WF.ink : WF.ink3)
-                                        .frame(maxWidth: .infinity).padding(.vertical, 9)
-                                        .background(
-                                            mealType == m
-                                                ? AnyView(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).fill(WF.card)
-                                                    .shadow(color: .black.opacity(0.06), radius: 3, y: 1))
-                                                : AnyView(Color.clear))
+                    // Only when there is a choice: one option is a claim, not a control.
+                    if mealTypes.count > 1 {
+                        WaffledFieldCard(title: "Plan which meal?") {
+                            HStack(spacing: 0) {
+                                ForEach(mealTypes, id: \.self) { m in
+                                    Button { mealType = m } label: {
+                                        Text(m.capitalized)
+                                            .font(.system(size: 14, weight: mealType == m ? .bold : .medium))
+                                            .foregroundStyle(mealType == m ? WF.ink : WF.ink3)
+                                            .frame(maxWidth: .infinity).padding(.vertical, 9)
+                                            .background(
+                                                mealType == m
+                                                    ? AnyView(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).fill(WF.card)
+                                                        .shadow(color: .black.opacity(0.06), radius: 3, y: 1))
+                                                    : AnyView(Color.clear))
+                                    }
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(.plain)
                             }
+                            .padding(3).background(WF.panel)
+                            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                         }
-                        .padding(3).background(WF.panel)
-                        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     }
 
-                    // Which days?
                     WaffledFieldCard(title: "Which days?") {
                         HStack(spacing: 6) {
                             ForEach(weekDays, id: \.self) { d in dayChip(d) }
                         }
                     }
 
-                    // Cooking for
                     WaffledCard(padding: 14) {
                         HStack {
                             Text("Cooking for").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
@@ -181,10 +208,8 @@ struct PlanWeekSheet: View {
                         }
                     }
 
-                    // Use up first
                     UseUpCard(items: $useUp, input: $useUpInput)
 
-                    // Try something new — a novelty nudge + specific dishes to feature.
                     WaffledCard(padding: 14) {
                         Toggle(isOn: $trySomethingNew) {
                             VStack(alignment: .leading, spacing: 2) {
@@ -199,7 +224,6 @@ struct PlanWeekSheet: View {
                     UseUpCard(items: $wantToTry, input: $wantToTryInput,
                               title: "Dishes to try", placeholder: "+ Dish to try")
 
-                    // Keep in mind
                     WaffledFieldCard(title: "Keep in mind") {
                         TextField("e.g. Lottie skips spicy · Tue & Thu are busy — keep under 30 min",
                                   text: $keepInMind, axis: .vertical)
@@ -237,15 +261,13 @@ struct PlanWeekSheet: View {
         }
     }
 
-    /// Fold a half-typed use-up entry into the chips (used before drafting). Mirrors
-    /// `UseUpCard`'s own add logic so a pending input isn't lost on Plan.
+    /// Fold a half-typed use-up entry into the chips before drafting, mirroring `UseUpCard`.
     private func addUseUp() {
         let v = useUpInput.trimmingCharacters(in: .whitespaces)
         guard !v.isEmpty, !useUp.contains(v), useUp.count < 12 else { useUpInput = ""; return }
         useUp.append(v); useUpInput = ""
     }
 
-    /// Fold a half-typed "dish to try" entry into the chips before drafting.
     private func addWantToTry() {
         let v = wantToTryInput.trimmingCharacters(in: .whitespaces)
         guard !v.isEmpty, !wantToTry.contains(v), wantToTry.count < 12 else { wantToTryInput = ""; return }
@@ -316,7 +338,9 @@ struct PlanWeekSheet: View {
         var tags: [String] = []
         if let m = card.minutes { tags.append("🕐 \(m)m") }
         tags.append(card.recipeId != nil ? "📖 From library" : "✨ New dish")
-        let note = card.note.flatMap { $0.isEmpty ? nil : $0 }
+        // `cardNote`, not `note` — this sheet now has a `note` PROPERTY (the host's
+        // narrowing line), and a local of the same name would shadow it silently.
+        let cardNote = card.note.flatMap { $0.isEmpty ? nil : $0 }
         return MealPlanReviewCard(
             card: card,
             dayLabel: MealPlanText.weekday(card.date, sync.householdTz),
@@ -324,7 +348,7 @@ struct PlanWeekSheet: View {
             isBusy: draftingDates.contains(card.date),
             isDragTarget: dragOverDate == card.date,
             metaTags: tags,
-            belowTitleNote: note,
+            belowTitleNote: cardNote,
             titleMultilineLeading: true,
             onOpen: { open(card) },
             onSwap: { Task { await swap(card) } },
@@ -337,9 +361,8 @@ struct PlanWeekSheet: View {
             actionsDisabled: redrafting || isLocked)
     }
 
-    /// Preview a candidate recipe from its card. Free-text "✨ New dish" cards
-    /// (recipeId == nil) have no detail to open — the tap is inert. Mirrors
-    /// `WeekPlannerView.open`: seed from the loaded library or a placeholder header.
+    /// Preview a candidate recipe. Free-text "✨ New dish" cards have no detail, so the tap
+    /// is inert. Mirrors `WeekPlannerView.open`.
     private func open(_ card: WaffledAPI.PlanCardDTO) {
         guard let rid = card.recipeId else { return }
         previewRecipe = recipes.recipes.first { $0.id == rid }
@@ -347,7 +370,6 @@ struct PlanWeekSheet: View {
                             category: nil, cookTimeMinutes: card.minutes, servings: card.servings)
     }
 
-    /// Swap the meals on two review nights (keeps each card's date).
     private func swapCards(_ srcDate: String, _ tgtDate: String) {
         guard srcDate != tgtDate,
               !locked.contains(srcDate), !locked.contains(tgtDate),   // locked nights don't move
@@ -377,14 +399,11 @@ struct PlanWeekSheet: View {
         await draft(dates: selectedDays.sorted(), avoid: Array(rejected), full: true)
     }
 
-    /// Draft (or re-draft) the given nights. `full` drives the whole-screen loading
-    /// state for the first run; partial re-drafts (swap/reshuffle) keep the review
-    /// up and show a per-night spinner instead. Results merge into `suggestions`.
+    /// Draft (or re-draft) the given nights. `full` drives the whole-screen loading state;
+    /// partial re-drafts keep the review up with a per-night spinner.
     ///
-    /// Weak local models sometimes echo a dish that's *in* the avoid list (so a swap
-    /// would change nothing) or skip a requested night. We repair both client-side:
-    /// any night the model can't give a fresh, non-duplicate dish for is filled from
-    /// the household's own recipe library, so a swap/reshuffle always moves.
+    /// Weak local models sometimes echo a dish that's IN the avoid list or skip a night, so
+    /// any night without a fresh dish is filled from the library — a swap always moves.
     private func draft(dates: [String], avoid: [String], full: Bool) async {
         guard !dates.isEmpty else { return }
         notice = nil
@@ -408,8 +427,7 @@ struct PlanWeekSheet: View {
             let avoidSet = Set(avoid.map(normTitle))
             var byDate: [String: WaffledAPI.PlanCardDTO] = [:]
             for c in result.suggestions where dates.contains(c.date) { byDate[c.date] = c }
-            // Off-limits: dishes on nights we're keeping, plus everything avoided —
-            // so each night stays distinct.
+            // Off-limits: dishes on nights we're keeping, plus everything avoided.
             var used = Set(suggestions.filter { !dates.contains($0.date) }.map { normTitle($0.title) })
                 .union(avoidSet)
 
@@ -454,8 +472,7 @@ struct PlanWeekSheet: View {
             note: "From your library")
     }
 
-    /// Re-roll every unlocked night, keeping locked picks and steering away from
-    /// dishes already shown (so they don't reappear).
+    /// Re-roll every unlocked night, steering away from dishes already shown.
     private func reshuffle() async {
         let dates = unlockedDates.sorted()
         for c in suggestions where dates.contains(c.date) { rejected.insert(c.title) }
@@ -463,14 +480,12 @@ struct PlanWeekSheet: View {
         await draft(dates: dates, avoid: Array(rejected) + lockedTitles, full: false)
     }
 
-    /// Re-roll a single night.
     private func swap(_ card: WaffledAPI.PlanCardDTO) async {
         rejected.insert(card.title)
         let others = suggestions.filter { $0.date != card.date }.map(\.title)
         await draft(dates: [card.date], avoid: Array(rejected) + others, full: false)
     }
 
-    /// Replace a night with a hand-picked library recipe.
     private func pickRecipe(date: String, _ r: WaffledAPI.RecipeSummary) {
         if let old = suggestions.first(where: { $0.date == date }) { rejected.insert(old.title) }
         let card = WaffledAPI.PlanCardDTO(
@@ -487,10 +502,17 @@ struct PlanWeekSheet: View {
 
     private func apply() async {
         applying = true
-        // Decided and tested in MealPlanApply — including the case that bit us: a week off
-        // the planner grid is cut on the DEVICE's first day while the grocery list is keyed
-        // by the HOUSEHOLD's, so a Sun–Sat grid can straddle two household weeks and both
-        // have to be built. This is just the executor.
+        if let onApply {
+            // THE HOST OWNS THE WRITE, and the per-slot path below is deliberately NOT also
+            // run: those writes are what a host endpoint exists to replace.
+            _ = await onApply(suggestions)
+            applying = false
+            dismiss()
+            return
+        }
+        // Decided and tested in MealPlanApply — including the case that bit us: the planner
+        // grid is cut on the DEVICE's first day while groceries are keyed by the HOUSEHOLD's,
+        // so a Sun–Sat grid can straddle two household weeks and both must be built.
         for op in MealPlanApply.week(suggestions: suggestions, firstDay: sync.householdWeekStart) {
             await sync.perform(op)
         }
@@ -505,5 +527,4 @@ struct PlanWeekSheet: View {
         Cal.gregorian(sync.householdTz)
     }
     private func ymd(_ d: Date) -> String { DateFmt.string(d, "yyyy-MM-dd", sync.householdTz) }
-    /// Narrow weekday: S M T W T F S
 }

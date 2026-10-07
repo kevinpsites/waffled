@@ -8,6 +8,10 @@ struct TodayView: View {
     @Environment(CookSessionStore.self) private var cook
     @Environment(\.scenePhase) private var scenePhase
     @State private var dash = DashboardModel()
+    /// The Rhythms card's data lives here rather than inside the card — see the note on
+    /// `RhythmsTodayCard.model`. A card that renders nothing when it has nothing can't be
+    /// trusted to fetch its own contents.
+    @State private var rhythms = RhythmsModel()
     @State private var recipes = RecipesModel()   // backs a recipe pushed from tonight's card
     @State private var detailEvent: SyncedEvent?
     @State private var showCapture = false
@@ -23,6 +27,9 @@ struct TodayView: View {
     /// A specific goal pinned to the Today card (empty = auto/featured). Per-device; the
     /// hero's grouped picker sets it. Falls back to the featured pick if the goal is gone.
     @AppStorage("waffled.todayGoalId") private var todayGoalId = ""
+    /// Whose chores the chores card shows, per device: empty = me, `familyChoresKey` = the
+    /// family summary, else a person id. Resolved by `DashboardModel.chorePersonId`.
+    @AppStorage("waffled.todayChorePersonId") private var todayChorePersonId = ""
     /// The resolved card layout (order + hidden) from the server, plus whether this
     /// member may edit the shared family default. Drives which cards render and how.
     @State private var cardOrder: [String] = ["agenda", "tonight", "chores", "grocery", "goals"]
@@ -36,6 +43,14 @@ struct TodayView: View {
     @Binding var path: [HubRoute]
     /// Jump to the Calendar tab (from the agenda card).
     var openCalendar: () -> Void = {}
+
+    init(approvals: ApprovalsModel, path: Binding<[HubRoute]>, openCalendar: @escaping () -> Void = {},
+         dash: DashboardModel? = nil) {
+        self.approvals = approvals
+        _path = path
+        self.openCalendar = openCalendar
+        _dash = State(initialValue: dash ?? DashboardModel())
+    }
 
     private var todays: [SyncedEvent] {
         Agenda.forDay(sync.events, day: Agenda.todayKey(sync.householdTz), tz: sync.householdTz)
@@ -61,6 +76,9 @@ struct TodayView: View {
                     if sync.module(.chores) { ApprovalsBanner(model: approvals) }
                     // The goal-recap review banner (calendar↔goal bridge) — gated with
                     // the goals module so it can't surface for a disabled feature.
+                    if sync.module(.goals) {
+                        RestStateNotice(state: dash.reviewState, retry: { Task { await dash.loadGoals() } })
+                    }
                     if sync.module(.goals), !dash.reviewRecap.isEmpty || !dash.reviewSuggestions.isEmpty {
                         Button { path.append(.reviewEvents) } label: { reviewCard }.buttonStyle(.plain)
                     }
@@ -95,15 +113,31 @@ struct TodayView: View {
             }
             .refreshable {
                 // Independent endpoint batches — fetch them concurrently.
+                //
+                // `refreshRestSurfaces` is what makes the gesture mean what it looks like
+                // it means: the cards that own their own REST fetch (countdowns, pantry,
+                // rhythms, family night, lists) load once on appear and never again, so
+                // without it a pull-down refreshed only the two batches below and left
+                // every one of those cards — and the module flags — on launch-time data.
+                async let r: () = sync.refreshRestSurfaces()
                 async let d: () = dash.load(todayKey: Agenda.todayKey(sync.householdTz))
                 async let g: () = dash.loadGoals()
-                _ = await (d, g)
+                _ = await (r, d, g)
+                // The card set itself can change when a module is toggled elsewhere.
+                await loadLayout()
             }
             // Reload when the tz is known and whenever a capture commit bumps a domain.
             .task(id: "\(sync.householdTz.identifier)|\(sync.choresRev)|\(sync.groceryRev)|\(sync.mealsRev)") {
                 await dash.load(todayKey: Agenda.todayKey(sync.householdTz))
             }
             .task { weather = try? await WaffledAPI().weather() }
+            // Lives on the page, which always renders, rather than on the card, which
+            // does not — the card is `EmptyView` until it has something to show, and a
+            // `.task` on `EmptyView` never runs.
+            .task(id: "\(sync.refreshRev)|\(sync.modulesRev)") {
+                guard sync.module(.rhythms) else { return }
+                await rhythms.loadAttention()
+            }
             .task { await sync.loadIdentity() }
             .task { await loadLayout() }
             // Goals card + the goal-calendar review queues (refresh whenever a
@@ -112,7 +146,13 @@ struct TodayView: View {
             // Freshen the shared approvals model on each appearance (a tab switch
             // back to Today). Launch, the chore/reward buses, and foregrounding are
             // AppRoot's job — it owns the model — so no duplicate fetch per trigger.
-            .task { await approvals.load() }
+            .task {
+                await approvals.load(
+                    scope: sync.restDataScopeKey,
+                    choresEnabled: sync.module(.chores),
+                    rewardsEnabled: sync.rewardsOn
+                )
+            }
             // These cards are REST-backed (meals/chores/grocery/goals aren't synced
             // tables), so a change made elsewhere — the web app, another phone —
             // arrives silently. Refetch on return to the foreground, the same trigger
@@ -123,9 +163,13 @@ struct TodayView: View {
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 Task {
+                    // Same reasoning as the pull-to-refresh above, and the same reach:
+                    // someone turns a module off on the web, picks the phone back up, and
+                    // the card for it has to be gone.
+                    async let r: () = sync.refreshRestSurfaces()
                     async let d: () = dash.load(todayKey: Agenda.todayKey(sync.householdTz))
                     async let g: () = dash.loadGoals()
-                    _ = await (d, g)
+                    _ = await (r, d, g)
                 }
             }
             // Day rollover while the screen stays open: at (household-tz) midnight
@@ -331,7 +375,7 @@ struct TodayView: View {
             .background(WF.card)
             .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
             .wfShadow1()
-        } else if dash.loaded {
+        } else if dash.mealsState.isAuthoritative {
             WaffledCard(padding: 15) {
                 HStack(spacing: 12) {
                     Text("🍽️").font(.system(size: 28))
@@ -392,15 +436,20 @@ struct TodayView: View {
     /// so households that relied on "Family spotlight" keep seeing the family goal; anyone
     /// wanting a specific goal pins it via the grouped picker.
     @ViewBuilder private var goalsCard: some View {
-        GoalHeroCard(kiosk: false,
-                     goal: KioskDashboard.featuredGoal(dash.goals, pinnedId: todayGoalId,
-                                                       memberIds: Set(sync.members.map(\.id))),
-                     goals: dash.goals, goalsLoaded: dash.goalsLoaded,
-                     myPersonId: sync.currentPersonId ?? greetingMember?.id,
-                     householdMemberIds: Set(sync.members.map(\.id)), selectedId: todayGoalId,
-                     onOpen: { path.append(.goal($0)) }, onSeeAll: { path.append(.goals) },
-                     onPin: { todayGoalId = $0 },
-                     onLogged: { Task { await dash.loadGoals(); sync.touchGoals() } })
+        VStack(spacing: 8) {
+            RestStateNotice(state: dash.goalsState, retry: { Task { await dash.loadGoals() } })
+            if !dash.goals.isEmpty || dash.goalsState.isAuthoritative || dash.goalsState == .loading {
+                GoalHeroCard(kiosk: false,
+                             goal: KioskDashboard.featuredGoal(dash.goals, pinnedId: todayGoalId,
+                                                               memberIds: Set(sync.members.map(\.id))),
+                             goals: dash.goals, goalsLoaded: dash.goalsLoaded,
+                             myPersonId: sync.currentPersonId ?? greetingMember?.id,
+                             householdMemberIds: Set(sync.members.map(\.id)), selectedId: todayGoalId,
+                             onOpen: { path.append(.goal($0)) }, onSeeAll: { path.append(.goals) },
+                             onPin: { todayGoalId = $0 },
+                             onLogged: { Task { await dash.loadGoals(); sync.touchGoals() } })
+            }
+        }
     }
 
     // MARK: layout-driven card rendering
@@ -408,7 +457,7 @@ struct TodayView: View {
     static let cardLabels = [
         "agenda": "Agenda", "countdowns": "Countdowns", "tonight": "Tonight's dinner",
         "chores": "Chores", "grocery": "Grocery", "lists": "Lists", "goals": "Goals",
-        "pantry": "Pantry", "familyNight": "Family Night",
+        "pantry": "Pantry", "familyNight": "Family Night", "rhythms": "Rhythms",
     ]
     private static let smallCards: Set<String> = ["chores", "grocery"]
 
@@ -431,9 +480,15 @@ struct TodayView: View {
         case "lists": return sync.module(.lists)
         case "goals": return sync.module(.goals)
         case "pantry": return sync.module(.pantry)
+        case "rhythms": return sync.module(.rhythms)
         case "familyNight": return sync.module(.familyNight)
         default: return true
         }
+    }
+
+    /// Chores only pairs up in its family summary; one person's list needs the full width.
+    private func isSmallCard(_ key: String) -> Bool {
+        Self.smallCards.contains(key) && !(key == "chores" && chorePersonId != nil)
     }
 
     private var cardRows: [CardRow] {
@@ -442,7 +497,7 @@ struct TodayView: View {
         var i = 0
         while i < visible.count {
             let k = visible[i]
-            if Self.smallCards.contains(k), i + 1 < visible.count, Self.smallCards.contains(visible[i + 1]) {
+            if isSmallCard(k), i + 1 < visible.count, isSmallCard(visible[i + 1]) {
                 rows.append(.pair(k, visible[i + 1])); i += 2
             } else {
                 rows.append(.single(k)); i += 1
@@ -455,15 +510,39 @@ struct TodayView: View {
         switch key {
         case "agenda": todayCard
         case "countdowns": CountdownsCard()
-        case "tonight": tonightCard
-        case "chores": Button { path.append(.chores) } label: { choresCard }.buttonStyle(.plain)
-        case "grocery": Button { path.append(.list(grocerySummary)) } label: { groceryCard }.buttonStyle(.plain)
+        case "tonight":
+            VStack(spacing: 8) {
+                RestStateNotice(state: dash.mealsState, retry: reloadDashboard)
+                if dash.mealsState == .loading { ProgressView("Loading dinner…") }
+                tonightCard
+            }
+        case "chores":
+            VStack(spacing: 8) {
+                if let personId = chorePersonId {
+                    personChoresCard(personId)
+                } else {
+                    RestStateNotice(state: dash.choresState, retry: reloadDashboard, compact: true)
+                    // The menu sits over the button rather than inside its label, so it gets its own taps.
+                    Button { path.append(.chores) } label: { choresCard }.buttonStyle(.plain)
+                        .overlay(alignment: .topLeading) { chorePersonMenu.padding(15) }
+                }
+            }
+        case "grocery":
+            VStack(spacing: 8) {
+                RestStateNotice(state: dash.groceryState, retry: reloadDashboard, compact: true)
+                Button { path.append(.list(grocerySummary)) } label: { groceryCard }.buttonStyle(.plain)
+            }
         case "lists": TodayListCard { path.append(.list($0)) }
         case "pantry": PantryTodayCard { path.append(.pantry) }
+        case "rhythms": RhythmsTodayCard(model: rhythms) { path.append(.rhythms) }
         case "familyNight": FamilyNightCard()
         case "goals": goalsCard
         default: EmptyView()
         }
+    }
+
+    private func reloadDashboard() {
+        Task { await dash.load(todayKey: Agenda.todayKey(sync.householdTz)) }
     }
 
     private func loadLayout() async {
@@ -484,6 +563,11 @@ struct TodayView: View {
         if !order.contains("familyNight"), !resp.resolved.hidden.contains("familyNight") {
             order.append("familyNight")
         }
+        // …and for Rhythms. It hides itself when nothing needs attention, so appending it
+        // costs a quiet card at worst.
+        if !order.contains("rhythms"), !resp.resolved.hidden.contains("rhythms") {
+            order.append("rhythms")
+        }
         cardOrder = order
         hiddenCards = Set(resp.resolved.hidden)
         canEditFamily = resp.canEditFamily
@@ -492,7 +576,8 @@ struct TodayView: View {
     private var choresCard: some View {
         WaffledCard(padding: 15) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Family chores").font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2)
+                // Reserves the header row; `chorePersonMenu` is drawn over it.
+                choreMenuLabel.hidden()
                 HStack(spacing: -8) {
                     ForEach(dash.chores.prefix(3)) { p in
                         Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 30)
@@ -509,7 +594,8 @@ struct TodayView: View {
                      + Text("★ \(dash.choreStars)").foregroundStyle(WF.gold).bold())
                         .font(.system(size: 12.5))
                 } else {
-                    Text(dash.loaded ? "No chores today" : "Loading…")
+                    Text(dash.choresState.isAuthoritative ? "No chores today"
+                         : dash.choresState == .loading ? "Loading…" : "Unavailable")
                         .font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                 }
             }
@@ -517,17 +603,108 @@ struct TodayView: View {
         }
     }
 
+    private var chorePeople: [ChorePerson] {
+        DashboardModel.chorePeople(synced: sync.members, roster: dash.choreRoster)
+    }
+
+    private var chorePersonId: String? {
+        DashboardModel.chorePersonId(stored: todayChorePersonId, currentPersonId: sync.currentPersonId,
+                                     fallbackId: greetingMember?.id, memberIds: Set(chorePeople.map(\.id)))
+    }
+
+    private var chorePersonTitle: String {
+        guard let id = chorePersonId, let m = chorePeople.first(where: { $0.id == id }) else { return "Family chores" }
+        if id == sync.currentPersonId { return "My chores" }
+        let first = m.name.split(separator: " ").first.map(String.init) ?? m.name
+        return "\(first)’s chores"
+    }
+
+    /// Styled as the card's title rather than a `WaffledMenuPill`: it IS the title, and the
+    /// half-width family card has no room for a 15pt pill beside it.
+    private var choreMenuLabel: some View {
+        HStack(spacing: 5) {
+            if let id = chorePersonId, let m = chorePeople.first(where: { $0.id == id }) {
+                Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 22)
+            }
+            Text(chorePersonTitle).font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2).lineLimit(1)
+            Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(WF.ink3)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private var chorePersonMenu: some View {
+        Menu {
+            Picker("Whose chores", selection: Binding(
+                get: { chorePersonId ?? DashboardModel.familyChoresKey },
+                set: { todayChorePersonId = $0 })) {
+                Label("Family", systemImage: "person.3").tag(DashboardModel.familyChoresKey)
+                ForEach(chorePeople) { m in
+                    Text("\(m.emoji ?? "🙂") \(m.name)").tag(m.id)
+                }
+            }
+        } label: { choreMenuLabel }
+    }
+
+    private func personChoresCard(_ personId: String) -> some View {
+        let rows = DashboardModel.chores(for: personId, in: dash.choreInstances)
+        let summary = dash.chores.first { $0.id == personId }
+        let state = dash.choreInstancesState
+        return WaffledCard(padding: 15) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    chorePersonMenu
+                    Spacer(minLength: 8)
+                    Button { path.append(.chores) } label: {
+                        HStack(spacing: 3) {
+                            Text("All chores")
+                            Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
+                        }
+                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink3)
+                    }
+                    .buttonStyle(.plain)
+                }
+                if let summary, summary.total > 0 {
+                    ProgressBar(value: Double(summary.done) / Double(summary.total),
+                                tint: WF.primary, track: WF.primary.opacity(0.18))
+                    (Text("\(summary.done) of \(summary.total) · ").foregroundStyle(WF.ink3)
+                     + Text("★ \(summary.stars)").foregroundStyle(WF.gold).bold())
+                        .font(.system(size: 12.5))
+                }
+                // One banner for both fetches behind this card, not one each.
+                RestStateNotice(state: .combined([dash.choresState, state]), retry: reloadDashboard, compact: true)
+                if rows.isEmpty {
+                    Text(state.isAuthoritative ? "Nothing on the list today"
+                         : state == .loading ? "Loading…" : "Unavailable")
+                        .font(.system(size: 12.5)).foregroundStyle(WF.ink3).padding(.top, 2)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(rows) { ch in
+                            ChoreCheckRow(chore: ch, inset: 0) { tapChore(ch) }
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+    }
+
+    private func tapChore(_ ch: WaffledAPI.ChoreInstanceDTO) {
+        if ChoresModel.needsPhotoToFinish(ch) { path.append(.chores); return }
+        Task { if await dash.toggleChore(ch) { sync.bumpChores() } }
+    }
+
     private var groceryCard: some View {
         WaffledCard(padding: 15) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Grocery").font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2)
-                if dash.loaded {
+                if dash.groceryState.isAuthoritative || dash.groceryState.updatedAt != nil {
                     Text("\(dash.groceryRemaining)").font(.system(size: 26, weight: .bold)).foregroundStyle(WF.ink)
                     Text(dash.groceryRemaining == 1 ? "item to buy" : "items to buy")
                         .font(.system(size: 12)).foregroundStyle(WF.ink3)
                 } else {
                     // Don't claim "0 items to buy" while the count is still loading.
-                    Text("Loading…").font(.system(size: 12.5)).foregroundStyle(WF.ink3)
+                    Text(dash.groceryState == .loading ? "Loading…" : "Unavailable")
+                        .font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 0)
             }
@@ -651,7 +828,7 @@ struct TodayGoalPickerSheet: View {
 
     private func goalRow(_ g: WaffledAPI.Goal) -> some View {
         let col = GoalStyle.color(g.category)
-        let frac = g.target.map { $0 > 0 ? min(g.totalProgress / $0, 1) : 0 } ?? 0
+        let frac = GoalDisplay.fraction(g)
         return Button { onSelect(g.id); dismiss() } label: {
             HStack(spacing: 12) {
                 Text(g.emoji ?? GoalStyle.emoji(g.category)).font(.system(size: 20)).frame(width: 42, height: 42)

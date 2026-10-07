@@ -2,7 +2,7 @@
 import api from './app'
 import { config } from './platform/config'
 import { log } from './platform/logger'
-import { createHttpServer } from './platform/http-server'
+import { createHttpServer, listen } from './platform/http-server'
 import { version } from './platform/version'
 import { startSyncScheduler } from './modules/calendar/calendar-sync.service'
 import { startExpansionScheduler } from './modules/calendar/expansion.service'
@@ -12,8 +12,15 @@ import { startRecipeIngestCleanupScheduler } from './modules/meals/recipe-ingest
 
 const server = createHttpServer(api)
 
-server.listen(config.port, () => {
-  log.info('waffled-api listening', { port: config.port, authMode: config.auth.mode, sha: version.sha })
+// HOST unset → all interfaces (Compose/demo). The native desktop runtime sets
+// HOST=127.0.0.1 so the API is reachable only via loopback.
+listen(server, { port: config.port, host: config.host }).then((addr) => {
+  log.info('waffled-api listening', {
+    host: addr.address,
+    port: addr.port,
+    authMode: config.auth.mode,
+    sha: version.sha,
+  })
   // Background poll: pull connected-calendar changes (Google + Outlook) into
   // Waffled on an interval so edits/deletes made provider-side appear without a
   // manual sync.
@@ -26,4 +33,7 @@ server.listen(config.port, () => {
   startProofCleanupScheduler()
   // Delete AI recipe-ingest source photos past their (short) retention window.
   startRecipeIngestCleanupScheduler()
+}).catch((err: unknown) => {
+  log.error('waffled-api failed to listen', { host: config.host, port: config.port, err: String(err) })
+  process.exit(1)
 })

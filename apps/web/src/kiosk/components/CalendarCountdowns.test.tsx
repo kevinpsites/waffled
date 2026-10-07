@@ -33,7 +33,7 @@ describe('countdowns on the calendar', () => {
   })
 
   it('WeekView renders a countdown in the all-day strip', () => {
-    const weekStart = startOfWeek(new Date(2026, 6, 15))
+    const weekStart = startOfWeek(new Date(2026, 6, 15), 0)
     const target = ymd(addDays(weekStart, 3))
     render(
       <WeekView weekStart={weekStart} events={[]} tz="UTC" countdownsByDate={{ [target]: [cd(target)] }} onOpenEvent={() => {}} onCreate={() => {}} />

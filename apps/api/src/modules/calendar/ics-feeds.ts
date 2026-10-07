@@ -26,6 +26,7 @@ import { getPool, query } from '../../platform/db'
 import { log } from '../../platform/logger'
 import { runJob, registerJob } from '../../platform/jobs'
 import { adminRoute, tenantRoute } from '../../platform/route-guards'
+import { assertPersonInHousehold } from '../../platform/household-refs'
 import { materializeMaster } from './expansion.service'
 
 type Api = ReturnType<typeof createAPI>
@@ -57,7 +58,8 @@ const FEED_SELECT = `
          h.timezone as household_timezone
     from ics_feeds f
     join households h on h.id = f.household_id
-    left join persons p on p.id = f.person_id and p.deleted_at is null
+    left join persons p on p.id = f.person_id and p.household_id = f.household_id
+      and p.deleted_at is null
    where f.deleted_at is null`
 
 export async function listIcsFeeds(householdId: string): Promise<FeedRow[]> {
@@ -435,6 +437,9 @@ export function registerIcsFeedRoutes(api: Api): void {
     if (orphanedPersonalFeed(visibility, personId)) {
       return res.status(400).json({ error: 'BadRequest', message: ORPHANED_PERSONAL_MESSAGE })
     }
+    // The feed row is scoped to the caller's household; the person it belongs to
+    // has to be too, or a feed would resolve a stranger's name and colour.
+    if (personId) await assertPersonInHousehold(tenant.householdId, personId)
     const ins = await query<{ id: string }>(
       `insert into ics_feeds (household_id, url, name, person_id, visibility)
        values ($1,$2,$3,$4,$5) returning id`,
@@ -471,6 +476,7 @@ export function registerIcsFeedRoutes(api: Api): void {
     }
     if ('personId' in body) {
       const personId = typeof body.personId === 'string' && UUID_RE.test(body.personId) ? body.personId : null
+      if (personId) await assertPersonInHousehold(tenant.householdId, personId)
       sets.push(`person_id = $${i++}`)
       values.push(personId)
     }

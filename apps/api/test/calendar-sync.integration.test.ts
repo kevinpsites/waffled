@@ -132,7 +132,7 @@ function stateFrom(url: string): string {
   return new URL(url).searchParams.get('state') ?? ''
 }
 
-async function eventsInJune(): Promise<Array<{ id: string; title: string; allDay: boolean; personName: string | null }>> {
+async function eventsInJune(): Promise<Array<{ id: string; title: string; allDay: boolean; personName: string | null; rhythmId: string | null }>> {
   const res = await call('GET', '/api/events?from=2026-06-01&to=2026-06-30', kevin)
   return JSON.parse(res.body).events
 }
@@ -213,6 +213,18 @@ describe('inbound sync', () => {
     const standupId = before.find((e) => e.title === 'Standup')!.id
     await call('PATCH', `/api/events/${standupId}`, kevin, { personId: kellyId })
 
+    // Same rule for the rhythm link, the third of the three paths that write events.
+    // Google knows nothing about rhythms, so a pull that reasserted this column would
+    // hand the period back every time the event was touched upstream — and nothing
+    // would report it, because an unsatisfied period looks exactly like one you never
+    // booked.
+    expect((await call('PATCH', '/api/household/modules', kevin, { rhythms: true })).statusCode).toBe(200)
+    const rhythm = await call('POST', '/api/rhythms', kevin, {
+      title: 'Standup rhythm', satisfiedBy: 'scheduling', every: '1 week', startsOn: '2026-06-01',
+    })
+    const rhythmId = JSON.parse(rhythm.body).rhythm.id
+    await call('PATCH', `/api/events/${standupId}`, kevin, { rhythmId })
+
     const res = await call('POST', '/api/calendar/sync', kevin, {})
     const body = JSON.parse(res.body)
     expect(body.calendars[0]).toMatchObject({ updated: 1, deleted: 1, fullResync: false })
@@ -224,6 +236,7 @@ describe('inbound sync', () => {
     const moved = june.find((e) => e.title === 'Standup (moved)')
     expect(moved).toBeTruthy()
     expect(moved!.personName).toBe('Kelly') // manual mapping preserved through the update
+    expect(moved!.rhythmId).toBe(rhythmId) // and the booking still counts
   })
 
   it('recovers from an expired sync token by doing a full resync', async () => {

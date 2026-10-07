@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
-import { api, usePersons, useGoals, goalsApi, goalCalendarApi, calendarsApi, mealsApi, localToday, invalidateGetCache, type AgendaEvent, type CalendarLink, type GoalStep } from '../../lib/api'
+import { api, usePersons, useGoals, useRhythms, goalsApi, goalCalendarApi, calendarsApi, mealsApi, localToday, invalidateGetCache, type AgendaEvent, type CalendarLink, type GoalStep } from '../../lib/api'
 import { suggestGoalForEvent } from '../../lib/goal-match'
 import { Icon } from '../icons'
 import { createEventLocal, updateEventLocal, deleteEventLocal, tombstoneEvent } from '../../lib/powersync/events-local'
-import { parseRepeat, buildRrule, describeRrule, weekdayCode, nthWeekdayOfMonth, WEEKDAYS, type RepeatFreq, type CustomUnit, type MonthlyMode } from './recurrence'
+import { parseRepeat, buildRrule, describeRrule, weekdayCode, nthWeekdayOfMonth, type RepeatFreq, type CustomUnit, type MonthlyMode } from './recurrence'
+import { WeekdayChips } from './WeekdayChips'
+import { EventWhenField } from './EventWhenField'
+import { allDayExclusiveEnd, allDayLastDay } from './event-when'
 
 // Scope of an edit/delete to a recurring event, surfaced via a small chooser.
 type EditScope = 'this' | 'following' | 'all'
@@ -16,48 +19,9 @@ const REPEAT_OPTIONS: Array<{ value: RepeatFreq; label: string }> = [
   { value: 'monthly', label: 'Monthly' },
   { value: 'custom', label: 'Custom…' },
 ]
-const WEEKDAY_LABELS: Record<string, string> = { SU: 'S', MO: 'M', TU: 'T', WE: 'W', TH: 'T', FR: 'F', SA: 'S' }
 const FULL_WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const ORDINAL_LABEL = ['', 'first', 'second', 'third', 'fourth', 'fifth']
 const clampInterval = (v: string) => Math.max(1, Math.min(99, Math.round(Number(v) || 1)))
-
-// The day-of-week toggle row, shared by the "Weekly" preset and the custom
-// "every N weeks" builder. Empty selection falls back to the event's own weekday.
-function WeekdayChips({ value, weekday, onChange }: { value: string[]; weekday: string; onChange: (next: string[]) => void }) {
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-      {WEEKDAYS.map((d) => {
-        const on = value.length ? value.includes(d) : d === weekday
-        return (
-          <button
-            type="button"
-            key={d}
-            aria-pressed={on}
-            aria-label={d}
-            onClick={() => {
-              const base = value.length ? value : [weekday]
-              onChange(base.includes(d) ? base.filter((x) => x !== d) : [...base, d])
-            }}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 999,
-              border: `1.5px solid ${on ? 'var(--primary)' : 'transparent'}`,
-              background: on ? 'var(--primary)' : 'var(--card-2)',
-              color: on ? 'var(--on-accent)' : 'var(--ink)',
-              font: 'inherit',
-              fontSize: 14,
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            {WEEKDAY_LABELS[d]}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
 
 // Calendars an event can be written to: writable (owner/writer), not read-only.
 function isWritable(c: CalendarLink): boolean {
@@ -89,17 +53,6 @@ function toIso(date: string, time: string): string {
   return new Date(`${date}T${time}`).toISOString()
 }
 
-const DURATIONS: Array<{ min: number; label: string }> = [
-  { min: 15, label: '15 min' },
-  { min: 30, label: '30 min' },
-  { min: 45, label: '45 min' },
-  { min: 60, label: '1 hr' },
-  { min: 90, label: '1.5 hr' },
-  { min: 120, label: '2 hr' },
-  { min: 180, label: '3 hr' },
-  { min: 240, label: '4 hr' },
-]
-
 // A new event can be opened with some fields pre-filled — e.g. "Plan time" on a
 // goal hands us the goal + its people so the event is linked from the start.
 export interface EventPrefill {
@@ -122,9 +75,11 @@ function initialForm(event?: AgendaEvent, date?: string, time?: string, prefill?
       event.endsAt && !event.allDay
         ? Math.max(15, Math.round((new Date(event.endsAt).getTime() - d.getTime()) / 60000))
         : 60
+    const day = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
     return {
       title: event.title,
-      day: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+      day,
+      lastDay: event.allDay ? allDayLastDay(event.startsAt, event.endsAt) : day,
       time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
       durationMin,
       allDay: event.allDay,
@@ -135,11 +90,13 @@ function initialForm(event?: AgendaEvent, date?: string, time?: string, prefill?
       // prefill (e.g. "Link" on a suggestion) seeds the suggested goal.
       goalId: event.goalId ?? prefill?.goalId ?? '',
       goalStepId: event.goalStepId ?? prefill?.goalStepId ?? '',
+      rhythmId: event.rhythmId ?? '',
     }
   }
   return {
     title: prefill?.title ?? '',
     day: date ?? localToday(),
+    lastDay: date ?? localToday(),
     time: time ?? '17:00',
     durationMin: prefill?.durationMin ?? 60,
     allDay: false,
@@ -148,6 +105,7 @@ function initialForm(event?: AgendaEvent, date?: string, time?: string, prefill?
     location: '',
     goalId: prefill?.goalId ?? '',
     goalStepId: prefill?.goalStepId ?? '',
+    rhythmId: '',
   }
 }
 
@@ -171,6 +129,14 @@ export function EventModal({
   const editing = !!event
   const navigate = useNavigate()
   const { persons } = usePersons()
+  // Rhythms this event can settle. Scheduling-shape only: a completion rhythm closes its
+  // period on "I did it", so an event pointing at one would satisfy nothing. Retired and
+  // paused ones are left out for the same reason a picker never offers a dead end.
+  // useRhythms swallows the 403 the module gate returns when rhythms are switched off, so
+  // this is simply empty there and the picker never renders.
+  const { rhythms } = useRhythms()
+  const linkableRhythms = rhythms.filter((r) => r.satisfiedBy === 'scheduling' && r.isActive)
+
   // Goals that opted into calendar auto-counting (the "Counts toward" picker).
   // total/count/habit add an amount; a checklist instead ticks a chosen step.
   const { goals } = useGoals()
@@ -202,6 +168,9 @@ export function EventModal({
   const [originalRrule, setOriginalRrule] = useState<string | null>(initialRrule)
   const [originalRecurrenceEndAt, setOriginalRecurrenceEndAt] = useState<string | null>(initialRecurrenceEndAt)
   const [seriesReady, setSeriesReady] = useState(!wasRecurring || !!initialRrule)
+  const [seriesLoading, setSeriesLoading] = useState(wasRecurring && !initialRrule)
+  const [seriesLoadError, setSeriesLoadError] = useState<string | null>(null)
+  const [seriesLoadAttempt, setSeriesLoadAttempt] = useState(0)
   const [scopePrompt, setScopePrompt] = useState<null | 'save' | 'delete'>(null)
 
   // PowerSync occurrence rows carry the series/occurrence handles but not the
@@ -211,6 +180,7 @@ export function EventModal({
     if (!wasRecurring || initialRrule || !event) return
     let alive = true
     setSeriesReady(false)
+    setSeriesLoading(true)
     void api.event(event.seriesId ?? event.id)
       .then(({ event: master }) => {
         if (!alive) return
@@ -232,14 +202,17 @@ export function EventModal({
           setUntil('')
         }
         setSeriesReady(true)
+        setSeriesLoadError(null)
+        setSeriesLoading(false)
       })
       .catch(() => {
         if (!alive) return
-        setSaveError('Could not load this repeating series. Check your connection and try again.')
+        setSeriesLoadError('Could not load this repeating series. Check your connection and try again.')
         setSeriesReady(false)
+        setSeriesLoading(false)
       })
     return () => { alive = false }
-  }, [event, initialRrule, wasRecurring])
+  }, [event, initialRrule, seriesLoadAttempt, wasRecurring])
 
   // The event's start, used for the default weekly day and monthly nth-weekday.
   const startDate = new Date(`${form.day}T${form.time || '12:00'}`)
@@ -266,6 +239,7 @@ export function EventModal({
     !sameIds(form.participantIds, originalParticipantIds) ||
     form.goalId !== (event.goalId ?? '') ||
     form.goalStepId !== (event.goalStepId ?? '') ||
+    form.rhythmId !== (event.rhythmId ?? '') ||
     rrule !== originalRrule ||
     !sameInstant(recurrenceEndAt, originalRecurrenceEndAt)
   )
@@ -499,8 +473,10 @@ export function EventModal({
   // (personIds), `restPayload` for REST (participantIds).
   function buildPayloads() {
     const startsAt = form.allDay ? toIso(form.day, '12:00') : toIso(form.day, form.time)
-    // Timed events get start + duration; all-day events have no end.
-    const endsAt = form.allDay ? null : new Date(new Date(startsAt).getTime() + form.durationMin * 60000).toISOString()
+    // Timed events get start + duration; an all-day end is exclusive (event-when.ts).
+    const endsAt = form.allDay
+      ? allDayExclusiveEnd(form.lastDay)
+      : new Date(new Date(startsAt).getTime() + form.durationMin * 60000).toISOString()
     // Calendar choice only when the picker was shown (owner has >1); else auto-route.
     const chosenCal = !editing && ownerCals.length > 1 ? calendarId || null : null
     const draft = {
@@ -514,6 +490,10 @@ export function EventModal({
       goalId: form.goalId || null,
       // Only a checklist link carries a step; clear it otherwise.
       goalStepId: isChecklistGoal ? form.goalStepId || null : null,
+      // Always sent, null included. Both write paths treat an ABSENT rhythm_id as "leave
+      // it alone" — deliberately, so an older client can't blank a link it doesn't know
+      // about — which makes an explicit null the only way to unlink.
+      rhythmId: form.rhythmId || null,
     }
     const { personIds, ...eventDraft } = draft
     const restPayload = { ...eventDraft, participantIds: personIds }
@@ -665,6 +645,35 @@ export function EventModal({
           {editing ? (isMeal ? 'Planned meal' : 'Edit event') : 'New event'}
         </div>
 
+        {seriesLoadError && (
+          <div
+            role="alert"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              marginBottom: 14,
+              padding: '10px 12px',
+              borderRadius: 12,
+              background: 'color-mix(in srgb, var(--primary) 8%, var(--panel))',
+              color: 'var(--primary)',
+              fontSize: 14,
+              fontWeight: 650,
+            }}
+          >
+            <span style={{ flex: 1 }}>{seriesLoadError}</span>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={seriesLoading}
+              onClick={() => setSeriesLoadAttempt((attempt) => attempt + 1)}
+              style={{ flexShrink: 0, padding: '7px 11px', fontSize: 13 }}
+            >
+              {seriesLoading ? 'Trying…' : 'Try again'}
+            </button>
+          </div>
+        )}
+
         {saveError && (
           <div role="alert" style={{ marginBottom: 14, color: 'var(--primary)', fontSize: 14, fontWeight: 650 }}>
             {saveError}
@@ -688,33 +697,10 @@ export function EventModal({
             <input value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="Soccer practice" autoFocus />
           </label>
 
-          <label className="field">
-            <span>Date</span>
-            <input type="date" value={form.day} onChange={(e) => set('day', e.target.value)} />
-          </label>
-          {!form.allDay && (
-            <div className="field-row">
-              <label className="field">
-                <span>Time</span>
-                <input type="time" value={form.time} onChange={(e) => set('time', e.target.value)} />
-              </label>
-              <label className="field">
-                <span>Duration</span>
-                <select value={form.durationMin} onChange={(e) => set('durationMin', Number(e.target.value))}>
-                  {DURATIONS.map((d) => (
-                    <option key={d.min} value={d.min}>
-                      {d.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          )}
-
-          <label className="field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input type="checkbox" checked={form.allDay} onChange={(e) => set('allDay', e.target.checked)} style={{ width: 'auto' }} />
-            <span style={{ margin: 0 }}>All day</span>
-          </label>
+          <EventWhenField
+            value={{ day: form.day, time: form.time, durationMin: form.durationMin, allDay: form.allDay, lastDay: form.lastDay }}
+            onChange={(when) => setForm((f) => ({ ...f, ...when }))}
+          />
 
           <label className="field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input type="checkbox" checked={form.isCountdown} onChange={(e) => set('isCountdown', e.target.checked)} style={{ width: 'auto' }} />
@@ -993,6 +979,30 @@ export function EventModal({
                   <option key={s.id} value={s.id}>
                     {s.done ? '✓ ' : ''}
                     {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {/* Rhythm ← event: the reverse of booking. A rhythm is settled by an event
+              landing in its period, and plenty of them get onto the calendar the ordinary
+              way — someone plans the family outing in the Calendar screen, not from the
+              register. Without this the rhythm went on asking to book the outing that was
+              already there. */}
+          {linkableRhythms.length > 0 && (
+            <label className="field">
+              <span>Keeps a rhythm (optional)</span>
+              <select
+                value={form.rhythmId}
+                onChange={(e) => set('rhythmId', e.target.value)}
+                style={{ width: '100%' }}
+              >
+                <option value="">No rhythm</option>
+                {linkableRhythms.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.emoji ? `${r.emoji} ` : ''}
+                    {r.title}
                   </option>
                 ))}
               </select>

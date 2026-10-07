@@ -9,10 +9,12 @@ It's a core [Calendar](/features/calendar/) feature, **not** a gated module, so
 everyone sees it.
 
 ## Highlights
-- **Three sources, one sorted list:**
+- **Four sources, one sorted list:**
   - ⏳ **standalone countdown items** (their own table)
   - 📅 **calendar events** you've flagged `is_countdown`
   - 🎂 each member's **next birthday** (from their profile birthday)
+  - 🔁 a **[rhythm](/features/rhythms/)** you complete yourself, counting down to its next
+    due date ("18 days until the air filter") — only when the Rhythms module is on
 - **Two read-only surfaces:**
   - a **[Today](/features/today/) card** — emoji · title · date · N-days (or
     "sleeps") · remove a standalone item · **+ Add**
@@ -42,5 +44,8 @@ None — Countdowns is part of **core** Calendar and is never gated.
 
 ## Notes
 - The list is **read-only** apart from adding/removing standalone items and flipping
-  the per-event "⏳ Show a countdown" toggle — you don't edit events or birthdays from
-  here.
+  the per-event "⏳ Show a countdown" toggle — you don't edit events, birthdays or
+  rhythms from here.
+- 🔁 **Only the "you do it" shape of a [rhythm](/features/rhythms/) appears here.** A
+  rhythm that gets *scheduled* is already a calendar event, so the ordinary
+  "⏳ Show a countdown" toggle covers it.

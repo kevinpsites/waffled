@@ -98,6 +98,7 @@ function renderMonth(events: AgendaEvent[]) {
   const now = new Date()
   return render(
     <MonthView
+      firstDay={0}
       year={now.getFullYear()}
       month={now.getMonth()}
       events={events}
@@ -119,7 +120,7 @@ describe('calendar event chips paint through the CSS event style', () => {
   })
 
   it('WeekView timed + all-day chips tint via --ev', async () => {
-    render(<WeekView weekStart={startOfWeek(new Date())} events={makeEvents()} tz={TZ} onOpenEvent={() => {}} onCreate={() => {}} />)
+    render(<WeekView weekStart={startOfWeek(new Date(), 0)} events={makeEvents()} tz={TZ} onOpenEvent={() => {}} onCreate={() => {}} />)
     expectTinted((await screen.findByText('Swim practice')).closest('.wk-ev'))
     expectTinted((await screen.findByText('Spirit week')).closest('.wk-allday-ev'))
   })

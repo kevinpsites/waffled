@@ -17,7 +17,7 @@ type Api = ReturnType<typeof createAPI>
 // `lists` is ONE key, not one per list: which list it pins is a per-device choice the
 // card itself owns (localStorage / @AppStorage). A `list:<uuid>` key would have to be
 // validated here and reaped when its list is deleted — this keeps the card set closed.
-export const TODAY_CARDS = ['agenda', 'countdowns', 'tonight', 'week', 'chores', 'grocery', 'lists', 'pantry', 'familyNight', 'goals'] as const
+export const TODAY_CARDS = ['agenda', 'countdowns', 'tonight', 'week', 'chores', 'grocery', 'lists', 'pantry', 'familyNight', 'goals', 'rhythms'] as const
 type CardKey = (typeof TODAY_CARDS)[number]
 const CARD_SET = new Set<string>(TODAY_CARDS)
 

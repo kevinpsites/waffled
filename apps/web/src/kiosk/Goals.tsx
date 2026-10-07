@@ -1,9 +1,11 @@
 import { useState, type ReactNode } from 'react'
+import { AvatarStack } from './components/Avatar'
 import { useNavigate, useSearchParams } from 'react-router'
 import { Icon } from './icons'
 import { LogModal } from './components/LogModal'
 import { ListModal } from './components/ListModal'
-import { api, useGoalLists, useGoals, useHousehold, can, goalDisplayProgress as dispProgress, goalDisplayTarget as dispTarget, fmtGoalNum, type Goal, type GoalList, type GoalListMember, type GoalParticipant } from '../lib/api'
+import { api, useGoalLists, useGoals, useHousehold, can, goalDisplayProgress as dispProgress, goalDisplayTarget as dispTarget, goalWeekTargetLabel, fmtGoalNum, type Goal, type GoalList, type GoalParticipant } from '../lib/api'
+import { parseGoalDate } from '../lib/goalStats'
 import { CATEGORIES } from './categories'
 import '../styles/goals.css'
 
@@ -25,7 +27,9 @@ function ringNumFont(s: string, base: number): number {
   return Math.round(base * scale)
 }
 function fmtDeadline(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  // A deadline is a bare calendar day — see `parseGoalDate`, which keeps it off the
+  // UTC-midnight reading that showed it a day early behind UTC.
+  return parseGoalDate(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 function firstName(name: string): string {
   return name.split(' ')[0]
@@ -50,18 +54,6 @@ function listSub(list: GoalList): string {
   if (list.members.length === 1) return 'Personal'
   if (list.members.length === 2) return list.members.map((m) => firstName(m.name)).join(' & ')
   return `Everyone · ${list.members.length} people`
-}
-
-function AvStack({ members }: { members: GoalListMember[] }) {
-  return (
-    <div className="avstack">
-      {members.slice(0, 4).map((m) => (
-        <div key={m.personId} className="av sm" style={{ background: `${m.colorHex ?? '#A6A29B'}22` }}>
-          {m.avatarEmoji ?? '🙂'}
-        </div>
-      ))}
-    </div>
-  )
 }
 
 function Ring({ value, px, stroke, track, children }: { value: number; px: number; stroke: string; track: string; children: ReactNode }) {
@@ -114,6 +106,7 @@ function SharedHero({ goal, onLog, onOpen }: { goal: Goal; onLog: (g: Goal) => v
           <span className="cat-pill hero-pill">🌟 Spotlight · shared total</span>
           <div className="wf-serif hero-title">{goal.title}</div>
           <div className="hero-sub">Everyone contributes to one pool{goal.deadline ? ` · by ${fmtDeadline(goal.deadline)}` : ''}</div>
+          {goalWeekTargetLabel(goal) && <div className="hero-week">{goalWeekTargetLabel(goal)}</div>}
           {goal.participants.length > 0 && (
             <div className="hero-contribs">
               {goal.participants.map((p) => (
@@ -158,6 +151,7 @@ function EachHero({ goal, onOpen }: { goal: Goal; onOpen: () => void }) {
           <span className="cat-pill hero-pill">🌟 Spotlight · each tracks their own</span>
           <div className="wf-serif hero-title">{goal.title}</div>
           <div className="hero-sub">{sub}</div>
+          {goalWeekTargetLabel(goal) && <div className="hero-week">{goalWeekTargetLabel(goal)}</div>}
         </div>
         <div className="ch-side hero-each-side">
           <div className="hero-together-l">TOGETHER</div>
@@ -199,6 +193,7 @@ function MoreGoalCard({ goal, onClick, onPin, canPin }: { goal: Goal; onClick: (
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="gc-t">{goal.title}</div>
           <div className="tiny muted goal-desc">{descriptor(goal)}</div>
+          {goalWeekTargetLabel(goal) && <div className="tiny goal-week">{goalWeekTargetLabel(goal)}</div>}
         </div>
         <div className="goal-num">
           <span className="num">{fmtNum(dispProgress(goal))}</span>
@@ -224,6 +219,7 @@ function PinnedCard({ goal, onClick, onPin, canPin }: { goal: Goal; onClick: () 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="gc-t">{goal.title} <span className="feat-tag">📌 Pinned</span></div>
           <div className="tiny muted goal-desc">{descriptor(goal)}</div>
+          {goalWeekTargetLabel(goal) && <div className="tiny goal-week">{goalWeekTargetLabel(goal)}</div>}
         </div>
         <div className="goal-num">
           <span className="num">{fmtNum(dispProgress(goal))}</span>
@@ -241,7 +237,7 @@ function PinnedCard({ goal, onClick, onPin, canPin }: { goal: Goal; onClick: () 
 function GlistItem({ list, on, onClick }: { list: GoalList; on: boolean; onClick: () => void }) {
   return (
     <div className={`glist ${on ? 'on' : ''}`} onClick={onClick}>
-      <AvStack members={list.members} />
+      <AvatarStack members={list.members} max={4} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="gl-t">{list.name}</div>
         <div className="gl-s">{listSub(list)}</div>
@@ -329,7 +325,7 @@ export function Goals() {
 
       <div className="goal-main">
         <div className="goal-listhead">
-          {selected && <AvStack members={selected.members} />}
+          {selected && <AvatarStack members={selected.members} max={4} />}
           <div>
             {isIndividual && selected ? (
               // An individual list IS a person — make the name open their profile.

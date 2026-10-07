@@ -33,6 +33,7 @@ export default defineConfig({
 					label: 'Install',
 					items: [
 						{ label: 'Requirements', slug: 'install/requirements' },
+						{ label: 'Mac install', slug: 'install/mac' },
 						{ label: 'Docker install', slug: 'install/docker' },
 						{ label: 'Environment variables', slug: 'install/environment-variables' },
 						{ label: 'Reverse proxy & TLS', slug: 'install/reverse-proxy' },
@@ -55,6 +56,8 @@ export default defineConfig({
 						{ label: 'Pantry', slug: 'features/pantry' },
 						{ label: 'Photos & screensaver', slug: 'features/photos' },
 						{ label: 'Family Night', slug: 'features/family-night' },
+						{ label: 'Rhythms', slug: 'features/rhythms' },
+						{ label: 'Weekly Planning', slug: 'features/weekly-planning' },
 						{ label: 'AI capture bar', slug: 'features/capture' },
 						{ label: 'Kiosk & display', slug: 'features/kiosk' },
 						{ label: 'Waffled-Bites', slug: 'features/waffled-bites' },

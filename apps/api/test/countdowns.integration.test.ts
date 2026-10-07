@@ -193,3 +193,85 @@ describe('countdowns — birthday horizon', () => {
     expect(typeof body.birthdayHorizonDays).toBe('number')
   })
 })
+
+// Rhythms as a fourth countdown source. Only the COMPLETION shape belongs here: a
+// scheduling-shape rhythm IS an event, so the existing is_countdown flag already covers
+// it and adding one here would list the same thing twice. See "Countdown reuse" in
+// docs/product/rhythms-plan.md.
+describe('countdowns — rhythms source', () => {
+  const listCountdowns = async () =>
+    JSON.parse((await call('GET', '/api/countdowns', kevin)).body).countdowns as Array<{
+      id: string
+      title: string
+      date: string
+      daysLeft: number
+      source: string
+      emoji: string | null
+      personId: string | null
+    }>
+
+  const householdId = async () => {
+    const { query } = await import('../src/platform/db')
+    return (await query<{ id: string }>('select id from households limit 1')).rows[0].id
+  }
+
+  let filterId = ''
+
+  it('ignores rhythms while the module is off', async () => {
+    // Inserted directly: /api/rhythms 403s while the module is off, and the only thing
+    // under test here is whether the countdown list opts in.
+    const { query } = await import('../src/platform/db')
+    const { rows } = await query<{ id: string }>(
+      `insert into rhythms (household_id, title, emoji, satisfied_by, every, next_due_at)
+         values ($1, 'Change the air filter', '🌬️', 'completion', '3 months', $2::timestamptz)
+       returning id`,
+      [await householdId(), `${inDays(45)}T12:00:00.000Z`]
+    )
+    filterId = rows[0].id
+    expect((await listCountdowns()).some((c) => c.title === 'Change the air filter')).toBe(false)
+  })
+
+  it('counts down to a completion rhythm once the module is on', async () => {
+    expect((await call('PATCH', '/api/household/modules', kevin, { rhythms: true })).statusCode).toBe(200)
+    const filter = (await listCountdowns()).find((c) => c.title === 'Change the air filter')
+    expect(filter).toBeTruthy()
+    expect(filter!.source).toBe('rhythm')
+    expect(filter!.id).toBe(`rhythm:${filterId}`)
+    expect(filter!.emoji).toBe('🌬️')
+    expect(filter!.date).toBe(inDays(45))
+    expect(filter!.daysLeft).toBeGreaterThan(0)
+  })
+
+  it('leaves a scheduling rhythm out — it is already an event', async () => {
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Temple visit',
+      satisfiedBy: 'scheduling',
+      every: '3 months',
+      startsOn: inDays(0),
+    })
+    expect(res.statusCode).toBe(201)
+    expect((await listCountdowns()).some((c) => c.title === 'Temple visit')).toBe(false)
+  })
+
+  it('drops a rhythm that is overdue, paused, or deleted', async () => {
+    const { query } = await import('../src/platform/db')
+    await query(
+      `insert into rhythms (household_id, title, satisfied_by, every, next_due_at)
+         values ($1,'Overdue oil change','completion','6 months',$2::timestamptz),
+                ($1,'Paused toothbrush head','completion','3 months',$3::timestamptz),
+                ($1,'Retired smoke detector','completion','1 year',$3::timestamptz)`,
+      [await householdId(), `${inDays(-2)}T12:00:00.000Z`, `${inDays(20)}T12:00:00.000Z`]
+    )
+    await query(`update rhythms set is_active = false where title = 'Paused toothbrush head'`)
+    await query(`update rhythms set deleted_at = now() where title = 'Retired smoke detector'`)
+    const titles = (await listCountdowns()).map((c) => c.title)
+    expect(titles).not.toContain('Overdue oil change')
+    expect(titles).not.toContain('Paused toothbrush head')
+    expect(titles).not.toContain('Retired smoke detector')
+  })
+
+  it('still sorts the merged list soonest first', async () => {
+    const days = (await listCountdowns()).map((c) => c.daysLeft)
+    expect(days).toEqual([...days].sort((a, b) => a - b))
+  })
+})

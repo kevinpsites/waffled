@@ -20,6 +20,7 @@ struct EventDetailView: View {
     /// Recurring occurrences show a this/following chooser instead of tap-again.
     @State private var scopePrompt = false
     @State private var deleting = false
+    @State private var deleteError: String?
     /// The linked goal's emoji + title (when this event counts toward one).
     @State private var linkedGoal: (emoji: String?, title: String)?
 
@@ -101,6 +102,7 @@ struct EventDetailView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .top)
                 }
+                deleteErrorBanner
                 deleteButton
             }
         } else {
@@ -111,8 +113,20 @@ struct EventDetailView: View {
                 if let note = detail?.description, !note.isEmpty { notesCard(note) }
                 aiCard
                 timelineCard
+                deleteErrorBanner
                 deleteButton
             }
+        }
+    }
+
+    @ViewBuilder private var deleteErrorBanner: some View {
+        if let deleteError {
+            Text(deleteError)
+                .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.primaryD)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(WF.primary.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         }
     }
 
@@ -155,14 +169,24 @@ struct EventDetailView: View {
     /// uses the local mirror delete. We never delete past occurrences here.
     private func performDelete(scope: String?) {
         deleting = true
+        deleteError = nil
         Task {
-            if let scope {
-                try? await WaffledAPI().deleteEvent(id: seriesId, scope: scope, occurrenceStart: event.occurrenceStart)
-                sync.touchGoals()
-            } else {
-                _ = await sync.deleteEvent(id: seriesId)
+            let deleted = await EventDeletionPolicy.perform(
+                isRecurring: scope != nil,
+                deleteRecurring: {
+                    try await WaffledAPI().deleteEvent(
+                        id: seriesId, scope: scope, occurrenceStart: event.occurrenceStart
+                    )
+                },
+                deleteSingle: { await sync.deleteEvent(id: seriesId) }
+            )
+            guard deleted else {
+                deleting = false
+                deleteError = "Couldn’t delete this event. Check your connection and try again."
+                return
             }
-            dismiss()
+            if scope != nil { sync.touchGoals() }
+            dismiss() // only after confirmed deletion
         }
     }
 
@@ -174,6 +198,16 @@ struct EventDetailView: View {
                 HStack(spacing: 6) {
                     Text(detail?.personEmoji ?? event.emoji ?? "🙂").font(.system(size: 13))
                     Text(name).font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(.white.opacity(0.22)).clipShape(Capsule())
+            }
+            // Booking-shaped on purpose: a rhythm is satisfied by this slot existing,
+            // so there is nothing here to mark done and no streak to keep.
+            if event.isRhythm {
+                HStack(spacing: 6) {
+                    Text(RhythmMark.glyph).font(.system(size: 13))
+                    Text(RhythmMark.detailLine).font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
                 }
                 .padding(.horizontal, 10).padding(.vertical, 5)
                 .background(.white.opacity(0.22)).clipShape(Capsule())
@@ -314,6 +348,7 @@ struct EventDetailView: View {
                         .frame(width: 64, alignment: .leading)
                     RoundedRectangle(cornerRadius: 2).fill(sync.eventPalette.color(for: e))
                         .frame(width: 4, height: 22)
+                    RhythmEventMark(event: e, size: 11)
                     Text(e.title).font(.system(size: 14, weight: e.id == event.id ? .bold : .semibold))
                         .foregroundStyle(e.id == event.id ? WF.ink : WF.ink2).lineLimit(1)
                     Spacer(minLength: 6)

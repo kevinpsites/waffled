@@ -31,7 +31,7 @@ const days: DayEntry[] = [
 describe('WeekHeatmap', () => {
   it('renders the fixed Sun–Sat week containing today, today highlighted', () => {
     const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
-    render(<WeekHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    render(<WeekHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     // today Fri 2026-07-17 → the calendar week is Sun Jul 12 .. Sat Jul 18 (not rolling)
     // Each day label carries its date, e.g. "Sun 12" … "Sat 18".
     expect(screen.getAllByText(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{1,2}$/)).toHaveLength(7)
@@ -44,7 +44,7 @@ describe('WeekHeatmap', () => {
 
   it('shows a quiet "·" for a zero day, not an empty bar', () => {
     const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
-    render(<WeekHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    render(<WeekHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     // Sun 07-12 has no log at all -> quiet dot, not "0"
     expect(screen.getAllByText('·').length).toBeGreaterThan(0)
     expect(screen.queryByText('0')).not.toBeInTheDocument()
@@ -52,7 +52,7 @@ describe('WeekHeatmap', () => {
 
   it('summarizes the week total and unit', () => {
     const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
-    const { container } = render(<WeekHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    const { container } = render(<WeekHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     // Sun Jul 12 .. Sat Jul 18: Jul 15+16+17 only; Sat Jul 11 is the PRIOR week now
     expect(container.querySelector('.gdv-summary-n')?.textContent).toBe('7.9') // 1.5+3.9+2.5
     expect(screen.getByText(/hrs this week/)).toBeInTheDocument()
@@ -61,14 +61,14 @@ describe('WeekHeatmap', () => {
   it('calls onDayClick with that day\'s dateKey when a cell is tapped', () => {
     const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
     const onDayClick = vi.fn()
-    render(<WeekHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={onDayClick} onMonthClick={() => {}} />)
+    render(<WeekHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={onDayClick} onMonthClick={() => {}} firstDay={0} />)
     fireEvent.click(screen.getByText('Fri 17'))
     expect(onDayClick).toHaveBeenCalledWith('2026-07-17')
   })
 
   it('navigates to the previous week, and blocks paging past the current week', () => {
     const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
-    render(<WeekHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    render(<WeekHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     expect(screen.getByRole('button', { name: 'Next week' })).toBeDisabled()
 
     fireEvent.click(screen.getByRole('button', { name: 'Previous week' }))

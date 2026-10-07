@@ -5,10 +5,39 @@ import { useEffect, useState } from 'react'
 export function registerServiceWorker(): void {
   if (!import.meta.env.PROD) return
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
+  reloadOnWorkerTakeover()
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {
       /* registration failed — app still works online */
     })
+  })
+}
+
+// Reload once when a new build's worker takes control of this page.
+//
+// The screens are code-split, so a page left open across a deploy still holds chunk
+// URLs from the build it started on. The incoming worker deletes that build's asset
+// cache (cache names carry the build stamp), and Caddy answers the missing chunk with
+// index.html, so the next navigation fails its module load and lands on ScreenBoundary.
+// A wall-mounted display has nobody standing there to tap Reload, so it would sit on
+// the error card indefinitely. Picking up the new build immediately avoids the whole
+// situation.
+//
+// The container and reload are parameters so this is testable without a real service
+// worker or a navigating jsdom; production always uses the defaults.
+export function reloadOnWorkerTakeover(
+  container: ServiceWorkerContainer = navigator.serviceWorker,
+  reload: () => void = () => window.location.reload()
+): void {
+  // No existing controller means this is the first worker ever claiming the page,
+  // not an upgrade. The page came off the network moments ago and holds nothing
+  // stale, so reloading there would just bounce every first-time visitor.
+  const wasControlled = Boolean(container.controller)
+  let reloaded = false
+  container.addEventListener('controllerchange', () => {
+    if (!wasControlled || reloaded) return
+    reloaded = true
+    reload()
   })
 }
 

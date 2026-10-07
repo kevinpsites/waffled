@@ -45,7 +45,7 @@ struct KioskMoreView: View {
     }
 
     private func tile(_ nav: KioskNav) -> some View {
-        let d = descriptor(nav)
+        let d = Self.descriptor(nav)
         return Button { navigate(nav) } label: {
             KioskCard {
                 VStack(alignment: .leading, spacing: 0) {
@@ -68,7 +68,7 @@ struct KioskMoreView: View {
         .buttonStyle(.plain)
     }
 
-    private func descriptor(_ nav: KioskNav) -> (emoji: String, title: String, subtitle: String, accent: Color) {
+    static func descriptor(_ nav: KioskNav) -> (emoji: String, title: String, subtitle: String, accent: Color) {
         switch nav {
         // Tile accents are flipping tokens (dark-aware washes), matching the phone twin
         // FamilyView so the kiosk "More" grid doesn't show bright pastels among dark washes.
@@ -77,10 +77,12 @@ struct KioskMoreView: View {
         case .goals:   return ("🎯", "Goals", "What the family's working toward", WF.successT)
         case .lists:   return ("📋", "Lists", "Groceries, packing & to-dos", FamilyColor.person1.tint)
         case .pantry:  return ("🥫", "Pantry", "What's on hand", WF.warnT)
+        case .rhythms: return ("🔁", "Rhythms", "What should keep happening", WF.infoT)
         case .photos:  return ("📷", "Photos", "The family album", WF.successT)
         case .meals:   return ("🍽️", "Meals", "This week's plan & recipes", WF.primaryT)
         case .family:  return ("👪", "Family", "People, spotlights & more", FamilyColor.person4.tint)
-        default:       return ("•", nav.label, "", WF.panel)
+        case .planning: return ("🗓️", "Weekly Planning", "Plan the week ahead", FamilyColor.person2.tint)
+        default:       return ("✨", nav.label, "Open \(nav.label)", WF.panel)
         }
     }
 }

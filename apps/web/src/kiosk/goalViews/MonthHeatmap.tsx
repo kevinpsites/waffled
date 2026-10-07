@@ -2,21 +2,21 @@
 // day. Navigable back/forward — clamped so you can't page past the current month.
 import { useState } from 'react'
 import { fmtGoalNum } from '../../lib/api'
-import { heat, HEAT_DARK_THRESHOLD, toLocalDateKey, parseLocalDateKey } from '../../lib/goalStats'
+import { heat, HEAT_DARK_THRESHOLD, monthLeadCells, toLocalDateKey, parseLocalDateKey } from '../../lib/goalStats'
 import type { DataViewProps } from './types'
 
 const WEEKDAY_HEADS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 const HEAT_STOPS = [0.12, 0.35, 0.6, 0.85, 1]
 
-export function MonthHeatmap({ goal, stats, personMap, onDayClick, headerRight }: DataViewProps) {
+export function MonthHeatmap({ goal, stats, personMap, onDayClick, headerRight, firstDay }: DataViewProps) {
   const [monthOffset, setMonthOffset] = useState(0)
   const todayDate = parseLocalDateKey(stats.today)
   const shown = new Date(todayDate.getFullYear(), todayDate.getMonth() + monthOffset, 1)
   const year = shown.getFullYear()
   const month = shown.getMonth()
   const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const lead = new Date(year, month, 1).getDay()
+  const lead = monthLeadCells(year, month, firstDay)
   const canGoForward = monthOffset < 0
 
   let monthTotal = 0
@@ -77,7 +77,7 @@ export function MonthHeatmap({ goal, stats, personMap, onDayClick, headerRight }
         {headerRight && <div className="gdv-head-grow">{headerRight}</div>}
       </div>
       <div className="gdv-month-grid gdv-month-heads">
-        {WEEKDAY_HEADS.map((h, i) => <div key={i} className="gdv-month-head">{h}</div>)}
+        {WEEKDAY_HEADS.map((_, i) => <div key={i} className="gdv-month-head">{WEEKDAY_HEADS[(firstDay + i) % 7]}</div>)}
       </div>
       <div className="gdv-month-grid">
         {Array.from({ length: lead }, (_, i) => <div key={`lead-${i}`} className="gdv-month-lead" />)}

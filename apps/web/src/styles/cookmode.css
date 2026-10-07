@@ -57,30 +57,47 @@
   color: var(--ink);
 }
 
-.cm-ings {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
+/* The stage and, when the step names any, its ingredients in a fixed LEFT column — the iPad's
+   layout (CookModeView.ingredientsSidebar). */
+.cm-body { flex: 1; display: flex; gap: 32px; }
+.cm-body > .cm-stage { min-width: 0; }
+.cm-side {
+  flex: none; width: 300px; align-self: stretch; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px;
+  background: var(--panel); border-radius: var(--r-lg); padding: 24px 20px;
 }
-.cm-ings-label {
-  font-size: 12.5px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-3);
+.cm-side-label {
+  font-size: 13px; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--ink-3); margin-bottom: 4px;
 }
-.cm-ings-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
+/* Tick an ingredient off as it goes in. Same check-off vocabulary as the grocery board (a box
+   that fills on the person-3 green), sized for a row you tap from across the kitchen. */
+.cm-side-row {
+  font: inherit; font-size: 17px; font-weight: 600; line-height: 1.35; text-align: left;
+  width: 100%; padding: 9px 12px; border: 0; border-radius: var(--r-sm); cursor: pointer;
+  background: var(--person-3-t); color: var(--ink);
+  display: flex; align-items: flex-start; gap: 10px;
 }
-.cm-ing-chip {
-  font-size: 16px;
-  font-weight: 600;
-  padding: 9px 16px;
-  border-radius: 999px;
-  background: var(--person-3-t);
-  color: var(--success);
+.cm-side-row .cm-ing-box { margin-top: 1px; }
+.cm-side-nm { min-width: 0; overflow-wrap: anywhere; }
+.cm-ing-box {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 7px;
+  border: 2px solid var(--success);
+  display: grid;
+  place-items: center;
+}
+.cm-side-row.on .cm-ing-box {
+  background: var(--success);
+  border-color: var(--success);
+}
+.cm-side-row.on { opacity: 0.62; color: var(--ink-3); text-decoration: line-through; }
+/* A phone has no room beside the step: the column stacks under it, as the iPhone keeps them inline. */
+@media (max-width: 760px) {
+  .cm-body { flex-direction: column; gap: 18px; }
+  .cm-side { order: 1; width: auto; padding: 16px; }
 }
 .cm-note {
   font-size: 17px;
@@ -142,20 +159,66 @@
   display: flex;
   flex-direction: column;
 }
+.cm-all-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+  /* the modal's × is absolutely positioned in this corner — keep the count clear of it */
+  padding-right: 34px;
+}
+.cm-all-count {
+  margin-left: auto;
+  font-weight: 700;
+  white-space: nowrap;
+}
 .cm-all-row {
   display: flex;
+  align-items: center;
   gap: 14px;
   padding: 11px 0;
   border-bottom: 1px solid var(--hair-2);
   font-size: 15.5px;
+  /* a whole-row tick target, not a link-looking button */
+  font-family: inherit;
+  width: 100%;
+  background: none;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
 }
 .cm-all-row:last-child {
   border-bottom: 0;
+}
+.cm-all-box {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 7px;
+  border: 2px solid var(--hair);
+  background: var(--card);
+  display: grid;
+  place-items: center;
+}
+.cm-all-row.done .cm-all-box {
+  background: var(--person-3);
+  border-color: var(--person-3);
+}
+.cm-all-row.done .cm-all-amt,
+.cm-all-row.done .cm-all-nm {
+  text-decoration: line-through;
+  color: var(--ink-3);
 }
 .cm-all-amt {
   width: 96px;
   flex: none;
   font-weight: 700;
+}
+.cm-all-nm {
+  min-width: 0;
 }
 
 /* finish screen */

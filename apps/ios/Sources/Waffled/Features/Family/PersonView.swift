@@ -34,17 +34,20 @@ final class PersonOverviewModel {
 
     var choresDone: Int { chores.filter { $0.status == "done" }.count }
 
-    /// Optimistic complete/uncomplete from the day list.
-    func toggleChore(_ inst: WaffledAPI.ChoreInstanceDTO) async {
-        guard let idx = chores.firstIndex(where: { $0.id == inst.id }) else { return }
+    /// Optimistic complete/uncomplete from the day list. Returns whether the write landed,
+    /// so the caller only broadcasts a change that happened.
+    @discardableResult
+    func toggleChore(_ inst: WaffledAPI.ChoreInstanceDTO) async -> Bool {
+        guard let idx = chores.firstIndex(where: { $0.id == inst.id }) else { return false }
         let isComplete = inst.status == "done" || inst.status == "awaiting"
-        let next = isComplete ? "pending" : (inst.requiresApproval ? "awaiting" : "done")
-        withAnimation { chores[idx].status = next }
+        withAnimation { chores[idx].status = ChoresModel.toggledStatus(inst) }
         do {
             if isComplete { try await api.uncompleteChore(id: inst.id) } else { try await api.completeChore(id: inst.id) }
             await load()
+            return true
         } catch {
             if let i = chores.firstIndex(where: { $0.id == inst.id }) { withAnimation { chores[i].status = inst.status } }
+            return false
         }
     }
 }
@@ -57,6 +60,7 @@ struct PersonView: View {
     @State private var showCapture = false
     @State private var editingEvent: SyncedEvent?
     @State private var showSavingPicker = false
+    @State private var redeemError: String?             // a refused/failed jar redeem
     @State private var showTrade = false
     @State private var showAward = false
     @State private var waffledBiteDevice: WaffledAPI.WaffledBiteDevice?
@@ -116,6 +120,7 @@ struct PersonView: View {
                         let cur = ov.currencies.first { $0.key == ov.savingToward?.currency }
                         SavingTowardCard(saving: ov.savingToward, colorHex: cur?.color, symbol: cur?.symbol,
                                          canPick: !ov.rewardShop.isEmpty,
+                                         canRedeem: maySpend,
                                          onChange: { showSavingPicker = true },
                                          onRedeem: redeemSaving)
                     }
@@ -137,6 +142,14 @@ struct PersonView: View {
         .task { await model.load() }
         .task { await sync.loadCurrencies() }
         .refreshable { await model.load() }
+        .alert("Couldn't redeem", isPresented: Binding(
+            get: { redeemError != nil },
+            set: { if !$0 { redeemError = nil } }
+        )) {
+            Button("OK", role: .cancel) { redeemError = nil }
+        } message: {
+            Text(redeemError ?? "")
+        }
         .sheet(isPresented: $showCapture) { CaptureSheet().presentationDragIndicator(.visible) }
         .sheet(item: $editingEvent) { ev in EventEditSheet(event: ev, initialDate: ev.startsAt ?? Date()) }
         .sheet(isPresented: $showSavingPicker) {
@@ -209,6 +222,7 @@ struct PersonView: View {
                 let cur = ov.currencies.first { $0.key == ov.savingToward?.currency }
                 SavingTowardCard(saving: ov.savingToward, colorHex: cur?.color, symbol: cur?.symbol,
                                  canPick: !ov.rewardShop.isEmpty,
+                                 canRedeem: maySpend,
                                  onChange: { showSavingPicker = true },
                                  onRedeem: redeemSaving)
                 if !ov.redemptions.isEmpty { redemptionsCard(ov) }
@@ -220,9 +234,19 @@ struct PersonView: View {
     }
 
     /// Redeem the pinned saving-toward reward directly (only shown when affordable).
+    /// Spending your own balance is yours to decide; spending someone else's needs
+    /// reward.manage — the same rule the server enforces and the reward shop shows.
+    private var maySpend: Bool { sync.can("reward.manage") || personId == sync.currentPersonId }
+
     private func redeemSaving() {
         guard let s = model.overview?.savingToward else { return }
-        Task { _ = await sync.giveReward(rewardId: s.id, personId: personId); await model.load() }
+        Task {
+            // Discarding this used to swallow a refusal whole: no redemption, no message,
+            // just a button that re-enabled as if nothing had been asked.
+            let ok = await sync.giveReward(rewardId: s.id, personId: personId)
+            if !ok { redeemError = "That didn't go through. Check your connection and try again." }
+            await model.load()
+        }
     }
 
     // MARK: header
@@ -352,9 +376,7 @@ struct PersonView: View {
 
     private var personEvents: [SyncedEvent] {
         let today = Agenda.todayKey(sync.householdTz)
-        return sync.events
-            .filter { ($0.personId == personId || $0.participantIds.contains(personId)) && Agenda.dayKey($0, sync.householdTz) == today }
-            .sorted(by: Agenda.before)
+        return (sync.eventsByDay[today] ?? []).filter { Agenda.involves($0, person: personId) }
     }
 
     @ViewBuilder private var daySection: some View {
@@ -391,6 +413,7 @@ struct PersonView: View {
             HStack(spacing: 12) {
                 Text(eventTime(ev)).font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink3)
                     .frame(width: 60, alignment: .leading)
+                RhythmEventMark(event: ev, size: 12)
                 Text(ev.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                 Spacer(minLength: 8)
                 Image(systemName: "calendar").font(.system(size: 14)).foregroundStyle(WF.ink3)
@@ -401,28 +424,10 @@ struct PersonView: View {
     }
 
     private func choreRow(_ ch: WaffledAPI.ChoreInstanceDTO) -> some View {
-        let done = ch.status == "done"
-        let awaiting = ch.status == "awaiting"
-        return Button { Task { await model.toggleChore(ch) } } label: {
-            HStack(spacing: 12) {
-                Image(systemName: awaiting ? "hourglass.circle.fill" : (done ? "checkmark.circle.fill" : "circle"))
-                    .font(.system(size: 22))
-                    .foregroundStyle(done ? FamilyColor.person3.solid : (awaiting ? WF.gold : WF.ink3))
-                Text("\(ch.emoji.map { "\($0) " } ?? "")\(ch.choreTitle)")
-                    .font(.system(size: 15, weight: .semibold))
-                    .strikethrough(done, color: WF.ink3)
-                    .foregroundStyle(done ? WF.ink3 : WF.ink).lineLimit(1)
-                Spacer(minLength: 8)
-                if ch.rewardAmount > 0 {
-                    HStack(spacing: 2) {
-                        Text(sync.currencySymbol(ch.rewardCurrency)).font(.system(size: 11))
-                        Text("\(ch.rewardAmount)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
-                    }
-                }
-            }
-            .padding(.horizontal, 14).padding(.vertical, 11).contentShape(Rectangle())
+        ChoreCheckRow(chore: ch) {
+            if ChoresModel.needsPhotoToFinish(ch) { path.append(.chores) }
+            else { Task { if await model.toggleChore(ch) { sync.bumpChores() } } }
         }
-        .buttonStyle(.plain)
     }
 
     private var divider: some View { Rectangle().fill(WF.hair2).frame(height: 1).padding(.leading, 14) }

@@ -40,7 +40,7 @@ export async function assertPersonInHousehold(householdId: string, personId: str
 }
 
 async function assertHouseholdRow(
-  table: 'goals' | 'goal_lists' | 'calendars' | 'recipes' | 'meals' | 'lists' | 'events',
+  table: 'goals' | 'goal_lists' | 'calendars' | 'recipes' | 'meals' | 'lists' | 'events' | 'rhythms',
   householdId: string,
   id: string,
   label: string
@@ -74,6 +74,12 @@ export const assertListInHousehold = (householdId: string, listId: string) =>
 
 export const assertEventInHousehold = (householdId: string, eventId: string) =>
   assertHouseholdRow('events', householdId, eventId, 'event')
+
+// The FK on events.rhythm_id only proves the rhythm exists, not that it's yours — and a
+// scheduling rhythm is satisfied by "an event points at me", so an unchecked link would
+// let one household mark another household's period as booked.
+export const assertRhythmInHousehold = (householdId: string, rhythmId: string) =>
+  assertHouseholdRow('rhythms', householdId, rhythmId, 'rhythm')
 
 export async function assertGoalStepInHousehold(
   householdId: string,

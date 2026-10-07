@@ -1,0 +1,299 @@
+/* Rhythms — the Today card and the register. Built from the shared vocabulary
+   (.card, .btn, .field, .modal-*, .pill); everything here is layout for this
+   module's own rows, matching pantry.css in shape and spacing.
+
+   TWO VOCABULARIES LIVE IN THIS FILE. Keep them disjoint:
+     Today card (RhythmsCard.tsx) — .rhy-card .rhy-head .rhy-h .rhy-n .rhy-all .rhy-list
+                                    .rhy-row .rhy-emoji .rhy-main .rhy-title
+                                    .rhy-sub .rhy-late .rhy-acts .rhy-act
+     Register  (Rhythms.tsx)      — .rhy-screen* .rhy-band .rhy-regs .rhy-reg
+                                    .rhy-reg-main .rhy-tile .rhy-name .rhy-dot
+                                    .rhy-tick .rhy-meta .rhy-track .rhy-cd
+                                    .rhy-actcell .rhy-more .rhy-menu .rhy-done
+                                    .rhy-backdate* .rhy-paused-*
+     Editor    (RhythmModal.tsx)  — .rhy-anchor .rhy-sent .rhy-fix .rhy-tok*
+                                    .rhy-chev .rhy-drop .rhy-opt* .rhy-ck
+                                    .rhy-conseq* .rhy-more-row .rhy-more-chev
+                                    .rhy-adv
+     Genuinely shared             — .rhy-skip, and nothing else.
+   The register originally reused .rhy-row and .rhy-main. Its rules load second, so
+   `display: grid` won and every row of the Today card silently became a grid — with
+   no test failure, because those tests assert text and roles, not layout. */
+
+/* ── Today card ─────────────────────────────────────────────────────────────── */
+.rhy-card { padding: 18px 20px 14px; display: flex; flex-direction: column; }
+.rhy-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.rhy-h { font-size: 17px; text-decoration: none; color: inherit; }
+/* The count sits with the title and the link is pushed to the far edge, so the
+   header reads "Rhythms — 3 want attention ......... All 10 →": what is being asked
+   of you, and how much is not. */
+.rhy-n { white-space: nowrap; }
+.rhy-all { margin-left: auto; white-space: nowrap; text-decoration: none; color: var(--ink-2); }
+
+.rhy-list { display: flex; flex-direction: column; gap: 8px; }
+.rhy-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 11px; border: 1px solid var(--hair); border-radius: var(--r-md);
+  background: var(--panel);
+}
+.rhy-row.overdue { border-color: color-mix(in srgb, var(--danger) 45%, var(--hair)); }
+.rhy-emoji { font-size: 19px; flex: none; line-height: 1; }
+.rhy-main { min-width: 0; flex: 1; }
+.rhy-title {
+  font-weight: 700; font-size: 15px; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rhy-sub { margin-top: 1px; }
+.rhy-late { color: var(--danger); font-weight: 700; }
+
+.rhy-acts { display: flex; align-items: center; gap: 6px; flex: none; }
+.rhy-act { flex: none; padding: 6px 12px; font-size: 13px; }
+/* btn-ghost paints --panel, which is exactly the row's own background, so the
+   secondary verb sat on this card as bold text with no edge to it — next to a
+   primary pill it stopped reading as a control at all. Lift it off the row. */
+.rhy-act.btn-ghost { background: var(--card); border: 1px solid var(--hair); }
+.rhy-skip {
+  background: none; border: 0; padding: 6px 4px; cursor: pointer;
+  font: inherit; font-size: 12px; font-weight: 700; color: var(--ink-3);
+}
+.rhy-skip:hover { color: var(--ink); }
+.rhy-skip:disabled { opacity: 0.4; cursor: default; }
+
+/* ── The register ───────────────────────────────────────────────────────────── */
+/* Grouped by urgency, not by shape. The countdown on the right is the anchor of
+   every row — the same number the Today card shows — and the hairline under the
+   name says how much of the current cycle is already spent. Most of a healthy
+   register is Steady, so quiet rows carry no button at all. */
+.rhy-screen { padding: 24px 30px 40px; }
+.rhy-screen-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.rhy-screen-title { font-size: 30px; font-weight: 600; }
+.rhy-screen-sub { font-size: 14px; font-weight: 600; color: var(--ink-3); margin-top: 4px; max-width: 62ch; }
+.rhy-empty { color: var(--ink-3); font-weight: 600; padding: 24px 2px; }
+
+/* Band header: a name, a count, and what earns a place in it. */
+.rhy-band { display: flex; align-items: baseline; gap: 10px; margin: 26px 4px 11px; }
+.rhy-screen section:first-of-type .rhy-band { margin-top: 0; }
+.rhy-band h2 { font-size: 21px; font-weight: 600; margin: 0; }
+.rhy-band .n { font-size: 13px; color: var(--ink-3); font-weight: 700; }
+.rhy-band .hint { margin-left: auto; font-size: 13px; color: var(--ink-3); font-weight: 600; }
+
+/* One card per band. Deliberately NOT overflow:hidden — the row menu is absolutely
+   positioned inside a row, and clipping it to the card would cut it in half on the
+   last row of every band. The corners are rounded on the end rows instead, which
+   keeps the "needs you now" tint inside the radius. */
+.rhy-regs { background: var(--card); border-radius: var(--r-xl); box-shadow: var(--sh-2); }
+
+.rhy-reg {
+  display: grid; grid-template-columns: 46px minmax(0, 1fr) 118px 132px 30px;
+  align-items: center; column-gap: 18px;
+  padding: 16px 22px 16px 18px; border-top: 1px solid var(--hair-2); position: relative;
+}
+.rhy-reg:first-child { border-top: 0; border-radius: var(--r-xl) var(--r-xl) 0 0; }
+.rhy-reg:last-child { border-radius: 0 0 var(--r-xl) var(--r-xl); }
+.rhy-reg:only-child { border-radius: var(--r-xl); }
+.rhy-reg.now { background: linear-gradient(90deg, var(--danger-t), transparent 58%); }
+.rhy-reg.off .rhy-tile, .rhy-reg.off .rhy-reg-main { opacity: 0.5; }
+
+.rhy-tile {
+  width: 46px; height: 46px; border-radius: 14px; font-size: 23px;
+  background: var(--card-2); border: 1px solid var(--hair-2); display: grid; place-items: center;
+}
+.rhy-reg-main { min-width: 0; }
+.rhy-name { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; color: var(--ink); }
+.rhy-dot { width: 6px; height: 6px; border-radius: 999px; flex: none; }
+.rhy-tick {
+  width: 16px; height: 16px; border-radius: 999px; flex: none;
+  background: var(--success); color: var(--on-accent);
+  display: inline-grid; place-items: center; font-size: 10px; font-weight: 800;
+}
+.rhy-meta {
+  font-size: 13px; font-weight: 600; color: var(--ink-2); margin-top: 3px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rhy-meta b { color: var(--ink); font-weight: 700; }
+/* Keep the clip: periodProgress already clamps to 0–100, and this is the backstop
+   if it ever stops. */
+.rhy-track { height: 3px; border-radius: 999px; background: var(--hair); margin-top: 10px; max-width: 420px; overflow: hidden; }
+.rhy-track > div { height: 100%; border-radius: 999px; background: var(--ink-3); }
+.rhy-reg.now .rhy-track > div { background: var(--danger); }
+
+/* The countdown — the anchor. Serif and large, because it is the one thing on the
+   row worth reading from across the kitchen. */
+.rhy-cd { text-align: right; }
+.rhy-cd b {
+  display: block; font-family: var(--serif); font-size: 26px; font-weight: 600;
+  letter-spacing: -0.02em; line-height: 1; color: var(--ink);
+}
+.rhy-cd span { display: block; font-size: 12px; font-weight: 700; color: var(--ink-3); margin-top: 3px; }
+.rhy-cd.late b, .rhy-cd.late span { color: var(--danger); }
+.rhy-cd.soft b { color: var(--ink-2); }
+.rhy-cd.done b { font-family: var(--sans); font-size: 15px; font-weight: 700; color: var(--success); }
+
+.rhy-actcell { justify-self: end; width: 100%; }
+.rhy-actcell .btn { width: 100%; justify-content: center; padding: 10px 0; font-size: 14px; }
+/* Already done today. Settled rather than merely disabled — a greyed-out button reads
+   as "you can't", and the point here is "you already did". */
+.rhy-done { background: var(--success-t); color: var(--success); border-color: transparent; opacity: 1; cursor: default; }
+
+.rhy-more {
+  width: 30px; height: 30px; border-radius: 999px; border: 0; background: transparent;
+  color: var(--ink-3); font-size: 18px; line-height: 1; cursor: pointer; justify-self: center;
+}
+.rhy-more:hover { background: var(--overlay-hover); color: var(--ink); }
+
+/* Everything that isn't the one primary verb. */
+.rhy-menu {
+  position: absolute; top: 54px; right: 16px; z-index: 40; min-width: 210px;
+  background: var(--card); border-radius: 16px; box-shadow: var(--sh-3); padding: 6px;
+}
+.rhy-menu button {
+  display: block; width: 100%; text-align: left; border: 0; background: transparent;
+  font: inherit; font-size: 14px; font-weight: 600; color: var(--ink);
+  padding: 10px 12px; border-radius: 11px; cursor: pointer;
+}
+.rhy-menu button:hover { background: var(--card-2); }
+.rhy-menu button:disabled { opacity: 0.5; cursor: default; }
+.rhy-menu button.warn { color: var(--danger); }
+.rhy-menu hr { border: 0; border-top: 1px solid var(--hair-2); margin: 5px 8px; }
+
+/* Paused rhythms, named rather than counted — "2 paused" makes you open it to find
+   out which, every single time. */
+/* Backdating a completion — an inline row rather than a modal: it's one date, and the
+   row it belongs to is the context. */
+.rhy-backdate { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.rhy-backdate-f { flex: 1; min-width: 150px; margin: 0; }
+/* The backdate row is a grid child of the row it belongs to, so it has to be told to
+   span — otherwise it lands in the emoji column, 46px wide. */
+.rhy-reg .rhy-backdate { grid-column: 1 / -1; }
+
+.rhy-paused-card { margin-top: 26px; }
+.rhy-paused-toggle {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 15px 20px; border: 0; background: transparent; cursor: pointer;
+  font: inherit; font-size: 14px; font-weight: 600; color: var(--ink-3);
+}
+.rhy-paused-toggle:hover { color: var(--ink); }
+.rhy-paused-toggle span { margin-left: auto; }
+
+/* Narrow kiosks and split panes: the countdown keeps its place, the button drops to
+   its own line rather than squeezing the name to nothing. */
+@media (max-width: 860px) {
+  .rhy-screen { padding: 20px 16px 32px; }
+  /* The right padding is a gutter for the ⋯ button, which leaves the grid here. Without
+     it the countdown — right-aligned against the content edge — renders straight under
+     the button: "Booked" with a ⋯ through the 'd'. */
+  .rhy-reg { grid-template-columns: 40px minmax(0, 1fr) 96px; column-gap: 12px; padding: 14px 52px 14px 16px; }
+  .rhy-tile { width: 40px; height: 40px; font-size: 20px; }
+  .rhy-actcell { grid-column: 2 / -1; width: auto; justify-self: start; margin-top: 10px; }
+  .rhy-actcell .btn { width: auto; padding: 9px 18px; }
+  .rhy-more { position: absolute; top: 14px; right: 14px; }
+  .rhy-band .hint { display: none; }
+}
+
+.rhy-anchor {
+  font-size: 13px; font-weight: 600; color: var(--ink-2); line-height: 1.45;
+  padding: 10px 12px; margin-bottom: 14px;
+  border-radius: var(--r-md); border: 1px solid var(--hair); background: var(--panel);
+}
+
+/* The sentence. Every token is a real control wearing a chip: the browser default
+   look is stripped off with `appearance: none` and the chip is drawn here, so the
+   line reads as a sentence rather than as a row of form fields. Line-height is
+   generous because the tokens are taller than the fixed words between them. */
+.rhy-sent {
+  font-family: var(--serif); font-size: 21px; line-height: 2.1; letter-spacing: -0.01em;
+  color: var(--ink-3); margin-bottom: 16px;
+}
+.rhy-fix { color: var(--ink-3); }
+.rhy-tok {
+  display: inline-flex; align-items: center; gap: 4px;
+  font: inherit; font-family: var(--sans); font-size: 16px; font-weight: 650;
+  color: var(--ink); background: var(--panel);
+  border: 1px solid var(--hair); border-radius: 10px; padding: 4px 10px;
+  vertical-align: middle; cursor: pointer; -webkit-appearance: none; appearance: none;
+}
+.rhy-tok:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+/* An input keeps a caret, so it should not also claim to be a button. */
+input.rhy-tok { cursor: text; }
+input.rhy-tok::placeholder { color: var(--ink-3); font-weight: 600; }
+.rhy-tok-emoji { width: 42px; justify-content: center; font-size: 18px; padding: 4px 6px; }
+.rhy-tok-name { min-width: 120px; }
+/* Spinners would put two more clickable targets inside a sentence. */
+.rhy-tok-num { width: 52px; text-align: center; -moz-appearance: textfield; }
+.rhy-tok-num::-webkit-outer-spin-button,
+.rhy-tok-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+/* The select is layered UNDER its own chevron rather than given one: a native arrow
+   sits at the far right of the control and cannot be moved. */
+.rhy-tok-sel { position: relative; padding-right: 8px; }
+.rhy-tok-sel select {
+  font: inherit; font-weight: 650; color: inherit; background: none; border: 0;
+  padding: 0 18px 0 0; -webkit-appearance: none; appearance: none; cursor: pointer;
+}
+.rhy-tok-sel select:focus { outline: none; }
+.rhy-tok-sel .rhy-chev { position: absolute; right: 6px; pointer-events: none; }
+/* Stated rather than offered — an edit cannot re-shape a live rhythm. */
+.rhy-tok-fixed { cursor: default; color: var(--ink-2); background: transparent; border-style: dashed; }
+.rhy-tok-btn.on { border-color: var(--primary); }
+.rhy-chev { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.4;
+  stroke-linecap: round; stroke-linejoin: round; opacity: 0.55; flex: none; }
+
+.rhy-tok-mode { position: relative; display: inline-block; }
+.rhy-drop {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; width: 330px;
+  background: var(--card); border-radius: 16px; box-shadow: var(--sh-3); padding: 6px;
+  font-family: var(--sans); font-size: 14px; line-height: 1.4; letter-spacing: normal;
+}
+.rhy-opt { display: flex; gap: 10px; padding: 10px 11px; border-radius: 12px; cursor: pointer; }
+.rhy-opt:hover { background: var(--card-2); }
+.rhy-ck {
+  flex: none; width: 15px; height: 15px; margin-top: 2px; border-radius: 999px;
+  border: 1.6px solid var(--hair); background: var(--panel);
+}
+.rhy-opt.on .rhy-ck { border-color: var(--primary); background: var(--primary); box-shadow: inset 0 0 0 3px var(--card); }
+.rhy-opt-t { display: block; font-weight: 700; color: var(--ink); }
+.rhy-opt-d { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink-3); margin-top: 2px; }
+
+/* What the sentence will actually do. Quiet on purpose: it is a consequence, not a
+   warning, and the two dates inside it are the only emphasis it needs. */
+.rhy-conseq {
+  display: flex; gap: 11px; align-items: flex-start;
+  padding: 13px 15px; margin-bottom: 14px;
+  border-radius: var(--r-md); border: 1px solid var(--hair); background: var(--panel);
+  font-size: 13.5px; font-weight: 600; line-height: 1.5; color: var(--ink-2);
+}
+.rhy-conseq b { color: var(--ink); font-weight: 750; }
+.rhy-conseq-ic { flex: none; margin-top: 1px; }
+.rhy-conseq-ic svg { width: 17px; height: 17px; fill: none; stroke: var(--success);
+  stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.rhy-conseq-cap { margin-top: 7px; font-size: 12.5px; color: var(--ink-3); }
+
+.rhy-more-row {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  background: none; border: 0; padding: 8px 0; margin-bottom: 6px;
+  font: inherit; font-size: 13px; font-weight: 650; color: var(--ink-3);
+  cursor: pointer; text-align: left;
+}
+.rhy-more-row:hover { color: var(--ink); }
+.rhy-more-chev { display: inline-flex; transition: transform 120ms ease; }
+.rhy-more-chev.on { transform: rotate(180deg); }
+.rhy-adv { border-top: 1px solid var(--hair-2); padding-top: 13px; margin-bottom: 4px; }
+
+@media (max-width: 560px) {
+  /* The sentence wraps hard on a phone; shrink it rather than let a token break. */
+  .rhy-sent { font-size: 18px; line-height: 1.95; position: relative; }
+  /* The popover hangs off its own token, which on a wide card puts its left edge a
+     third of the way along the line. At 430px that pushed 89px of it off the right
+     of the screen. Anchor it to the sentence instead and let it span the width:
+     measured at 430px it now sits fully inside the card. */
+  .rhy-tok-mode { position: static; }
+  .rhy-drop { left: 0; right: 0; width: auto; }
+}
+
+/* A row action that was refused. Sits under the row's own meta rather than as a toast,
+   because the thing that failed is this row and nothing else on the page changed. */
+.rhy-failed {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--danger);
+}

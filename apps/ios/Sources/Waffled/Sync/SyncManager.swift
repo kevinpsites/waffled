@@ -2,7 +2,6 @@ import Foundation
 import Observation
 import PowerSync
 
-/// A family member as read from the local SQLite mirror (proves offline reads).
 struct SyncedMember: Identifiable, Sendable {
     let id: String
     let name: String
@@ -11,24 +10,82 @@ struct SyncedMember: Identifiable, Sendable {
     let memberType: String?
 }
 
-/// Owns the PowerSync database lifecycle and surfaces live, observable state to
-/// SwiftUI: connection status, the synced family (watched query), row counts, and
-/// the pending-upload queue depth. This is the Phase 1 de-risk in one place.
+/// Serializes connection lifecycle work while letting an account exit supersede an
+/// in-flight reconnect: a preempting operation advances the epoch immediately, so the
+/// predecessor stops at its next suspension point before the shared database is touched.
+@MainActor
+final class ConnectionTransitionQueue {
+    typealias Epoch = UInt64
+
+    private(set) var currentEpoch: Epoch = 0
+    private var tail: Task<Void, Never>?
+
+    func isCurrent(_ epoch: Epoch) -> Bool { currentEpoch == epoch }
+
+    func run<Result: Sendable>(
+        preempting: Bool,
+        busyResult: Result,
+        supersededResult: Result,
+        prepare: (@MainActor () -> Void)? = nil,
+        operation: @escaping @MainActor (Epoch) async -> Result
+    ) async -> Result {
+        if !preempting, tail != nil { return busyResult }
+
+        currentEpoch &+= 1
+        let epoch = currentEpoch
+        prepare?()
+        let predecessor = tail
+        let task = Task { @MainActor in
+            if let predecessor { await predecessor.value }
+            guard self.isCurrent(epoch) else { return supersededResult }
+            return await operation(epoch)
+        }
+        tail = Task { @MainActor in _ = await task.value }
+
+        let result = await task.value
+        // A newer preempting task owns `tail`; an obsolete predecessor must never
+        // clear that task's busy marker when it finally unwinds.
+        if isCurrent(epoch) { tail = nil }
+        return result
+    }
+}
+
+/// Narrow lifecycle seam for the transition-race tests, which suspend teardown without
+/// mocking PowerSync's large protocol surface.
+struct SyncConnectionLifecycle: Sendable {
+    let stop: @MainActor @Sendable (_ clearLocal: Bool) async -> Bool
+    let start: @MainActor @Sendable () async -> Bool
+    let applyConfiguration: @MainActor @Sendable (
+        _ rawBaseURL: String?, _ rawDevToken: String?
+    ) -> Void
+}
+
+/// Owns the PowerSync database lifecycle and surfaces live state to SwiftUI.
 @MainActor
 @Observable
 final class SyncManager {
     enum Status: String { case idle, connecting, connected, offline }
+    enum ConnectionUpdateResult: Equatable, Sendable {
+        case updated
+        case invalidURL
+        case pendingUploads(Int)
+        case transitionInProgress
+        case teardownFailed
+    }
 
     private(set) var status: Status = .idle
+    /// Changes synchronously whenever credentials are torn down. REST cache keys include it
+    /// (plus the server origin), so data survives a refresh but never a principal boundary.
+    private(set) var restDataScope = RestDataScope()
+    var restDataScopeKey: RestDataScopeKey {
+        .init(scope: restDataScope, apiBaseURL: AppConfig.apiBaseURL)
+    }
     private(set) var members: [SyncedMember] = [] { didSet { rebuildEventPalette() } }
 
     // MARK: event coloring (settings.display)
 
-    /// How the calendar paints event chips, and the whole-family color — read from
-    /// `households.settings.display` alongside the module flags. Views read
-    /// `eventPalette`, which is rebuilt whenever the members or either setting change
-    /// rather than recomputed per render (CLAUDE.md's "precompute in the model" rule —
-    /// the calendar grids ask for a color once per event per frame).
+    /// Chip painting + the whole-family color, from `households.settings.display`. Views read
+    /// `eventPalette`, rebuilt on change rather than per render — grids ask once per event.
     private(set) var eventStyle: EventStyle = .solid { didSet { rebuildEventPalette() } }
     private(set) var familyColorHex = EventPalette.defaultFamilyHex { didSet { rebuildEventPalette() } }
     private(set) var eventPalette = EventPalette()
@@ -38,48 +95,31 @@ final class SyncManager {
                                     familyHex: familyColorHex, style: eventStyle)
     }
 
-    /// Every synced event (PowerSync streams the whole household, incl. personal ones).
-    /// The visible slice + day index are rebuilt in `didSet`, NOT computed per read —
-    /// the calendar/Today views read them several times per render (see CLAUDE.md's
-    /// "precompute in the model" rule; recomputing per read janked the iPad calendar).
+    /// Every synced event. The visible slice and day index are rebuilt in `didSet`, NOT per
+    /// read: the calendar/Today views read them several times per render.
     private(set) var allEvents: [SyncedEvent] = [] { didSet { rebuildEventIndex() } }
-    /// What this device may show right now: family events + the signed-in person's own
-    /// personal-calendar events. A personal event owned by someone else is hidden even
-    /// though it's synced to the device (mirrors the web's per-viewer filter).
+    /// Family events plus the viewer's own personal ones; someone else's are hidden here.
     private(set) var events: [SyncedEvent] = []
-    /// `events` grouped by household-local day (each day ordered) — the O(1) per-day
-    /// lookup behind the month/week/day grids and the Today "This week" agenda.
     private(set) var eventsByDay: [String: [SyncedEvent]] = [:]
 
-    /// The per-viewer visibility filter as a pure function: family events for everyone,
-    /// personal events only for their owner (an unowned personal event is hidden).
+    /// The per-viewer filter as a pure function; an unowned personal event is hidden.
     nonisolated static func visibleEvents(_ all: [SyncedEvent], me: String?) -> [SyncedEvent] {
         all.filter { $0.visibility != "personal" || ($0.ownerPersonId != nil && $0.ownerPersonId == me) }
     }
 
-    /// Re-derive `events` + `eventsByDay`. Runs from the `didSet`s of its three inputs
-    /// (allEvents, currentPerson, householdTz) so no mutation site can forget it.
+    /// Re-derived from the `didSet`s of its three inputs, so no mutation site can forget it.
     private func rebuildEventIndex() {
         events = Self.visibleEvents(allEvents, me: currentPersonId)
         eventsByDay = Agenda.byDay(events, householdTz)
     }
     private(set) var householdTz: TimeZone = .current { didSet { rebuildEventIndex() } }
-    /// The household's first-day-of-week (`households.week_start`), read off the synced
-    /// row — NOT the device's region setting, which is a different thing and routinely
-    /// disagrees. The grocery list is keyed by this, so it's what `GroceryWeeks` must cut
-    /// rebuild calls on.
+    /// The household's first-day-of-week (`households.week_start`) off the synced row — NOT
+    /// the device's region setting, which routinely disagrees. The grocery list is keyed by it.
     ///
-    /// The synced row is only readable from the first sync tick onward, so a cold launch
-    /// starts from the value the *last* run persisted (`HouseholdWeekStartStore`) rather
-    /// than re-guessing. That closes the window where a plan applied in the first seconds
-    /// of a launch in a monday household got grouped onto Sundays.
-    ///
-    /// nil means genuinely unknown — a never-synced install. It is deliberately NOT
-    /// collapsed to `.sunday`: callers that group dates into grocery weeks need to be able
-    /// to tell "the household starts on Sunday" from "we have no idea yet", because
-    /// guessing sunday for a monday household leaves one of its weeks unbuilt. The window
-    /// is normally a single sync tick, but it is unbounded while PowerSync is disconnected
-    /// and REST still works — and planning goes over REST.
+    /// A cold launch starts from the value the last run persisted (`HouseholdWeekStartStore`),
+    /// since the synced row only reads from the first tick. nil means genuinely unknown and is
+    /// deliberately NOT collapsed to `.sunday`: a caller grouping grocery weeks must tell
+    /// "starts on Sunday" from "no idea yet", or a monday household gets a week left unbuilt.
     private(set) var householdWeekStart: HouseholdWeekStart? = HouseholdWeekStartStore.load()
     private(set) var personCount = 0
     private(set) var eventCount = 0
@@ -87,104 +127,171 @@ final class SyncManager {
     private(set) var lastSyncedAt: Date?
     private(set) var lastError: String?
 
-    /// Bumped after a REST capture commit so screens reading these (non-synced)
-    /// domains reload without a manual pull-to-refresh. Mirrors the web refresh bus.
+    /// Bumped after a REST capture commit so screens on those (non-synced) domains reload.
     private(set) var choresRev = 0
     private(set) var groceryRev = 0
     private(set) var mealsRev = 0
     private(set) var listsRev = 0
     private(set) var rewardsRev = 0
-    /// Bumped after a goal-calendar review action (confirm/skip/link/dismiss) so the
-    /// Today review card and the Goals screens reload their progress.
+    /// Bumped after a goal-calendar review action so the review card and Goals reload.
     private(set) var goalsRev = 0
 
-    /// Nudge the goals refresh bus (call after logging/review changes goal progress).
     func touchGoals() { goalsRev += 1 }
 
-    /// The logged-in person — id plus household role & capabilities (so "my" goals
-    /// respect who's signed in, and management/approval controls only show when the
-    /// server would allow the action). Loaded once.
+    /// Bumped when something that FEEDS a countdown changes — today, a rhythm. Both cards
+    /// share a screen, so without this the chip beside a completed rhythm counts to the old date.
+    private(set) var countdownsRev = 0
+
+    func touchCountdowns() { countdownsRev &+= 1 }
+
+    /// The logged-in person — id plus role & capabilities, so management controls only show
+    /// where the server would allow the action.
     private(set) var currentPerson: WaffledAPI.CurrentPerson? { didSet { rebuildEventIndex() } }
-    /// The logged-in person's id (convenience; nil until identity loads).
+    /// Tracked separately: a canceled task may already have installed `currentPerson`, and
+    /// its replacement must still finish the module read.
+    private var identityModulesScope: RestDataScopeKey?
+    /// Reject an older same-scope module response when a newer refresh finishes first.
+    private var moduleLoadGeneration = 0
+    private var appliedModuleLoadGeneration = 0
     var currentPersonId: String? { currentPerson?.id }
     func loadIdentity() async {
-        guard currentPerson == nil else { return }
-        currentPerson = try? await api.currentPerson()
-        await reloadModules()
+        let api = api
+        await loadIdentity(
+            fetchCurrentPerson: { try await api.currentPerson() },
+            fetchModules: { try await api.householdModules() }
+        )
+    }
+
+    /// Injectable overload keeps the principal-boundary race deterministic in tests; both
+    /// responses must belong to the scope that initiated the request.
+    func loadIdentity(
+        fetchCurrentPerson: @escaping @Sendable () async throws -> WaffledAPI.CurrentPerson?,
+        fetchModules: @escaping @Sendable () async throws -> WaffledAPI.HouseholdModules
+    ) async {
+        let requestedScope = restDataScopeKey
+        if currentPerson == nil {
+            let person = try? await fetchCurrentPerson()
+            guard !Task.isCancelled, requestedScope == restDataScopeKey else { return }
+            currentPerson = person
+        }
+        guard identityModulesScope != requestedScope else { return }
+        await reloadModules(requestedScope: requestedScope, fetch: fetchModules)
     }
 
     // MARK: optional modules
 
-    /// The household's optional-module flags (`settings.modules`) + the rewards
-    /// sub-toggle (`settings.chores.rewards`). Loaded with identity; mirrors
-    /// apps/api/src/platform/modules.ts. Until loaded, `module(_:)` returns the catalog
-    /// defaults, so the default surface (chores/goals/meals/lists on, pantry off) shows
-    /// optimistically rather than flashing empty.
+    /// The household's module flags + the rewards sub-toggle; mirrors platform/modules.ts.
+    /// Until loaded, `module(_:)` returns the catalog defaults, so the default surface shows.
     private(set) var moduleFlags: [String: Bool] = [:]
     private(set) var rewardsSubEnabled = true
     /// Bumped after a module toggle so nav rails / Today re-evaluate live.
     private(set) var modulesRev = 0
 
-    /// Whether an optional module is enabled for this household — mirrors the server's
-    /// `moduleEnabled()`: available modules read `settings.modules[key]` with the catalog
-    /// default; planned (not-yet-built) modules are always off.
+    /// Bumped when the person explicitly asks for fresh data — a pull-to-refresh, or a return
+    /// to the foreground. Several Today cards own their own REST fetch and a bare `.task { … }`
+    /// runs once per appearance, so a pull-down left them on what they read at launch. Cards
+    /// key their load on this (`.task(id: sync.refreshRev)`), so one signal wakes all of them.
+    private(set) var refreshRev = 0
+
+    /// Everything a deliberate refresh must cover that isn't a synced table. Awaited, so the
+    /// spinner is held by a real round-trip.
+    func refreshRestSurfaces() async {
+        // Bump first, so the cards reload while the module read is still in flight.
+        refreshRev &+= 1
+        await reloadModules()
+    }
+
+    /// Mirrors the server's `moduleEnabled()`: the setting with the catalog default, and
+    /// planned modules always off.
     func module(_ key: WaffledModule) -> Bool {
         guard key.isAvailable else { return false }
         return moduleFlags[key.rawValue] ?? key.defaultOn
     }
 
-    /// Rewards is the spend half of the chores economy — on only when chores is on AND
-    /// the `chores.rewards` sub-flag isn't explicitly off.
+    /// Rewards is the spend half of chores — on only when chores is on AND the sub-flag is.
     var rewardsOn: Bool { module(.chores) && rewardsSubEnabled }
 
-    /// (Re)load the module flags from the server — at identity load and after a toggle
-    /// in Settings → Modules, so nav/Today reflect the change without a relaunch.
+    /// (Re)load the module flags, at identity load and after a Settings → Modules toggle.
     func reloadModules() async {
-        if let m = try? await api.householdModules() {
-            moduleFlags = m.modules
-            rewardsSubEnabled = m.rewards
-            // Same `/api/household` read carries settings.display, so the calendar's
-            // event style + family color refresh with the module flags — including right
-            // after a Settings save, which is what restyles open surfaces live (the web
-            // does this via emitHouseholdChanged()).
-            eventStyle = EventStyle.resolve(m.eventStyle)
-            familyColorHex = EventPalette.normalizedFamilyHex(m.familyColorHex)
-            modulesRev += 1
-        }
+        let api = api
+        await reloadModules(
+            requestedScope: restDataScopeKey,
+            fetch: { try await api.householdModules() }
+        )
     }
 
-    /// Whether the signed-in person holds a capability — mirrors the web `can()`:
-    /// admins implicitly have everything; otherwise it must be in their granted set.
-    /// Capabilities: "chore.manage", "chore.approve", "reward.manage", "reward.approve".
+    private func reloadModules(
+        requestedScope: RestDataScopeKey,
+        fetch: @escaping @Sendable () async throws -> WaffledAPI.HouseholdModules
+    ) async {
+        moduleLoadGeneration &+= 1
+        let generation = moduleLoadGeneration
+        guard let m = try? await fetch(),
+              !Task.isCancelled,
+              requestedScope == restDataScopeKey,
+              generation > appliedModuleLoadGeneration else { return }
+        appliedModuleLoadGeneration = generation
+        moduleFlags = m.modules
+        rewardsSubEnabled = m.rewards
+        // The same `/api/household` read carries settings.display, so the calendar's event
+        // style refreshes with the module flags — which restyles open surfaces after a save.
+        eventStyle = EventStyle.resolve(m.eventStyle)
+        familyColorHex = EventPalette.normalizedFamilyHex(m.familyColorHex)
+        identityModulesScope = requestedScope
+        modulesRev += 1
+    }
+
+    /// Whether the signed-in person holds a capability — mirrors the web `can()`: admins
+    /// implicitly have everything. "chore.manage"/"chore.approve"/"reward.manage"/"reward.approve".
     func can(_ capability: String) -> Bool {
         guard let p = currentPerson else { return false }
         return p.isAdmin || p.capabilities.contains(capability)
     }
 
-    /// Whether the signed-in person can act on *any* approval queue (chores or
-    /// rewards) — gates the approval badge/banner/queue surfaces. Per-item Approve/
-    /// Deny buttons are still gated by the specific capability, so a mixed grant
-    /// (e.g. chores only) shows the queue but only its actionable buttons.
+    /// Whether the person can act on ANY approval queue — gates the badge/banner/queue.
+    /// Per-item buttons stay gated by the specific capability.
     var canApprove: Bool { can("chore.approve") || can("reward.approve") }
 
     /// The household's reward currencies, loaded once (for chore/goal reward symbols).
     private(set) var currencies: [WaffledAPI.Currency] = []
+    private var currencyLoadGeneration = 0
+    private var appliedCurrencyLoadGeneration = 0
     /// The symbol for a currency key (defaults to ⭐ / the household default).
     func currencySymbol(_ key: String?) -> String {
         if let key, let c = currencies.first(where: { $0.key == key }) { return c.symbol }
         return currencies.first(where: { $0.isDefault })?.symbol ?? "⭐"
     }
-    /// The display color (hex) for a currency key, if one is set.
     func currencyColor(_ key: String?) -> String? {
         currencies.first(where: { $0.key == key })?.color
     }
     func loadCurrencies() async {
+        let api = api
+        await loadCurrencies(fetch: { try await api.currencies() })
+    }
+    func loadCurrencies(
+        fetch: @escaping @Sendable () async throws -> [WaffledAPI.Currency]
+    ) async {
         guard currencies.isEmpty else { return }
-        currencies = (try? await api.currencies()) ?? []
+        await replaceCurrencies(fetch: fetch)
     }
     /// Re-fetch the currency catalog (after an edit), ignoring the once-only guard.
     func refreshCurrencies() async {
-        if let fresh = try? await api.currencies() { currencies = fresh }
+        let api = api
+        await replaceCurrencies(fetch: { try await api.currencies() })
+    }
+
+    private func replaceCurrencies(
+        fetch: @escaping @Sendable () async throws -> [WaffledAPI.Currency]
+    ) async {
+        currencyLoadGeneration &+= 1
+        let generation = currencyLoadGeneration
+        let requestedScope = restDataScopeKey
+        guard let fresh = try? await fetch(),
+              !Task.isCancelled,
+              requestedScope == restDataScopeKey,
+              generation > appliedCurrencyLoadGeneration else { return }
+        appliedCurrencyLoadGeneration = generation
+        currencies = fresh
     }
 
     private let db: PowerSyncDatabaseProtocol
@@ -195,90 +302,247 @@ final class SyncManager {
     private var watchTask: Task<Void, Never>?
     private var eventsTask: Task<Void, Never>?
     private var statusTask: Task<Void, Never>?
+    private let connectionTransitions = ConnectionTransitionQueue()
+    private let testConnectionLifecycle: SyncConnectionLifecycle?
 
-    init() {
+    init(testConnectionLifecycle: SyncConnectionLifecycle? = nil, initialMembers: [SyncedMember] = [],
+         initialEvents: [SyncedEvent] = []) {
+        self.testConnectionLifecycle = testConnectionLifecycle
+        self.members = initialMembers
+        self.allEvents = initialEvents
         db = PowerSyncDatabase(schema: SyncSchema.schema, dbFilename: "waffled.sqlite")
-        // A dead refresh token (caught mid-request) tears the sync session down too,
-        // so we don't keep retrying with a token that will never be accepted.
-        NotificationCenter.default.addObserver(forName: .waffledAuthExpired, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in await self?.signOut() }
-        }
+        // `didSet` doesn't run from init.
+        if !initialEvents.isEmpty { rebuildEventIndex() }
     }
 
     /// Stand up watchers once, then connect. Safe to call on every app launch.
     func start() async {
+        await connectionTransitions.run(
+            preempting: false,
+            busyResult: (),
+            supersededResult: ()
+        ) { [weak self] epoch in
+            await self?.performStart(epoch: epoch)
+        }
+    }
+
+    private func performStart(epoch: ConnectionTransitionQueue.Epoch) async {
+        guard connectionTransitions.isCurrent(epoch) else { return }
         guard !started else { return }
         started = true
-        await openDatabase()   // serialize the first open before concurrent access
+
+        if let testConnectionLifecycle {
+            let didStart = await testConnectionLifecycle.start()
+            guard connectionTransitions.isCurrent(epoch), started else { return }
+            if !didStart {
+                status = .offline
+                lastError = "Couldn’t start the sync connection."
+                started = false
+            }
+            return
+        }
+
+        let openError = await openDatabase()   // serialize before concurrent access
+        guard connectionTransitions.isCurrent(epoch), started else { return }
+        lastError = openError
         watchMembers()
         watchEvents()
         observeStatus()
-        await connect()
+        await connect(epoch: epoch)
     }
 
-    /// Force a single, serialized database open before any watches or the sync
-    /// connection run. PowerSync sets WAL journal mode on first access, which needs
-    /// a brief exclusive lock; opening the watch + sync connections concurrently can
-    /// race it and throw "database is locked" (SQLITE_BUSY). Touching the DB once up
-    /// front avoids the race, and we retry in case a prior instance is still
-    /// releasing its lock.
-    private func openDatabase() async {
+    /// Force a single, serialized database open before any watches or the sync connection.
+    /// PowerSync sets WAL journal mode on first access, needing a brief exclusive lock, and
+    /// opening both connections concurrently races it into SQLITE_BUSY. Retried.
+    private func openDatabase() async -> String? {
         let failure = await Retry.run(attempts: 6, delay: 400_000_000) { [db] in
             _ = try await db.getOptional(
                 sql: "SELECT 1 AS n", parameters: [],
                 mapper: { try $0.getInt(name: "n") }
             )
         }
-        lastError = failure.map { "Couldn't open the local database: \($0)" }
+        return failure.map { "Couldn't open the local database: \($0)" }
     }
 
-    /// (Re)connect with fresh credentials — used by the Settings "Reconnect" button
-    /// after pasting a token or changing the API URL.
-    func reconnect() async {
-        try? await db.disconnect()
-        await connect()
+    /// Reconnect transport without changing credentials; config changes go through
+    /// `updateConnection`, which stops the old connection first.
+    @discardableResult
+    func reconnect() async -> Bool {
+        await connectionTransitions.run(
+            preempting: false,
+            busyResult: false,
+            supersededResult: false
+        ) { [weak self] epoch in
+            guard let self else { return false }
+            guard self.pendingUploads == 0 else {
+                let n = self.pendingUploads
+                self.lastError = "Wait for \(n) pending change\(n == 1 ? "" : "s") to sync before reconnecting."
+                return false
+            }
+            guard await self.stopSync(clearLocal: false, epoch: epoch),
+                  self.connectionTransitions.isCurrent(epoch) else { return false }
+            await self.performStart(epoch: epoch)
+            return self.connectionTransitions.isCurrent(epoch)
+        }
     }
 
-    /// Re-scope the live sync after the active session changed — a kiosk profile claim
-    /// swaps in a different person's token. Tears the PowerSync session down and stands
-    /// it back up against whatever token `AppConfig` now reports, the same path a fresh
-    /// launch takes. `signOut()` resets `started`, so `start()` runs clean.
-    /// `clearLocal` wipes the on-device mirror as part of the teardown — needed when the
-    /// *household* changes (not just the person), because the local SQLite is one shared
-    /// file: a plain disconnect can leave the previous household's rows visible (and the
-    /// `households LIMIT 1` write path picking the wrong one) until PowerSync reconciles
-    /// buckets. The kiosk person-switch keeps the default (`false`): same household, so
-    /// the cheap disconnect is correct.
-    func reauthenticate(clearLocal: Bool = false) async {
-        await signOut(clearLocal: clearLocal)
-        await start()
+    /// Atomically move the live client to a new server and/or developer token: the old
+    /// connection stops before AppConfig changes, and only a real principal/server boundary
+    /// clears the mirror and rotates REST state.
+    func updateConnection(
+        apiBaseURL rawBaseURL: String? = nil,
+        devToken rawDevToken: String? = nil
+    ) async -> ConnectionUpdateResult {
+        await connectionTransitions.run(
+            preempting: false,
+            busyResult: .transitionInProgress,
+            supersededResult: .transitionInProgress
+        ) { [weak self] epoch in
+            guard let self else { return .transitionInProgress }
+
+            let normalizedBaseURL: String?
+            if let rawBaseURL {
+                let trimmed = rawBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty {
+                    normalizedBaseURL = AppConfig.defaultBaseURL
+                } else if let normalized = AppConfig.normalizedApiBaseURL(trimmed) {
+                    normalizedBaseURL = normalized
+                } else {
+                    return .invalidURL
+                }
+            } else {
+                normalizedBaseURL = nil
+            }
+
+            guard self.pendingUploads == 0 else { return .pendingUploads(self.pendingUploads) }
+
+            let normalizedToken = rawDevToken?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let serverChanged = normalizedBaseURL.map { $0 != AppConfig.apiBaseURL } ?? false
+            let tokenChanged = normalizedToken.map { $0 != AppConfig.storedDevToken } ?? false
+            // A stored dev token is dormant while a Keychain session is active.
+            let crossesPrincipalBoundary = serverChanged || (AuthTokens.accessToken == nil && tokenChanged)
+
+            let stopped = await self.stopSync(clearLocal: crossesPrincipalBoundary, epoch: epoch)
+            // A sign-out may have superseded this update while database teardown was
+            // suspended. Never write its server/token or restart under that old intent.
+            guard self.connectionTransitions.isCurrent(epoch) else {
+                return .transitionInProgress
+            }
+            guard stopped else { return .teardownFailed }
+            if let testConnectionLifecycle {
+                testConnectionLifecycle.applyConfiguration(rawBaseURL, rawDevToken)
+            } else {
+                if let rawBaseURL { _ = AppConfig.setApiBaseURL(rawBaseURL) }
+                if let rawDevToken { AppConfig.setDevToken(rawDevToken) }
+            }
+            if crossesPrincipalBoundary { self.invalidateRestDataScope() }
+            await self.performStart(epoch: epoch)
+            return self.connectionTransitions.isCurrent(epoch)
+                ? .updated
+                : .transitionInProgress
+        }
     }
 
-    /// Tear down the sync session on sign-out: stop the live queries, disconnect
-    /// PowerSync, drop the observable state, and reset so the next `start()` runs
-    /// fresh. Keychain tokens are cleared separately by `Session`.
+    /// Re-scope the live sync after the active session changed (a kiosk profile claim): tear
+    /// the PowerSync session down and stand it back up against whatever token `AppConfig` now
+    /// reports. `clearLocal` wipes the mirror, which a HOUSEHOLD change needs — the local
+    /// SQLite is one shared file, so a plain disconnect can leave the old rows visible.
+    @discardableResult
+    func reauthenticate(
+        expectedScope: RestDataScopeKey,
+        clearLocal: Bool = false,
+        adoptCredentials: (() -> Void)? = nil
+    ) async -> Bool {
+        await connectionTransitions.run(
+            preempting: false,
+            busyResult: false,
+            supersededResult: false
+        ) { [weak self] epoch in
+            guard let self, self.restDataScopeKey == expectedScope else { return false }
+                // Stop with the old credentials installed; rotate scope only after teardown.
+            guard await self.stopSync(clearLocal: clearLocal, epoch: epoch),
+                  self.connectionTransitions.isCurrent(epoch),
+                  self.restDataScopeKey == expectedScope else { return false }
+            self.invalidateRestDataScope()
+            adoptCredentials?()
+            await self.performStart(epoch: epoch)
+            return self.connectionTransitions.isCurrent(epoch)
+        }
+    }
+
+    /// Tear down the sync session on sign-out: stop the live queries, disconnect, drop the
+    /// observable state and reset so the next `start()` runs fresh.
     ///
-    /// By default we `disconnect()` (not `disconnectAndClear()`): clearing the local
-    /// mirror is heavy work to run during teardown and isn't needed for plain sign-out
-    /// or a same-household person-switch — on the next login PowerSync re-scopes its
-    /// buckets to the new token, the same as the web. Keeping teardown light also avoids
-    /// a memory/Keychain spike at sign-out. A **household switch** passes `clearLocal:
-    /// true` so the previous household's rows can't linger in the shared SQLite file.
-    func signOut(clearLocal: Bool = false) async {
-        // Stop consuming the live queries BEFORE disconnecting so a watcher can't
-        // race the teardown.
+    /// `disconnect()`, not `disconnectAndClear()`: clearing the mirror is heavy and isn't
+    /// needed when PowerSync re-scopes its buckets on the next login. A HOUSEHOLD switch
+    /// passes `clearLocal: true`.
+    @discardableResult
+    func signOut(clearLocal: Bool = false) async -> Bool {
+        await connectionTransitions.run(
+            preempting: true,
+            busyResult: false,
+            supersededResult: false,
+            // Invalidate REST-backed screens before the first suspension point.
+            prepare: { [weak self] in self?.invalidateRestDataScope() }
+        ) { [weak self] epoch in
+            guard let self else { return false }
+            return await self.stopSync(clearLocal: clearLocal, epoch: epoch)
+        }
+    }
+
+    /// Stop PowerSync without deciding whether credentials changed — shared by sign-out and
+    /// the connection-settings handoff above.
+    private func stopSync(
+        clearLocal: Bool,
+        epoch: ConnectionTransitionQueue.Epoch
+    ) async -> Bool {
+        // Stop consuming the live queries BEFORE disconnecting, or a watcher races teardown.
         watchTask?.cancel(); eventsTask?.cancel(); statusTask?.cancel()
         watchTask = nil; eventsTask = nil; statusTask = nil
-        if clearLocal { try? await db.disconnectAndClear() } else { try? await db.disconnect() }
+        let stopped: Bool
+        if let testConnectionLifecycle {
+            stopped = await testConnectionLifecycle.stop(clearLocal)
+        } else if clearLocal {
+            do {
+                try await db.disconnectAndClear()
+                stopped = true
+            } catch {
+                stopped = false
+            }
+        } else {
+            try? await db.disconnect()
+            stopped = true
+        }
+        // A newer account-exit transition owns all observable cleanup.
+        guard connectionTransitions.isCurrent(epoch) else { return false }
+
         members = []; allEvents = []
         personCount = 0; eventCount = 0; pendingUploads = 0
-        lastSyncedAt = nil; lastError = nil
-        currentPerson = nil; currencies = []
-        status = .idle
+        lastSyncedAt = nil
+        lastError = stopped ? nil : "Couldn’t clear the previous account’s local data."
+        status = stopped ? .idle : .offline
         started = false
+        return stopped
     }
 
-    private func connect() async {
+    /// Synchronous half of credential teardown: no database work, so the privacy boundary is
+    /// immediate and race-testable.
+    func invalidateRestDataScope() {
+        restDataScope = RestDataScope()
+        currentPerson = nil
+        identityModulesScope = nil
+        moduleLoadGeneration &+= 1
+        moduleFlags = [:]
+        rewardsSubEnabled = true
+        eventStyle = .solid
+        familyColorHex = EventPalette.defaultFamilyHex
+        currencyLoadGeneration &+= 1
+        currencies = []
+        modulesRev &+= 1
+    }
+
+    private func connect(epoch: ConnectionTransitionQueue.Epoch) async {
+        guard connectionTransitions.isCurrent(epoch), started else { return }
         guard !AppConfig.bearerToken.isEmpty else {
             status = .offline
             lastError = "Not signed in."
@@ -288,13 +552,13 @@ final class SyncManager {
         do {
             try await db.connect(connector: connector)
         } catch {
+            guard connectionTransitions.isCurrent(epoch), started else { return }
             status = .offline
             lastError = String(describing: error)
         }
     }
 
-    /// Insert an event locally. It commits to SQLite immediately (offline-safe) and
-    /// PowerSync queues it for upload — the write half of the airplane-mode demo.
+    /// Insert an event locally: commits to SQLite immediately and PowerSync queues it.
     func addTestEvent() async {
         guard let owner = try? await db.getOptional(
             sql: "SELECT id, household_id FROM persons ORDER BY sort_order, name LIMIT 1",
@@ -338,10 +602,8 @@ final class SyncManager {
 
     // MARK: capture Tier 2 (mutate — resolve → pick → commit)
 
-    /// Resolve a parsed mutate to candidate rows. Never throws — a network failure becomes
-    /// an `offline` state so the sheet can say "I need a connection for that" instead of a
-    /// raw error. `key` (verb|targetKind|description) is echoed back so the caller can drop a
-    /// stale result when the text changed underneath it.
+    /// Resolve a parsed mutate to candidate rows. Never throws — a network failure becomes an
+    /// `offline` state. `key` is echoed back so a stale result can be dropped.
     func resolveMutate(verb: String, targetKind: String?, description: String,
                        args: [String: JSONValue], key: String) async -> MutateResolveState {
         do {
@@ -355,10 +617,8 @@ final class SyncManager {
         }
     }
 
-    /// Apply a chosen mutate. Returns `(ok, message)` — on success `message` is the server's
-    /// confirmation to flash; on a domain failure it's the server's friendly reason. After a
-    /// success, bumps the reactive rev for the affected surface so open screens refetch
-    /// (events need none — a server-side reschedule/delete down-syncs through PowerSync).
+    /// Apply a chosen mutate: `(ok, message)` carries the server's confirmation or its reason.
+    /// Bumps the affected surface's rev (events down-sync through PowerSync instead).
     func commitMutate(verb: String, targetKind: String?, targetId: String,
                       args: [String: JSONValue], meta: [String: JSONValue]?) async -> (ok: Bool, message: String) {
         do {
@@ -374,9 +634,8 @@ final class SyncManager {
         }
     }
 
-    /// Bump the reactive rev for the surface a committed mutate touched, mirroring the web
-    /// `MUTATE_TOPIC` bus emit (chore→chores, goal→goals, listItem→lists+grocery, reward→
-    /// rewards; event has no topic — PowerSync down-syncs the calendar change).
+    /// Bump the rev for the surface a committed mutate touched, mirroring the web
+    /// `MUTATE_TOPIC` bus (event has no topic — PowerSync down-syncs the calendar change).
     private func refreshAfterMutate(_ targetKind: String?) {
         switch targetKind {
         case "chore": choresRev += 1
@@ -387,14 +646,12 @@ final class SyncManager {
         }
     }
 
-    /// Commit a captured event by writing it to the local mirror. The resolved
-    /// person_id drives server-side calendar routing + the Google push (the phone
-    /// never talks to Google). Returns false on failure.
+    /// Commit a captured event to the local mirror. The resolved person_id drives
+    /// server-side calendar routing and the Google push; the phone never talks to Google.
     func commitEvent(title: String, startsAtISO: String, allDay: Bool, personName: String?,
                      rrule: String? = nil, recurrenceEndAt: String? = nil) async -> Bool {
-        // Resolve the named assignee to a person id and route through the same path the
-        // editor uses, so the capture also writes the `event_participants` row (not just
-        // `person_id`) — otherwise the person never shows up as a participant.
+        // Route through the same path the editor uses so the capture also writes the
+        // `event_participants` row — otherwise the person is never shown as a participant.
         let personId = personName.flatMap { name in
             members.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }?.id
         }
@@ -426,7 +683,6 @@ final class SyncManager {
             mapper: { try $0.getString(name: "id") })) ?? nil
     }
 
-    /// The participant person ids on an event — used to prefill the editor.
     func eventParticipantIds(_ eventId: String) async -> [String] {
         (try? await db.getAll(
             sql: "SELECT person_id FROM event_participants WHERE event_id = ?",
@@ -443,8 +699,7 @@ final class SyncManager {
         }
     }
 
-    /// Create a calendar event in the local mirror (PowerSync uploads it). `person_id`
-    /// is the first participant — the server uses it for calendar routing.
+    /// Create a calendar event in the local mirror; `person_id` is the first participant.
     func createCalendarEvent(title: String, startsAtISO: String, endsAtISO: String?,
                              allDay: Bool, location: String?, personIds: [String],
                              calendarId: String?, isCountdown: Bool = false) async -> Bool {
@@ -465,7 +720,6 @@ final class SyncManager {
         } catch { lastError = String(describing: error); return false }
     }
 
-    /// Update an event + its participants in the local mirror.
     func updateEvent(id: String, title: String, startsAtISO: String, endsAtISO: String?,
                      allDay: Bool, location: String?, personIds: [String], isCountdown: Bool = false) async -> Bool {
         guard let hh = await householdRowId() else { lastError = "No household synced yet."; return false }
@@ -479,7 +733,6 @@ final class SyncManager {
         } catch { lastError = String(describing: error); return false }
     }
 
-    /// Delete an event + its participants from the local mirror.
     func deleteEvent(id: String) async -> Bool {
         do {
             try await db.execute(sql: "DELETE FROM event_participants WHERE event_id = ?", parameters: [id])
@@ -489,23 +742,20 @@ final class SyncManager {
         } catch { lastError = String(describing: error); return false }
     }
 
-    /// Commit a captured grocery item via REST (not a synced table). The quantity is
-    /// folded into the label the same way the web kiosk does ("milk (2)").
+    /// Commit a captured grocery item via REST; the quantity folds in as "milk (2)".
     func commitGrocery(name: String, quantity: String?) async -> Bool {
         let ok = await restCommit { try await api.addGroceryItem(name: SyncManager.groceryLabel(name: name, quantity: quantity)) }
         if ok { groceryRev += 1 }
         return ok
     }
 
-    /// Fold an optional quantity into the grocery label ("milk" + "2" → "milk (2)"),
-    /// matching the web kiosk. An empty/whitespace quantity is dropped.
+    /// Fold an optional quantity into the grocery label; whitespace-only is dropped.
     nonisolated static func groceryLabel(name: String, quantity: String?) -> String {
         guard let q = quantity?.trimmingCharacters(in: .whitespaces), !q.isEmpty else { return name }
         return "\(name) (\(q))"
     }
 
-    /// Commit a captured task as a chore via REST. The assignee name resolves to a
-    /// synced person; stars become the reward amount.
+    /// Commit a captured task as a chore via REST; stars become the reward amount.
     func commitTask(title: String, personName: String?, stars: Int?, rewardCurrency: String? = nil, rrule: String?) async -> Bool {
         let ok = await restCommit {
             try await api.createChore(
@@ -517,9 +767,8 @@ final class SyncManager {
         return ok
     }
 
-    /// Commit a captured meal to the plan via REST. Best-effort matches a known
-    /// recipe by title (exact, then contains) so the slot links it; otherwise the
-    /// title is planned as a one-off — mirroring the web kiosk.
+    /// Commit a captured meal via REST. Best-effort title match to a known recipe (exact,
+    /// then contains) so the slot links it; otherwise planned as a one-off.
     func commitMeal(title: String, date: String?, mealType: String) async -> Bool {
         let day = date ?? localToday()
         let recipeId = await matchRecipe(title)
@@ -533,23 +782,19 @@ final class SyncManager {
         return ok
     }
 
-    /// Commit a captured countdown via REST. `date` must be YYYY-MM-DD. The Countdowns
-    /// card reloads on next appearance (no reactive rev — the list is fetch-on-view).
+    /// Commit a captured countdown via REST. `date` must be YYYY-MM-DD.
     func commitCountdown(title: String, date: String, emoji: String?) async -> Bool {
         await restCommit { _ = try await api.createCountdown(title: title, date: date, emoji: emoji) }
     }
 
-    /// Commit a captured family member via REST (`POST /api/persons`, admin-only). The
-    /// caller gates on `currentPerson?.isAdmin` first; a non-admin never reaches here.
+    /// Commit a captured family member via REST (admin-only; the caller gates on it).
     func commitPerson(name: String, memberType: String, avatarEmoji: String?, birthday: String?, isAdmin: Bool) async -> Bool {
         await restCommit {
             try await api.createPerson(name: name, memberType: memberType, avatarEmoji: avatarEmoji, birthday: birthday, isAdmin: isAdmin)
         }
     }
 
-    /// Commit a captured goal via REST (`POST /api/goals`). The caller gates on the Goals
-    /// module being enabled first; a disabled module never reaches here. The Goals screen
-    /// reloads on next appearance (no reactive rev — the list is fetch-on-view).
+    /// Commit a captured goal via REST; the caller gates on the Goals module.
     func commitGoal(title: String, goalType: String, trackingMode: String, targetValue: Double?, unit: String?, deadline: String?, participantIds: [String] = []) async -> Bool {
         await restCommit {
             try await api.createGoal(title: title, goalType: goalType, trackingMode: trackingMode,
@@ -558,9 +803,7 @@ final class SyncManager {
         }
     }
 
-    /// Commit a captured pantry item via REST (`POST /api/pantry`). The caller gates on
-    /// the Pantry module being enabled first (it defaults OFF), so a disabled module never
-    /// reaches here. The Pantry screen reloads on next appearance (fetch-on-view).
+    /// Commit a captured pantry item via REST; the caller gates on the module (default OFF).
     func commitPantry(name: String, amount: String?, unit: String?, location: String, expiresOn: String?, lowAt: Double? = nil) async -> Bool {
         await restCommit {
             var body: [String: JSONValue] = ["name": .string(name), "location": .string(location)]
@@ -573,10 +816,8 @@ final class SyncManager {
         }
     }
 
-    /// Commit a captured reward via REST (`POST /api/rewards`). The caller gates on BOTH
-    /// rewards being on (`rewardsOn`) and the viewer holding `reward.manage` first, so a
-    /// blocked case never reaches here. Omits `requiresApproval` when nil so the route
-    /// inherits the household default; bumps `rewardsRev` so the reward shop refreshes.
+    /// Commit a captured reward via REST. Omits `requiresApproval` when nil so the route
+    /// inherits the household default; bumps `rewardsRev`.
     @discardableResult
     func commitReward(title: String, emoji: String?, cost: Int?, requiresApproval: Bool?) async -> Bool {
         let ok = await restCommit {
@@ -590,10 +831,7 @@ final class SyncManager {
         return ok
     }
 
-    /// Plan (upsert) a meal slot from the weekly planner; bumps `mealsRev` so the
-    /// Today card and any open week reload.
-    /// `mealId` puts a Meal Builder plate in the slot rather than a single recipe —
-    /// what a planner drag writes when the thing being dragged is a plate.
+    /// Plan (upsert) a meal slot; bumps `mealsRev`. `mealId` puts a plate in the slot.
     func setMealPlan(date: String, mealType: String, recipeId: String?, title: String?,
                      cookPersonId: String? = nil, mealId: String? = nil) async -> Bool {
         let ok = await restCommit {
@@ -611,9 +849,7 @@ final class SyncManager {
         return ok
     }
 
-    /// Rebuild the grocery list from a week's planned dinners (web's "& build list");
-    /// bumps `groceryRev` so the Lists screen refreshes. Best-effort — failures are
-    /// swallowed so applying a plan still succeeds.
+    /// Rebuild the grocery list from a week's dinners. Best-effort, so applying still succeeds.
     @discardableResult
     func rebuildGroceryFromWeek(weekStart: String) async -> Bool {
         let ok = await restCommit { _ = try await api.rebuildGrocery(weekStart: weekStart) }
@@ -621,9 +857,8 @@ final class SyncManager {
         return ok
     }
 
-    /// Execute one step of a planner apply. The planner sheets hand over a
-    /// `MealPlanApply` plan and this runs it, so which nights get written and which weeks
-    /// get rebuilt is decided (and tested) in one place instead of inline in two sheets.
+    /// Execute one step of a planner apply. The sheets hand over a `MealPlanApply`, so which
+    /// nights are written and which weeks rebuilt is decided (and tested) in one place.
     func perform(_ op: MealPlanApply.Op) async {
         switch op {
         case let .set(date, mealType, recipeId, title):
@@ -637,15 +872,17 @@ final class SyncManager {
 
     // MARK: rewards
 
-    /// Give a reward to a person from this (parent) phone: request the redemption and
-    /// immediately approve it, so the balance debits in one action. Bumps `rewardsRev`.
-    /// The caller gates this on affordability, so approval shouldn't fail; if it does
-    /// (e.g. balance changed underfoot) the error surfaces via `lastError`.
+    /// Redeem a reward for a person. Redeem only — never approve: the server already writes
+    /// the debit when the household has approval turned off, and deliberately leaves the
+    /// redemption `pending` for a parent when it's on (the web shop calls redeem alone for
+    /// exactly that reason). Chaining an approve here did two wrong things — an instant
+    /// redemption came straight back as "already decided", so a redemption that HAD succeeded
+    /// reported failure, and an approval-required reward was walked past the parent queue.
+    /// Bumps `rewardsRev`. Returns false on refusal; the reason surfaces via `lastError`.
     @discardableResult
     func giveReward(rewardId: String, personId: String) async -> Bool {
         do {
-            let redemption = try await api.redeemReward(rewardId: rewardId, personId: personId)
-            _ = try await api.approveRedemption(id: redemption.id)
+            _ = try await api.redeemReward(rewardId: rewardId, personId: personId)
             rewardsRev += 1
             return true
         } catch {
@@ -654,8 +891,7 @@ final class SyncManager {
         }
     }
 
-    /// Ad-hoc "spot-award": a parent hands a person stars on the spot (not tied to a
-    /// chore). Gated by `reward.grant`; bumps rewardsRev so balances/jars refetch.
+    /// Ad-hoc "spot-award" not tied to a chore. Gated by `reward.grant`; bumps rewardsRev.
     @discardableResult
     func awardSpot(personId: String, amount: Int, currency: String?, note: String?) async -> Bool {
         let ok = await restCommit { try await api.awardSpot(personId: personId, amount: amount, currency: currency, note: note) }
@@ -663,7 +899,6 @@ final class SyncManager {
         return ok
     }
 
-    /// Approve a pending redemption (e.g. one a kid filed from the web kiosk).
     @discardableResult
     func approveRedemption(id: String) async -> Bool {
         let ok = await restCommit { _ = try await api.approveRedemption(id: id) }
@@ -695,14 +930,11 @@ final class SyncManager {
         return ok
     }
 
-    /// Signal that chores changed elsewhere (e.g. a completion driven by ChoresModel's
-    /// own client, which doesn't route through here) so every screen reading `choresRev`
-    /// — the Today tab's "Needs your OK", the tab badge, the kiosk dashboard — reloads.
+    /// Signal that chores changed elsewhere, so every screen reading `choresRev` reloads.
     func bumpChores() { choresRev += 1 }
     func bumpLists() { listsRev += 1 }
 
-    /// Pin (or clear, with `nil`) the reward a person is saving toward. Bumps
-    /// `rewardsRev` so the person spotlight and their reward shop reflect it.
+    /// Pin (or clear, with `nil`) the reward a person is saving toward; bumps `rewardsRev`.
     @discardableResult
     func setSavingToward(personId: String, rewardId: String?) async -> Bool {
         let ok = await restCommit { try await api.setSavingToward(personId: personId, rewardId: rewardId) }
@@ -718,7 +950,6 @@ final class SyncManager {
         return ok
     }
 
-    /// Edit a reward (admins); bumps `rewardsRev`.
     @discardableResult
     func updateReward(id: String, title: String, emoji: String?, cost: Int, currency: String, category: String?, requiresApproval: Bool) async -> Bool {
         let ok = await restCommit { _ = try await api.updateReward(id: id, title: title, emoji: emoji, cost: cost, currency: currency, category: category, requiresApproval: requiresApproval) }
@@ -734,7 +965,6 @@ final class SyncManager {
         return ok
     }
 
-    /// Restore an archived reward (admins); bumps `rewardsRev`.
     @discardableResult
     func restoreReward(id: String) async -> Bool {
         let ok = await restCommit { _ = try await api.restoreReward(id: id) }
@@ -744,8 +974,7 @@ final class SyncManager {
 
     // MARK: settings — currencies
 
-    /// Create or edit a currency (admins). Refreshes the catalog + bumps rewardsRev
-    /// so symbols/colors update everywhere.
+    /// Create or edit a currency (admins). Refreshes the catalog and bumps rewardsRev.
     @discardableResult
     func saveCurrency(id: String?, _ body: [String: JSONValue]) async -> Bool {
         let ok = await restCommit {
@@ -769,7 +998,6 @@ final class SyncManager {
         if ok { rewardsRev += 1 }
         return ok
     }
-    /// Delete a conversion (admins); bumps `rewardsRev`.
     @discardableResult
     func deleteConversion(id: String) async -> Bool {
         let ok = await restCommit { try await api.deleteConversion(id: id) }
@@ -777,8 +1005,7 @@ final class SyncManager {
         return ok
     }
 
-    /// Trade a person's balance through a conversion N times. Returns success + an
-    /// optional error message (e.g. "not enough to trade"). Bumps `rewardsRev`.
+    /// Trade a person's balance through a conversion N times; bumps `rewardsRev`.
     func applyConversion(id: String, personId: String, times: Int) async -> (ok: Bool, error: String?) {
         do {
             let r = try await api.applyConversion(id: id, personId: personId, times: times)
@@ -792,7 +1019,6 @@ final class SyncManager {
 
     // MARK: settings — family & household
 
-    /// Create or edit a member (admins).
     @discardableResult
     func savePerson(id: String?, _ body: [String: JSONValue]) async -> Bool {
         await restCommit {
@@ -810,8 +1036,7 @@ final class SyncManager {
         await restCommit { try await api.updateHousehold(body) }
     }
 
-    /// Commit a captured "add X to <list>" intent: resolve the named list and add
-    /// the item. Mirrors the web kiosk's list-intent commit.
+    /// Commit a captured "add X to <list>" intent: resolve the named list, add the item.
     func commitListItem(item: String, listName: String?, quantity: String?) async -> Bool {
         do {
             let lists = try await api.listSummaries()
@@ -853,8 +1078,7 @@ final class SyncManager {
         }
     }
 
-    /// Run a REST capture commit, surfacing any failure via `lastError`. Returns
-    /// false on throw so the sheet can keep the preview up and show the error.
+    /// Run a REST capture commit, surfacing failure via `lastError` and returning false.
     private func restCommit(_ op: () async throws -> Void) async -> Bool {
         do {
             try await op()
@@ -871,8 +1095,7 @@ final class SyncManager {
         return members.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
     }
 
-    /// Whether the signed-in person is an adult — gates the approval surfaces (badge,
-    /// banners, inline cards). Kids can't act on approvals (server-gated too).
+    /// Whether the person is an adult — gates the approval surfaces (server-gated too).
     var isParent: Bool {
         guard let id = currentPersonId else { return false }
         return members.first { $0.id == id }?.memberType == "adult"
@@ -883,8 +1106,7 @@ final class SyncManager {
     private func watchMembers() {
         watchTask = Task { [db] in
             do {
-                // Match Settings → Family & People (API `order by sort_order, created_at`)
-                // so the family row reads owner-first (the owner is created first), not A–Z.
+                // Match Settings → Family & People's order, so the row reads owner-first.
                 let stream = try db.watch(
                     sql: "SELECT id, name, color_hex, avatar_emoji, member_type FROM persons ORDER BY sort_order, created_at",
                     parameters: [],
@@ -911,36 +1133,9 @@ final class SyncManager {
     private func watchEvents() {
         eventsTask = Task { [db] in
             do {
-                // UNION of single/Google events (rrule IS NULL — recurring masters are
-                // filtered out, their occurrences render instead) and materialized
-                // occurrences joined to their master. Mirrors the web's AGENDA_SQL
-                // (apps/web/src/lib/powersync/events-local.ts). The watch derives its
-                // tracked tables from this SQL, so `event_occurrences` is picked up too.
+                // The query lives in `EventQuery.agenda` so a test can read it.
                 let stream = try db.watch(
-                    sql: """
-                    SELECT e.id AS id, e.id AS series_id, NULL AS occurrence_start,
-                           e.title, e.starts_at, e.ends_at, e.all_day, e.is_countdown, e.location, e.person_id,
-                           e.visibility, e.owner_person_id, e.origin,
-                           p.color_hex AS person_color, p.avatar_emoji AS person_emoji,
-                           (SELECT group_concat(ep.person_id) FROM event_participants ep
-                             WHERE ep.event_id = e.id) AS participant_ids
-                      FROM events e
-                      LEFT JOIN persons p ON p.id = e.person_id
-                     WHERE e.rrule IS NULL
-                    UNION ALL
-                    SELECT o.id AS id, m.id AS series_id, o.original_start AS occurrence_start,
-                           coalesce(o.title, m.title) AS title, o.starts_at, o.ends_at, o.all_day, m.is_countdown,
-                           coalesce(o.location, m.location) AS location, o.person_id,
-                           o.visibility, o.owner_person_id,
-                           -- an occurrence is as read-only as the series it belongs to
-                           m.origin AS origin,
-                           p.color_hex AS person_color, p.avatar_emoji AS person_emoji,
-                           (SELECT group_concat(ep.person_id) FROM event_participants ep
-                             WHERE ep.event_id = m.id) AS participant_ids
-                      FROM event_occurrences o
-                      JOIN events m ON m.id = o.event_id
-                      LEFT JOIN persons p ON p.id = o.person_id
-                    """,
+                    sql: EventQuery.agenda,
                     parameters: [],
                     mapper: { cursor in
                         let raw = try cursor.getStringOptional(name: "starts_at")
@@ -965,11 +1160,15 @@ final class SyncManager {
                             seriesId: (try cursor.getStringOptional(name: "series_id")) ?? id,
                             occurrenceStart: try cursor.getStringOptional(name: "occurrence_start"),
                             visibility: (try cursor.getStringOptional(name: "visibility")) ?? "family",
-                            ownerPersonId: try cursor.getStringOptional(name: "owner_person_id")
+                            ownerPersonId: try cursor.getStringOptional(name: "owner_person_id"),
+                            rhythmId: try cursor.getStringOptional(name: "rhythm_id")
                         )
                     }
                 )
                 for try await rows in stream {
+                    // The watch re-emits on any write to its tables, usually with identical rows;
+                    // assigning anyway rebuilds the day index and redraws every calendar view.
+                    guard rows != self.allEvents else { continue }
                     self.allEvents = rows
                     self.eventCount = rows.count
                 }
@@ -1002,9 +1201,7 @@ final class SyncManager {
             mapper: { try $0.getInt(name: "n") }
         )) ?? 0
 
-        // Bucket the agenda by the household's timezone (synced households row),
-        // falling back to the device zone before the first sync. The same read carries
-        // week_start, which the grocery rebuilds are cut on.
+                // Bucket the agenda by the household's timezone, device zone before first sync.
         if let row = try? await db.getOptional(
             sql: "SELECT timezone, week_start FROM households LIMIT 1", parameters: [],
             mapper: { (try $0.getStringOptional(name: "timezone"),
@@ -1015,11 +1212,8 @@ final class SyncManager {
                 // householdTz's didSet rebuilds the whole event index.
                 if zone.identifier != householdTz.identifier { householdTz = zone }
             }
-            // adopt() reads AND remembers in one call — see HouseholdWeekStartStore. As
-            // two steps the persist could be dropped here without any test noticing.
-            // The assignment stays guarded to avoid observable churn on a tick that
-            // changed nothing; the remembering must NOT be, or a sunday household never
-            // records that it synced.
+                // adopt() reads AND remembers in one call. The assignment stays guarded against
+                // churn; the remembering must NOT be, or a sunday household never records it.
             let first = HouseholdWeekStartStore.adopt(row.1)
             if first != householdWeekStart { householdWeekStart = first }
         }
@@ -1027,13 +1221,10 @@ final class SyncManager {
 }
 
 /// The optional-modules catalog — a hand-mirror of apps/api/src/platform/modules.ts.
-/// `available` modules can be toggled in Settings → Modules; `planned` ones show as
-/// "coming soon" and are always treated as off. `defaultOn` is the fallback when the
-/// household hasn't set a flag (core pages default on; pantry is opt-in).
+/// `available` modules toggle in Settings; `planned` ones are always off.
 enum WaffledModule: String, CaseIterable, Identifiable {
-    // Declaration order drives the Settings → Modules list; keep it in step with the
-    // Settings → Family feature rows so the two screens read the same.
-    case chores, goals, meals, lists, pantry, familyNight, waffledBites, quotes
+    // Declaration order drives the Settings → Modules list; keep it in step with Family.
+    case chores, goals, meals, lists, pantry, rhythms, familyNight, weeklyPlanning, waffledBites, quotes
     var id: String { rawValue }
 
     var isAvailable: Bool {
@@ -1042,17 +1233,23 @@ enum WaffledModule: String, CaseIterable, Identifiable {
         default: return true
         }
     }
-    /// Opt-in modules default off (pantry, familyNight, waffledBites); the rest default on.
-    var defaultOn: Bool { self != .pantry && self != .familyNight && self != .waffledBites }
+    /// Opt-in modules default off; the rest default on. Mirrors `defaultOn` in modules.ts —
+    /// defaulting ON here and OFF on the server shows pages whose API 403s them.
+    var defaultOn: Bool {
+        self != .pantry && self != .rhythms && self != .familyNight
+            && self != .weeklyPlanning && self != .waffledBites
+    }
 
     var name: String {
         switch self {
         case .pantry: return "Pantry"
+        case .rhythms: return "Rhythms"
         case .chores: return "Chores & Tasks"
         case .goals: return "Goals"
         case .meals: return "Meals & Recipes"
         case .lists: return "Lists & Groceries"
         case .familyNight: return "Family Night"
+        case .weeklyPlanning: return "Weekly Planning"
         case .waffledBites: return "Waffled-Bites"
         case .quotes: return "Daily quote"
         }
@@ -1060,11 +1257,13 @@ enum WaffledModule: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .pantry: return "🥫"
+        case .rhythms: return "🔁"
         case .chores: return "✅"
         case .goals: return "🎯"
         case .meals: return "🍽️"
         case .lists: return "🛒"
         case .familyNight: return "🏡"
+        case .weeklyPlanning: return "🗓️"
         case .waffledBites: return "🧇"
         case .quotes: return "💬"
         }
@@ -1072,11 +1271,14 @@ enum WaffledModule: String, CaseIterable, Identifiable {
     var summary: String {
         switch self {
         case .pantry: return "Track what's on hand (freezer/fridge/pantry) and feed meal planning."
+        case .rhythms: return "The things that should keep happening — the air filter, trash night, a quarterly self-care day — with a place to confirm each one is actually handled."
         case .chores: return "The Tasks board — assignable chores, photo proof, approvals, and stars."
         case .goals: return "Personal and family goals with progress, streaks, and checklists."
         case .meals: return "Recipe library, weekly meal planning, and meals on the calendar."
         case .lists: return "Shared lists and the auto-built grocery board."
         case .familyNight: return "A weekly family gathering with a rotating agenda and a Today card."
+        // Copy lifted verbatim from modules.ts so the two Settings screens read the same.
+        case .weeklyPlanning: return "A guided session that walks the family through deciding the week ahead — loose ends, the calendar, meals, tasks and goals — reading from the modules you already use."
         case .waffledBites: return "Pair a kid's companion touchscreen — quiet time, wake-light, nightlight, alarm, and sound machine."
         case .quotes: return "A daily quote or snippet on the Today tab."
         }

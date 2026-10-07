@@ -12,12 +12,12 @@ function fmtMonthDay(dateKey: string): string {
   return parseLocalDateKey(dateKey).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-export function WeekHeatmap({ goal, stats, personMap, onDayClick, headerRight }: DataViewProps) {
+export function WeekHeatmap({ goal, stats, personMap, onDayClick, headerRight, firstDay }: DataViewProps) {
   const [weekOffset, setWeekOffset] = useState(0)
   const today = stats.today
-  // Anchor to the fixed calendar week (Sun–Sat) that contains today (± weekOffset
-  // weeks), NOT a rolling 7-day window ending today.
-  const weekStart = startOfWeekKey(addDaysKey(today, weekOffset * 7))
+  // Anchor to the fixed calendar week that contains today (± weekOffset weeks), cut
+  // on the household's own first day — NOT a rolling 7-day window ending today.
+  const weekStart = startOfWeekKey(addDaysKey(today, weekOffset * 7), firstDay)
   const weekEnd = addDaysKey(weekStart, 6)
   const weekKeys = Array.from({ length: 7 }, (_, i) => addDaysKey(weekStart, i))
   const canGoForward = weekOffset < 0

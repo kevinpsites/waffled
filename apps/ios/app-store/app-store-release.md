@@ -9,33 +9,33 @@ has a hard cap, a `[NN/limit]` count is shown so you can see headroom before pas
 
 ---
 
-## App name  `[≤30]`
+## App name  `[7/30]`
 
 ```
 Waffled
 ```
 
-## Subtitle  `[≤30]`
+## Subtitle  `[29/30]`
 
 ```
 Your family, on the same page
 ```
 <sub>Alt options: `Family planner & family board` · `Plan, share, and stay in sync` · `The family organizer`</sub>
 
-## Promotional text  `[≤170]`  *(editable anytime without a new build)*
+## Promotional text  `[165/170]`  *(editable anytime without a new build)*
 
 ```
 The calm command-center for family life — shared calendar, chores, meals, pantry, and goals, all in one place. Mount an iPad on the wall for the whole family to see.
 ```
 
-## Keywords  `[≤100, comma-separated, no spaces after commas]`
+## Keywords  `[98/100, comma-separated, no spaces after commas]`
 
 ```
 family,planner,calendar,chores,meal,pantry,grocery,shopping,organizer,household,kids,routine,goals
 ```
 <sub>Don't repeat the app name or subtitle words here — they're already indexed. No spaces after commas maximizes the character budget.</sub>
 
-## Description  `[≤4000]`
+## Description  `[1695/4000]`
 
 ```
 Waffled is the calm command-center for family life. One shared home for your
@@ -60,6 +60,10 @@ plan in your pocket on your phone. Everything stays in sync.
 • GOALS — Keep the family's intentions front and center, from reading streaks to
   saving up for something big.
 
+• RHYTHMS — The things that should keep happening but aren't chores and aren't
+  goals: trash out weekly, the air filter every three months, a family outing on
+  the third weekend. Waffled counts down to each one and gets out of the way.
+
 • FAMILY NIGHT — A customizable, auto-rotating agenda for your weekly family time.
 
 • A HOME SCREEN THAT'S YOURS — Reorder and hide the cards on your Today view so it
@@ -72,49 +76,61 @@ family's data stays yours — no ads, no tracking, no selling your life to anyon
 Get your family on the same page. Get Waffled.
 ```
 
-## What's New (release notes)  `[≤4000]`
+## What's New (release notes)  `[2754/4000]`
 
-<sub>Current draft targets **0.12.0**, covering iOS-facing changes since the
-**0.9.0** public launch (the version currently live on the App Store) — i.e. the
-0.10.0, 0.11.0, and 0.12.0 changelogs, filtered to what iPhone/iPad users can
-actually see. Update this each time you submit a new version.</sub>
+<sub>Current draft targets **0.14.0**, built from that version's changelog section
+filtered to what iPhone/iPad users can actually see. Web-only work is deliberately
+left out — the smaller first-load bundle, the month-view add-event fix, and the two
+browser-kiosk offline fixes. Update this each time you submit a new version.</sub>
 
 ```
-Since launch, Waffled has gotten a lot more capable on iPhone and iPad:
+RHYTHMS — THE THINGS THAT SHOULD KEEP HAPPENING (NEW MODULE)
+Some things around the house aren't chores and aren't goals. They just need to
+keep coming around: trash out weekly, the air filter every three months, a
+family outing on the third weekend. Rhythms is a new optional module for exactly
+those.
 
-GOALS YOU CAN SEE
-The Today goal card is now a full hero — a progress ring, each person's
-contribution, and Log progress right there — with a switcher to jump between
-goals. Swipe through the week and month heatmaps, and the charts now show the
-true calendar week and the whole year.
+Write one as a sentence you edit in place — "Air filter, every 3 months, counted
+when I mark it done" — and Waffled names the two dates that are the whole promise
+before you commit to it: the day the first one lands, and the day it starts
+asking.
 
-SMARTER LISTS
-Give items a 1–5 priority (urgent ones get a flag) and drag them between
-sections. Bulk-edit a whole selection at once — set the section, assignee, or
-priority, even into a brand-new section you name on the spot. Rename a list from
-its menu, watch the count tick down to what's left, and let checked-off items
-tuck into a Completed section that clears itself.
+Some rhythms are things you do, and the clock restarts from when you actually did
+it, so being late moves the next one instead of stacking up missed ones. Others
+just need to get scheduled — booking one puts a real event on your calendar, so
+it gets recurrence, colors, reminders and Google/Outlook sync like anything else.
 
-MEALS & SHOPPING
-Jump straight into Cook Mode from the Today card and swipe between steps. Shop
-ahead by planning next week's groceries without disturbing this week's, add or
-remove any recipe's ingredients from the list, and share a recipe as a file
-anyone can import.
+The register is sorted by when, not by kind — Needs you now, Coming up, Steady —
+and every row is anchored by a countdown. The Today card stays invisible on the
+many quiet days and, when it isn't quiet, says both things at once: what's asking
+now, and how much isn't. Can't get to something this time? Push it out a week
+without claiming you did it, or skip the period entirely rather than inventing an
+entry for something that isn't happening.
 
-CALENDAR & COUNTDOWNS
-Countdowns now show up right on the calendar and are tappable to edit. Type an
-event into "Add anything" and it's assigned to you by default.
+Rhythms is off by default — turn it on in Settings → Modules.
 
-WAFFLED-BITES (NEW MODULE)
-A new optional module adds parent controls for a kid's Waffled-Bite companion
-device — quiet time, a wake-up light schedule, a night light, a sound machine,
-a morning alarm, and screen brightness — all managed right from Family on your
-phone or tablet. (The companion device itself is still on the way.)
+COOK WITH YOUR HANDS FULL
+Every ingredient in Cook Mode is now a checkbox. Tap it as it goes in and it's
+struck through, with a running "3 of 11" count of what you've gathered. A step's
+ingredient and its row in the full list are the same thing, so ticking either
+ticks both, your ticks stay put as you move between steps, and a meal with
+several dishes keeps a separate list for each.
 
-Plus a lot of polish and fixes: adding a grocery item from Today no longer hangs
-the iPad, a half-typed list item is saved when you leave, add bars are easier to
-tap, the goal week/year charts are accurate, and adding a meal from the capture
-bar works reliably again.
+A NEW RECIPE WITHOUT LOSING YOUR PLACE
+Filling a night on the plan and the thing you want to cook isn't in your recipes
+yet? The picker has a New recipe button of its own now. Write it there and it
+goes straight into the slot you opened, with the plan behind it untouched.
+
+YOUR WEEK REALLY DOES START ON MONDAY
+"Week starts on Monday" used to quietly change nothing you could see. It now
+moves every grid in the app — the meal planner's weekly and monthly views and
+"Plan my week", the calendar's month and week views, the This week / Next week
+pickers you get when scheduling from a recipe, and the goal heatmaps.
+
+Plus a lot of polish and fixes: a goal's deadline is the day you picked, adding a
+note to a goal entry no longer quietly moves it to another day, and birthdays and
+planned meals no longer read a day early. Pull-to-refresh reloads the whole Today
+screen on iPhone, and the wall iPad can refresh its cards at all.
 
 Thanks for using Waffled — we'd love your feedback!
 ```
