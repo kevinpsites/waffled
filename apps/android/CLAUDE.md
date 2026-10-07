@@ -65,10 +65,16 @@ The emulator has **no `curl`** — probe the server through the app, not the she
 Two more, both of which have bitten this repo before:
 - **`./waffled up` must run from `~/dev/nook`, never from a worktree** — compose bind
   mounts bake the working directory into the running stack.
+- **PowerSync text timestamps.** PowerSync stores timestamps as text, and the sync layer
+  hands them over space-separated (`2026-10-07 09:30:00`), not ISO `T…Z`. Parse every one
+  with `WaffledDates` (`parseInstant`), never `Instant.parse`.
 - **PowerSync can fail while REST works.** The `powerSyncUrl` is issued by the *server*
   (`POWERSYNC_PUBLIC_URL`); if it advertises a `localhost`, the device can't reach it and
   sync sits silently at "Offline". It currently advertises the LAN IP, which is correct —
   watch for DHCP drift.
+- **Emulator + a stack that advertises `127.0.0.1` for PowerSync:** run
+  `adb reverse tcp:<powersync-port> tcp:<powersync-port>` so the emulator's loopback
+  reaches the host's PowerSync port, then confirm sync leaves "Offline".
 
 ## What Phase 0 gives you — use it, don't reinvent it
 
@@ -82,14 +88,14 @@ Every one of these exists because a feature would otherwise hand-roll it N times
 | Cards, empty/loading states, CTAs, chips, avatars, badges | the components in `core:design` |
 | Images | `AsyncImage` — the shared loader is installed by `app`; build requests with `WaffledImages.request(ctx, url, cacheKey)` |
 | Media path → URL | `MediaUrl.resolve(path, baseUrl)`; cache key via `MediaUrl.cacheKey(path)` |
-| REST load state | `RestDomain` — `apply(null)` = fetch FAILED (keep prior value, mark loaded); `apply(emptyList())` = genuinely empty |
+| REST load state | `RestDomain` (in `core:network`) — `apply(null)` = fetch FAILED (keep prior value, mark loaded); `apply(emptyList())` = genuinely empty. Every snapshot also carries a `RestState` (`Loading`/`Empty`/`Ready`/`Stale`/`Offline`/`Queued`/`Conflict`/`Error`/`SignInRequired`); only `Empty`/`Ready` justify "All caught up" copy, and `RestState.combined(...)` merges several domains for one screen |
 | Telling screens to re-fetch after a write | `RefreshBus.bump(domain)` |
 | Server error text | `ApiErrorText.from(body, status)` — relay the server, don't guess |
 | HTTP client / auth | `WaffledHttp.client(tokens, server)`, `WaffledAuth` (implements `TokenProvider`) |
 | Dates | `WaffledDates` (in **`core:model`**) — `parseInstant`, `localDay(zone)`, cached `formatter`, `noonIso` |
 | API tests | `ApiTestHarness` in `core:testing` — MockWebServer + token/server fakes; `enqueueNoContent()` for 204s |
 | Segmented control | `SegmentedRow` |
-| Household week start | `HouseholdWeekStart.parse(SyncManager.householdWeekStart.value)` (in `core:model`) — `weekStart(date)`, `rotated(labels)`, `monthLeadCells(first)`. Never cut a household week on the device locale |
+| Household week start | `HouseholdWeekStart.parse(SyncManager.householdWeekStart.value)` (in `core:model`; the value is null until the first sync and `parse(null)` gives the default) — `weekStart(date)`, `rotated(labels)`, `monthLeadCells(first)`. Never cut a household week on the device locale |
 
 **`refreshAccessToken(failedToken)` takes the token the failed request actually sent.**
 Pass it. That is what stops a staggered 401 from burning a second rotation of a
@@ -105,6 +111,12 @@ unresolvable merge.
 Do not add a local one.
 
 A feature agent owns exactly `feature/<name>/**` plus its own `…Api.kt`. Nothing else.
+
+**Features do not depend on other features** — with one exception: the aggregator
+modules. `feature:planning` (Weekly Planning reads calendar, goals, meals, lists, chores,
+rewards, rhythms and Family Night) and `feature:kiosk`, `feature:kiosktoday` and
+`feature:kioskcalendar` (the tablet shell composes the phone features) may depend on
+features.
 
 ## Design rules
 
@@ -186,6 +198,10 @@ then port the logic.** That gives behavioural parity rather than approximate par
 
 ### Two traps that will bite every feature
 
+**`WaffledJson` also sets `coerceInputValues = true`**, so a `null` (or unknown enum value)
+for a non-nullable field with a default decodes to that default instead of throwing —
+the server is not always as strict as its schema.
+
 **`WaffledJson` sets `explicitNulls = false`.** That means a null field is **omitted** from
 the request body — so modelling a PATCH as a data class silently turns "clear this value"
 into "leave it alone". When a PATCH must clear a field, build the body as a `JsonObject`
@@ -209,7 +225,7 @@ three agents a build each.
 | `core/sync/WaffledSyncSchema.kt` | web `powersync/schema.ts`, `sync-config.yaml`, iOS `SyncSchema.swift` — locked by `SyncSchemaParityTest` |
 | `core/design/Theme.kt` | `waffled.css`, iOS `Theme.swift` — locked by `ThemeTokensTest` |
 | `core/model/Modules.kt` | `apps/api/src/platform/modules.ts`, web `can()` |
-| capture parsing (Wave C) | web `capture/parse.ts`, iOS `CaptureHeuristic.swift` |
+| `feature/capture` (`CaptureHeuristic.kt` + `CaptureRepeat.kt`) | web `capture/parse.ts`, iOS `CaptureHeuristic.swift` — a third copy, accepted with a debt note in the port plan §7.1; change all three together |
 
 The server sends **every** column (`SELECT *`); the client schema decides what is
 materialised, so an omission is silent data loss, not an error.
