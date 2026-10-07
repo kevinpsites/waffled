@@ -37,6 +37,9 @@ object SettingsPanelId {
  * A panel built outside this module (the household panels live in a separate feature
  * module), handed in by `app`. A known [id] takes that row's slot and gates; an unknown
  * one is appended to the end of [section].
+ *
+ * [content] is the WHOLE page: it draws its own header (calling `onBack` from its back
+ * affordance), its own scrolling, and its `tabBarClearance`. The shell only routes.
  */
 class SettingsPanelEntry(
     val id: String,
@@ -44,7 +47,7 @@ class SettingsPanelEntry(
     val icon: String,
     val section: SettingsSection,
     val subtitle: String = "",
-    val content: @Composable () -> Unit,
+    val content: @Composable (onBack: () -> Unit) -> Unit,
 )
 
 sealed interface SettingsRowTarget {

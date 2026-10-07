@@ -26,7 +26,7 @@ import app.waffled.core.design.WaffledEmojiTile
  * turned back on (the app can't re-ask once the user has said no twice).
  */
 @Composable
-internal fun DevicePermissionsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
+internal fun DevicePermissionsScreen(healthAvailable: Boolean, onBack: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val openAppSettings = {
         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
@@ -38,8 +38,10 @@ internal fun DevicePermissionsScreen(onBack: () -> Unit, modifier: Modifier = Mo
     SettingsPage("Permissions", onBack, modifier, spacing = 22.dp) {
         BodyNote("These are permissions you grant on this device. Android only lets you change them in system Settings — tap Open on any of them to jump straight to Waffled's settings page.")
         Column(Modifier.fillMaxWidth().settingsBox().padding(horizontal = 18.dp)) {
-            PermissionRow("❤️", "Health Connect", "Auto-fill step, flight & exercise goals from your phone & watch.", openAppSettings)
-            HairDivider()
+            if (healthAvailable) {
+                PermissionRow("❤️", "Health Connect", "Auto-fill step, flight & exercise goals from your phone & watch.", openAppSettings)
+                HairDivider()
+            }
             PermissionRow("🔔", "Notifications", "Reminders before your calendar events.", openAppSettings)
             HairDivider()
             PermissionRow("📷", "Camera", "Chore photo-proof and grocery barcode scanning.", openAppSettings)

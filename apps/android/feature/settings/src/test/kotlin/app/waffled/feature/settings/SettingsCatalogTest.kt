@@ -17,7 +17,7 @@ class SettingsCatalogTest {
     private fun ids(rows: List<SettingsRow>) = rows.map { it.id }
 
     private fun extra(id: String, section: SettingsSection = SettingsSection.Family, title: String = id) =
-        SettingsPanelEntry(id = id, title = title, icon = "🧪", section = section, subtitle = "sub") {}
+        SettingsPanelEntry(id = id, title = title, icon = "🧪", section = section, subtitle = "sub") { _ -> }
 
     @Test
     fun `non-admin sees only account, system and about rows`() {

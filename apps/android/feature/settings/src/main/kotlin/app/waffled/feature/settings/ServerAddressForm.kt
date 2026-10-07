@@ -34,6 +34,7 @@ object ServerAddressForm {
      */
     fun liveWarning(input: String): String? {
         if (input.isBlank()) return null
+        if ('@' in input) return CREDENTIALS
         val verdict = ServerUrl.validate(input)
         return (verdict as? ServerUrlVerdict.InsecurePublic)?.let { insecureCopy(it.host) }
     }
@@ -57,7 +58,25 @@ object ServerAddressForm {
      * The URL the Test button probes, or null when the input is not one we would save —
      * a public http host is refused by the release network policy anyway.
      */
-    fun probeUrl(input: String): String? = (ServerUrl.validate(input) as? ServerUrlVerdict.Ok)?.url
+    fun probeUrl(input: String): String? =
+        if (shapeError(input) != null) null else (ServerUrl.validate(input) as? ServerUrlVerdict.Ok)?.url
+
+    /**
+     * Only a bare origin is a server address — no credentials, path, query or fragment
+     * (iOS `AppConfig.normalizedApiBaseURL`). `ServerUrl.hostOf` reads the host as the
+     * text before the first colon, so `http://localhost:80@evil.com` would otherwise pass
+     * the home-network cleartext check while actually talking to evil.com.
+     */
+    fun shapeError(input: String): String? {
+        val raw = input.trim().trimEnd('/')
+        val scheme = raw.substringBefore("://", missingDelimiterValue = "")
+        if (raw.contains("://") && !scheme.equals("http", true) && !scheme.equals("https", true)) return INVALID_ADDRESS
+        val authority = raw.substringAfter("://")
+        if (authority.isEmpty() || authority.any { it in "/?#@" || it.isWhitespace() }) return INVALID_ADDRESS
+        return null
+    }
+
+    private const val CREDENTIALS = "Leave out any user name or password — enter just the server address."
 
     private fun insecureCopy(host: String) =
         "$host is on the public internet, so plain http:// would send your password unencrypted. " +

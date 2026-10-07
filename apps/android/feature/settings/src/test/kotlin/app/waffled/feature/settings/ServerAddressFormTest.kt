@@ -68,7 +68,44 @@ class ServerAddressFormTest {
     fun `a refused public http save explains why`() {
         val msg = ServerAddressForm.message(ServerChange.Rejected(ServerUrlVerdict.InsecurePublic("family.example.com")))
         assertNotNull(msg.error)
-        assertContains(msg.error!!, "family.example.com")
+        assertContains(msg.error, "family.example.com")
         assertNull(msg.note)
+    }
+
+    // ---- translated from iOS AppConfigURLTests: only a bare origin is a server address ----
+
+    @Test
+    fun `a bare origin passes the shape check`() {
+        assertNull(ServerAddressForm.shapeError("  https://family.example.com/  "))
+        assertNull(ServerAddressForm.shapeError("http://192.168.1.50:8080"))
+        assertNull(ServerAddressForm.shapeError("HTTP://LOCALHOST:8080/"))
+        assertNull(ServerAddressForm.shapeError("http://[::1]:8080"))
+        // Android deliberately assumes http:// for a bare host:port (self-hosters type that).
+        assertNull(ServerAddressForm.shapeError("192.168.1.50:8080"))
+    }
+
+    @Test
+    fun `credentials, paths and queries are rejected`() {
+        assertEquals(ServerAddressForm.INVALID_ADDRESS, ServerAddressForm.shapeError("https://user:secret@family.example.com"))
+        assertEquals(ServerAddressForm.INVALID_ADDRESS, ServerAddressForm.shapeError("https://family.example.com/path"))
+        assertEquals(ServerAddressForm.INVALID_ADDRESS, ServerAddressForm.shapeError("https://family.example.com?debug=1"))
+        assertEquals(ServerAddressForm.INVALID_ADDRESS, ServerAddressForm.shapeError("https://family.example.com#x"))
+        assertEquals(ServerAddressForm.INVALID_ADDRESS, ServerAddressForm.shapeError("ftp://family.example.com"))
+        assertEquals(ServerAddressForm.INVALID_ADDRESS, ServerAddressForm.shapeError("https:///missing-host"))
+    }
+
+    @Test
+    fun `a userinfo trick cannot smuggle plain http to a public host`() {
+        // hostOf would read "localhost" here; the real host is evil.com.
+        val sneaky = "http://localhost:80@evil.com"
+        assertEquals(ServerAddressForm.INVALID_ADDRESS, ServerAddressForm.shapeError(sneaky))
+        assertNotNull(ServerAddressForm.liveWarning(sneaky))
+        assertNull(ServerAddressForm.probeUrl(sneaky))
+    }
+
+    @Test
+    fun `probe url is the normalised origin`() {
+        assertEquals("http://10.0.2.2:8080", ServerAddressForm.probeUrl("http://10.0.2.2:8080/"))
+        assertNull(ServerAddressForm.probeUrl("http://family.example.com"))
     }
 }

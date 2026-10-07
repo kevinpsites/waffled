@@ -124,6 +124,12 @@ internal fun AboutSettingsScreen(
                         probe = ProbeState.Idle
                         savedNote = "Checking and reconnecting…"
                         update = null
+                        val shapeError = ServerAddressForm.shapeError(address)
+                        if (shapeError != null) {
+                            serverError = shapeError
+                            savedNote = null
+                            return@CapsuleButton
+                        }
                         scope.launch {
                             val change = host.server.change(address)
                             val msg = ServerAddressForm.message(change)

@@ -52,6 +52,8 @@ class SettingsHost(
     val pendingUploads: () -> Int = { 0 },
     val appVersion: String,
     val appBuild: String,
+    /** Show the Health Connect row on Permissions once Health Connect is wired up. */
+    val healthConnectAvailable: Boolean = false,
 )
 
 /**
@@ -74,7 +76,10 @@ fun SettingsScreen(
     val members by sync.members.collectAsStateWithLifecycle()
     val syncPerson by sync.currentPerson.collectAsStateWithLifecycle()
 
-    LaunchedEffect(Unit) {
+    // Re-read on every return to the landing: a household switch or a module toggle
+    // inside a panel changes who is admin and which rows exist.
+    LaunchedEffect(route == null) {
+        if (route != null) return@LaunchedEffect
         runCatching { api.household() }.getOrNull()?.let {
             overview = it
             flags = it.modules().modules
@@ -106,14 +111,14 @@ fun SettingsScreen(
             onSignOut = host.signOut,
             modifier = modifier,
         )
-        open.target is SettingsRowTarget.Extra -> open.target.entry.content()
+        open.target is SettingsRowTarget.Extra -> open.target.entry.content(back)
         else -> when (open.id) {
             SettingsPanelId.HOUSEHOLDS -> AccountSettingsScreen(api, host, onBack = back, modifier = modifier)
             SettingsPanelId.FAMILY -> FamilyPeopleSettingsScreen(api, onBack = back, modifier = modifier)
             SettingsPanelId.CHORES_REWARDS -> ChoresRewardsSettingsScreen(api, isAdmin, host.server.currentUrl(), onBack = back, modifier = modifier)
             SettingsPanelId.MODULES -> ModulesSettingsScreen(api, isAdmin, onModulesChanged, onBack = back, modifier = modifier)
             SettingsPanelId.APPEARANCE -> AppearanceSettingsScreen(themeStore, onBack = back, modifier = modifier)
-            SettingsPanelId.PERMISSIONS -> DevicePermissionsScreen(onBack = back, modifier = modifier)
+            SettingsPanelId.PERMISSIONS -> DevicePermissionsScreen(host.healthConnectAvailable, onBack = back, modifier = modifier)
             else -> AboutSettingsScreen(api, host, onBack = back, modifier = modifier)
         }
     }
