@@ -11,6 +11,7 @@ import io.ktor.http.contentType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import androidx.compose.runtime.Immutable
@@ -167,6 +168,7 @@ class TodayApi(
          * rather than decoded (the `app` module maps it for the picker without Today
          * depending on goals). Never on the wire; wins over [participants] when set.
          */
+        @Transient
         val participantCount: Int? = null,
     ) {
         /**
