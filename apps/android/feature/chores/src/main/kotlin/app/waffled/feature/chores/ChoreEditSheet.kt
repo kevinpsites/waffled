@@ -98,6 +98,10 @@ fun ChoreEditSheet(
     /** Returns null on success, else the message to show (the sheet stays open). */
     onDelete: suspend (choreId: String, body: JsonObject) -> String?,
     onDismiss: () -> Unit,
+    /** Prefills a NEW chore's title (e.g. a Weekly Planning parked note). Ignored when editing. */
+    initialTitle: String? = null,
+    /** False hides the Delete control (Weekly Planning's Tasks step). */
+    canDelete: Boolean = true,
 ) {
     val scope = rememberCoroutineScope()
 
@@ -112,13 +116,8 @@ fun ChoreEditSheet(
         mutableStateOf(
             when (target) {
                 is ChoreEditorTarget.Edit -> ChoreDraft.from(target.row.instance)
-                is ChoreEditorTarget.New -> ChoreDraft(
-                    personId = target.personId,
-                    // A new chore defaults to a one-off due on the day being viewed —
-                    // not a recurring daily chore, and not always today.
-                    repeat = ChoreRepeat.Once,
-                    dueOn = initialDate,
-                )
+                // A new chore defaults to a one-off due on the day being viewed.
+                is ChoreEditorTarget.New -> ChoreDraft.forNew(target.personId, initialDate, initialTitle)
             },
         )
     }
@@ -427,7 +426,7 @@ fun ChoreEditSheet(
                 )
             }
 
-            if (editing) {
+            if (editing && canDelete) {
                 TextButton(
                     enabled = !saving,
                     onClick = {
