@@ -34,6 +34,7 @@ dependencies {
     implementation(project(":feature:familynight"))
     implementation(project(":feature:lists"))
     implementation(project(":feature:chores"))
+    implementation(project(":feature:recipes"))
     implementation(project(":feature:rewards"))
     implementation(project(":feature:rhythms"))
 

@@ -108,8 +108,7 @@ fun HorizonStepBody(props: PlanningStepProps) {
     }
     LaunchedEffect(state.parking) { props.reportBusy(state.parking) }
     DisposableEffect(Unit) {
-        // `EventEditSheet` has no title prefill yet, so the note's words aren't carried into it.
-        props.lendVerb(PlanningHandoffVerb("Make an event") { _, done -> composer = HorizonComposer(null, currentDay, done) })
+        props.lendVerb(PlanningHandoffVerb("Make an event") { note, done -> composer = HorizonComposer(null, currentDay, done, note.trim().ifEmpty { null }) })
         onDispose {
             props.lendVerb(null)
             props.reportBusy(false)
@@ -307,6 +306,7 @@ fun HorizonStepBody(props: PlanningStepProps) {
             members = members,
             event = c.event,
             initialDate = c.day,
+            initialTitle = c.title,
             // A cancelled composer reports false, or a parked note is settled on a box opened and closed.
             onDismiss = {
                 composer = null
@@ -324,7 +324,7 @@ fun HorizonStepBody(props: PlanningStepProps) {
 }
 
 /** What the sheet opens on; [done] is the banner's completion when its verb opened this. */
-private class HorizonComposer(val event: SyncedEvent?, val day: LocalDate, val done: ((Boolean) -> Unit)?)
+private class HorizonComposer(val event: SyncedEvent?, val day: LocalDate, val done: ((Boolean) -> Unit)?, val title: String? = null)
 
 private val DATE_LABEL = DateTimeFormatter.ofPattern("EEE · MMM d", Locale.US)
 private val WEEKDAY = DateTimeFormatter.ofPattern("EEEE", Locale.US)

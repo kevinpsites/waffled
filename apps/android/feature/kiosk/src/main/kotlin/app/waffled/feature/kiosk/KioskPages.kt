@@ -189,7 +189,7 @@ fun KioskFamilyView(
     val snap by model.state.collectAsState()
     LaunchedEffect(choresEnabled, refreshKey) { model.load(choresEnabled) }
     val timeFmt = remember(zone) { DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault()).withZone(zone) }
-    val byPerson = remember(todayEvents) { todayEvents.groupBy { it.personId } }
+    val byPerson = remember(todayEvents, members) { KioskEventsByPerson.group(members.map { it.id }, todayEvents) }
 
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 300.dp),

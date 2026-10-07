@@ -191,4 +191,15 @@ class ChoreDraftTest {
         assertEquals(ChoreRepeat.Once, draft.repeat)
         assertEquals("2026-08-21", draft.toBody(currencyCount = 1)["dueOn"]?.let { (it as JsonPrimitive).content })
     }
+
+    @Test
+    fun `a new draft is a one-off on the viewed day and takes a prefilled title`() {
+        val draft = ChoreDraft.forNew(personId = "p1", dueOn = "2026-10-07", prefillTitle = "Take out bins")
+
+        assertEquals("Take out bins", draft.title)
+        assertEquals("p1", draft.personId)
+        assertEquals(ChoreRepeat.Once, draft.repeat)
+        assertEquals("2026-10-07", draft.dueOn)
+        assertEquals("", ChoreDraft.forNew(null, "2026-10-07").title)
+    }
 }

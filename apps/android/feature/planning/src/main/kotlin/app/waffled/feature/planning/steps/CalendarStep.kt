@@ -83,15 +83,14 @@ fun CalendarStepBody(props: PlanningStepProps) {
     }
     val currentHeaderDay by rememberUpdatedState(headerDay)
 
-    fun openComposer(dayKey: String, done: ((Boolean) -> Unit)? = null) {
+    fun openComposer(dayKey: String, title: String? = null, done: ((Boolean) -> Unit)? = null) {
         val day = runCatching { LocalDate.parse(dayKey) }.getOrElse { LocalDate.now(zone) }
-        composer = PlanningCalendarComposer(day, prefillTitle = null, done = done)
+        composer = PlanningCalendarComposer(day, prefillTitle = title, done = done)
     }
 
     LaunchedEffect(added) { if (added > 0) props.setDecisionData(model.decisionData) }
     DisposableEffect(Unit) {
-        // The banner's note can't prefill the sheet's title: `EventEditSheet` has no such parameter yet.
-        props.lendVerb(PlanningHandoffVerb("Make an event") { _, done -> openComposer(currentHeaderDay, done) })
+        props.lendVerb(PlanningHandoffVerb("Make an event") { note, done -> openComposer(currentHeaderDay, note, done) })
         onDispose {
             props.lendVerb(null)
             props.reportBusy(false)
@@ -203,6 +202,7 @@ fun CalendarStepBody(props: PlanningStepProps) {
             members = members,
             event = c.event,
             initialDate = c.day,
+            initialTitle = c.sheetTitle,
             // A cancelled composer reports false, or a parked note is settled on a box opened and closed.
             onDismiss = {
                 composer = null

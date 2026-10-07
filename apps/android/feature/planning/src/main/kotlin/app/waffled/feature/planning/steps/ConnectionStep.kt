@@ -70,7 +70,7 @@ fun ConnectionStepBody(props: PlanningStepProps) {
     val scope = rememberCoroutineScope()
 
     var picking by remember { mutableStateOf<String?>(null) }
-    var compose by remember { mutableStateOf<ConnectionCompose?>(null) }
+    var compose by remember { mutableStateOf<PlanningConnectionCompose?>(null) }
     // The crumb carries `links`; pushing before the seed would hand the shell an empty map.
     var seeded by remember { mutableStateOf(false) }
 
@@ -96,13 +96,13 @@ fun ConnectionStepBody(props: PlanningStepProps) {
         scope.launch { model.link(key, eventId, props.sessionId) }
     }
 
-    fun open(next: ConnectionCompose) {
+    fun open(next: PlanningConnectionCompose) {
         model.clearMadeNote()
         compose = next
     }
 
     fun slotCompose(slot: PlanningConnectionSlot, people: List<String>) =
-        ConnectionCompose(parseDay(slot.date, props.weekStart), slotTime(slot, zone), people)
+        PlanningConnectionCompose(parseDay(slot.date, props.weekStart), slotTime(slot, zone), people)
 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         val board = state.board
@@ -149,7 +149,7 @@ fun ConnectionStepBody(props: PlanningStepProps) {
                                     }
                                 }
                                 ConnectionChip("＋ Another time", false, WF.colors.primary, "Another time for ${row.who}", !props.busy) {
-                                    open(ConnectionCompose(parseDay(props.weekStart, props.weekStart), null, row.personIds))
+                                    open(PlanningConnectionCompose(parseDay(props.weekStart, props.weekStart), null, row.personIds))
                                 }
                             }
                             // Named by WHEN: two dinners in one week need telling apart. Re-picking the linked one unlinks it.
@@ -187,7 +187,7 @@ fun ConnectionStepBody(props: PlanningStepProps) {
                 key(state.madeGeneration) {
                     MakePairing(model, props.weekStart, members, props.busy) { people, slot ->
                         open(
-                            if (slot == null) ConnectionCompose(parseDay(props.weekStart, props.weekStart), null, people)
+                            if (slot == null) PlanningConnectionCompose(parseDay(props.weekStart, props.weekStart), null, people)
                             else slotCompose(slot, people),
                         )
                     }
@@ -209,7 +209,8 @@ fun ConnectionStepBody(props: PlanningStepProps) {
             members = members,
             event = null,
             initialDate = c.day,
-            initialTime = c.time,
+            initialParticipantIds = c.participantIds,
+            initialStart = c.start(zone),
             onDismiss = { compose = null },
             onSaved = {
                 compose = null
@@ -345,7 +346,10 @@ private fun ConnectionChip(text: String, selected: Boolean, tint: Color, label: 
 }
 
 /** Day plus, only when there is one, the slot's start in the household's zone — a null start is the whole day free. */
-private class ConnectionCompose(val day: LocalDate, val time: LocalTime?, val participantIds: List<String>)
+class PlanningConnectionCompose(val day: LocalDate, val time: LocalTime?, val participantIds: List<String>) {
+    /** The slot's start as an instant for the sheet; null when the whole day is free. */
+    fun start(zone: ZoneId): java.time.Instant? = time?.let { day.atTime(it).atZone(zone).toInstant() }
+}
 
 private fun parseDay(iso: String, fallback: String): LocalDate =
     runCatching { LocalDate.parse(iso) }.getOrElse { LocalDate.parse(fallback) }

@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.waffled.core.design.AvatarFromHex
 import app.waffled.core.design.DismissibleErrorBanner
+import app.waffled.core.design.WaffledMenuPill
 import app.waffled.core.design.WF
 import app.waffled.core.design.WaffledEmojiTile
 import app.waffled.core.design.WaffledEmptyState
@@ -413,11 +414,15 @@ private fun SuggestionCard(
             Box(Modifier.weight(1f)) {
                 var menuOpen by remember { mutableStateOf(false) }
                 val canIgnore = item.ignoreWords.isNotEmpty()
-                WaffledSecondaryCTA(
-                    label = if (canIgnore) "Dismiss ▾" else "Dismiss",
-                    isDisabled = busy,
-                    onClick = { if (canIgnore) menuOpen = true else onDismiss() },
-                )
+                if (canIgnore) {
+                    WaffledMenuPill(
+                        text = "Dismiss",
+                        modifier = Modifier
+                            .clickable(enabled = !busy) { menuOpen = true },
+                    )
+                } else {
+                    WaffledSecondaryCTA(label = "Dismiss", isDisabled = busy, onClick = onDismiss)
+                }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     DropdownMenuItem(
                         text = { Text("Dismiss this one", color = WF.colors.ink) },

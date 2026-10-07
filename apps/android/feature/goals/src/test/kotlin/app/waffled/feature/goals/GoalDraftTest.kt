@@ -437,4 +437,18 @@ class GoalDraftTest {
         val body = amountDraft().body(participantIds = emptyList())
         assertTrue(body["participantIds"]!!.jsonArray.isEmpty())
     }
+
+    // ---- locked group (iOS lockedListId) -----------------------------------------
+
+    @Test
+    fun aLockedGroupPinsTheDraftAndOffersOnlyThatGroup() {
+        val a = GoalsApi.GoalList(id = "a", name = "Family")
+        val b = GoalsApi.GoalList(id = "b", name = "Kids")
+        val draft = GoalDraft.new(defaultListId = "b").lockedTo("a")
+
+        assertEquals("a", draft.goalListId)
+        assertEquals(listOf(a), GoalDraft.groupChoices(listOf(a, b), lockedGroupId = "a"))
+        assertEquals(listOf(a, b), GoalDraft.groupChoices(listOf(a, b), lockedGroupId = null))
+        assertEquals("b", GoalDraft.new(defaultListId = "b").lockedTo(null).goalListId)
+    }
 }

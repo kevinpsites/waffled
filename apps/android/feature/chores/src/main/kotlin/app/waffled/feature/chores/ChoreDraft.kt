@@ -138,6 +138,10 @@ data class ChoreDraft(
     }
 
     companion object {
+        /** A new chore: a one-off due on the day being viewed, optionally prefilled. */
+        fun forNew(personId: String?, dueOn: String, prefillTitle: String? = null): ChoreDraft =
+            ChoreDraft(title = prefillTitle.orEmpty(), personId = personId, repeat = ChoreRepeat.Once, dueOn = dueOn)
+
         /** Seed the editor from an existing instance. */
         fun from(instance: ChoresApi.ChoreInstance): ChoreDraft {
             val parsed = ChoreRrule.parse(instance.rrule)

@@ -78,10 +78,14 @@ fun GoalCreateSheet(
     initial: GoalDraft,
     onDismiss: () -> Unit,
     onCreateList: () -> Unit = {},
+    /** Fixes the goal's group: only that chip is offered (iOS `lockedListId`). */
+    lockedGroupId: String? = null,
+    /** False hides "＋ New group". A locked group implies it. */
+    allowNewGroup: Boolean = true,
     /** (body, goalListId) — the body comes straight from [GoalDraft.body]. */
     onSubmit: (kotlinx.serialization.json.JsonObject, String?) -> Unit,
 ) {
-    var draft by remember { mutableStateOf(initial) }
+    var draft by remember { mutableStateOf(initial.lockedTo(lockedGroupId)) }
     var pickingDeadline by remember { mutableStateOf(false) }
 
     Column(
@@ -106,12 +110,19 @@ fun GoalCreateSheet(
             )
         }
 
-        FormSection("Who's it for?", hint = "Pick a goal list — the people in it share this goal.") {
+        FormSection(
+            "Who's it for?",
+            hint = if (lockedGroupId == null) {
+                "Pick a goal list — the people in it share this goal."
+            } else {
+                "The group you're planning for — this goal joins it."
+            },
+        ) {
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(WF.spacing.sm),
                 verticalArrangement = Arrangement.spacedBy(WF.spacing.sm),
             ) {
-                lists.forEach { list ->
+                GoalDraft.groupChoices(lists, lockedGroupId).forEach { list ->
                     GoalChip(
                         text = list.name,
                         selected = draft.goalListId == list.id,
@@ -119,7 +130,9 @@ fun GoalCreateSheet(
                         leading = { AvatarStack(list.members, size = 20.dp) },
                     )
                 }
-                GoalChip(text = "＋ New group", selected = false, onClick = onCreateList)
+                if (allowNewGroup && lockedGroupId == null) {
+                    GoalChip(text = "＋ New group", selected = false, onClick = onCreateList)
+                }
             }
         }
 

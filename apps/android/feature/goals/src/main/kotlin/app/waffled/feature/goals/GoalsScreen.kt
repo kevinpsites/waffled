@@ -78,6 +78,8 @@ fun GoalsScreen(
     members: List<Person>,
     onOpenGoal: (GoalsApi.Goal) -> Unit,
     modifier: Modifier = Modifier,
+    /** The household's zone, so the Log sheet's "today" is the household's, not the device's. */
+    zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -243,6 +245,7 @@ fun GoalsScreen(
                 goal = goal,
                 noteSuggestions = noteSuggestions,
                 freshLoggedTodayBy = freshLoggedTodayBy,
+                today = java.time.LocalDate.now(zone),
                 onDismiss = { logging = null },
                 onSave = { amount, hours, minutes, ids, note, loggedOn ->
                     scope.launch {
