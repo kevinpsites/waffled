@@ -104,8 +104,11 @@ fun KioskTodayScreen(
     /** The viewer holds `chore.approve` / `reward.approve`. */
     canApprove: Boolean = false,
     rewardsOn: Boolean = false,
-    /** Changes on every sign-in / server switch, so approvals never cross households. */
-    dataScope: Any = Unit,
+    /**
+     * The SAME scope key `app` gives the shared [ApprovalsModel] (it changes on sign-in /
+     * server switch). A different key makes each load reset the other's queue.
+     */
+    dataScope: Any,
     countdowns: CountdownsModel? = null,
     pantry: PantryModel? = null,
     rhythms: RhythmsModel? = null,
