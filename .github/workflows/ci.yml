@@ -272,9 +272,10 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         # The default list includes the long-removed `tools` package, which
-        # cmdline-tools 16+ refuses; install only what compileSdk 37 needs.
+        # cmdline-tools 16+ refuses; install only what compileSdk 37 needs (API 37+
+        # names its platform with a minor version: android-37.0).
         with:
-          packages: platform-tools platforms;android-37
+          packages: platform-tools platforms;android-37.0 build-tools;37.0.0
 
       - name: Set up Gradle (with cache)
         uses: gradle/actions/setup-gradle@v4
