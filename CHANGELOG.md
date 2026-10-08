@@ -26,8 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rest go through; a dropped connection or an expired sign-in still keeps everything queued.
 - **Signing out now clears that account's data from the device.** The iPhone, iPad and web
   apps kept their local copy of the household, and any edits that hadn't uploaded yet, after
-  you signed out — so the next person to sign in on that device could inherit both. Signing
-  out now wipes them. Switching profiles on a shared kiosk still keeps the household's copy.
+  you signed out — so the next person to sign in on that device could inherit both. Choosing
+  Sign out now wipes them. Being signed out because a session expired keeps them, so your
+  offline edits still upload when you sign back in, and switching profiles on a shared
+  kiosk keeps the household's copy.
 
 ## [0.15.3] - 2026-10-07
 
