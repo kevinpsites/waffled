@@ -418,7 +418,7 @@ class AppContainer(context: Context) {
     val mirrorBoundary: MirrorBoundary by lazy {
         MirrorBoundary(
             store = keyValueStore,
-            pendingUploads = { syncManager.pendingUploadCount() },
+            stopAndClear = { syncManager.stopAndClear() },
             rescope = { clear, adopt -> syncManager.rescope(clear, adopt) },
         )
     }
@@ -438,14 +438,8 @@ class AppContainer(context: Context) {
      */
     suspend fun adoptSignIn(tokens: TokenPair): String? {
         val principal = MirrorBoundary.principalOf(serverAddress.baseUrl(), tokens.accessToken)
-        return when (val result = mirrorBoundary.adopt(principal) { auth.adopt(tokens) }) {
+        return when (mirrorBoundary.adopt(principal) { auth.adopt(tokens) }) {
             SignInAdoption.Adopted -> null
-            is SignInAdoption.PendingUploads -> {
-                val n = result.count
-                "$n change${if (n == 1) "" else "s"} from the previous account " +
-                    "${if (n == 1) "hasn't" else "haven't"} synced yet. Sign in as that account " +
-                    "to finish syncing, then switch."
-            }
             SignInAdoption.TeardownFailed -> "Couldn't clear the previous account's data from this device. Try again."
         }
     }
@@ -470,7 +464,7 @@ class AppContainer(context: Context) {
         val refresh = auth.signOutAndReturnRefreshToken()
         sessionPhase.value = SessionPhase.SignedOut(null)
         appScope.launch {
-            syncManager.stop()
+            mirrorBoundary.signOut()
             refresh?.let { runCatching { authApi.logout(it) } }
             if (sessionPhase.value is SessionPhase.SignedOut) {
                 sessionPhase.value = SessionPhase.SignedOut(runCatching { authApi.status() }.getOrNull())

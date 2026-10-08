@@ -12,8 +12,8 @@ import kotlin.test.assertTrue
 
 /**
  * The local mirror — and its queued `ps_crud` writes — belongs to one principal. Sign-out
- * does not wipe it (iOS doesn't either), so a sign-in as someone ELSE must, or they'd see
- * the previous account's rows and upload its queued writes under their own token.
+ * wipes both (the account no longer has authority here), and a sign-in as someone ELSE
+ * wipes whatever a failed sign-out wipe left behind.
  */
 class MirrorBoundaryTest {
 
@@ -24,12 +24,12 @@ class MirrorBoundaryTest {
         override fun remove(key: String) { map.remove(key) }
     }
 
-    private class Rig(var pending: Int = 0, var clearSucceeds: Boolean = true) {
+    private class Rig(var clearSucceeds: Boolean = true) {
         val prefs = Prefs()
         val calls = mutableListOf<String>()
         val boundary = MirrorBoundary(
             store = prefs,
-            pendingUploads = { pending },
+            stopAndClear = { calls += "stopAndClear"; clearSucceeds },
             rescope = { clear, adopt ->
                 calls += "rescope:$clear"
                 if (clear && !clearSucceeds) false else { adopt(); true }
@@ -64,12 +64,21 @@ class MirrorBoundaryTest {
     }
 
     @Test
-    fun aDifferentAccountIsRefusedWhileThePreviousOnesWritesAreQueued() = runTest {
-        val rig = Rig(pending = 2)
+    fun signOutWipesTheMirrorAndForgetsItsOwner() = runTest {
+        val rig = Rig()
         rig.boundary.record("srv|alice|h1")
 
-        assertEquals(SignInAdoption.PendingUploads(2), rig.signIn("srv|bob|h1"))
-        assertTrue(rig.calls.isEmpty(), "bob's tokens must not be installed over alice's queue")
+        assertTrue(rig.boundary.signOut())
+        assertEquals(listOf("stopAndClear"), rig.calls)
+        assertNull(rig.boundary.owner())
+    }
+
+    @Test
+    fun aFailedSignOutWipeKeepsTheOwnerSoTheNextAccountStillClears() = runTest {
+        val rig = Rig(clearSucceeds = false)
+        rig.boundary.record("srv|alice|h1")
+
+        assertFalse(rig.boundary.signOut())
         assertEquals("srv|alice|h1", rig.boundary.owner())
     }
 
