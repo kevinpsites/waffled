@@ -51,6 +51,8 @@ fun AuthGate(
             onPasswordChange = vm::onPasswordChange,
             onSubmit = vm::signIn,
             onDismissError = vm::dismissError,
+            onServerUrlChange = vm::onServerUrlChange,
+            onUseServer = vm::useServer,
             // OIDC needs a Custom Tabs round-trip; wired next.
             onStartOidc = {},
         )
@@ -70,5 +72,7 @@ private fun sessionViewModelFactory(container: AppContainer) =
                 _phase = container.sessionPhase,
                 onExpired = { container.kioskMode.onPersonSessionExpired() },
                 adoptSession = container::adoptSignIn,
+                currentServer = container.serverConnection::currentUrl,
+                changeServer = container::changeServerFromLogin,
             ) as T
     }

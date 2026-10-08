@@ -18,8 +18,10 @@ the app you opened it with the first time.
 
 ## 2. Point it at your server
 
-On the sign-in screen, enter your server's base address, then sign in with your normal
-Waffled account (email and password, or SSO if your server has it on).
+On the sign-in screen, tap **Server: … · Change** at the bottom, enter your server's base
+address (with its port, if it has one), and tap **Use this server**. Then sign in with your
+normal Waffled account (email and password, or SSO if your server has it on). Once you are
+signed in you can change it later under **Settings → About**.
 
 | Where the app runs | Server address to enter |
 | --- | --- |

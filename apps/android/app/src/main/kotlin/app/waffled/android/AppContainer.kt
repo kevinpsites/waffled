@@ -398,6 +398,13 @@ class AppContainer(context: Context) {
         }
     }
 
+    /** The sign-in screen's server field: the About path, reduced to the refusal to show. */
+    suspend fun changeServerFromLogin(input: String): String? =
+        when (val change = serverConnection.change(input)) {
+            is ServerChange.Updated -> null
+            else -> ServerAddressForm.message(change).error ?: "Couldn't switch servers. Try again."
+        }
+
     /**
      * Settings → Households: adopt the other household's tokens inside a clearing
      * re-scope, then re-read identity at once — the wipe resets the module gate, and the

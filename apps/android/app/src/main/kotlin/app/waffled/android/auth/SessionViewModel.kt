@@ -31,6 +31,8 @@ data class LoginUiState(
     val password: String = "",
     val isBusy: Boolean = false,
     val error: String? = null,
+    /** The sign-in screen's "Server address" field. */
+    val serverUrl: String = "",
 ) {
     val canSubmit: Boolean get() = !isBusy && email.isNotBlank() && password.isNotEmpty()
 }
@@ -46,11 +48,14 @@ class SessionViewModel(
     private val onExpired: () -> Unit = {},
     /** Install the signed-in pair; a non-null result is a refusal to show on the form. */
     private val adoptSession: suspend (TokenPair) -> String? = { auth.adopt(it); null },
+    private val currentServer: () -> String = { "" },
+    /** Switch servers from the sign-in screen; a non-null result is the refusal to show. */
+    private val changeServer: suspend (String) -> String? = { null },
 ) : ViewModel() {
 
     val phase: StateFlow<SessionPhase> = _phase.asStateFlow()
 
-    private val _login = MutableStateFlow(LoginUiState())
+    private val _login = MutableStateFlow(LoginUiState(serverUrl = currentServer()))
     val login: StateFlow<LoginUiState> = _login.asStateFlow()
 
     init {
@@ -105,4 +110,31 @@ class SessionViewModel(
     }
 
     fun dismissError() = _login.update { it.copy(error = null) }
+
+    fun onServerUrlChange(value: String) = _login.update { it.copy(serverUrl = value, error = null) }
+
+    /** Switch to the typed server, then ask IT which sign-in methods it offers. */
+    fun useServer() {
+        val input = _login.value.serverUrl.trim()
+        if (input.isEmpty() || _login.value.isBusy) return
+        _login.update { it.copy(isBusy = true, error = null) }
+        viewModelScope.launch {
+            changeServer(input)?.let { refusal ->
+                _login.update { it.copy(isBusy = false, error = refusal) }
+                return@launch
+            }
+            val status = api.status()
+            _login.update {
+                it.copy(
+                    isBusy = false,
+                    serverUrl = currentServer(),
+                    error = if (status == null) {
+                        "Couldn't reach ${currentServer()}. Check the address and port, and that " +
+                            "this phone is on the same network."
+                    } else null,
+                )
+            }
+            _phase.value = SessionPhase.SignedOut(status)
+        }
+    }
 }
