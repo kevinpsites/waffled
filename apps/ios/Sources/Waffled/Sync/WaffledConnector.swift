@@ -61,9 +61,14 @@ enum UploadQueue {
         }
     }
 
-    /// A 4xx is the server's final word, except an expired session, a timeout or throttling.
+    /// A 4xx is the server's final word, except an expired session, a timeout or throttling —
+    /// and only when the api itself answered: every api error carries a JSON `error` code, a
+    /// proxy's HTML 404 does not.
     static func isPermanentRejection(_ error: Error) -> Bool {
-        guard case let WaffledAPI.APIError.http(status, _) = error else { return false }
-        return (400..<500).contains(status) && ![401, 408, 429].contains(status)
+        guard case let WaffledAPI.APIError.http(status, body) = error,
+              (400..<500).contains(status), ![401, 408, 429].contains(status),
+              let json = try? JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any]
+        else { return false }
+        return json["error"] is String
     }
 }

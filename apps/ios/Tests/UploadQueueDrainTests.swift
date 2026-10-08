@@ -25,13 +25,16 @@ struct UploadQueueDrainTests {
         }
     }
 
+    /// Every api error body carries a JSON `error` code (the api's error sink).
+    private static let apiBody = #"{"error":"BadRequest","message":"no"}"#
+
     private func drain(_ q: FakeQueue) async throws {
         try await UploadQueue.drain(next: { q.next() }, upload: { try q.upload($0) })
     }
 
     @Test func dropsAPermanentlyRejectedTransactionAndUploadsTheRest() async throws {
         let q = FakeQueue("bad", "good")
-        q.failures["bad"] = WaffledAPI.APIError.http(400, "{}")
+        q.failures["bad"] = WaffledAPI.APIError.http(400, Self.apiBody)
         try await drain(q)
         #expect(q.uploaded == ["good"])
         #expect(q.pending.isEmpty)
@@ -40,7 +43,7 @@ struct UploadQueueDrainTests {
     @Test(arguments: [403, 404, 409, 422])
     func treatsAFinal4xxAsPermanent(status: Int) async throws {
         let q = FakeQueue("bad")
-        q.failures["bad"] = WaffledAPI.APIError.http(status, "")
+        q.failures["bad"] = WaffledAPI.APIError.http(status, Self.apiBody)
         try await drain(q)
         #expect(q.pending.isEmpty)
     }
@@ -48,10 +51,19 @@ struct UploadQueueDrainTests {
     @Test(arguments: [401, 408, 429, 500, 503])
     func keepsTheQueueOnARetryableStatus(status: Int) async {
         let q = FakeQueue("a", "b")
-        q.failures["a"] = WaffledAPI.APIError.http(status, "")
+        q.failures["a"] = WaffledAPI.APIError.http(status, Self.apiBody)
         await #expect(throws: WaffledAPI.APIError.self) { try await drain(q) }
         #expect(q.pending == ["a", "b"])
         #expect(q.uploaded.isEmpty)
+    }
+
+    /// A proxy or stale route answering 404 with a page is not the api's verdict.
+    @Test(arguments: ["<html>Not Found</html>", "", #"{"message":"x"}"#])
+    func keepsTheQueueOnA4xxTheApiDidNotSend(body: String) async {
+        let q = FakeQueue("a")
+        q.failures["a"] = WaffledAPI.APIError.http(404, body)
+        await #expect(throws: WaffledAPI.APIError.self) { try await drain(q) }
+        #expect(q.pending == ["a"])
     }
 
     @Test func keepsTheQueueWhenTheServerNeverAnswered() async {
