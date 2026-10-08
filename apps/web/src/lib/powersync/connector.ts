@@ -10,10 +10,18 @@ import type {
 import { ApiSendError, apiGet, apiSend } from '../api/client'
 
 // A 4xx is the server's final word on a transaction, except an expired session, a
-// timeout or throttling. Twin of `isPermanent` in the iOS and Android connectors.
+// timeout or throttling — and only when the api itself answered: every api error
+// carries a JSON `error` code, a proxy's HTML 404 does not. Same rule as iOS
+// `UploadQueue.isPermanentRejection` and the Android `WaffledConnector`.
 const RETRYABLE_4XX = new Set([401, 408, 429])
 export function isPermanentRejection(err: unknown): boolean {
-  return err instanceof ApiSendError && err.status >= 400 && err.status < 500 && !RETRYABLE_4XX.has(err.status)
+  return (
+    err instanceof ApiSendError &&
+    err.status >= 400 &&
+    err.status < 500 &&
+    !RETRYABLE_4XX.has(err.status) &&
+    typeof err.body?.error === 'string'
+  )
 }
 
 export class WaffledConnector implements PowerSyncBackendConnector {

@@ -28,7 +28,8 @@ function queue(...ids: string[]) {
   return { db, txs }
 }
 
-const rejected = (status: number) => new ApiSendError('POST', '/api/powersync/crud', status, { error: 'X' })
+const rejected = (status: number, body: Record<string, unknown> = { error: 'BadRequest', message: 'no' }) =>
+  new ApiSendError('POST', '/api/powersync/crud', status, body)
 
 describe('WaffledConnector.uploadData', () => {
   beforeEach(() => {
@@ -64,6 +65,17 @@ describe('WaffledConnector.uploadData', () => {
 
     expect(txs).toHaveLength(2)
     expect(apiSend).toHaveBeenCalledTimes(1)
+  })
+
+  // A proxy or a stale route answering 404 with an HTML page is not the api's verdict;
+  // every api error carries a JSON `error` code (app.ts's error sink).
+  it('keeps the queue on a 4xx that did not come from the api', async () => {
+    const { db, txs } = queue('a')
+    apiSend.mockRejectedValueOnce(rejected(404, {}))
+
+    await expect(new WaffledConnector().uploadData(db as never)).rejects.toBeInstanceOf(ApiSendError)
+
+    expect(txs).toHaveLength(1)
   })
 
   it('keeps the queue when the request never got an answer', async () => {
