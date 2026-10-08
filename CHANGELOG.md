@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   event that was deleted elsewhere, say), the app retried it forever and every later edit
   waited behind it without ever reaching the server. A refused edit is now dropped so the
   rest go through; a dropped connection or an expired sign-in still keeps everything queued.
+- **Signing out now clears that account's data from the device.** The iPhone, iPad and web
+  apps kept their local copy of the household, and any edits that hadn't uploaded yet, after
+  you signed out — so the next person to sign in on that device could inherit both. Signing
+  out now wipes them. Switching profiles on a shared kiosk still keeps the household's copy.
 
 ## [0.15.3] - 2026-10-07
 
