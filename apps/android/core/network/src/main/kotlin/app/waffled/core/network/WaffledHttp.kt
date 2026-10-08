@@ -56,6 +56,8 @@ interface ServerAddressProvider {
 class WaffledApiException(
     val status: Int,
     val userMessage: String,
+    /** The api's JSON `error` code; null when something else (a proxy page) answered. */
+    val errorCode: String? = null,
 ) : Exception(userMessage)
 
 val WaffledJson: Json = Json {
@@ -159,6 +161,7 @@ object WaffledHttp {
             throw WaffledApiException(
                 status = current.status.value,
                 userMessage = ApiErrorText.from(body, current.status.value),
+                errorCode = ApiErrorText.code(body),
             )
         }
         return parse(current)

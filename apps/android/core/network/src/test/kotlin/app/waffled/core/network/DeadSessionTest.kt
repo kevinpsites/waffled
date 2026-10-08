@@ -103,6 +103,18 @@ class DeadSessionTest {
         assertEquals(0, tokens.ended)
     }
 
+    /** The upload drain only drops a transaction the api itself refused (its JSON `error` code). */
+    @Test
+    fun theErrorCarriesTheApisCodeOrNullForAForeignBody() = runTest {
+        val tokens = FakeTokens()
+        val api = assertFailsWith<WaffledApiException> {
+            call(tokens, 404, """{"error":"NotFound","message":"Goal not found"}""")
+        }
+        assertEquals("NotFound", api.errorCode)
+        val proxy = assertFailsWith<WaffledApiException> { call(tokens, 404, "<html>Not Found</html>") }
+        assertNull(proxy.errorCode)
+    }
+
     @Test
     fun aProviderThatDoesNotCareStillCompiles() = runTest {
         // sessionEnded() has a default so the many test fakes need no change.

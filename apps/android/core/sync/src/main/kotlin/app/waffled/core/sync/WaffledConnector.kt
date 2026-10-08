@@ -87,12 +87,11 @@ class WaffledConnector(
             val tx = next() ?: break
             // Throw on failure so PowerSync KEEPS the queue and retries — that is what
             // makes offline writes safe. The one exception is a refusal that can never
-            // succeed: retrying it would wedge every write behind it. iOS and web rethrow
-            // all of them and share that wedge.
+            // succeed: retrying it would wedge every write behind it.
             try {
                 backend.uploadCrud(tx.ops)
             } catch (e: WaffledApiException) {
-                if (!isPermanent(e.status)) throw e
+                if (!isPermanent(e)) throw e
                 _lastRejection.value = UploadRejection(e.status, e.userMessage, tx.ops)
             }
             tx.complete()
@@ -102,10 +101,12 @@ class WaffledConnector(
     /**
      * 4xx is the server's final word — except an expired token (the same principal can sign
      * back in and drain it), timeouts and throttling. A 403 is final: a permission denial,
-     * or NoHousehold for a household that no longer exists.
+     * or NoHousehold for a household that no longer exists. Only when the api itself
+     * answered, though: every api error carries a JSON `error` code, a proxy's HTML 404
+     * does not. Same rule as iOS `UploadQueue.isPermanentRejection` and the web connector.
      */
-    private fun isPermanent(status: Int): Boolean =
-        status in 400..499 && status !in RETRYABLE_4XX
+    private fun isPermanent(e: WaffledApiException): Boolean =
+        e.status in 400..499 && e.status !in RETRYABLE_4XX && e.errorCode != null
 
     private companion object {
         val RETRYABLE_4XX = setOf(401, 408, 429)
