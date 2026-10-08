@@ -95,6 +95,7 @@ export function clearKioskDevice(): void {
   } catch {
     /* ignore */
   }
+  notifySignedOut()
   window.dispatchEvent(new Event('waffled:auth-changed'))
 }
 // End just the claimed-profile session (switch profile / idle), keeping the device
@@ -154,7 +155,22 @@ export function clearSession(): void {
   } catch {
     /* ignore */
   }
+  notifySignedOut()
   window.dispatchEvent(new Event('waffled:auth-changed'))
+}
+
+// The account has left this device. PowerSync (db.ts) wipes the local replica and
+// any unsent writes here — nobody holds authority to upload them any more. A kiosk
+// profile switch (clearProfileSession) stays inside one household and does not fire.
+const signedOutSubs = new Set<() => void>()
+export function onSignedOut(cb: () => void): () => void {
+  signedOutSubs.add(cb)
+  return () => {
+    signedOutSubs.delete(cb)
+  }
+}
+function notifySignedOut(): void {
+  for (const cb of [...signedOutSubs]) cb()
 }
 
 // Every request doubles as a reachability sample (see ./reachability): the store

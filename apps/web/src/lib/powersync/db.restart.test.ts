@@ -354,6 +354,45 @@ describe('restartPowerSyncHard({ clear: true })', () => {
 // Long-lived watches hang off the client instance, so a hard restart silently
 // kills them unless they re-arm — which would make the watchdog's own escalation
 // the thing that freezes the calendar.
+// Signing out ends the user's authority over the device: their replica AND their
+// unsent writes are wiped, so neither the next account nor the next upload carries them.
+describe('signing out', () => {
+  const signOut = async () => (await import('../api/client')).clearSession()
+
+  it('wipes the replica even while local writes are still queued', async () => {
+    const db = await freshDbModule()
+    await db.connectPowerSync()
+    const old = fakes.instances[0]
+    old.getNextCrudTransaction = vi.fn(async () => ({ crud: [{}] }))
+    await signOut()
+    await vi.waitFor(() => expect(fakes.instances).toHaveLength(2))
+    expect(old.disconnectAndClear).toHaveBeenCalledTimes(1)
+    expect(old.close).toHaveBeenCalledTimes(1)
+  })
+
+  it('wipes a wedged client whose queue cannot be read', async () => {
+    const db = await freshDbModule()
+    await db.connectPowerSync()
+    const old = fakes.instances[0]
+    old.getNextCrudTransaction = vi.fn(async () => {
+      throw new Error('wedged')
+    })
+    await signOut()
+    await vi.waitFor(() => expect(fakes.instances).toHaveLength(2))
+    expect(old.disconnectAndClear).toHaveBeenCalledTimes(1)
+  })
+
+  it('is not absorbed by an in-flight restart that keeps the replica', async () => {
+    const db = await freshDbModule()
+    await db.connectPowerSync()
+    const plain = db.restartPowerSyncHard()
+    await signOut()
+    await plain
+    await vi.waitFor(() => expect(fakes.instances).toHaveLength(3))
+    expect(fakes.instances[1].disconnectAndClear).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('watchAgendaRows across a hard restart', () => {
   it('re-arms the agenda watch on the new client until disposed', async () => {
     const db = await freshDbModule()

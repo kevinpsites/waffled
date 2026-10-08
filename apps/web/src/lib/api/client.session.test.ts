@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { apiGet, setSession, getAccessToken, isKioskMode } from './client'
+import { apiGet, setSession, getAccessToken, isKioskMode, clearSession, clearKioskDevice, clearProfileSession, onSignedOut } from './client'
 
 // A session the server can no longer honour has to END, not sit there failing.
 //
@@ -84,5 +84,28 @@ describe('a session whose household is gone', () => {
     expect(getAccessToken()).toBeUndefined()
     expect(isKioskMode()).toBe(true)
     expect(localStorage.getItem('waffled.kiosk.deviceSecret')).toBe('device-secret')
+  })
+})
+
+// The PowerSync engine wipes the local replica on sign-out (see db.ts). A kiosk
+// profile switch stays inside one household and deliberately keeps it.
+describe('onSignedOut', () => {
+  it('fires when the session is cleared or the kiosk is unpaired', () => {
+    const cb = vi.fn()
+    const off = onSignedOut(cb)
+    clearSession()
+    clearKioskDevice()
+    expect(cb).toHaveBeenCalledTimes(2)
+    off()
+    clearSession()
+    expect(cb).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not fire on a kiosk profile switch', () => {
+    const cb = vi.fn()
+    const off = onSignedOut(cb)
+    clearProfileSession()
+    expect(cb).not.toHaveBeenCalled()
+    off()
   })
 })
