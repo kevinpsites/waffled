@@ -473,9 +473,8 @@ final class SyncManager {
     /// Tear down the sync session on sign-out: stop the live queries, disconnect, drop the
     /// observable state and reset so the next `start()` runs fresh.
     ///
-    /// `disconnect()`, not `disconnectAndClear()`: clearing the mirror is heavy and isn't
-    /// needed when PowerSync re-scopes its buckets on the next login. A HOUSEHOLD switch
-    /// passes `clearLocal: true`.
+    /// An account sign-out and a household switch pass `clearLocal: true`. The default
+    /// keeps the mirror for a kiosk profile drop, which stays inside one household.
     @discardableResult
     func signOut(clearLocal: Bool = false) async -> Bool {
         await connectionTransitions.run(

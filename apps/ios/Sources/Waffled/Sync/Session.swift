@@ -89,13 +89,15 @@ final class Session {
     /// Tear down auth and sync as one principal boundary. The loading gate prevents a
     /// new login from starting while the previous PowerSync connection is still being
     /// disconnected; `SyncManager.signOut` rotates the REST scope before it suspends.
-    func signOut(sync: SyncManager, clearLocal: Bool = false) async {
+    /// The mirror and its unsent writes are wiped: the signed-out account no longer has
+    /// authority here, and the next sign-in must neither see nor upload them.
+    func signOut(sync: SyncManager) async {
         guard case .authed = phase else { return }
         let refresh = AuthTokens.refreshToken
         AuthTokens.clear()
         AppConfig.markSignedOut()   // else the dev-token fallback re-auths us
         phase = .loading
-        await sync.signOut(clearLocal: clearLocal)
+        await sync.signOut(clearLocal: true)
         phase = .login
 
         // Revocation/status are best-effort and must not keep the login screen gated.

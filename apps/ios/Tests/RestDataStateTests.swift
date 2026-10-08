@@ -883,6 +883,25 @@ private let fixtureRestScope = RestDataScopeKey(
         #expect(await signOut.value)
     }
 
+    /// Signing out ends the account's authority on this device, so the mirror AND its
+    /// unsent writes go with it — the next sign-in must not inherit or upload them.
+    @Test func sessionSignOutWipesTheMirrorAndItsQueue() async {
+        let stop = DeferredRestValue<Bool>()
+        let recorder = ConnectionTransitionRecorder()
+        let sync = SyncManager(testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop))
+        let session = Session()
+        session.enterClaimedSession(access: "test-access", refresh: "test-refresh")
+        defer { AppConfig.clearSignedOut() }
+
+        let signOut = Task { await session.signOut(sync: sync) }
+        await stop.waitUntilStarted()
+        await stop.succeed(true)
+        await signOut.value
+
+        #expect(recorder.events == ["stop:true"])
+        #expect(session.phase == .login)
+    }
+
     @Test func signOutPreemptsUpdateBeforeConfigurationOrRestart() async {
         let firstStop = DeferredRestValue<Bool>()
         let recorder = ConnectionTransitionRecorder()
