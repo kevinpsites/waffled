@@ -304,10 +304,20 @@ final class SyncManager {
     private var statusTask: Task<Void, Never>?
     private let connectionTransitions = ConnectionTransitionQueue()
     private let testConnectionLifecycle: SyncConnectionLifecycle?
+    private let defaults: UserDefaults
+
+    /// Set while a sign-out or household-switch wipe has failed. The next start clears the
+    /// mirror before connecting, or stays offline: the previous account's rows and queued
+    /// writes must never connect under the next sign-in. Persisted across launches.
+    static let wipePendingKey = "waffled.sync.wipePending"
 
     init(testConnectionLifecycle: SyncConnectionLifecycle? = nil, initialMembers: [SyncedMember] = [],
-         initialEvents: [SyncedEvent] = []) {
+         initialEvents: [SyncedEvent] = [], defaults: UserDefaults? = nil) {
         self.testConnectionLifecycle = testConnectionLifecycle
+        // A lifecycle-seam test gets private defaults unless it passes its own, so one
+        // test's failed wipe can't leak a pending wipe into another's start.
+        self.defaults = defaults
+            ?? (testConnectionLifecycle == nil ? .standard : UserDefaults(suiteName: UUID().uuidString)!)
         self.members = initialMembers
         self.allEvents = initialEvents
         db = PowerSyncDatabase(schema: SyncSchema.schema, dbFilename: "waffled.sqlite")
@@ -330,6 +340,23 @@ final class SyncManager {
         guard connectionTransitions.isCurrent(epoch) else { return }
         guard !started else { return }
         started = true
+
+        if defaults.bool(forKey: Self.wipePendingKey) {
+            let cleared: Bool
+            if let testConnectionLifecycle {
+                cleared = await testConnectionLifecycle.stop(true)
+            } else {
+                cleared = (try? await db.disconnectAndClear()) != nil
+            }
+            guard connectionTransitions.isCurrent(epoch), started else { return }
+            guard cleared else {
+                status = .offline
+                lastError = "Couldn’t clear the previous account’s local data."
+                started = false
+                return
+            }
+            defaults.removeObject(forKey: Self.wipePendingKey)
+        }
 
         if let testConnectionLifecycle {
             let didStart = await testConnectionLifecycle.start()
@@ -511,6 +538,10 @@ final class SyncManager {
         } else {
             try? await db.disconnect()
             stopped = true
+        }
+        if clearLocal {
+            if stopped { defaults.removeObject(forKey: Self.wipePendingKey) }
+            else { defaults.set(true, forKey: Self.wipePendingKey) }
         }
         // A newer account-exit transition owns all observable cleanup.
         guard connectionTransitions.isCurrent(epoch) else { return false }

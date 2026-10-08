@@ -50,6 +50,8 @@ private actor DeferredRestValue<Value: Sendable> {
 private final class ConnectionTransitionRecorder {
     private(set) var events: [String] = []
     private var stopCount = 0
+    /// What every stop after the first returns (the first is driven by the test's deferred).
+    var laterStopsSucceed = true
 
     func lifecycle(suspendingFirstStop firstStop: DeferredRestValue<Bool>) -> SyncConnectionLifecycle {
         SyncConnectionLifecycle(
@@ -59,7 +61,7 @@ private final class ConnectionTransitionRecorder {
                 let call = self.stopCount
                 self.events.append("stop:\(clearLocal)")
                 if call == 1 { return (try? await firstStop.fetch()) ?? false }
-                return true
+                return self.laterStopsSucceed
             },
             start: { [weak self] in
                 self?.events.append("start")
@@ -919,6 +921,62 @@ private let fixtureRestScope = RestDataScopeKey(
 
         #expect(recorder.events == ["stop:false"])
         #expect(session.phase == .login)
+    }
+
+    /// A wipe that failed must not let the next start connect the old account's mirror
+    /// and queue: it is remembered (across launches) and retried before connecting.
+    @Test func aFailedWipeIsRetriedBeforeTheNextStartConnects() async {
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let stop = DeferredRestValue<Bool>()
+        let recorder = ConnectionTransitionRecorder()
+        let sync = SyncManager(
+            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop), defaults: defaults
+        )
+
+        let signOut = Task { await sync.signOut(clearLocal: true) }
+        await stop.waitUntilStarted()
+        await stop.succeed(false)
+        #expect(await signOut.value == false)
+        #expect(defaults.bool(forKey: SyncManager.wipePendingKey))
+
+        await sync.start()
+        #expect(recorder.events == ["stop:true", "stop:true", "start"])
+        #expect(!defaults.bool(forKey: SyncManager.wipePendingKey))
+    }
+
+    @Test func aPendingWipeThatFailsAgainKeepsSyncOffline() async {
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        defaults.set(true, forKey: SyncManager.wipePendingKey)
+        let stop = DeferredRestValue<Bool>()
+        let recorder = ConnectionTransitionRecorder()
+        let sync = SyncManager(
+            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop), defaults: defaults
+        )
+
+        let start = Task { await sync.start() }
+        await stop.waitUntilStarted()
+        await stop.succeed(false)
+        await start.value
+
+        #expect(recorder.events == ["stop:true"])
+        #expect(sync.status == .offline)
+        #expect(defaults.bool(forKey: SyncManager.wipePendingKey))
+    }
+
+    @Test func aSuccessfulWipeLeavesNothingPending() async {
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        defaults.set(true, forKey: SyncManager.wipePendingKey)
+        let stop = DeferredRestValue<Bool>()
+        let recorder = ConnectionTransitionRecorder()
+        let sync = SyncManager(
+            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop), defaults: defaults
+        )
+
+        let signOut = Task { await sync.signOut(clearLocal: true) }
+        await stop.waitUntilStarted()
+        await stop.succeed(true)
+        #expect(await signOut.value)
+        #expect(!defaults.bool(forKey: SyncManager.wipePendingKey))
     }
 
     @Test func signOutPreemptsUpdateBeforeConfigurationOrRestart() async {
