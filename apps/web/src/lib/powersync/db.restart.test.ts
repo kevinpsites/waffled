@@ -67,6 +67,7 @@ beforeEach(() => {
   fakes.instances.length = 0
   fakes.failNext = null
   localStorage.setItem('waffled.access', 'tok') // signed in, so health isn't pinned at no-auth
+  localStorage.removeItem('waffled.powersync.wipePending')
 })
 
 describe('connectPowerSync', () => {
@@ -382,14 +383,63 @@ describe('signing out', () => {
     expect(old.disconnectAndClear).toHaveBeenCalledTimes(1)
   })
 
+  const clearedBeforeConnect = (inst: { disconnectAndClear: ReturnType<typeof vi.fn>; connect: ReturnType<typeof vi.fn> }) =>
+    inst.disconnectAndClear.mock.invocationCallOrder[0] < inst.connect.mock.invocationCallOrder[0]
+
+  it('clears the replacement before it connects when the engine was down at sign-out', async () => {
+    const db = await freshDbModule()
+    fakes.failNext = { step: 'init', message: 'OPFS locked' }
+    await db.connectPowerSync()
+    expect(db.getPowerSyncDb()).toBeNull()
+    await signOut()
+    await vi.waitFor(() => expect(fakes.instances).toHaveLength(2))
+    await vi.waitFor(() => expect(fakes.instances[1].connect).toHaveBeenCalled())
+    expect(clearedBeforeConnect(fakes.instances[1])).toBe(true)
+  })
+
+  it('clears the replacement before it connects when wiping the old client failed', async () => {
+    const db = await freshDbModule()
+    await db.connectPowerSync()
+    fakes.instances[0].disconnectAndClear = vi.fn(async () => {
+      throw new Error('wedged')
+    })
+    await signOut()
+    await vi.waitFor(() => expect(fakes.instances[1]?.connect).toHaveBeenCalled())
+    expect(clearedBeforeConnect(fakes.instances[1])).toBe(true)
+  })
+
+  it('remembers a pending wipe across a reload', async () => {
+    const db = await freshDbModule()
+    fakes.failNext = { step: 'init', message: 'OPFS locked' }
+    await db.connectPowerSync()
+    fakes.failNext = { step: 'init', message: 'OPFS locked' }
+    await signOut()
+    await vi.waitFor(() => expect(fakes.instances).toHaveLength(2))
+    // No client came up before the tab closed; the next page load must still wipe.
+    const reloaded = await freshDbModule()
+    fakes.instances.length = 0
+    await reloaded.connectPowerSync()
+    expect(clearedBeforeConnect(fakes.instances[0])).toBe(true)
+  })
+
+  it('stops clearing once a wipe has succeeded', async () => {
+    const db = await freshDbModule()
+    await db.connectPowerSync()
+    await signOut()
+    await vi.waitFor(() => expect(fakes.instances[1]?.connect).toHaveBeenCalled())
+    await db.restartPowerSyncHard()
+    expect(fakes.instances[2].disconnectAndClear).not.toHaveBeenCalled()
+  })
+
   it('is not absorbed by an in-flight restart that keeps the replica', async () => {
     const db = await freshDbModule()
     await db.connectPowerSync()
     const plain = db.restartPowerSyncHard()
     await signOut()
     await plain
-    await vi.waitFor(() => expect(fakes.instances).toHaveLength(3))
-    expect(fakes.instances[1].disconnectAndClear).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => expect(fakes.instances[2]?.connect).toHaveBeenCalled())
+    // The restart that was already running must not connect the old queue either.
+    expect(clearedBeforeConnect(fakes.instances[1])).toBe(true)
   })
 })
 

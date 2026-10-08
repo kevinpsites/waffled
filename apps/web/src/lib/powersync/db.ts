@@ -66,6 +66,10 @@ async function startClient(): Promise<void> {
   // client, closes nothing, and opens a SECOND database on the same file.
   try {
     await instance.init()
+    if (wipePending()) {
+      await instance.disconnectAndClear()
+      setWipePending(false)
+    }
     db = instance
     unlistenStatus = instance.registerListener({
       statusChanged: (s: SyncStatus) =>
@@ -111,11 +115,36 @@ function watchConnectivity(): void {
 // Sign-out wipes the replica AND its unsent writes: the account that queued them
 // no longer has authority here, and uploading them under the next sign-in would
 // misattribute them.
+//
+// The wipe is also recorded (and survives a reload) until a client has cleared the
+// database before connecting: wiping the old client can fail, there may be no client
+// (a failed boot), or an in-flight restart may open one first — none of those may
+// connect the old account's queue under the next sign-in.
+const WIPE_PENDING_KEY = 'waffled.powersync.wipePending'
+function wipePending(): boolean {
+  try {
+    return localStorage.getItem(WIPE_PENDING_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+function setWipePending(on: boolean): void {
+  try {
+    if (on) localStorage.setItem(WIPE_PENDING_KEY, '1')
+    else localStorage.removeItem(WIPE_PENDING_KEY)
+  } catch {
+    /* storage unavailable — the old-client wipe is the only guard left */
+  }
+}
+
 let signOutWatched = false
 function watchSignOut(): void {
   if (signOutWatched) return
   signOutWatched = true
-  onSignedOut(() => void restartPowerSyncHard({ clear: true, discardPending: true }))
+  onSignedOut(() => {
+    setWipePending(true)
+    void restartPowerSyncHard({ clear: true, discardPending: true })
+  })
 }
 
 // Stand up the local DB and start streaming this household's rows. Safe to call
