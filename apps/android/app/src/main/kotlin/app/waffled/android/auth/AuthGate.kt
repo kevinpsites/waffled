@@ -1,13 +1,17 @@
 package app.waffled.android.auth
 
+import android.net.Uri
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -33,6 +37,14 @@ fun AuthGate(
     )
     val phase by vm.phase.collectAsStateWithLifecycle()
     val login by vm.login.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    val oidcCallback by container.pendingOidcCallback.collectAsStateWithLifecycle()
+    LaunchedEffect(oidcCallback) {
+        val uri = oidcCallback ?: return@LaunchedEffect
+        container.pendingOidcCallback.value = null
+        vm.completeOidc(uri)
+    }
 
     when (val p = phase) {
         SessionPhase.Loading -> Box(
@@ -53,8 +65,11 @@ fun AuthGate(
             onDismissError = vm::dismissError,
             onServerUrlChange = vm::onServerUrlChange,
             onUseServer = vm::useServer,
-            // OIDC needs a Custom Tabs round-trip; wired next.
-            onStartOidc = {},
+            // The provider's page opens in a Custom Tab and returns through the
+            // `waffled://auth/callback` deep link (MainActivity → pendingOidcCallback).
+            onStartOidc = {
+                CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(vm.oidcStartUrl()))
+            },
         )
 
         is SessionPhase.SignedIn -> content(vm)

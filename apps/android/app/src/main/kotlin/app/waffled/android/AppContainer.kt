@@ -398,6 +398,13 @@ class AppContainer(context: Context) {
         }
     }
 
+    /**
+     * A single sign-on return (`waffled://auth/callback?…`) the Activity received, waiting
+     * for the sign-in gate to consume it. A StateFlow so a cold start that delivers the
+     * deep link before the gate composes still finds it.
+     */
+    val pendingOidcCallback = MutableStateFlow<String?>(null)
+
     /** The sign-in screen's server field: the About path, reduced to the refusal to show. */
     suspend fun changeServerFromLogin(input: String): String? =
         when (val change = serverConnection.change(input)) {

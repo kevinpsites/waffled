@@ -6,6 +6,7 @@ import app.waffled.core.auth.AuthApi
 import app.waffled.core.auth.AuthStatus
 import app.waffled.core.auth.LoginResult
 import app.waffled.core.auth.Membership
+import app.waffled.core.auth.OidcCallback
 import app.waffled.core.auth.TokenPair
 import app.waffled.core.auth.WaffledAuth
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -90,21 +91,38 @@ class SessionViewModel(
         if (!state.canSubmit) return
 
         _login.update { it.copy(isBusy = true, error = null) }
-        viewModelScope.launch {
-            when (val result = api.login(state.email, state.password)) {
-                is LoginResult.Success -> {
-                    val refusal = adoptSession(result.tokens)
-                    if (refusal != null) {
-                        _login.update { it.copy(isBusy = false, error = refusal) }
-                        return@launch
-                    }
-                    onSessionChanged()
-                    _login.value = LoginUiState() // don't keep the password around
-                    _phase.value = SessionPhase.SignedIn(result.memberships)
+        viewModelScope.launch { finishSignIn(api.login(state.email, state.password)) }
+    }
+
+    /** Where the SSO button sends the browser. */
+    fun oidcStartUrl(): String = api.oidcStartUrl()
+
+    /** The `waffled://auth/callback` deep link single sign-on returns through. */
+    fun completeOidc(callbackUri: String) {
+        when (val callback = OidcCallback.parse(callbackUri)) {
+            OidcCallback.NotOurs -> return
+            is OidcCallback.Failed -> _login.update { it.copy(isBusy = false, error = callback.message) }
+            is OidcCallback.Code -> {
+                _login.update { it.copy(isBusy = true, error = null) }
+                viewModelScope.launch { finishSignIn(api.oidcExchange(callback.code)) }
+            }
+        }
+    }
+
+    private suspend fun finishSignIn(result: LoginResult) {
+        when (result) {
+            is LoginResult.Success -> {
+                val refusal = adoptSession(result.tokens)
+                if (refusal != null) {
+                    _login.update { it.copy(isBusy = false, error = refusal) }
+                    return
                 }
-                is LoginResult.Failed -> {
-                    _login.update { it.copy(isBusy = false, error = result.message) }
-                }
+                onSessionChanged()
+                _login.value = LoginUiState(serverUrl = currentServer()) // don't keep the password around
+                _phase.value = SessionPhase.SignedIn(result.memberships)
+            }
+            is LoginResult.Failed -> {
+                _login.update { it.copy(isBusy = false, error = result.message) }
             }
         }
     }

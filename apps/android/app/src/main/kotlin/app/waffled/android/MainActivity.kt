@@ -90,6 +90,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handle(intent: Intent?) {
+        // The single sign-on return leg; the sign-in gate exchanges the code.
+        intent?.data?.takeIf { it.scheme == "waffled" && it.host == "auth" }?.let { uri ->
+            (application as WaffledApp).container.pendingOidcCallback.value = uri.toString()
+            return
+        }
         // A tapped cook-timer notification: resume that dish + step, then raise Cook Mode.
         cookTimerLinkFrom(intent)?.let { link ->
             val store = (application as WaffledApp).container.cookStore
