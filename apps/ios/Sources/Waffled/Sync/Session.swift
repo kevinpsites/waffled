@@ -89,7 +89,20 @@ final class Session {
     /// Tear down auth and sync as one principal boundary. The loading gate prevents a
     /// new login from starting while the previous PowerSync connection is still being
     /// disconnected; `SyncManager.signOut` rotates the REST scope before it suspends.
-    func signOut(sync: SyncManager, clearLocal: Bool = false) async {
+    /// The mirror and its unsent writes are wiped: the signed-out account no longer has
+    /// authority here, and the next sign-in must neither see nor upload them.
+    func signOut(sync: SyncManager) async {
+        await endSession(sync: sync, clearLocal: true)
+    }
+
+    /// A dead refresh token or a household that is gone is not a sign-out: the mirror and
+    /// its queued writes stay for the same account to upload when it signs back in (and a
+    /// shared kiosk keeps the household's mirror).
+    func endExpiredSession(sync: SyncManager) async {
+        await endSession(sync: sync, clearLocal: false)
+    }
+
+    private func endSession(sync: SyncManager, clearLocal: Bool) async {
         guard case .authed = phase else { return }
         let refresh = AuthTokens.refreshToken
         AuthTokens.clear()

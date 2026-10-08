@@ -19,6 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **One rejected edit no longer stops the iPhone, iPad and web apps from saving.** Edits made
+  on a device wait in a queue and upload in order. If the server permanently refused one (an
+  event that was deleted elsewhere, say), the app retried it forever and every later edit
+  waited behind it without ever reaching the server. A refused edit is now dropped so the
+  rest go through; a dropped connection or an expired sign-in still keeps everything queued.
+- **Signing out now clears that account's data from the device.** The iPhone, iPad and web
+  apps kept their local copy of the household, and any edits that hadn't uploaded yet, after
+  you signed out — so the next person to sign in on that device could inherit both. Choosing
+  Sign out now wipes them. Being signed out because a session expired keeps them, so your
+  offline edits still upload when you sign back in, and switching profiles on a shared
+  kiosk keeps the household's copy.
+
 ## [0.15.3] - 2026-10-07
 
 ### Added

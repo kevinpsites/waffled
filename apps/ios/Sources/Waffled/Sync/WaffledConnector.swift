@@ -20,13 +20,55 @@ final class WaffledConnector: PowerSyncBackendConnectorProtocol, @unchecked Send
     }
 
     func uploadData(database: PowerSyncDatabaseProtocol) async throws {
-        while let tx = try await database.getNextCrudTransaction() {
-            let ops = tx.crud.map { entry in
-                CrudOpDTO(op: entry.op.rawValue, table: entry.table, id: entry.id, data: entry.opData)
+        let api = api
+        try await UploadQueue.drain(
+            next: {
+                guard let tx = try await database.getNextCrudTransaction() else { return nil }
+                let ops = tx.crud.map { entry in
+                    CrudOpDTO(op: entry.op.rawValue, table: entry.table, id: entry.id, data: entry.opData)
+                }
+                return CrudUploadBatch(ops: ops) { try await tx.complete() }
+            },
+            upload: { try await api.uploadCrud($0) }
+        )
+    }
+}
+
+/// One queued CRUD transaction — a seam so the drain loop is testable without PowerSync.
+struct CrudUploadBatch {
+    let ops: [CrudOpDTO]
+    let complete: () async throws -> Void
+}
+
+/// The upload loop behind `WaffledConnector.uploadData`. Twin of the web connector and
+/// Android's `WaffledConnector.drain`.
+enum UploadQueue {
+    static func drain(
+        next: () async throws -> CrudUploadBatch?,
+        upload: ([CrudOpDTO]) async throws -> Void
+    ) async throws {
+        while let tx = try await next() {
+            // Throw on failure so PowerSync keeps the queue and retries (offline-safe) —
+            // except a refusal that can never succeed, which would wedge every write
+            // queued behind it.
+            do {
+                try await upload(tx.ops)
+            } catch {
+                guard isPermanentRejection(error) else { throw error }
+                print("PowerSync upload rejected by the server; dropping it:", error, tx.ops.map(\.id))
             }
-            // Throw on failure so PowerSync keeps the queue and retries (offline-safe).
-            try await api.uploadCrud(ops)
             try await tx.complete()
         }
+    }
+
+    /// A 4xx is the server's final word, except an expired session, a timeout or throttling —
+    /// and only when the api itself answered: every api error carries a JSON `error` code, a
+    /// proxy's HTML 404 does not.
+    static func isPermanentRejection(_ error: Error) -> Bool {
+        guard case let WaffledAPI.APIError.http(status, body) = error,
+              (400..<500).contains(status), ![401, 408, 429].contains(status),
+              let json = try? JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any]
+        else { return false }
+        return json["error"] is String
     }
 }

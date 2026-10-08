@@ -11,7 +11,7 @@
 // replaces the db instance, so long-lived watches subscribe to
 // onPowerSyncRecreated to re-arm against the new one.
 import type { PowerSyncDatabase, SyncStatus } from '@powersync/web'
-import { getAccessToken } from '../api/client'
+import { getAccessToken, onSignedOut } from '../api/client'
 import { SyncHealthMonitor } from './sync-health'
 
 // The engine — @powersync/web plus the wa-sqlite build it wraps — is ~540 kB
@@ -66,6 +66,10 @@ async function startClient(): Promise<void> {
   // client, closes nothing, and opens a SECOND database on the same file.
   try {
     await instance.init()
+    if (wipePending()) {
+      await instance.disconnectAndClear()
+      setWipePending(false)
+    }
     db = instance
     unlistenStatus = instance.registerListener({
       statusChanged: (s: SyncStatus) =>
@@ -108,10 +112,46 @@ function watchConnectivity(): void {
   window.addEventListener('offline', kick)
 }
 
+// Sign-out wipes the replica AND its unsent writes: the account that queued them
+// no longer has authority here, and uploading them under the next sign-in would
+// misattribute them.
+//
+// The wipe is also recorded (and survives a reload) until a client has cleared the
+// database before connecting: wiping the old client can fail, there may be no client
+// (a failed boot), or an in-flight restart may open one first — none of those may
+// connect the old account's queue under the next sign-in.
+const WIPE_PENDING_KEY = 'waffled.powersync.wipePending'
+function wipePending(): boolean {
+  try {
+    return localStorage.getItem(WIPE_PENDING_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+function setWipePending(on: boolean): void {
+  try {
+    if (on) localStorage.setItem(WIPE_PENDING_KEY, '1')
+    else localStorage.removeItem(WIPE_PENDING_KEY)
+  } catch {
+    /* storage unavailable — the old-client wipe is the only guard left */
+  }
+}
+
+let signOutWatched = false
+function watchSignOut(): void {
+  if (signOutWatched) return
+  signOutWatched = true
+  onSignedOut(() => {
+    setWipePending(true)
+    void restartPowerSyncHard({ clear: true, discardPending: true })
+  })
+}
+
 // Stand up the local DB and start streaming this household's rows. Safe to call
 // more than once; only the first call does work. Never throws.
 export async function connectPowerSync(): Promise<void> {
   if (db) return
+  watchSignOut()
   try {
     await startClient()
   } catch (err) {
@@ -151,23 +191,28 @@ export async function restartPowerSyncSoft(): Promise<void> {
 // copy" during a watchdog rebuild would resolve without ever wiping, and — worse —
 // "Restart sync" during the watchdog's top rung would wipe a replica the user
 // never asked to wipe. A differing request queues behind the in-flight one instead.
-let hardRestarting: { clear: boolean; promise: Promise<void> } | null = null
-export function restartPowerSyncHard(opts: { clear?: boolean } = {}): Promise<void> {
+//
+// `discardPending` (sign-out only) wipes even with writes still queued.
+type HardRestartOpts = { clear?: boolean; discardPending?: boolean }
+let hardRestarting: { key: string; promise: Promise<void> } | null = null
+export function restartPowerSyncHard(opts: HardRestartOpts = {}): Promise<void> {
   const clear = opts.clear ?? false
+  const discardPending = clear && (opts.discardPending ?? false)
+  const key = `${clear}:${discardPending}`
   const inFlight = hardRestarting
-  if (inFlight && inFlight.clear === clear) return inFlight.promise
-  let entry: { clear: boolean; promise: Promise<void> }
+  if (inFlight && inFlight.key === key) return inFlight.promise
+  let entry: { key: string; promise: Promise<void> }
   const promise = (inFlight ? inFlight.promise.catch(() => {}) : Promise.resolve())
-    .then(() => doHardRestart({ clear }))
+    .then(() => doHardRestart({ clear, discardPending }))
     .finally(() => {
       if (hardRestarting === entry) hardRestarting = null
     })
-  entry = { clear, promise }
+  entry = { key, promise }
   hardRestarting = entry
   return promise
 }
 
-async function doHardRestart({ clear = false }: { clear?: boolean } = {}): Promise<void> {
+async function doHardRestart({ clear = false, discardPending = false }: HardRestartOpts = {}): Promise<void> {
   const old = db
   db = null
   unlistenStatus?.()
@@ -182,13 +227,15 @@ async function doHardRestart({ clear = false }: { clear?: boolean } = {}): Promi
       // runs against an already-wedged client, which is precisely the one whose
       // probe throws — so a failed probe must skip the wipe, or the guarantee
       // evaporates in the exact case it exists for.
-      let queueKnownEmpty = false
-      try {
-        queueKnownEmpty = (await old.getNextCrudTransaction()) == null
-      } catch {
-        /* wedged client, unreadable queue — assume writes are pending, don't wipe */
+      let wipe = discardPending
+      if (!wipe) {
+        try {
+          wipe = (await old.getNextCrudTransaction()) == null
+        } catch {
+          /* wedged client, unreadable queue — assume writes are pending, don't wipe */
+        }
       }
-      if (queueKnownEmpty) {
+      if (wipe) {
         try {
           await old.disconnectAndClear()
         } catch {

@@ -1,7 +1,7 @@
 // Auth flow — login / first-run setup / logout. These hit the public auth
 // endpoints directly (no bearer) and persist the returned session via setSession,
 // which signals the AuthGate to render the app.
-import { apiGet, apiSend, setSession, clearSession, tagIfGateway, trackedFetch } from './client'
+import { apiGet, apiSend, setSession, clearSession, isKioskMode, tagIfGateway, trackedFetch } from './client'
 
 export interface AuthStatus {
   initialized: boolean
@@ -94,6 +94,7 @@ export const authApi = {
     if (refreshToken) {
       await fetch('/api/auth/logout', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ refreshToken }) }).catch(() => {})
     }
-    clearSession()
+    // On a kiosk this is a profile switch inside one household: keep its replica.
+    clearSession({ wipeLocal: !isKioskMode() })
   },
 }

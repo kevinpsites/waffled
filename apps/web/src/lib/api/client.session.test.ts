@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { apiGet, setSession, getAccessToken, isKioskMode } from './client'
+import { apiGet, setSession, getAccessToken, isKioskMode, clearSession, clearKioskDevice, clearProfileSession, onSignedOut } from './client'
 
 // A session the server can no longer honour has to END, not sit there failing.
 //
@@ -84,5 +84,47 @@ describe('a session whose household is gone', () => {
     expect(getAccessToken()).toBeUndefined()
     expect(isKioskMode()).toBe(true)
     expect(localStorage.getItem('waffled.kiosk.deviceSecret')).toBe('device-secret')
+  })
+})
+
+// The PowerSync engine wipes the local replica on a DELIBERATE sign-out (see db.ts).
+// A session that was lost — an expired refresh, a household that is gone, a failed
+// device refresh — keeps it, so the same account signing back in still uploads its
+// queued writes. A kiosk profile switch stays inside one household and keeps it too.
+describe('onSignedOut', () => {
+  it('fires only when the caller asks to wipe local data', () => {
+    const cb = vi.fn()
+    const off = onSignedOut(cb)
+    clearSession()
+    expect(cb).not.toHaveBeenCalled()
+    clearSession({ wipeLocal: true })
+    expect(cb).toHaveBeenCalledTimes(1)
+    off()
+    clearSession({ wipeLocal: true })
+    expect(cb).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not fire on a kiosk profile switch or a lost device pairing', () => {
+    const cb = vi.fn()
+    const off = onSignedOut(cb)
+    clearProfileSession()
+    clearKioskDevice()
+    expect(cb).not.toHaveBeenCalled()
+    off()
+  })
+
+  it('does not fire when the session is lost to a failed refresh', async () => {
+    localStorage.clear()
+    setSession('access-tok', 'refresh-tok')
+    const cb = vi.fn()
+    const off = onSignedOut(cb)
+    globalThis.fetch = vi.fn(async (path: string) =>
+      path === '/api/auth/refresh' ? json(502, {}) : json(401, { error: 'Unauthorized' })
+    ) as unknown as typeof fetch
+
+    await expect(apiGet('/api/persons')).rejects.toThrow()
+    expect(getAccessToken()).toBeUndefined()
+    expect(cb).not.toHaveBeenCalled()
+    off()
   })
 })
