@@ -1,5 +1,6 @@
 package app.waffled.android.auth
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -23,6 +25,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
@@ -30,7 +33,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import app.waffled.android.R
 import app.waffled.core.auth.AuthStatus
 import app.waffled.core.design.DismissibleErrorBanner
 import app.waffled.core.design.WF
@@ -82,14 +85,20 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("🧇", style = WF.type.size(56.sp))
-            Text(
-                text = "Waffled",
-                style = WF.type.hero,
-                color = WF.colors.ink,
+            // The same transparent brand mark as the iOS sign-in, floating on the canvas.
+            Image(
+                painter = painterResource(R.drawable.waffled_mark),
+                contentDescription = "Waffled",
+                modifier = Modifier.size(76.dp),
             )
             Text(
-                text = "Sign in to your household.",
+                text = "Welcome to Waffled",
+                style = WF.type.hero,
+                color = WF.colors.ink,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = "Sign in to your family's household.",
                 style = WF.type.bodySmall,
                 color = WF.colors.ink3,
                 textAlign = TextAlign.Center,

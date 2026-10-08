@@ -2,4 +2,6 @@
 <resources>
     <!-- WF.canvas (light). Kept in sync with core/design/Theme.kt. -->
     <color name="launch_background">#FAF7F2</color>
+    <!-- The iOS AppIcon's cream ground, so both launchers show the same icon. -->
+    <color name="ic_launcher_background">#FBF6F2</color>
 </resources>
