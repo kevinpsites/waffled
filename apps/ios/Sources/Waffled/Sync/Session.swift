@@ -92,12 +92,23 @@ final class Session {
     /// The mirror and its unsent writes are wiped: the signed-out account no longer has
     /// authority here, and the next sign-in must neither see nor upload them.
     func signOut(sync: SyncManager) async {
+        await endSession(sync: sync, clearLocal: true)
+    }
+
+    /// A dead refresh token or a household that is gone is not a sign-out: the mirror and
+    /// its queued writes stay for the same account to upload when it signs back in (and a
+    /// shared kiosk keeps the household's mirror).
+    func endExpiredSession(sync: SyncManager) async {
+        await endSession(sync: sync, clearLocal: false)
+    }
+
+    private func endSession(sync: SyncManager, clearLocal: Bool) async {
         guard case .authed = phase else { return }
         let refresh = AuthTokens.refreshToken
         AuthTokens.clear()
         AppConfig.markSignedOut()   // else the dev-token fallback re-auths us
         phase = .loading
-        await sync.signOut(clearLocal: true)
+        await sync.signOut(clearLocal: clearLocal)
         phase = .login
 
         // Revocation/status are best-effort and must not keep the login screen gated.

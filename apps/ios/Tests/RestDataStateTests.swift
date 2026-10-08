@@ -902,6 +902,25 @@ private let fixtureRestScope = RestDataScopeKey(
         #expect(session.phase == .login)
     }
 
+    /// An expired session is not a sign-out: the same account signing back in must still
+    /// upload what it queued offline, and a shared kiosk must keep the household mirror.
+    @Test func expiredSessionKeepsTheMirrorAndItsQueue() async {
+        let stop = DeferredRestValue<Bool>()
+        let recorder = ConnectionTransitionRecorder()
+        let sync = SyncManager(testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: stop))
+        let session = Session()
+        session.enterClaimedSession(access: "test-access", refresh: "test-refresh")
+        defer { AppConfig.clearSignedOut() }
+
+        let end = Task { await session.endExpiredSession(sync: sync) }
+        await stop.waitUntilStarted()
+        await stop.succeed(true)
+        await end.value
+
+        #expect(recorder.events == ["stop:false"])
+        #expect(session.phase == .login)
+    }
+
     @Test func signOutPreemptsUpdateBeforeConfigurationOrRestart() async {
         let firstStop = DeferredRestValue<Bool>()
         let recorder = ConnectionTransitionRecorder()
