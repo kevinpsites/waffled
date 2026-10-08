@@ -15,6 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Waffled on Android.** A native Android app for phones and tablets, built with Kotlin
+  and Jetpack Compose to match the iPhone and iPad apps. On a phone you get Today, the
+  calendar (month, week, day and agenda), lists and the grocery board, chores and rewards,
+  photos, meal planning, recipes with Cook Mode, the pantry, goals with charts, rhythms,
+  Weekly Planning, the family hub with approvals, "Add anything" capture with dictation,
+  Waffled-Bites and Family Night, plus event reminders that fire on the device. On a tablet
+  it can also run as a shared kiosk, with the rail, the kiosk Today and calendar, the
+  profile picker with PIN, pairing, and the screensaver. It talks to the same self-hosted
+  server and keeps working offline; point it at your server's address, and it accepts a
+  plain `http://` address only on your home network. Health Connect auto-fill for goals
+  is not included yet.
+
 ### Changed
 
 ### Fixed

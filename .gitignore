@@ -50,3 +50,13 @@ postgres/data/
 
 # claude code agent workspace (local only)
 .claude/
+
+# Android
+apps/android/build/
+apps/android/*/build/
+apps/android/*/*/build/
+apps/android/.gradle/
+apps/android/local.properties
+apps/android/.kotlin/
+*.apk
+*.aab

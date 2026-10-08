@@ -195,6 +195,8 @@ t "release_repository_ready accepts a clean main synchronized with origin" '
   printf "%s\n" "WAFFLED_VERSION=0.8.0" > "$tmp/work/infra/compose/.env.example"
   printf "%s\n" "  MARKETING_VERSION: \"0.8.0\"" > "$tmp/work/apps/ios/project.yml"
   printf "%s\n" "    MARKETING_VERSION: \"0.8.0\"" > "$tmp/work/apps/mac/project.yml"
+  mkdir -p "$tmp/work/apps/android/app"
+  printf "%s\n" "        versionName = \"0.8.0\"" > "$tmp/work/apps/android/app/build.gradle.kts"
   git -C "$tmp/work" add .
   git -C "$tmp/work" commit -qm "test fixture"
   git -C "$tmp/work" push -qu origin main
@@ -227,6 +229,8 @@ t "release_repository_ready rejects a Mac version left behind" '
   printf "%s\n" "WAFFLED_VERSION=0.8.0" > "$tmp/work/infra/compose/.env.example"
   printf "%s\n" "  MARKETING_VERSION: \"0.8.0\"" > "$tmp/work/apps/ios/project.yml"
   printf "%s\n" "    MARKETING_VERSION: \"0.7.0\"" > "$tmp/work/apps/mac/project.yml"
+  mkdir -p "$tmp/work/apps/android/app"
+  printf "%s\n" "        versionName = \"0.8.0\"" > "$tmp/work/apps/android/app/build.gradle.kts"
   git -C "$tmp/work" add .
   git -C "$tmp/work" commit -qm "test fixture"
   git -C "$tmp/work" push -qu origin main
@@ -239,6 +243,40 @@ t "release_repository_ready rejects a Mac version left behind" '
   case "$out" in
     *"mac=0.7.0"*) echo "PASS" ;;
     *) echo "FAIL: the drift report does not name the Mac version: $out" ;;
+  esac
+'
+
+# The Android versionName is a version site too; a release that skips it ships an APK
+# whose version disagrees with the images and the .env.
+t "release_repository_ready rejects an Android versionName left behind" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  git init --bare -q "$tmp/origin.git"
+  git clone -q "$tmp/origin.git" "$tmp/work"
+  git -C "$tmp/work" config user.email test@example.com
+  git -C "$tmp/work" config user.name "Waffled Test"
+  git -C "$tmp/work" switch -q -c main
+  mkdir -p "$tmp/work/apps/api" "$tmp/work/apps/web" "$tmp/work/apps/ios" \
+           "$tmp/work/apps/mac" "$tmp/work/apps/android/app" "$tmp/work/infra/compose"
+  printf "%s\n" "## [Unreleased]" "" "### Added" "- Ready to ship" "" "## [0.8.0]" > "$tmp/work/CHANGELOG.md"
+  printf "%s\n" "{\"version\":\"0.8.0\"}" > "$tmp/work/apps/api/package.json"
+  printf "%s\n" "{\"version\":\"0.8.0\"}" > "$tmp/work/apps/web/package.json"
+  printf "%s\n" "WAFFLED_VERSION=0.8.0" > "$tmp/work/infra/compose/.env.example"
+  printf "%s\n" "  MARKETING_VERSION: \"0.8.0\"" > "$tmp/work/apps/ios/project.yml"
+  printf "%s\n" "    MARKETING_VERSION: \"0.8.0\"" > "$tmp/work/apps/mac/project.yml"
+  printf "%s\n" "        versionName = \"0.7.0\"" > "$tmp/work/apps/android/app/build.gradle.kts"
+  git -C "$tmp/work" add .
+  git -C "$tmp/work" commit -qm "test fixture"
+  git -C "$tmp/work" push -qu origin main
+  ROOT="$tmp/work"
+  set +e
+  out="$(release_repository_ready "0.9.0" 2>&1)"
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || { echo "FAIL: a stale Android versionName was accepted"; exit 0; }
+  case "$out" in
+    *"android=0.7.0"*) echo "PASS" ;;
+    *) echo "FAIL: the drift report does not name the Android version: $out" ;;
   esac
 '
 
@@ -275,6 +313,31 @@ t "bump_line fails loudly when the pattern matches nothing" '
     *"$tmp/project.yml"*MARKETING_VERSION*) echo "PASS" ;;
     *) echo "FAIL: the failure names neither the file nor the pattern: $out" ;;
   esac
+'
+
+# --- 8d. the Android version site -----------------------------------------------------
+# versionCode must rise with every release (Android refuses a downgrade) and is derived
+# from X.Y.Z, so it can never drift from versionName: major*10000 + minor*100 + patch.
+t "android_version_code derives a monotonic integer from X.Y.Z" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  [ "$(android_version_code 0.15.3)" = "1503" ] || { echo "FAIL: 0.15.3 -> $(android_version_code 0.15.3)"; exit 0; }
+  [ "$(android_version_code 1.0.0)" = "10000" ] || { echo "FAIL: 1.0.0 -> $(android_version_code 1.0.0)"; exit 0; }
+  [ "$(android_version_code 0.16.0)" -gt "$(android_version_code 0.15.99)" ] || { echo "FAIL: not monotonic"; exit 0; }
+  echo "PASS"
+'
+
+t "bump_android_version rewrites versionName and versionCode only" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  cp "$ROOT/apps/android/app/build.gradle.kts" "$tmp/build.gradle.kts"
+
+  bump_android_version "$tmp/build.gradle.kts" "9.8.7"
+
+  grep -q "versionName = \"9.8.7\"" "$tmp/build.gradle.kts" || { echo "FAIL: versionName not bumped"; exit 0; }
+  grep -q "versionCode = 90807" "$tmp/build.gradle.kts" || { echo "FAIL: versionCode not bumped"; exit 0; }
+  changed="$(diff "$ROOT/apps/android/app/build.gradle.kts" "$tmp/build.gradle.kts" | grep -c "^[<>]" || true)"
+  [ "$changed" -eq 4 ] || { echo "FAIL: $changed diff lines, expected exactly two lines changed"; exit 0; }
+  echo "PASS"
 '
 
 # --- 9. backup verification restores only into a disposable Postgres container ------
@@ -332,6 +395,8 @@ t "release_repository_ready rejects main when origin has advanced" '
   printf "%s\n" "WAFFLED_VERSION=0.8.0" > "$tmp/work/infra/compose/.env.example"
   printf "%s\n" "  MARKETING_VERSION: \"0.8.0\"" > "$tmp/work/apps/ios/project.yml"
   printf "%s\n" "    MARKETING_VERSION: \"0.8.0\"" > "$tmp/work/apps/mac/project.yml"
+  mkdir -p "$tmp/work/apps/android/app"
+  printf "%s\n" "        versionName = \"0.8.0\"" > "$tmp/work/apps/android/app/build.gradle.kts"
   git -C "$tmp/work" add .
   git -C "$tmp/work" commit -qm "test fixture"
   git -C "$tmp/work" push -qu origin main

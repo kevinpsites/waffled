@@ -1,0 +1,172 @@
+package app.waffled.core.network
+
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.defaultRequest
+import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.header
+import io.ktor.client.request.request
+import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
+import io.ktor.http.isSuccess
+import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.json.Json
+
+/**
+ * Supplies the bearer token and handles a 401 by refreshing once.
+ *
+ * Declared here (not in `core:auth`) so `core:network` stays dependency-free and
+ * `core:auth` can depend on it rather than the other way round.
+ */
+interface TokenProvider {
+    /** The current access token, or null when signed out. */
+    suspend fun accessToken(): String?
+
+    /**
+     * Called once after a 401. Returns the new access token, or null if the session is
+     * over. Implementations MUST be single-flight — see `TokenRefresher`.
+     *
+     * [failedToken] is the access token the 401'd request actually carried. Passing it
+     * is what makes a **staggered** 401 cheap: if the stored token has already moved on,
+     * the caller is simply behind and gets the current one instead of triggering a
+     * second refresh (and a second rotation of a single-use refresh token). Pass null
+     * when the caller has no token to name.
+     */
+    suspend fun refreshAccessToken(failedToken: String?): String?
+
+    /**
+     * The server says this session can never succeed (403 `NoHousehold`: the household the
+     * token names is gone). Clear the tokens and return to login. Defaulted so fakes and
+     * anonymous providers need not care.
+     */
+    fun sessionEnded() {}
+}
+
+/** Where the server lives. User-editable at runtime — Waffled is self-hosted. */
+interface ServerAddressProvider {
+    /** A normalised origin, e.g. `http://10.0.2.2:8080`. */
+    fun baseUrl(): String
+}
+
+/** Thrown for a non-2xx response, carrying text worth showing the user. */
+class WaffledApiException(
+    val status: Int,
+    val userMessage: String,
+    /** The api's JSON `error` code; null when something else (a proxy page) answered. */
+    val errorCode: String? = null,
+) : Exception(userMessage)
+
+val WaffledJson: Json = Json {
+    ignoreUnknownKeys = true
+    explicitNulls = false
+    isLenient = true
+    // The API sends `null` for unset optional numbers; a DTO's default is the client's
+    // reading of "unset", so take it instead of failing the whole payload.
+    coerceInputValues = true
+}
+
+/**
+ * Builds the shared Ktor client.
+ *
+ * OkHttp is the engine because Coil uses it too, so images and API calls share one
+ * connection pool.
+ */
+object WaffledHttp {
+
+    fun client(
+        tokens: TokenProvider,
+        server: ServerAddressProvider,
+    ): HttpClient = HttpClient(OkHttp) {
+        expectSuccess = false
+
+        install(ContentNegotiation) { json(WaffledJson) }
+
+        install(HttpTimeout) {
+            requestTimeoutMillis = 30_000
+            connectTimeoutMillis = 15_000
+            socketTimeoutMillis = 30_000
+        }
+
+        defaultRequest {
+            url(server.baseUrl().trimEnd('/') + "/")
+            header(HttpHeaders.Accept, "application/json")
+        }
+    }
+
+    /**
+     * Issue an authorised request, refreshing once on a 401 and replaying it.
+     *
+     * **Use this rather than calling [HttpClient] directly.** The bearer header is NOT
+     * attached by the shared client — it is attached per request, because the 401 retry
+     * needs to know which token the failed request carried (see [TokenProvider]). Getting
+     * that wrong fails in the least helpful way possible: REST keeps working while
+     * PowerSync loops on "Not logged in" and the UI just reports Offline.
+     */
+    suspend fun <T> authorized(
+        client: HttpClient,
+        tokens: TokenProvider,
+        method: HttpMethod,
+        path: String,
+        configure: HttpRequestBuilder.() -> Unit = {},
+        parse: suspend (HttpResponse) -> T,
+    ): T {
+        val sentToken = tokens.accessToken()
+
+        suspend fun attempt(token: String?): HttpResponse = client.request(path) {
+            this.method = method
+            if (token != null) header(HttpHeaders.Authorization, "Bearer $token")
+            configure()
+        }
+
+        return unwrap(
+            response = attempt(sentToken),
+            tokens = tokens,
+            sentToken = sentToken,
+            retry = { fresh -> attempt(fresh) },
+            parse = parse,
+        )
+    }
+
+    /**
+     * Turn a response into a body, refreshing once on a 401 and replaying via [retry].
+     *
+     * Errors relay the SERVER's message — it knows why the request failed and we don't.
+     */
+    suspend fun <T> unwrap(
+        response: HttpResponse,
+        tokens: TokenProvider,
+        /** The access token this request carried — needed to make a staggered 401 cheap. */
+        sentToken: String? = null,
+        retry: (suspend (String) -> HttpResponse)? = null,
+        parse: suspend (HttpResponse) -> T,
+    ): T {
+        var current = response
+
+        if (current.status.value == 401 && retry != null) {
+            val fresh = tokens.refreshAccessToken(failedToken = sentToken)
+            if (fresh != null) current = retry(fresh)
+        }
+
+        if (!current.status.isSuccess()) {
+            val body = runCatching { current.bodyAsText() }.getOrNull()
+            // Never on a bare 403: a permission denial is the app working, and signing
+            // someone out for lacking a capability is worse than a stuck session.
+            if (current.status.value == 403 && ApiErrorText.code(body) == NO_HOUSEHOLD) {
+                tokens.sessionEnded()
+            }
+            throw WaffledApiException(
+                status = current.status.value,
+                userMessage = ApiErrorText.from(body, current.status.value),
+                errorCode = ApiErrorText.code(body),
+            )
+        }
+        return parse(current)
+    }
+
+    /** The API's `NoHouseholdError` code (`apps/api/src/platform/auth.ts`). */
+    const val NO_HOUSEHOLD = "NoHousehold"
+}

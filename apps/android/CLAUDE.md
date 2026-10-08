@@ -1,0 +1,240 @@
+# Waffled Android — conventions & gotchas
+
+Folder-scoped notes, loaded when you work under `apps/android/`. Repo-wide rules
+(worktree-first, TDD, one PR per batch, docs in the same PR) still apply — see the root
+`CLAUDE.md`. The port plan is `docs/product/android-port-plan.md`.
+
+## Toolchain — all of this is verified, and several bits are NOT the obvious default
+
+```bash
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"   # JBR 21
+export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools                 # NOT ~/Library/Android/sdk
+export PATH="$ANDROID_HOME/platform-tools:$PATH"
+```
+
+- **There is no JDK on `PATH`.** `/usr/bin/java` is the macOS stub. Homebrew has
+  `openjdk` **26** (too new for AGP) and a keg-only `openjdk@17` that Gradle cannot
+  auto-detect — hence `jvmToolchain(21)` and the Studio JBR.
+- **`local.properties` is gitignored and the SDK path is non-standard**, so every fresh
+  worktree needs it before Gradle will run:
+  ```bash
+  echo "sdk.dir=/opt/homebrew/share/android-commandlinetools" > apps/android/local.properties
+  ```
+- **AGP 9 has built-in Kotlin.** Adding `org.jetbrains.kotlin.android` is a hard error.
+- **AGP 8.x cannot run on Gradle ≥ 9.6** — the wrapper is pinned on purpose. Use
+  `./gradlew`, never the Homebrew `gradle`.
+- **Compose needs `org.jetbrains.kotlin.plugin.compose` explicitly**, at the same version
+  as Kotlin. `buildFeatures { compose = true }` alone fails.
+- **compileSdk 37** (Compose BOM 2026.08.00 requires it). API 37.1 is installed.
+- **No Hilt, no KSP.** KSP's newest release lags Kotlin 2.4.10, and annotation processors
+  are the first thing to break on a bleeding-edge Kotlin. DI is the hand-rolled
+  `AppContainer`; ViewModels take dependencies as constructor arguments.
+
+## Build & test
+
+```bash
+cd apps/android
+./gradlew test                 # all JVM unit tests — the pre-PR gate
+./gradlew assembleDebug        # build the APK
+./gradlew :feature:x:test      # one module
+```
+
+**`npm test` does not cover Android.** The repo gate for any change here is
+`./gradlew test` **and** `./gradlew assembleDebug`, both green, before the PR.
+
+Emulator: AVD `vpac` (Pixel 8, API 36, arm64).
+```bash
+$ANDROID_HOME/emulator/emulator -avd vpac &
+adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n app.waffled.debug/app.waffled.android.MainActivity
+adb exec-out screencap -p > /tmp/shot.png     # verify by eye, both themes
+adb shell cmd uimode night yes                # check dark mode too
+```
+The emulator has **no `curl`** — probe the server through the app, not the shell.
+
+**Two shell gotchas that waste time:** the `rtk` shim can mangle `grep` output (printing
+`N matches in 0 files` with no content) — use `Read`, `sed -n` or `awk` instead, or
+`rtk proxy grep`. And the worktree guard rejects compound one-liners it can't verify
+(`cd X && grep …`), so split them into separate commands.
+
+## Reaching the server
+
+**`localhost` from an emulator is the emulator.** The host Caddy is **`10.0.2.2:8080`**
+(the debug `DEFAULT_SERVER_URL`); from a physical phone it's the Mac's LAN IP.
+
+Two more, both of which have bitten this repo before:
+- **`./waffled up` must run from `~/dev/nook`, never from a worktree** — compose bind
+  mounts bake the working directory into the running stack.
+- **PowerSync text timestamps.** PowerSync stores timestamps as text, and the sync layer
+  hands them over space-separated (`2026-10-07 09:30:00`), not ISO `T…Z`. Parse every one
+  with `WaffledDates` (`parseInstant`), never `Instant.parse`.
+- **PowerSync can fail while REST works.** The `powerSyncUrl` is issued by the *server*
+  (`POWERSYNC_PUBLIC_URL`); if it advertises a `localhost`, the device can't reach it and
+  sync sits silently at "Offline". It currently advertises the LAN IP, which is correct —
+  watch for DHCP drift.
+- **Emulator + a stack that advertises `127.0.0.1` for PowerSync:** run
+  `adb reverse tcp:<powersync-port> tcp:<powersync-port>` so the emulator's loopback
+  reaches the host's PowerSync port, then confirm sync leaves "Offline".
+
+## What Phase 0 gives you — use it, don't reinvent it
+
+Every one of these exists because a feature would otherwise hand-roll it N times.
+
+| Need | Use |
+|---|---|
+| Colours, radii, spacing, type | `WF.colors` / `WF.radius` / `WF.spacing` / `WF.type` |
+| Serif heading | `WF.type.hero/title/sectionTitle`, or `WF.type.serif(size)` |
+| Caption over a **photo** | `WF.colors.onMedia` on a `WF.colors.scrim` gradient — *not* white, *not* `onInk` |
+| Cards, empty/loading states, CTAs, chips, avatars, badges | the components in `core:design` |
+| Images | `AsyncImage` — the shared loader is installed by `app`; build requests with `WaffledImages.request(ctx, url, cacheKey)` |
+| Media path → URL | `MediaUrl.resolve(path, baseUrl)`; cache key via `MediaUrl.cacheKey(path)` |
+| REST load state | `RestDomain` (in `core:network`) — `apply(null)` = fetch FAILED (keep prior value, mark loaded); `apply(emptyList())` = genuinely empty. Every snapshot also carries a `RestState` (`Loading`/`Empty`/`Ready`/`Stale`/`Offline`/`Queued`/`Conflict`/`Error`/`SignInRequired`); only `Empty`/`Ready` justify "All caught up" copy, and `RestState.combined(...)` merges several domains for one screen |
+| Telling screens to re-fetch after a write | `RefreshBus.bump(domain)` |
+| Server error text | `ApiErrorText.from(body, status)` — relay the server, don't guess |
+| HTTP client / auth | `WaffledHttp.client(tokens, server)`, `WaffledAuth` (implements `TokenProvider`) |
+| Dates | `WaffledDates` (in **`core:model`**) — `parseInstant`, `localDay(zone)`, cached `formatter`, `noonIso` |
+| API tests | `ApiTestHarness` in `core:testing` — MockWebServer + token/server fakes; `enqueueNoContent()` for 204s |
+| Segmented control | `SegmentedRow` |
+| Household week start | `HouseholdWeekStart.parse(SyncManager.householdWeekStart.value)` (in `core:model`; the value is null until the first sync and `parse(null)` gives the default) — `weekStart(date)`, `rotated(labels)`, `monthLeadCells(first)`. Never cut a household week on the device locale |
+
+**`refreshAccessToken(failedToken)` takes the token the failed request actually sent.**
+Pass it. That is what stops a staggered 401 from burning a second rotation of a
+single-use refresh token.
+
+## The frozen surface — do not edit these in a feature branch
+
+`core/design/**` and `gradle/libs.versions.toml` are **frozen after Phase 0**. Many
+agents work in parallel; a wave that all edit the catalog or the palette is an
+unresolvable merge.
+
+**If you need a token, component or library that doesn't exist: stop and report it.**
+Do not add a local one.
+
+A feature agent owns exactly `feature/<name>/**` plus its own `…Api.kt`. Nothing else.
+
+**Features do not depend on other features** — with one exception: the aggregator
+modules. `feature:planning` (Weekly Planning reads calendar, goals, meals, lists, chores,
+rewards, rhythms and Family Night) and `feature:kiosk`, `feature:kiosktoday` and
+`feature:kioskcalendar` (the tablet shell composes the phone features) may depend on
+features.
+
+## Design rules
+
+The **web CSS (`apps/web/src/styles/waffled.css`) is the source of truth** for colour;
+iOS mirrors it and Android is the third mirror. Never invent a platform-only colour and
+never hardcode a hex — always a `WF.*` token. `ThemeTokensTest` locks the table against
+the iOS `ThemeTests.swift`.
+
+Two literal-colour exceptions are correct: real `persons.color_hex` data (via
+`colorFromHex`), and identity palettes that must stay distinct regardless of theme —
+allergen badges, per-person coding, reward confetti.
+
+**The `onInk` rule** — text on a solid `WF.colors.ink` fill uses `WF.colors.onInk`, never
+literal white. `ink` flips to warm off-white in dark, so white goes invisible. This has
+bitten twice on iOS. White is only correct on a *saturated coloured* fill.
+
+Dark mode: warm, never cold. Brand/AI/person hues are **fixed** across themes; tints
+become low-opacity washes; **elevation inverts** (in dark, `card` is lighter than
+`canvas`).
+
+**Reuse hierarchy, in order:** a native Material3/Foundation control → shared components
++ tokens → hand-rolled, *with a comment saying why*. The tab bar is the current
+documented exception (the raised FAB must break the bar's plane).
+
+Two menu families exist by design (`WaffledMenuPill`, `WaffledSettingsMenuLabel`). Don't
+add a third.
+
+Screens scroll **under** the tab bar, so every screen owes
+`WF.spacing.tabBarClearance` as bottom padding.
+
+## Two performance traps that will bite exactly as they did on iOS
+
+1. **Never use a naive async image loader in a lazy list/grid.** It re-fetches and
+   re-decodes on every cell recreation — every scroll, every keystroke. Use Coil with a
+   real memory cache and make sure the synchronous-cache-hit path exists.
+2. **Keep date math out of the render/sort/filter hot path.** Precompute per-row derived
+   values in the model once per data load, then do an O(1) lookup in the view.
+
+## TDD — the iOS tests are the spec
+
+`apps/ios/Tests/` is 59 files / 638 cases of **pure logic** (Swift Testing), independent
+of SwiftUI. For each feature: **translate the Swift test to Kotlin first, watch it fail,
+then port the logic.** That gives behavioural parity rather than approximate parity.
+
+- API layer → JVM tests + **MockWebServer** (`ApiTestHarness`).
+- Pure logic → plain JVM `kotlin.test`.
+- Screens → **there is no JVM smoke test for a Composable.** Robolectric's only current
+  release is a beta, so it is deliberately not in the catalog, and `compose-ui-test-junit4`
+  needs a device. `assembleDebug` proves a screen *compiles*, not that it composes.
+
+  **Who verifies on a device depends on who you are:**
+
+  - **A feature agent cannot.** Reaching a screen means editing `app/**` — the dependency,
+    the nav host, `FeatureHost` — which a feature agent does not own. Your definition of
+    done is your module's `test` + `assembleDebug`, plus reporting anything you could not
+    verify. Say so explicitly; don't imply a screen has run when it hasn't.
+  - **The integrator must.** Whoever merges a feature wires it into
+    `app/…/shell/FeatureHost.kt` and composes it on a real device before it counts as
+    done:
+
+    ```bash
+    ./gradlew :app:assembleDebug
+    adb install -r app/build/outputs/apk/debug/app-debug.apk
+    adb shell am start -n app.waffled.debug/app.waffled.android.MainActivity
+    adb exec-out screencap -p > /tmp/shot.png        # look at it
+    adb logcat -d -s AndroidRuntime:E                # must be empty
+    adb shell cmd uimode night yes                   # and check dark mode
+    ```
+
+  A screen that has never been composed on a device is not finished — but that is the
+  integrator's gate, not the feature agent's.
+
+### `RestDomain`: which method to call
+
+- List-shaped domain → `apply(value)` / `apply(null)` reads well.
+- Domain holding ONE optional thing (tonight's dinner) → use `succeeded(value)` and
+  `failed()`. `apply(null)` cannot say "succeeded, and there is nothing", so a deleted
+  item would haunt the card forever as every later refresh looked like a failure.
+
+### Two traps that will bite every feature
+
+**`WaffledJson` also sets `coerceInputValues = true`**, so a `null` (or unknown enum value)
+for a non-nullable field with a default decodes to that default instead of throwing —
+the server is not always as strict as its schema.
+
+**`WaffledJson` sets `explicitNulls = false`.** That means a null field is **omitted** from
+the request body — so modelling a PATCH as a data class silently turns "clear this value"
+into "leave it alone". When a PATCH must clear a field, build the body as a `JsonObject`
+with an explicit `JsonNull` and assert the null is on the wire. This affects Lists, Goals
+and Meals identically.
+
+**Kotlin nests block comments.** Any `/*` inside a KDoc opens a nested comment and
+yields a baffling "Unclosed comment" at *end of file*, far from the real line. The
+offenders are ordinary-looking paths and globs:
+
+- `` `core/**` ``, `` `app/**` ``, `` `feature/<name>/**` ``  ← the `/*` in `/**`
+- `` `/api/auth/*` ``
+
+Reword rather than escape — "the `app` module", "everything under `core`". This has cost
+three agents a build each.
+
+## KEEP IN SYNC contracts Android now joins
+
+| Here | Must match |
+|---|---|
+| `core/sync/WaffledSyncSchema.kt` | web `powersync/schema.ts`, `sync-config.yaml`, iOS `SyncSchema.swift` — locked by `SyncSchemaParityTest` |
+| `core/design/Theme.kt` | `waffled.css`, iOS `Theme.swift` — locked by `ThemeTokensTest` |
+| `core/model/Modules.kt` | `apps/api/src/platform/modules.ts`, web `can()` |
+| `feature/capture` (`CaptureHeuristic.kt` + `CaptureRepeat.kt`) | web `capture/parse.ts`, iOS `CaptureHeuristic.swift` — a third copy, accepted with a debt note in the port plan §7.1; change all three together |
+
+The server sends **every** column (`SELECT *`); the client schema decides what is
+materialised, so an omission is silent data loss, not an error.
+
+> Known drift, found by the parity test: **iOS is missing `goal_id`, `goal_step_id` and
+> `origin_ref_id`** on `events`. Android matches web, which is the declared source of
+> truth.
+
+## Release
+
+`./waffled release X.Y.Z` must bump **`apps/android/app/build.gradle.kts` `versionName`**
+alongside api/web/compose/iOS. Miss it and the repo, images and `.env` silently disagree.

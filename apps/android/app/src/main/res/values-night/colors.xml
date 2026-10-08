@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- WF.canvas (dark). Warm charcoal, never pure black — see DARK_MODE rules. -->
+    <color name="launch_background">#14110C</color>
+</resources>

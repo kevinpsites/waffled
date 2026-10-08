@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext (plain http://) policy — see docs/product/android-port-plan.md §7.5.
+
+  Waffled is self-hosted: people run it at http://192.168.1.50:8080 on their home
+  network with no TLS certificate. Block cleartext outright and those users cannot
+  connect at all.
+
+  ⚠️ Android's network-security-config CANNOT express "private ranges". <domain>
+  matches a literal hostname; there is no CIDR/wildcard support, and our users type
+  an arbitrary IP at runtime, so there is nothing to enumerate ahead of time.
+
+  Therefore cleartext is permitted at the platform layer, and the actual policy —
+  plain HTTP only for private/loopback/.local hosts, HTTPS required for public
+  ones — is enforced in app code where the address is known:
+      core/network/.../ServerUrl.kt  (see `ServerUrl.cleartextAllowed`)
+  which is unit-tested. Do not "tighten" this file and assume you are done; the
+  enforcement lives in Kotlin on purpose.
+
+  iOS gets the same effect from NSAllowsLocalNetworking.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

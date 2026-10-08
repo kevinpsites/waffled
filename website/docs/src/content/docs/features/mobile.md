@@ -31,7 +31,7 @@ Waffled is a **free download on the App Store** — one universal app for iPhone
 | iPhone | ✅ |
 | iPad | ✅ |
 
-On **iPhone** the app is a personal planner — bottom tabs, capture-first. On **iPad** it's a family hub and kiosk — side rail, wide layouts, and the screensaver. Web/Kiosk users are on the web app instead; this page is the mobile surface, so see the rest of the docs (starting with [Kiosk & display](/features/kiosk/)) for the browser experience.
+On **iPhone** the app is a personal planner — bottom tabs, capture-first. On **iPad** it's a family hub and kiosk — side rail, wide layouts, and the screensaver. Android has its own native app — see [Install the Android app](/guides/android-app/). Web/Kiosk users are on the web app instead; this page is the mobile surface, so see the rest of the docs (starting with [Kiosk & display](/features/kiosk/)) for the browser experience.
 
 ## Settings
 

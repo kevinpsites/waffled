@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Proof photos are staged here between capture and upload, then discarded. -->
+    <cache-path name="chore_proofs" path="chore_proofs/" />
+</paths>

@@ -12,7 +12,7 @@
 # (ephemeral Postgres + wiremock, and api.e2e.test.ts builds the Dockerfile),
 # which needs Docker — available out of the box on ubuntu-latest.
 #
-# Scope: this workflow covers apps/api + apps/web (each fully self-contained —
+# Scope: this workflow covers apps/api + apps/web + apps/android (each fully self-contained —
 # no root package.json / tsconfig / lockfile, see the note above) plus the
 # ./waffled operator CLI (plain-bash tests in tests/waffled.test.sh), so we run
 # it ONLY when those paths or this file change. Docs-only, iOS-only (apps/ios is
@@ -28,6 +28,7 @@ on:
     paths:
       - 'apps/api/**'
       - 'apps/web/**'
+      - 'apps/android/**'
       - 'waffled'
       - 'tests/**'
       - '.github/workflows/ci.yml'
@@ -36,6 +37,7 @@ on:
     paths:
       - 'apps/api/**'
       - 'apps/web/**'
+      - 'apps/android/**'
       - 'waffled'
       - 'tests/**'
       - '.github/workflows/ci.yml'
@@ -248,3 +250,41 @@ jobs:
       - name: Run api e2e test
         working-directory: apps/api
         run: npm run test:e2e         # vitest run --config vitest.e2e.config.ts
+
+  android:
+    name: Android (Gradle test + assembleDebug)
+    runs-on: ubuntu-latest
+    # Cold runs download the Gradle distribution, the compileSdk platform and every
+    # dependency; the Gradle cache below makes later runs much shorter.
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Installs the command-line tools and accepts licences so AGP can fetch the
+      # compileSdk platform it needs on demand.
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        # The default list includes the long-removed `tools` package, which
+        # cmdline-tools 16+ refuses; install only what compileSdk 37 needs (API 37+
+        # names its platform with a minor version: android-37.0).
+        with:
+          packages: platform-tools platforms;android-37.0 build-tools;37.0.0
+
+      - name: Set up Gradle (with cache)
+        uses: gradle/actions/setup-gradle@v4
+
+      # local.properties is gitignored; AGP needs sdk.dir when it can't infer one.
+      - name: Point Gradle at the SDK
+        working-directory: apps/android
+        run: echo "sdk.dir=${ANDROID_HOME:-$ANDROID_SDK_ROOT}" > local.properties
+
+      - name: Unit tests + debug build
+        working-directory: apps/android
+        run: ./gradlew test assembleDebug --console=plain
