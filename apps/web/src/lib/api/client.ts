@@ -95,7 +95,6 @@ export function clearKioskDevice(): void {
   } catch {
     /* ignore */
   }
-  notifySignedOut()
   window.dispatchEvent(new Event('waffled:auth-changed'))
 }
 // End just the claimed-profile session (switch profile / idle), keeping the device
@@ -147,7 +146,10 @@ export function setSession(accessToken: string, refreshToken: string): void {
   }
   window.dispatchEvent(new Event('waffled:auth-changed'))
 }
-export function clearSession(): void {
+// `wipeLocal` is for a DELIBERATE sign-out only. A lost session (expired refresh,
+// household gone) keeps the replica so the same account signing back in still
+// uploads its queued writes.
+export function clearSession({ wipeLocal = false }: { wipeLocal?: boolean } = {}): void {
   try {
     localStorage.removeItem(ACCESS_KEY)
     localStorage.removeItem(REFRESH_KEY)
@@ -155,13 +157,12 @@ export function clearSession(): void {
   } catch {
     /* ignore */
   }
-  notifySignedOut()
+  if (wipeLocal) notifySignedOut()
   window.dispatchEvent(new Event('waffled:auth-changed'))
 }
 
-// The account has left this device. PowerSync (db.ts) wipes the local replica and
-// any unsent writes here — nobody holds authority to upload them any more. A kiosk
-// profile switch (clearProfileSession) stays inside one household and does not fire.
+// The account signed out of this device. PowerSync (db.ts) wipes the local replica
+// and any unsent writes here — nobody holds authority to upload them any more.
 const signedOutSubs = new Set<() => void>()
 export function onSignedOut(cb: () => void): () => void {
   signedOutSubs.add(cb)

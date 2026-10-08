@@ -357,7 +357,7 @@ describe('restartPowerSyncHard({ clear: true })', () => {
 // Signing out ends the user's authority over the device: their replica AND their
 // unsent writes are wiped, so neither the next account nor the next upload carries them.
 describe('signing out', () => {
-  const signOut = async () => (await import('../api/client')).clearSession()
+  const signOut = async () => (await import('../api/client')).clearSession({ wipeLocal: true })
 
   it('wipes the replica even while local writes are still queued', async () => {
     const db = await freshDbModule()
