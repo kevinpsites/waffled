@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **One rejected edit no longer stops the iPhone, iPad and web apps from saving.** Edits made
+  on a device wait in a queue and upload in order. If the server permanently refused one (an
+  event that was deleted elsewhere, say), the app retried it forever and every later edit
+  waited behind it without ever reaching the server. A refused edit is now dropped so the
+  rest go through; a dropped connection or an expired sign-in still keeps everything queued.
+
 ## [0.15.3] - 2026-10-07
 
 ### Added
