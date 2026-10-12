@@ -17,6 +17,11 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Done ✅
 
+- **Google Photos albums on the screensaver** — connect Google Photos (Picker API, since
+  Google no longer lets apps read albums), import a pick into a Waffled album, and set the
+  screensaver to mix several albums at random. Web, kiosk, iPhone and iPad. Design notes:
+  [google-photos-plan.md](google-photos-plan.md).
+
 - **iPhone calendar: Month → Week → Day** — the phone Calendar tab rebuilt from the design
   handoff: a full-height month grid with ISO week numbers and up to four titles a day, a
   horizontal week card rail (tap an event to edit it), and a pushed Day timeline with overlap
@@ -685,7 +690,7 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   `scope catalog covers the route table` guard in `api-keys.integration.test.ts` and both
   deny buckets in `api-keys.ts`, which exist only because the declaration is remote from
   the route. ~135 routes, mechanical but wide.
-- **Shared album import** for Photos (Google Photos / iCloud).
+- **iCloud shared album import** for Photos. (Google Photos import is done: picker → album.)
 - **Server-side fuzzy person resolution** for capture (nicknames/aliases).
 - **Milestone reward payouts** — deferred by design (needs idempotency + attribution rules).
 - **Goal weekly check-in (Sunday recap)** — the goal-editor mock shows a "🔔 Weekly check-in"

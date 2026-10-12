@@ -210,4 +210,71 @@ describe('Photos home (family wall)', () => {
   // API + typecheck stay green). The selection/bulk-action logic is simple; revisit as
   // lighter, shallow-rendered tests if it grows. Screensaver has its own coverage
   // (Screensaver.test.tsx).
+
+  it('imports a Google Photos pick into a new album and shows progress until done', async () => {
+    mockApi({ photos: [beach] })
+    const base = globalThis.fetch as unknown as (u: string, i?: { method?: string; body?: string }) => Promise<unknown>
+    const importBodies: unknown[] = []
+    let polls = 0
+    const imp = { id: 'imp1', album: 'Beach 2024', sessionId: 's1', pickerUri: 'https://photos.google.com/picker/s1', expireTime: null, importedCount: 0, skippedCount: 0, error: null, createdAt: '2026-10-11T00:00:00Z' }
+    globalThis.fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
+      const u = String(url)
+      const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body })
+      if (u.includes('/api/photos/google/status')) return ok({ configured: true, account: { id: 'a1', email: 'k@example.com', connectedAt: '' }, imports: [] })
+      if (u.endsWith('/api/photos/google/imports') && init?.method === 'POST') {
+        importBodies.push(JSON.parse(init.body!))
+        return { ok: true, status: 201, json: async () => ({ import: { ...imp, status: 'picking' } }) }
+      }
+      if (u.includes('/api/photos/google/imports/imp1')) {
+        polls++
+        return ok({ import: polls < 2 ? { ...imp, status: 'picking' } : { ...imp, status: 'done', importedCount: 2 } })
+      }
+      return base(u, init)
+    }) as unknown as typeof fetch
+    const popup = { location: { href: '' }, close: vi.fn() }
+    const open = vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window)
+
+    renderHome()
+    fireEvent.click(await screen.findByRole('button', { name: /Google Photos/ }))
+    fireEvent.change(await screen.findByRole('combobox'), { target: { value: '__new__' } })
+    fireEvent.change(screen.getByPlaceholderText('New album name'), { target: { value: 'Beach 2024' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Open Google Photos' }))
+
+    await waitFor(() => expect(importBodies).toEqual([{ album: 'Beach 2024' }]))
+    expect(open).toHaveBeenCalled()
+    await waitFor(() => expect(popup.location.href).toBe('https://photos.google.com/picker/s1/autoclose'))
+    expect(await screen.findByText(/Pick photos in the Google Photos tab/)).toBeInTheDocument()
+    expect(await screen.findByText(/Added 2 photos to “Beach 2024”/, undefined, { timeout: 5000 })).toBeInTheDocument()
+    open.mockRestore()
+  }, 10_000)
+
+  it('hides the Google Photos import when no account is connected', async () => {
+    mockApi({ photos: [beach] })
+    renderHome()
+    await screen.findByText('Beach day')
+    expect(screen.queryByRole('button', { name: /Google Photos/ })).not.toBeInTheDocument()
+  })
+
+  it('shows the server reason and an enable link when the Picker API is off', async () => {
+    mockApi({ photos: [beach] })
+    const base = globalThis.fetch as unknown as (u: string, i?: { method?: string; body?: string }) => Promise<unknown>
+    globalThis.fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
+      const u = String(url)
+      if (u.includes('/api/photos/google/status')) return { ok: true, status: 200, json: async () => ({ configured: true, account: { id: 'a1', email: null, connectedAt: '' }, imports: [] }) }
+      if (u.endsWith('/api/photos/google/imports') && init?.method === 'POST') {
+        return { ok: false, status: 502, json: async () => ({ error: 'PickerApiDisabled', message: 'The Google Photos Picker API is turned off in your Google Cloud project.', enableUrl: 'https://console.developers.google.com/apis/x' }) }
+      }
+      return base(u, init)
+    }) as unknown as typeof fetch
+    const open = vi.spyOn(window, 'open').mockReturnValue({ location: { href: '' }, close: vi.fn() } as unknown as Window)
+
+    renderHome()
+    fireEvent.click(await screen.findByRole('button', { name: /Google Photos/ }))
+    fireEvent.change(await screen.findByRole('combobox'), { target: { value: 'Lake Day' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Open Google Photos' }))
+
+    expect(await screen.findByText(/Picker API is turned off/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Enable it in Google Cloud/ })).toHaveAttribute('href', 'https://console.developers.google.com/apis/x')
+    open.mockRestore()
+  })
 })

@@ -1,6 +1,6 @@
 // Google OAuth + Calendar API — thin fetch wrappers (no googleapis dependency).
 // Endpoint URLs come from config so tests can point them at an in-process stub.
-// Used by the calendar connect flow (5.2) and, later, inbound/outbound sync (5.3/5.4).
+// Used by the calendar connect + sync flows and the Google Photos picker import.
 import { config } from '../platform/config'
 
 export interface GoogleTokens {
@@ -138,15 +138,30 @@ export function googleConfigured(): boolean {
   return !!(g.clientId && g.clientSecret && g.redirectUri)
 }
 
+// Which grant a consent round-trip is for. Calendar is the default; Google Photos
+// passes its own scopes + redirect (the code exchange must repeat the same redirect).
+export interface GoogleGrant {
+  scopes: string
+  redirectUri: string | null
+}
+
+function calendarGrant(): GoogleGrant {
+  return { scopes: config.google.scopes, redirectUri: config.google.redirectUri }
+}
+
+export function photosGrant(): GoogleGrant {
+  return { scopes: config.google.photosScopes, redirectUri: config.google.photosRedirectUri }
+}
+
 // The consent URL the browser is sent to. access_type=offline + prompt=consent
 // guarantee a refresh_token every time (Google otherwise omits it on re-grant).
-export function buildAuthUrl(state: string): string {
+export function buildAuthUrl(state: string, grant: GoogleGrant = calendarGrant()): string {
   const g = config.google
   const params = new URLSearchParams({
     client_id: g.clientId ?? '',
-    redirect_uri: g.redirectUri ?? '',
+    redirect_uri: grant.redirectUri ?? '',
     response_type: 'code',
-    scope: g.scopes,
+    scope: grant.scopes,
     access_type: 'offline',
     include_granted_scopes: 'true',
     prompt: 'consent',
@@ -165,13 +180,13 @@ async function postForm(url: string, form: Record<string, string>): Promise<unkn
   return res.json()
 }
 
-export async function exchangeCode(code: string): Promise<GoogleTokens> {
+export async function exchangeCode(code: string, grant: GoogleGrant = calendarGrant()): Promise<GoogleTokens> {
   const g = config.google
   const data = (await postForm(g.tokenUrl, {
     code,
     client_id: g.clientId ?? '',
     client_secret: g.clientSecret ?? '',
-    redirect_uri: g.redirectUri ?? '',
+    redirect_uri: grant.redirectUri ?? '',
     grant_type: 'authorization_code',
   })) as { access_token: string; refresh_token?: string; expires_in: number; scope: string; id_token?: string }
   return {
@@ -288,4 +303,127 @@ export async function deleteEvent(accessToken: string, calendarId: string, event
   if (!res.ok && res.status !== 404 && res.status !== 410) {
     throw new Error(`DELETE ${url} -> ${res.status} ${await res.text().catch(() => '')}`)
   }
+}
+
+// ── Photos Picker API ──────────────────────────────────────────────────────────
+// The user picks photos in Google's own UI (pickerUri); we poll the session until
+// mediaItemsSet, then page through what they chose. baseUrls expire after ~60 min,
+// so callers download the bytes straight away.
+
+export function googlePhotosConfigured(): boolean {
+  const g = config.google
+  return !!(g.clientId && g.clientSecret && g.photosRedirectUri)
+}
+
+export interface PickerSession {
+  id: string
+  pickerUri: string
+  mediaItemsSet: boolean
+  expireTime: string | null
+}
+
+export interface PickedMediaItem {
+  id: string
+  createTime: string | null
+  type: string // PHOTO | VIDEO | TYPE_UNSPECIFIED
+  baseUrl: string
+  mimeType: string | null
+}
+
+// Picker returns 404 once a session has expired or been deleted.
+export class PickerSessionGoneError extends Error {
+  constructor() {
+    super('Google Photos picker session is gone')
+    this.name = 'PickerSessionGoneError'
+  }
+}
+
+function toSession(d: Record<string, unknown>): PickerSession {
+  return {
+    id: String(d.id),
+    pickerUri: String(d.pickerUri ?? ''),
+    mediaItemsSet: !!d.mediaItemsSet,
+    expireTime: (d.expireTime as string | undefined) ?? null,
+  }
+}
+
+// The Picker API is off in the admin's Cloud project — the most common setup miss.
+export class PickerApiDisabledError extends Error {
+  constructor(readonly enableUrl: string | null) {
+    super('The Google Photos Picker API is not enabled for this Google Cloud project')
+    this.name = 'PickerApiDisabledError'
+  }
+}
+
+export async function createPickerSession(accessToken: string): Promise<PickerSession> {
+  const res = await fetch(`${config.google.pickerApiBase}/sessions`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
+    body: '{}',
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    if (res.status === 403 && text.includes('SERVICE_DISABLED')) {
+      const url = /"activationUrl":\s*"([^"]+)"/.exec(text)?.[1] ?? null
+      throw new PickerApiDisabledError(url)
+    }
+    throw new Error(`sessions.create -> ${res.status} ${text}`)
+  }
+  return toSession((await res.json()) as Record<string, unknown>)
+}
+
+export async function getPickerSession(accessToken: string, sessionId: string): Promise<PickerSession> {
+  const res = await fetch(`${config.google.pickerApiBase}/sessions/${encodeURIComponent(sessionId)}`, {
+    headers: { authorization: `Bearer ${accessToken}` },
+  })
+  if (res.status === 404) throw new PickerSessionGoneError()
+  if (!res.ok) throw new Error(`sessions.get -> ${res.status} ${await res.text().catch(() => '')}`)
+  return toSession((await res.json()) as Record<string, unknown>)
+}
+
+export async function deletePickerSession(accessToken: string, sessionId: string): Promise<void> {
+  const res = await fetch(`${config.google.pickerApiBase}/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE',
+    headers: { authorization: `Bearer ${accessToken}` },
+  })
+  if (!res.ok && res.status !== 404) throw new Error(`sessions.delete -> ${res.status}`)
+}
+
+export async function listPickedMediaItems(
+  accessToken: string,
+  sessionId: string,
+  pageToken: string | null
+): Promise<{ items: PickedMediaItem[]; nextPageToken: string | null }> {
+  const qs = new URLSearchParams({ sessionId, pageSize: '100' })
+  if (pageToken) qs.set('pageToken', pageToken)
+  const res = await fetch(`${config.google.pickerApiBase}/mediaItems?${qs.toString()}`, {
+    headers: { authorization: `Bearer ${accessToken}` },
+  })
+  if (!res.ok) throw new Error(`mediaItems.list -> ${res.status} ${await res.text().catch(() => '')}`)
+  const data = (await res.json()) as { mediaItems?: Array<Record<string, unknown>>; nextPageToken?: string }
+  return {
+    items: (data.mediaItems ?? []).map((m) => {
+      const file = (m.mediaFile ?? {}) as Record<string, unknown>
+      return {
+        id: String(m.id),
+        createTime: (m.createTime as string | undefined) ?? null,
+        type: String(m.type ?? 'TYPE_UNSPECIFIED'),
+        baseUrl: String(file.baseUrl ?? ''),
+        mimeType: (file.mimeType as string | undefined) ?? null,
+      }
+    }),
+    nextPageToken: data.nextPageToken ?? null,
+  }
+}
+
+// The size suffix makes Google serve a JPEG/PNG/WebP render (never HEIC), capped
+// at a size that still looks sharp on a 4K wall display.
+export async function downloadPickedPhoto(
+  accessToken: string,
+  baseUrl: string
+): Promise<{ bytes: Buffer; contentType: string }> {
+  const res = await fetch(`${baseUrl}=w2560-h2560`, { headers: { authorization: `Bearer ${accessToken}` } })
+  if (!res.ok) throw new Error(`photo download -> ${res.status}`)
+  const contentType = (res.headers.get('content-type') ?? 'image/jpeg').split(';')[0].trim()
+  return { bytes: Buffer.from(await res.arrayBuffer()), contentType }
 }

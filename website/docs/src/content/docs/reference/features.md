@@ -286,9 +286,11 @@ quarter. Deliberately **not** goals: goals are about follow-through, a rhythm is
 | **Multi-select** → bulk move-to-album / delete | ✅ | ✅ | ✅ | ✅ Done (Select mode → tap tiles → Move / Delete bar) |
 | Per-tile delete with confirmation (touch-friendly) | ✅ | ✅ | ✅ | ✅ Done |
 | **Set an album as the screensaver** source | ✅ | ✅ | ✅ | ✅ Done |
+| Screensaver mixes **several albums** at random | ✅ | ✅ | ✅ | ✅ Done |
 | Photo-only **"Play"** slideshow (no clock/weather chrome) | ✅ | ✅ | ✅ | ✅ Done |
 | Recipe **hero images** (same upload pipeline) | ✅ | ✅ | ✅ | ✅ Done |
-| **Shared album** import (Google Photos / iCloud) | 🚧 | 🚧 | 🚧 | 🚧 Planned |
+| **Google Photos** import (picker → album, copies kept) | ✅ | ✅ | ✅ | ✅ Done |
+| **iCloud shared album** import | 🚧 | 🚧 | 🚧 | 🚧 Planned |
 
 ## AI capture ("Add anything")
 

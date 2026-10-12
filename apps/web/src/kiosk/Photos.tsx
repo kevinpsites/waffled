@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api, kioskApi, usePhotos, useWeather, useHousehold, type DisplayConfig, type Photo } from '../lib/api'
+import { api, kioskApi, usePhotos, useWeather, useHousehold, useGooglePhotosStatus, type DisplayConfig, type Photo } from '../lib/api'
 import { Icon } from './icons'
 import { useTopbarRight } from './topbar-slot'
 import { PhotoAdd } from './components/PhotoAdd'
@@ -7,6 +7,7 @@ import { PhotoDetail } from './components/PhotoDetail'
 import { Screensaver } from './components/Screensaver'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { MovePhotosModal } from './components/MovePhotosModal'
+import { GooglePhotosImportModal } from './components/GooglePhotosImportModal'
 import '../styles/photos.css'
 
 // Photos home — the family wall (matches photos.png): a "NEW MEMORY" banner over
@@ -78,6 +79,10 @@ export function Photos() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirmIds, setConfirmIds] = useState<string[] | null>(null)
   const [moveOpen, setMoveOpen] = useState(false)
+  const [googleOpen, setGoogleOpen] = useState(false)
+  // Admin-only endpoint: for everyone else status stays null and the import is hidden.
+  const { status: googleStatus } = useGooglePhotosStatus()
+  const googleConnected = !!googleStatus?.account
 
   // Pull the household display config once so manual playback uses the same
   // transition speed as the idle screensaver (tolerate failure → default 10s).
@@ -154,13 +159,18 @@ export function Photos() {
           <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => setSaver({ album: albumFilter })} disabled={photos.length === 0}>
             🖼️ Play{albumFilter ? ` “${albumFilter}”` : ''}
           </button>
+          {googleConnected && (
+            <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => setGoogleOpen(true)}>
+              🌈 Google Photos
+            </button>
+          )}
           <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0, cursor: 'pointer' }} onClick={() => setAdding(true)}>
             <Icon name="plus" />
             <span>Add photos</span>
           </button>
         </div>
       ),
-    [newest, selectMode, selected, photos.length, albumFilter]
+    [newest, selectMode, selected, photos.length, albumFilter, googleConnected]
   )
 
   async function doDelete(ids: string[]) {
@@ -178,15 +188,22 @@ export function Photos() {
   }
 
   // Whether the chosen album is the household's current idle-screensaver source.
+  const mixingAlbums = displayCfg?.photoSource === 'albums'
   const albumIsScreensaver =
-    !!albumFilter && displayCfg?.photoSource === 'album' && displayCfg?.photoAlbum === albumFilter
+    !!albumFilter &&
+    (mixingAlbums
+      ? !!displayCfg?.photoAlbums?.includes(albumFilter)
+      : displayCfg?.photoSource === 'album' && displayCfg?.photoAlbum === albumFilter)
 
   // Set (or clear) the idle screensaver source to a whole album. Toggling off
-  // reverts to "all photos".
+  // reverts to "all photos". While mixing several albums, it adds/removes this one.
   async function toggleAlbumScreensaver(album: string) {
-    const patch = albumIsScreensaver
-      ? ({ photoSource: 'all', photoAlbum: null } as const)
-      : ({ photoSource: 'album', photoAlbum: album } as const)
+    const current = displayCfg?.photoAlbums ?? []
+    const patch: Partial<DisplayConfig> = mixingAlbums
+      ? { photoAlbums: albumIsScreensaver ? current.filter((a) => a !== album) : [...current, album] }
+      : albumIsScreensaver
+        ? { photoSource: 'all', photoAlbum: null }
+        : { photoSource: 'album', photoAlbum: album }
     try {
       setDisplayCfg(await kioskApi.setDisplayConfig(patch))
     } catch {
@@ -248,7 +265,7 @@ export function Photos() {
             className={`pill ${albumIsScreensaver ? 'on' : ''}`}
             onClick={() => toggleAlbumScreensaver(albumFilter)}
           >
-            {albumIsScreensaver ? '✓ Screensaver album' : '🖼️ Set as screensaver'}
+            {albumIsScreensaver ? '✓ Screensaver album' : mixingAlbums ? '🖼️ Add to screensaver mix' : '🖼️ Set as screensaver'}
           </button>
         </div>
       )}
@@ -278,6 +295,7 @@ export function Photos() {
       </div>
 
       {adding && <PhotoAdd onClose={() => setAdding(false)} onAdded={refetch} albums={albums} />}
+      {googleOpen && <GooglePhotosImportModal albums={albums} onClose={() => setGoogleOpen(false)} onImported={() => refetch()} />}
       {detail && (
         <PhotoDetail
           photo={detail}

@@ -21,6 +21,11 @@ struct PhotosView: View {
     @State private var newAlbumName = ""
     @State private var busy = false
 
+    // Google Photos import — only shown once an admin has connected an account
+    // (the status endpoint is admin-only, so it stays nil for everyone else).
+    @State private var googleConnected = false
+    @State private var showGoogle = false
+
     init(model: PhotosModel? = nil) { _model = State(initialValue: model ?? PhotosModel()) }
 
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
@@ -59,6 +64,13 @@ struct PhotosView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Select") { enterSelection() }.fontWeight(.semibold)
                 }
+                if googleConnected {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { showGoogle = true } label: {
+                            Label("Google Photos", systemImage: "photo.stack").fontWeight(.semibold)
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showAdd = true } label: {
                         Label("Add", systemImage: "plus").labelStyle(.titleAndIcon).fontWeight(.semibold)
@@ -91,6 +103,7 @@ struct PhotosView: View {
             Button("Cancel", role: .cancel) {}
         } message: { Text("This removes them from your family wall.") }
         .task { if model.photos.isEmpty { await model.load() } }
+        .task { googleConnected = (try? await WaffledAPI().googlePhotosStatus())?.account != nil }
         // The manual slideshow — a bare, chrome-free play-through of what's on the wall.
         .fullScreenCover(isPresented: $playing) {
             ScreensaverView(content: "photos", photos: shownPhotos, weather: nil, nextEvent: nil,
@@ -104,6 +117,9 @@ struct PhotosView: View {
         }
         .sheet(isPresented: $showAdd) {
             PhotoAddSheet(albums: model.albums, onDone: { Task { await model.load() } })
+        }
+        .sheet(isPresented: $showGoogle) {
+            GooglePhotosImportSheet(albums: model.albums, onImported: { _ in Task { await model.load() } })
         }
     }
 
@@ -138,6 +154,9 @@ struct PhotosView: View {
                             .opacity(shownPhotos.isEmpty ? 0.5 : 1).disabled(shownPhotos.isEmpty)
                         KioskHeaderButton(icon: "checkmark.circle", label: "Select") { enterSelection() }
                             .opacity(model.photos.isEmpty ? 0.5 : 1).disabled(model.photos.isEmpty)
+                        if googleConnected {
+                            KioskHeaderButton(icon: "photo.stack", label: "Google Photos") { showGoogle = true }
+                        }
                         KioskHeaderButton(icon: "plus", label: "Add photos") { showAdd = true }
                     }
                 }

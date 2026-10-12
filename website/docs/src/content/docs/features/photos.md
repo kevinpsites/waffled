@@ -14,7 +14,8 @@ Photos is your family's shared wall of memories — and the visual identity of a
 - 🗂️ **Albums** — filter chips built from each photo's album, so you can jump straight to "Cabin 2025" or "Birthdays".
 - ✏️ **Edit a photo** — caption, album, date (→ `takenAt`), and favorite, all in place.
 - ✅ **Multi-select** — bulk **move-to-album** or **delete**, plus a per-tile delete with a confirm.
-- 📺 **Screensaver source** — set an album (or favorites, or everything) as the ambient slideshow; a photo-only **"Play"** slideshow runs with no chrome at all.
+- 🌈 **Google Photos import** — pick photos in Google's own picker and Waffled copies them into an album ([setup](/administration/google-photos/)).
+- 📺 **Screensaver source** — set an album, several albums mixed at random, favorites, or everything as the ambient slideshow; a photo-only **"Play"** slideshow runs with no chrome at all.
 - 🍳 **Shared pipeline** — recipe hero images ride the same upload path, so what you learn here works over in [Meals & recipes](/features/meals/).
 
 ## Where it works
@@ -31,7 +32,7 @@ Drag-and-drop upload is **web-only** — iPhone and iPad use the native picker i
 
 **Settings → Display & Kiosk** — the screensaver reads from your household's kiosk/display config:
 
-- **`photoSource`** — `all` · `favorites` · `album` (default **all**), with **`photoAlbum`** naming the album when you pick `album`.
+- **`photoSource`** — `all` · `favorites` · `album` · `albums` (default **all**). **`photoAlbum`** names the album for `album`; **`photoAlbums`** lists up to 50 albums for `albums`, which always plays in a random order.
 - **`photoShuffle`** — randomize order (default **off**).
 - **`photoInterval`** — seconds between photos (default **10**, clamped **3–120**).
 - **`nightDim`** — `{ enabled` default **off**`, start 22:00, end 07:00 }` so the tablet dims overnight.
@@ -46,4 +47,4 @@ Photos and the screensaver are **core — never gated**. There's no module toggl
 - 🌤️ **Weather in the chrome** comes from Open-Meteo — no API key required.
 - 📱 **iPhone is deliberately lean** — it gets the wall, upload, and a chrome-free "Play", but not the ambient clock/weather/event overlay. Reach for [Kiosk & display](/features/kiosk/) on a tablet for the full frame.
 - 🎞️ **Ken-Burns slow-zoom is iOS-only** — the web screensaver crossfades without the zoom.
-- 🚧 **Shared-album import** (Google Photos / iCloud) is planned — for now, upload lands photos directly.
+- 🌈 **Google Photos picks are copies.** Google no longer lets apps read your albums directly, so new photos you add in Google Photos don't appear on their own. Use **Re-sync** on the album in Settings → Display & Kiosk to add them; photos you already imported are skipped. Disconnecting Google Photos removes the imported photos. iCloud shared albums are still planned.

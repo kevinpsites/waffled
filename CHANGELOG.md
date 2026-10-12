@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Google Photos albums for the screensaver.** Connect Google Photos in Settings →
+  Display & Kiosk, then import photos into a Waffled album from the Photos screen. You pick
+  them in Google's own picker, and Waffled keeps a copy. The new **Several albums** screensaver
+  source plays a random mix of whichever albums you choose. Each imported album shows when it
+  last synced, with a **Re-sync** button to pull in photos added to Google since then.
+  Disconnecting removes the imported photos. Works on web, the kiosk, iPhone and iPad.
+
 ### Changed
 
 ### Fixed

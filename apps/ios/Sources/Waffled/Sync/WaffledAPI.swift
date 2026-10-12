@@ -1547,8 +1547,9 @@ struct WaffledAPI: Sendable {
         var resetHomeMinutes: Int      // 0 = never reset to Today
         var nightDim: NightDim
         // Photo-slideshow options (a server may omit these → sensible defaults).
-        var photoSource: String        // "all" | "favorites" | "album"
+        var photoSource: String        // "all" | "favorites" | "album" | "albums"
         var photoAlbum: String?        // album name when photoSource == "album"
+        var photoAlbums: [String]      // the albums mixed when photoSource == "albums"
         var photoInterval: Int         // seconds each photo stays on screen
         var photoShuffle: Bool
         struct NightDim: Codable, Sendable, Equatable, Hashable {
@@ -1559,7 +1560,7 @@ struct WaffledAPI: Sendable {
 
         enum CodingKeys: String, CodingKey {
             case screensaverMinutes, content, returnToPicker, resetHomeMinutes, nightDim
-            case photoSource, photoAlbum, photoInterval, photoShuffle
+            case photoSource, photoAlbum, photoAlbums, photoInterval, photoShuffle
         }
         init(from d: Decoder) throws {
             let c = try d.container(keyedBy: CodingKeys.self)
@@ -1570,22 +1571,25 @@ struct WaffledAPI: Sendable {
             nightDim = try c.decode(NightDim.self, forKey: .nightDim)
             photoSource = try c.decodeIfPresent(String.self, forKey: .photoSource) ?? "all"
             photoAlbum = try c.decodeIfPresent(String.self, forKey: .photoAlbum)
+            photoAlbums = try c.decodeIfPresent([String].self, forKey: .photoAlbums) ?? []
             photoInterval = try c.decodeIfPresent(Int.self, forKey: .photoInterval) ?? 8
             photoShuffle = try c.decodeIfPresent(Bool.self, forKey: .photoShuffle) ?? true
         }
     }
 
     /// Pick + order the photos the screensaver should play for a given config (all,
-    /// favorites, or a single album) and shuffle if asked. Mirrors web
-    /// `screensaverPhotos`.
+    /// favorites, one album, or a random mix of several) and shuffle if asked. Mirrors
+    /// web `screensaverPhotos`.
     static func screensaverPhotos(_ photos: [Photo], _ cfg: DisplayConfig) -> [Photo] {
         var out: [Photo]
+        let albums = Set(cfg.photoAlbums)
         switch cfg.photoSource {
         case "favorites": out = photos.filter { $0.isFavorite }
         case "album": out = cfg.photoAlbum.map { a in photos.filter { $0.memory == a } } ?? photos
+        case "albums" where !albums.isEmpty: out = photos.filter { $0.memory.map(albums.contains) ?? false }
         default: out = photos
         }
-        if cfg.photoShuffle { out.shuffle() }
+        if cfg.photoShuffle || cfg.photoSource == "albums" { out.shuffle() }
         return out
     }
 
@@ -1609,6 +1613,7 @@ struct WaffledAPI: Sendable {
             ]),
             "photoSource": .string(cfg.photoSource),
             "photoAlbum": cfg.photoAlbum.map(JSONValue.string) ?? .null,
+            "photoAlbums": .array(cfg.photoAlbums.map(JSONValue.string)),
             "photoInterval": .int(cfg.photoInterval),
             "photoShuffle": .bool(cfg.photoShuffle),
         ]
@@ -2764,6 +2769,63 @@ struct WaffledAPI: Sendable {
     }
 
     func deletePhoto(id: String) async throws { try await delete("/api/photos/\(id)") }
+
+    // MARK: Google Photos import (admin)
+
+    struct GooglePhotosStatus: Decodable, Sendable {
+        let configured: Bool
+        let account: Account?
+        let imports: [GooglePhotosImport]
+        var albums: [Album] = []
+        var photoCount = 0
+        struct Account: Decodable, Sendable { let id: String; let email: String? }
+        struct Album: Decodable, Sendable, Hashable { let name: String; let photoCount: Int; let lastSyncedAt: String? }
+        enum CodingKeys: String, CodingKey { case configured, account, imports, albums, photoCount }
+        init(from d: Decoder) throws {
+            let c = try d.container(keyedBy: CodingKeys.self)
+            configured = try c.decode(Bool.self, forKey: .configured)
+            account = try c.decodeIfPresent(Account.self, forKey: .account)
+            imports = try c.decodeIfPresent([GooglePhotosImport].self, forKey: .imports) ?? []
+            albums = try c.decodeIfPresent([Album].self, forKey: .albums) ?? []
+            photoCount = try c.decodeIfPresent(Int.self, forKey: .photoCount) ?? 0
+        }
+    }
+
+    struct GooglePhotosImport: Decodable, Sendable, Equatable {
+        let id: String
+        let album: String
+        let pickerUri: String
+        let status: String // picking | importing | done | failed | expired
+        let importedCount: Int
+        let skippedCount: Int
+        let error: String?
+        var isActive: Bool { status == "picking" || status == "importing" }
+    }
+
+    func googlePhotosStatus() async throws -> GooglePhotosStatus {
+        try await getJSON("/api/photos/google/status", as: GooglePhotosStatus.self)
+    }
+
+    func connectGooglePhotosURL(redirectTo: String) async throws -> String {
+        struct Resp: Decodable { let url: String }
+        return try await sendReturning("POST", "/api/photos/google/connect",
+                                       body: ["redirectTo": .string(redirectTo)], as: Resp.self).url
+    }
+
+    func disconnectGooglePhotos(accountId: String) async throws {
+        try await delete("/api/photos/google/accounts/\(accountId)")
+    }
+
+    func startGooglePhotosImport(album: String) async throws -> GooglePhotosImport {
+        struct Resp: Decodable { let `import`: GooglePhotosImport }
+        return try await sendReturning("POST", "/api/photos/google/imports",
+                                       body: ["album": .string(album)], as: Resp.self).import
+    }
+
+    func googlePhotosImport(id: String) async throws -> GooglePhotosImport {
+        struct Resp: Decodable { let `import`: GooglePhotosImport }
+        return try await getJSON("/api/photos/google/imports/\(id)", as: Resp.self).import
+    }
 
     /// The household's lists (for the Lists tile count).
     func lists() async throws -> [ListRefDTO] {

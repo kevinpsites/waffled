@@ -1,6 +1,6 @@
 /// <reference types="vitest/config" />
-import { readFileSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { createReadStream, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { resolve, sep } from 'node:path'
 import { defineConfig, type Plugin, type ProxyOptions } from 'vite'
 import { configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
@@ -55,6 +55,27 @@ function stampServiceWorkerPlugin(): Plugin {
 // proto so the api can build correct absolute URLs (OIDC redirect_uri, the
 // "Back to Waffled" links) — otherwise it only sees its own :3000 address and SSO
 // callbacks point at the wrong place.
+// When the api runs in dev mode it writes uploads to its own MEDIA_DIR
+// (apps/api/.local/media), which the stack's Caddy never sees. Serve a file from
+// there when it exists; anything else falls through to the /media proxy below.
+const DEV_MEDIA_DIR = resolve(__dirname, process.env.WAFFLED_DEV_MEDIA_DIR ?? '../api/.local/media')
+const MEDIA_TYPES: Record<string, string> = { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }
+function devMediaPlugin(): Plugin {
+  return {
+    name: 'waffled:dev-media',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/media', (req, res, next) => {
+        const rel = decodeURIComponent((req.url ?? '').split('?')[0])
+        const file = resolve(DEV_MEDIA_DIR, `.${rel}`)
+        if (!file.startsWith(DEV_MEDIA_DIR + sep) || !existsSync(file) || !statSync(file).isFile()) return next()
+        res.setHeader('content-type', MEDIA_TYPES[file.split('.').pop() ?? ''] ?? 'application/octet-stream')
+        createReadStream(file).pipe(res)
+      })
+    },
+  }
+}
+
 const apiProxy: Record<string, ProxyOptions> = {
   '/api': {
     target: 'http://localhost:3000',
@@ -78,7 +99,7 @@ const apiProxy: Record<string, ProxyOptions> = {
 }
 
 export default defineConfig({
-  plugins: [react(), stampServiceWorkerPlugin()],
+  plugins: [react(), stampServiceWorkerPlugin(), devMediaPlugin()],
   // @powersync/web ships its own SQLite WASM + worker; pre-bundling breaks them,
   // so exclude it from Vite's dep optimizer (PowerSync's documented Vite setup).
   optimizeDeps: { exclude: ['@powersync/web'] },

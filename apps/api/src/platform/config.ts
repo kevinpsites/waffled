@@ -79,6 +79,9 @@ export interface GoogleConfig {
   tokenUrl: string
   userinfoUrl: string
   apiBase: string
+  photosRedirectUri: string | null
+  photosScopes: string
+  pickerApiBase: string
 }
 
 /** Microsoft OAuth + Graph calendar. Mirrors GoogleConfig: one client serves the
@@ -160,6 +163,12 @@ export const config: AppConfig = {
     tokenUrl: process.env.GOOGLE_TOKEN_URL ?? 'https://oauth2.googleapis.com/token',
     userinfoUrl: process.env.GOOGLE_USERINFO_URL ?? 'https://openidconnect.googleapis.com/v1/userinfo',
     apiBase: process.env.GOOGLE_CALENDAR_API_BASE ?? 'https://www.googleapis.com/calendar/v3',
+    // Google Photos import shares the OAuth client above but has its own redirect +
+    // scope: the Picker API is the only way to read a user's existing photos.
+    // Local dev: http://localhost:8080/auth/google/photos/callback
+    photosRedirectUri: env('GOOGLE_PHOTOS_REDIRECT_URI') ?? null,
+    photosScopes: 'openid email https://www.googleapis.com/auth/photospicker.mediaitems.readonly',
+    pickerApiBase: env('GOOGLE_PHOTOS_PICKER_API_BASE') ?? 'https://photospicker.googleapis.com/v1',
   },
 
   // Microsoft / Outlook calendar OAuth. Register an app in Entra ID

@@ -207,6 +207,143 @@ describe('Settings screen', () => {
     await waitFor(() => expect(puts.some((p) => p.photoInterval === 30)).toBe(true))
   })
 
+  it('picks several albums for the screensaver and connects Google Photos', async () => {
+    const puts: Array<Record<string, unknown>> = []
+    const connects: unknown[] = []
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body })
+      if (u.includes('/api/kiosk/display')) {
+        if (init?.method === 'PUT') {
+          const body = JSON.parse(String(init.body)) as Record<string, unknown>
+          puts.push(body)
+          return ok(body)
+        }
+        return ok({ ...displayConfig, photoAlbums: [] })
+      }
+      if (u.includes('/api/photos/google/connect')) {
+        connects.push(JSON.parse(String(init?.body)))
+        return ok({ url: 'https://accounts.google.com/o/oauth2/v2/auth?x=1' })
+      }
+      if (u.includes('/api/photos/google/status')) return ok({ configured: true, account: null, imports: [] })
+      if (u.includes('/api/photos')) return ok({ photos: samplePhotos })
+      if (u.includes('/api/household/settings')) return ok({ household, members })
+      if (u.includes('/api/household')) return ok({ provisioned: true, household, person: members[0] })
+      if (u.includes('/api/persons')) return ok({ persons: [] })
+      if (u.includes('/api/events')) return ok({ events: [] })
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+    const assign = vi.fn()
+    Object.defineProperty(window, 'location', { configurable: true, value: { ...window.location, assign, href: 'http://localhost/settings' } })
+
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('Display & Kiosk'))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Several albums' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Lake Day', pressed: false }))
+    fireEvent.click(screen.getByRole('button', { name: 'Birthday', pressed: false }))
+    await waitFor(() => expect(puts.at(-1)).toMatchObject({ photoSource: 'albums', photoAlbums: ['Lake Day', 'Birthday'] }))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect Google Photos' }))
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://accounts.google.com/o/oauth2/v2/auth?x=1'))
+    expect(connects[0]).toEqual({ redirectTo: 'http://localhost/settings' })
+  })
+
+  it('imports a Google Photos album from settings and adds it to the screensaver mix', async () => {
+    const puts: Array<Record<string, unknown>> = []
+    let photos: unknown[] = []
+    let polls = 0
+    const imp = { id: 'imp1', album: 'Beach 2024', sessionId: 's1', pickerUri: 'https://photos.google.com/picker/s1', expireTime: null, importedCount: 0, skippedCount: 0, error: null, createdAt: '' }
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body })
+      if (u.includes('/api/kiosk/display')) {
+        if (init?.method === 'PUT') {
+          const body = JSON.parse(String(init.body)) as Record<string, unknown>
+          puts.push(body)
+          return ok(body)
+        }
+        return ok({ ...displayConfig, photoAlbums: [] })
+      }
+      if (u.includes('/api/photos/google/status')) return ok({ configured: true, account: { id: 'a1', email: 'k@example.com', connectedAt: '' }, imports: [] })
+      if (u.endsWith('/api/photos/google/imports') && init?.method === 'POST') return { ok: true, status: 201, json: async () => ({ import: { ...imp, status: 'picking' } }) }
+      if (u.includes('/api/photos/google/imports/imp1')) {
+        polls++
+        if (polls < 2) return ok({ import: { ...imp, status: 'picking' } })
+        photos = [{ ...samplePhotos[0], id: 'g1', memory: 'Beach 2024' }]
+        return ok({ import: { ...imp, status: 'done', importedCount: 1 } })
+      }
+      if (u.includes('/api/photos')) return ok({ photos })
+      if (u.includes('/api/household/settings')) return ok({ household, members })
+      if (u.includes('/api/household')) return ok({ provisioned: true, household, person: members[0] })
+      if (u.includes('/api/persons')) return ok({ persons: [] })
+      if (u.includes('/api/events')) return ok({ events: [] })
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+    const open = vi.spyOn(window, 'open').mockReturnValue({ location: { href: '' }, close: vi.fn() } as unknown as Window)
+
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('Display & Kiosk'))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Import album' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Import from Google Photos' })
+    // No albums yet → a plain name field, not an empty dropdown.
+    expect(within(dialog).queryByRole('combobox')).not.toBeInTheDocument()
+    fireEvent.change(within(dialog).getByPlaceholderText('e.g. Beach 2024'), { target: { value: 'Beach 2024' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Open Google Photos' }))
+
+    await waitFor(() => expect(puts.at(-1)).toMatchObject({ photoSource: 'albums', photoAlbums: ['Beach 2024'] }), { timeout: 6000 })
+    expect(await screen.findByRole('button', { name: 'Beach 2024', pressed: true })).toBeInTheDocument()
+    open.mockRestore()
+  }, 12_000)
+
+  it('lists imported Google albums with re-sync, and warns that disconnect removes them', async () => {
+    const deletes: string[] = []
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body })
+      if (u.includes('/api/kiosk/display')) return ok({ ...displayConfig, photoAlbums: [] })
+      if (u.includes('/api/photos/google/accounts/a1') && init?.method === 'DELETE') {
+        deletes.push(u)
+        return { ok: true, status: 200, json: async () => ({ ok: true, removedPhotos: 3 }) }
+      }
+      if (u.includes('/api/photos/google/status')) {
+        return ok({
+          configured: true,
+          account: deletes.length ? null : { id: 'a1', email: 'k@example.com', connectedAt: '' },
+          imports: [],
+          albums: deletes.length ? [] : [{ name: 'Beach', photoCount: 3, lastSyncedAt: '2026-10-10T12:00:00Z' }],
+          photoCount: deletes.length ? 0 : 3,
+        })
+      }
+      if (u.includes('/api/photos')) return ok({ photos: [{ ...samplePhotos[0], memory: 'Beach' }] })
+      if (u.includes('/api/household/settings')) return ok({ household, members })
+      if (u.includes('/api/household')) return ok({ provisioned: true, household, person: members[0] })
+      if (u.includes('/api/persons')) return ok({ persons: [] })
+      if (u.includes('/api/events')) return ok({ events: [] })
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('Display & Kiosk'))
+
+    expect(await screen.findByText(/won’t appear here until you re-sync/)).toBeInTheDocument()
+    expect(screen.getByText(/3 photos · synced/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Re-sync Beach' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Import from Google Photos' })
+    expect(within(dialog).getByRole('combobox')).toHaveValue('Beach')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }))
+    expect(await screen.findByText(/removes the 3 photos imported from Google/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect and remove' }))
+    await waitFor(() => expect(deletes).toHaveLength(1))
+    expect(await screen.findByRole('button', { name: 'Connect Google Photos' })).toBeInTheDocument()
+  })
+
   it('renders the permissions grid with a Manage goals column and toggles it', async () => {
     const puts: PermissionMatrix[] = []
     const emptyRow = { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'goal.manage': false, 'planning.manage': false }

@@ -34,9 +34,8 @@ services:
   # One-shot ownership migration for volumes written by older root-running images.
   # The long-running api and backup services start only after this exits successfully.
   volume-permissions:
+    # Built by backup; a second build would export to the same image name.
     image: ${WAFFLED_BACKUP_IMAGE:-ghcr.io/kevinpsites/waffled-backup:${WAFFLED_VERSION:-latest}}
-    build:
-      context: ./backup
     container_name: waffled-volume-permissions
     user: "0:0"
     entrypoint: ["/bin/sh", "-c"]
@@ -62,9 +61,8 @@ services:
   # command), so the schema — and the PowerSync publication (migration 0003) — exist
   # before api/powersync start. Idempotent, so it runs harmlessly on every `up`.
   migrate:
+    # Built by api, including its build provenance arguments.
     image: ${WAFFLED_API_IMAGE:-ghcr.io/kevinpsites/waffled-api:${WAFFLED_VERSION:-latest}}
-    build:
-      context: ../../apps/api
     container_name: waffled-migrate
     depends_on:
       postgres:
@@ -154,6 +152,7 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_CALENDAR_REDIRECT_URI: ${GOOGLE_CALENDAR_REDIRECT_URI:-}
+      GOOGLE_PHOTOS_REDIRECT_URI: ${GOOGLE_PHOTOS_REDIRECT_URI:-}
       GOOGLE_CALENDAR_SCOPES: ${GOOGLE_CALENDAR_SCOPES:-}
       # --- Outlook / Microsoft 365 calendar OAuth. Same engine as Google, via Graph.
       MS_CLIENT_ID: ${MS_CLIENT_ID:-}

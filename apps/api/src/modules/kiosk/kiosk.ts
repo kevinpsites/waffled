@@ -35,8 +35,10 @@ interface DisplaySettings {
   resetHomeMinutes: number
   nightDim: { enabled: boolean; start: string; end: string }
   // Photo-playback options for the photos screensaver.
-  photoSource: 'all' | 'favorites' | 'album'
+  // 'albums' rotates across every album in photoAlbums (e.g. Google Photos picks).
+  photoSource: 'all' | 'favorites' | 'album' | 'albums'
   photoAlbum: string | null
+  photoAlbums: string[]
   photoInterval: number // seconds between photos
   photoShuffle: boolean
 }
@@ -54,6 +56,7 @@ const DISPLAY_DEFAULTS: DisplaySettings = {
   nightDim: { enabled: false, start: '22:00', end: '07:00' },
   photoSource: 'all',
   photoAlbum: null,
+  photoAlbums: [],
   photoInterval: 10,
   photoShuffle: false,
 }
@@ -122,7 +125,8 @@ async function readDisplay(householdId: string): Promise<DisplaySettings> {
 }
 
 const CONTENT_VALUES = new Set(['photos', 'clock', 'off'])
-const PHOTO_SOURCE_VALUES = new Set(['all', 'favorites', 'album'])
+const PHOTO_SOURCE_VALUES = new Set(['all', 'favorites', 'album', 'albums'])
+const PHOTO_ALBUMS_MAX = 50
 // Coerce a client patch to the known shape (defends the jsonb blob).
 function sanitizeDisplay(body: unknown): Partial<DisplaySettings> {
   const b = (body ?? {}) as Record<string, unknown>
@@ -134,6 +138,10 @@ function sanitizeDisplay(body: unknown): Partial<DisplaySettings> {
   if (typeof b.photoSource === 'string' && PHOTO_SOURCE_VALUES.has(b.photoSource)) out.photoSource = b.photoSource as DisplaySettings['photoSource']
   if (typeof b.photoAlbum === 'string') out.photoAlbum = b.photoAlbum.trim() || null
   else if (b.photoAlbum === null) out.photoAlbum = null
+  if (Array.isArray(b.photoAlbums)) {
+    const names = b.photoAlbums.filter((a): a is string => typeof a === 'string').map((a) => a.trim()).filter(Boolean)
+    out.photoAlbums = [...new Set(names)].slice(0, PHOTO_ALBUMS_MAX)
+  }
   if (typeof b.photoInterval === 'number') out.photoInterval = Math.max(3, Math.min(120, Math.round(b.photoInterval)))
   if (typeof b.photoShuffle === 'boolean') out.photoShuffle = b.photoShuffle
   const nd = b.nightDim as Record<string, unknown> | undefined

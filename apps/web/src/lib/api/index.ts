@@ -49,7 +49,7 @@ import { eventsApi } from './events'
 import { calendarsApi } from './calendars'
 import { weatherApi } from './weather'
 import { mealsApi } from './meals'
-import { photosApi } from './photos'
+import { photosApi, googlePhotosApi } from './photos'
 import { captureApi } from './capture'
 
 export const api = {
@@ -63,5 +63,6 @@ export const api = {
   ...weatherApi,
   ...mealsApi,
   ...photosApi,
+  ...googlePhotosApi,
   ...captureApi,
 }

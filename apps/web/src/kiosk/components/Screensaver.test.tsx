@@ -44,6 +44,16 @@ describe('screensaverPhotos', () => {
     expect(screensaverPhotos(all, { photoSource: 'album', photoAlbum: null }).map((p) => p.id)).toEqual(['a', 'b', 'c', 'd'])
   })
 
+  it('draws from every chosen album, always in a random order', () => {
+    const out = screensaverPhotos(all, { photoSource: 'albums', photoAlbums: ['Lake Day', 'Birthday'] })
+    expect(out.map((p) => p.id).sort()).toEqual(['a', 'b', 'c'])
+    // Random is the point of the albums source, even with photoShuffle off.
+    const orders = new Set(Array.from({ length: 40 }, () => screensaverPhotos(all, { photoSource: 'albums', photoAlbums: ['Lake Day', 'Birthday'], photoShuffle: false }).map((p) => p.id).join()))
+    expect(orders.size).toBeGreaterThan(1)
+    // No albums chosen yet → all photos, like the single-album fallback.
+    expect(screensaverPhotos(all, { photoSource: 'albums', photoAlbums: [] })).toHaveLength(4)
+  })
+
   it('shuffle keeps the same elements and length, without mutating input', () => {
     const before = all.map((p) => p.id)
     const out = screensaverPhotos(all, { photoSource: 'all', photoShuffle: true })

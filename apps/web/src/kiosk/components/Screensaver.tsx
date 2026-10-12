@@ -10,17 +10,20 @@ import '../../styles/photos.css'
 // config. Pure: never mutates the input list.
 export function screensaverPhotos(
   photos: Photo[],
-  cfg: { photoSource?: string; photoAlbum?: string | null; photoShuffle?: boolean },
+  cfg: { photoSource?: string; photoAlbum?: string | null; photoAlbums?: string[]; photoShuffle?: boolean },
 ): Photo[] {
   let out: Photo[]
+  const albums = new Set(cfg.photoAlbums ?? [])
   if (cfg.photoSource === 'favorites') {
     out = photos.filter((p) => p.isFavorite)
   } else if (cfg.photoSource === 'album') {
     out = cfg.photoAlbum ? photos.filter((p) => p.memory === cfg.photoAlbum) : photos.slice()
+  } else if (cfg.photoSource === 'albums' && albums.size > 0) {
+    out = photos.filter((p) => !!p.memory && albums.has(p.memory))
   } else {
     out = photos.slice()
   }
-  if (cfg.photoShuffle) {
+  if (cfg.photoShuffle || cfg.photoSource === 'albums') {
     for (let i = out.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
       ;[out[i], out[j]] = [out[j], out[i]]

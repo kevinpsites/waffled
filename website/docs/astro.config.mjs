@@ -73,6 +73,7 @@ export default defineConfig({
 						{ label: 'Modules', slug: 'administration/modules' },
 						{ label: 'Authentication & SSO', slug: 'administration/authentication' },
 						{ label: 'Google Calendar', slug: 'administration/google-calendar' },
+						{ label: 'Google Photos', slug: 'administration/google-photos' },
 						{ label: 'Outlook / Microsoft 365', slug: 'administration/outlook-calendar' },
 						{ label: 'AI providers', slug: 'administration/ai-providers' },
 						{ label: 'Kiosk & devices', slug: 'administration/kiosk' },

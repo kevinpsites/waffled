@@ -3,7 +3,7 @@ import { avTint } from './components/Avatar'
 import { useSearchParams } from 'react-router'
 import { useSyncHealth, type SyncHealthStatus } from '../lib/powersync/sync-health'
 import { restartPowerSyncHard } from '../lib/powersync/db'
-import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, useWeeklyPlanning, weeklyPlanningApi, planningDayName, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type IcsFeed, type MealCalendarSettings, type Currency, type MemoryGroup, type IgnoreGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef, type PlanningListCandidate } from '../lib/api'
+import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, useWeeklyPlanning, weeklyPlanningApi, planningDayName, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, googlePhotosApi, useGooglePhotosStatus, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type IcsFeed, type MealCalendarSettings, type Currency, type MemoryGroup, type IgnoreGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef, type PlanningListCandidate } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
 import { useThemePref } from '../lib/theme'
 import { eventStyle } from '../lib/display'
@@ -13,6 +13,7 @@ import { ColorPicker, COLOR_SWATCHES } from './components/ColorPicker'
 import { SettingCard } from './components/SettingCard'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { Screensaver, screensaverPhotos } from './components/Screensaver'
+import { GooglePhotosImportModal } from './components/GooglePhotosImportModal'
 import '../styles/settings.css'
 
 // `admin` tabs are only shown to admins, so nobody is offered options they can't use.
@@ -3153,8 +3154,104 @@ const PHOTO_SOURCE_OPTS: Array<{ key: DisplayConfig['photoSource']; label: strin
   { key: 'all', label: 'All photos' },
   { key: 'favorites', label: 'Favorites only' },
   { key: 'album', label: 'Specific album' },
+  { key: 'albums', label: 'Several albums' },
 ]
 const INTERVAL_OPTS = [5, 10, 20, 30]
+
+// Connect/disconnect the household's Google Photos account, and import an album
+// straight into the screensaver mix (the Photos screen has the same import).
+function GooglePhotosRow({ albums, onImported }: { albums: string[]; onImported: (album: string) => void }) {
+  const { status, refetch } = useGooglePhotosStatus()
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  // undefined = closed; '' = a new album; a name = re-sync that album.
+  const [importAlbum, setImportAlbum] = useState<string | undefined>(undefined)
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false)
+  if (!status) return null
+  const account = status.account
+  async function connect() {
+    setBusy(true)
+    setErr(null)
+    try {
+      const { url } = await googlePhotosApi.connectGooglePhotos(window.location.href)
+      window.location.assign(url) // full-page handoff to Google's consent screen
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not start the Google connection')
+      setBusy(false)
+    }
+  }
+  async function disconnect(id: string) {
+    setBusy(true)
+    try {
+      await googlePhotosApi.disconnectGooglePhotos(id)
+      setConfirmDisconnect(false)
+      refetch()
+      onImported('') // refresh the album list; '' is never added to the mix
+    } finally {
+      setBusy(false)
+    }
+  }
+  const sub = !status.configured
+    ? 'Not set up on this server yet — see the Google Photos guide in the docs.'
+    : account
+      ? `Connected as ${account.email ?? 'Google account'}. Each album you import joins the screensaver mix.`
+      : 'Bring photos in from Google Photos as albums, then mix them here.'
+  const photoCount = status.photoCount ?? 0
+  return (
+    <>
+      <SettingRow icon="🌈" title="Google Photos" sub={err ?? sub}>
+        {account ? (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => setImportAlbum('')}>Import album</button>
+            <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => setConfirmDisconnect(true)}>Disconnect</button>
+          </div>
+        ) : (
+          <button type="button" className="btn btn-primary" disabled={busy || !status.configured} onClick={connect}>Connect Google Photos</button>
+        )}
+      </SettingRow>
+      {account && (
+        <div style={{ padding: '0 16px 14px 64px' }}>
+          <div className="tiny muted" style={{ fontWeight: 600, marginBottom: (status.albums ?? []).length ? 8 : 0 }}>
+            Waffled keeps its own copies. Photos you add to Google later won’t appear here until you re-sync that album; ones you already have are skipped.
+          </div>
+          {(status.albums ?? []).map((a) => (
+            <div key={a.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700 }}>{a.name}</div>
+                <div className="tiny muted" style={{ fontWeight: 600 }}>
+                  {a.photoCount} {a.photoCount === 1 ? 'photo' : 'photos'} · synced {fmtWhen(a.lastSyncedAt)}
+                </div>
+              </div>
+              <button type="button" className="pill" aria-label={`Re-sync ${a.name}`} disabled={busy} onClick={() => setImportAlbum(a.name)}>↻ Re-sync</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {importAlbum !== undefined && (
+        <GooglePhotosImportModal
+          albums={albums}
+          initialAlbum={importAlbum}
+          onClose={() => setImportAlbum(undefined)}
+          onImported={(album) => {
+            refetch()
+            onImported(album)
+          }}
+        />
+      )}
+      {confirmDisconnect && account && (
+        <ConfirmDialog
+          title="Disconnect Google Photos?"
+          message={`This removes the ${photoCount} ${photoCount === 1 ? 'photo' : 'photos'} imported from Google, and drops those albums from the screensaver. Photos you uploaded yourself stay.`}
+          confirmLabel="Disconnect and remove"
+          danger
+          onConfirm={() => disconnect(account.id)}
+          onClose={() => setConfirmDisconnect(false)}
+        />
+      )}
+    </>
+  )
+}
+
 function DisplayKioskPanel() {
   const paired = isKioskMode()
   const [displayOn, setDisplayOn] = useState(isDisplayMode())
@@ -3165,7 +3262,7 @@ function DisplayKioskPanel() {
   const dirtyRef = useRef(false)
   const wx = useWeather()
   const { events } = useEventsToday()
-  const { photos } = usePhotos()
+  const { photos, refetch: refetchPhotos } = usePhotos()
   const { household } = useHousehold()
   const nextEvent = events.find((e) => new Date(e.startsAt).getTime() > Date.now()) ?? null
   // Distinct album names (a photo's `memory`), for the "Specific album" picker.
@@ -3180,6 +3277,14 @@ function DisplayKioskPanel() {
 
   function update(patch: Partial<DisplayConfig>) {
     setCfg((c) => (c ? { ...c, ...patch } : c))
+    dirtyRef.current = true
+  }
+  function addToMix(album: string) {
+    refetchPhotos()
+    if (!album) return
+    setCfg((c) =>
+      c ? { ...c, photoSource: 'albums', photoAlbums: c.photoAlbums.includes(album) ? c.photoAlbums : [...c.photoAlbums, album] } : c,
+    )
     dirtyRef.current = true
   }
   function updateDim(patch: Partial<DisplayConfig['nightDim']>) {
@@ -3273,9 +3378,9 @@ function DisplayKioskPanel() {
                           type="button"
                           key={o.key}
                           className={cfg.photoSource === o.key ? 'on' : ''}
-                          style={{ cursor: o.key === 'album' && albums.length === 0 ? 'not-allowed' : 'pointer' }}
-                          disabled={o.key === 'album' && albums.length === 0}
-                          title={o.key === 'album' && albums.length === 0 ? 'No albums yet — group photos into a memory first.' : undefined}
+                          style={{ cursor: o.key.startsWith('album') && albums.length === 0 ? 'not-allowed' : 'pointer' }}
+                          disabled={o.key.startsWith('album') && albums.length === 0}
+                          title={o.key.startsWith('album') && albums.length === 0 ? 'No albums yet — import one from Google Photos below, or group photos into an album.' : undefined}
                           onClick={() => update({ photoSource: o.key })}
                         >
                           {o.label}
@@ -3296,6 +3401,28 @@ function DisplayKioskPanel() {
                     )}
                   </div>
                 </div>
+                {cfg.photoSource === 'albums' && albums.length > 0 && (
+                  <div className="ph-filter" style={{ padding: '0 16px 14px' }} aria-label="Screensaver albums">
+                    {albums.map((a) => {
+                      const on = cfg.photoAlbums.includes(a)
+                      return (
+                        <button
+                          key={a}
+                          type="button"
+                          aria-pressed={on}
+                          className={`pill ph-chip ${on ? 'on' : ''}`}
+                          onClick={() => update({ photoAlbums: on ? cfg.photoAlbums.filter((x) => x !== a) : [...cfg.photoAlbums, a] })}
+                        >
+                          {a}
+                        </button>
+                      )
+                    })}
+                    <span className="tiny muted" style={{ fontWeight: 600, alignSelf: 'center' }}>
+                      {cfg.photoAlbums.length === 0 ? 'Pick the albums to mix — none picked plays every photo.' : 'Plays a random mix of these albums.'}
+                    </span>
+                  </div>
+                )}
+                <GooglePhotosRow albums={albums} onImported={addToMix} />
 
                 <SettingRow icon="⏱️" title="Transition speed" sub="Seconds each photo stays on screen.">
                   <select

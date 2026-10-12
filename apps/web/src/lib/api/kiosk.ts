@@ -18,8 +18,10 @@ export interface DisplayConfig {
   resetHomeMinutes: number
   nightDim: { enabled: boolean; start: string; end: string }
   // Photo-playback options for the photos screensaver.
-  photoSource: 'all' | 'favorites' | 'album'
+  // 'albums' plays a random mix of every album in photoAlbums.
+  photoSource: 'all' | 'favorites' | 'album' | 'albums'
   photoAlbum: string | null
+  photoAlbums: string[]
   photoInterval: number
   photoShuffle: boolean
 }

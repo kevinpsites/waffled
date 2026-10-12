@@ -200,7 +200,7 @@ function presentCalendar(c: CalendarRow) {
 
 // Minimal self-contained page shown when the OAuth dance ends without a redirect
 // target (e.g. the kiosk popped a tab just for the grant).
-function resultPage(title: string, message: string): string {
+export function resultPage(title: string, message: string): string {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title}</title><style>body{font-family:system-ui,sans-serif;background:#faf7f2;color:#2b2b2b;display:grid;place-items:center;height:100vh;margin:0}
 .card{background:#fff;border-radius:16px;padding:2.5rem 3rem;box-shadow:0 10px 40px rgba(0,0,0,.08);text-align:center;max-width:28rem}

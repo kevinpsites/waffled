@@ -50,3 +50,7 @@ postgres/data/
 
 # claude code agent workspace (local only)
 .claude/
+
+apps/api/.local/media/
+
+.idea/material_theme_project_new.xml

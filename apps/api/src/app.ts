@@ -52,6 +52,7 @@ import { registerWaffledBiteRoutes } from './modules/waffledBites/waffledBites'
 import { registerTodayLayoutRoutes } from './modules/layout/today-layout'
 import { registerMobileTodayLayoutRoutes } from './modules/layout/mobile-today-layout'
 import { registerPhotoRoutes } from './modules/photos/photos'
+import { registerGooglePhotosRoutes } from './modules/photos/google-photos'
 import { registerMediaRoutes } from './modules/media/media'
 import { registerCaptureRoutes } from './modules/capture/capture'
 import { registerWeatherRoutes } from './integrations/weather'
@@ -84,6 +85,8 @@ const PUBLIC_PATHS = new Set([
   // Microsoft's redirect likewise arrives with no Authorization header; the
   // one-time OAuth state row authenticates it (see calendars.ts).
   '/auth/microsoft/calendar/callback',
+  // Google Photos connect: same one-time-state pattern (see google-photos.ts).
+  '/auth/google/photos/callback',
   // Built-in auth: setup/login/refresh/status run before a session exists.
   '/api/auth/status',
   '/api/auth/setup',
@@ -267,6 +270,7 @@ registerTodayLayoutRoutes(api)
 registerMobileTodayLayoutRoutes(api)
 
 registerPhotoRoutes(api)
+registerGooglePhotosRoutes(api)
 
 registerMediaRoutes(api)
 

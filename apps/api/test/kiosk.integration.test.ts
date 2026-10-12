@@ -259,6 +259,22 @@ describe('kiosk pairing + profile tokens', () => {
     expect(json(await call('GET', '/api/kiosk/display', undefined, admin)).photoAlbum).toBeNull()
   })
 
+  it('persists a multi-album photo source, trimming, de-duplicating and capping the list', async () => {
+    expect(json(await call('GET', '/api/kiosk/display', undefined, admin)).photoAlbums).toEqual([])
+    const many = Array.from({ length: 60 }, (_, i) => `Album ${i}`)
+    expect((await call('PUT', '/api/kiosk/display', {
+      photoSource: 'albums', photoAlbums: ['  Beach ', 'Kids', 'Beach', '', 42, ...many],
+    }, admin)).statusCode).toBe(200)
+    const d = json(await call('GET', '/api/kiosk/display', undefined, admin))
+    expect(d.photoSource).toBe('albums')
+    expect(d.photoAlbums.slice(0, 3)).toEqual(['Beach', 'Kids', 'Album 0'])
+    expect(d.photoAlbums).toHaveLength(50)
+
+    // A non-array is ignored rather than wiping the list.
+    expect((await call('PUT', '/api/kiosk/display', { photoAlbums: 'Beach' }, admin)).statusCode).toBe(200)
+    expect(json(await call('GET', '/api/kiosk/display', undefined, admin)).photoAlbums).toHaveLength(50)
+  })
+
   // settings.display is shared: this kiosk wrapper owns the screensaver keys, and
   // the calendar owns eventStyle/familyColorHex (PATCH /api/household/display).
   // The contract is "each writer merges, and only serves its own keys" — before it
