@@ -35,7 +35,7 @@ family,planner,calendar,chores,meal,pantry,grocery,shopping,organizer,household,
 ```
 <sub>Don't repeat the app name or subtitle words here — they're already indexed. No spaces after commas maximizes the character budget.</sub>
 
-## Description  `[1695/4000]`
+## Description  `[1864/4000]`
 
 ```
 Waffled is the calm command-center for family life. One shared home for your
@@ -64,6 +64,10 @@ plan in your pocket on your phone. Everything stays in sync.
   goals: trash out weekly, the air filter every three months, a family outing on
   the third weekend. Waffled counts down to each one and gets out of the way.
 
+• WEEKLY PLANNING — Sit down once a week and decide the week ahead together:
+  what's still open, the calendar, goals, meals, who does what, and a turn for
+  the kids.
+
 • FAMILY NIGHT — A customizable, auto-rotating agenda for your weekly family time.
 
 • A HOME SCREEN THAT'S YOURS — Reorder and hide the cards on your Today view so it
@@ -76,61 +80,78 @@ family's data stays yours — no ads, no tracking, no selling your life to anyon
 Get your family on the same page. Get Waffled.
 ```
 
-## What's New (release notes)  `[2754/4000]`
+## What's New (release notes)  `[3822/4000]`
 
-<sub>Current draft targets **0.14.0**, built from that version's changelog section
-filtered to what iPhone/iPad users can actually see. Web-only work is deliberately
-left out — the smaller first-load bundle, the month-view add-event fix, and the two
-browser-kiosk offline fixes. Update this each time you submit a new version.</sub>
+<sub>Current draft targets **0.15.1**, built from the 0.14.1 → 0.15.1 changelog
+sections (0.14.0 was the last version this listing was written for) and filtered to
+what iPhone/iPad users can actually see. Deliberately left out: Waffled for Mac and the
+`waffled-runtime` / `./waffled upgrade` work, the server-side household-isolation
+hardening, and web-only items such as list search. Update this each time you submit a
+new version.</sub>
 
 ```
-RHYTHMS — THE THINGS THAT SHOULD KEEP HAPPENING (NEW MODULE)
-Some things around the house aren't chores and aren't goals. They just need to
-keep coming around: trash out weekly, the air filter every three months, a
-family outing on the third weekend. Rhythms is a new optional module for exactly
-those.
+WEEKLY PLANNING IS NOW ON IPHONE AND IPAD (NEW MODULE)
+Sit down once a week and decide the week ahead together. The whole guided
+session now runs in the app: loose ends, the calendar, goals, meals, who does
+what, the month ahead, family night, time together, and a turn for the kids —
+ending in a recap that reads the week back, so everyone knows what was decided.
 
-Write one as a sentence you edit in place — "Air filter, every 3 months, counted
-when I mark it done" — and Waffled names the two dates that are the whole promise
-before you commit to it: the day the first one lands, and the day it starts
-asking.
+Nothing is typed twice. An event you add is a real calendar event, a task you
+hand out lands on the Tasks board, the dinners you pick go on the plan, and
+handing someone the shopping makes a real chore. Tick tasks and rhythms off as
+you go, add to the grocery list without leaving the step, build a whole meal in
+the recipe picker, park a note for a step still ahead (or turn one into a task
+or an event), and set a goal's target for just this week — "10 hours this week"
+— which then shows on the goal all week and gets read back next time. Leave
+part-way and it waits exactly where you left it, on any device.
 
-Some rhythms are things you do, and the clock restarts from when you actually did
-it, so being late moves the next one instead of stacking up missed ones. Others
-just need to get scheduled — booking one puts a real event on your calendar, so
-it gets recurrence, colors, reminders and Google/Outlook sync like anything else.
+On iPhone it opens from a tile in the Family tab; on the family display, from a
+Today card or a Planning page you can pin to the rail. Turn it on in
+Settings → Modules.
 
-The register is sorted by when, not by kind — Needs you now, Coming up, Steady —
-and every row is anchored by a countdown. The Today card stays invisible on the
-many quiet days and, when it isn't quiet, says both things at once: what's asking
-now, and how much isn't. Can't get to something this time? Push it out a week
-without claiming you did it, or skip the period entirely rather than inventing an
-entry for something that isn't happening.
+A NEW IPHONE CALENDAR: MONTH, WEEK AND DAY
+Month now fills the screen, with week numbers down the side and each day's event
+titles. Tap a day for a full Day timeline, or switch to Week — a row of day
+cards that each end with that night's dinner. Switch views from the header's
+view button or pinch; Agenda and the per-person filter are in that menu too, and
+planned dinners show in amber. Multi-day events — a trip synced from Google —
+now appear on every day they cover instead of only the first, and the calendar
+redraws far less as it syncs, so opening and scrolling it is smoother.
 
-Rhythms is off by default — turn it on in Settings → Modules.
+EVENTS THAT SAY WHEN THEY END
+The event editor now has an Ends date, so a trip can span several days, and a
+timed event has an Ends date and time — including an end on a later day — in
+place of the duration menu. Moving the start keeps the event's length, and every
+date and time reads the same way wherever you meet it.
 
-COOK WITH YOUR HANDS FULL
-Every ingredient in Cook Mode is now a checkbox. Tap it as it goes in and it's
-struck through, with a running "3 of 11" count of what you've gathered. A step's
-ingredient and its row in the full list are the same thing, so ticking either
-ticks both, your ticks stay put as you move between steps, and a meal with
-several dishes keeps a separate list for each.
+YOUR CHORES, TICKED OFF FROM TODAY
+The iPhone's Today chores card opens on whoever is signed in and lists their
+chores for today, each with a tick. Tap the card's title to see someone else's
+list or go back to the family summary.
 
-A NEW RECIPE WITHOUT LOSING YOUR PLACE
-Filling a night on the plan and the thing you want to cook isn't in your recipes
-yet? The picker has a New recipe button of its own now. Write it there and it
-goes straight into the slot you opened, with the plan behind it untouched.
+GOALS THAT COUNT THE RIGHT THING
+A habit now shows this period's count — "2 of 5 this week" — rather than a
+lifetime total, and the week rolls over on your household's own start-of-week
+day. Checklists read as steps done, "each" goals measure against everyone's
+target, milestones count what the goal itself counts, and a habit that's already
+been logged says so instead of letting a second tap look like it worked. You can
+add a note to an entry that counted itself, and tell Review events to stop
+suggesting events like "soccer practice" for a goal.
 
-YOUR WEEK REALLY DOES START ON MONDAY
-"Week starts on Monday" used to quietly change nothing you could see. It now
-moves every grid in the app — the meal planner's weekly and monthly views and
-"Plan my week", the calendar's month and week views, the This week / Next week
-pickers you get when scheduling from a recipe, and the goal heatmaps.
+RHYTHMS THAT FIT REAL LIFE
+A rhythm can ask to be booked in the first days of its period ("date night, in
+the first week of the month") and nudge you from the start of the cycle, and an
+event you put on the calendar yourself can settle it — the event editor has a
+"Keeps a rhythm" picker. "Skip a period" is now "Mark handled".
 
-Plus a lot of polish and fixes: a goal's deadline is the day you picked, adding a
-note to a goal entry no longer quietly moves it to another day, and birthdays and
-planned meals no longer read a day early. Pull-to-refresh reloads the whole Today
-screen on iPhone, and the wall iPad can refresh its cards at all.
+Plus a lot of fixes: redeeming a reward only celebrates when it really went
+through, and one that needs a parent's OK waits for a parent instead of
+approving itself. A one-off chore can be moved to another day. The tab bar gets
+out of the way while you're typing. Today and Family keep what they last knew
+when the server can't be reached, instead of looking empty, and a change the
+server refused no longer looks saved. Event chips on purple, blue, green, red
+and pink are easier to read, goal charts on iPad no longer trap you in Month,
+and Family Night's weekly event starts at the time you set.
 
 Thanks for using Waffled — we'd love your feedback!
 ```
@@ -141,7 +162,7 @@ Thanks for using Waffled — we'd love your feedback!
 
 | Field | Value | Notes |
 |-------|-------|-------|
-| **Support URL** *(required)* | `https://waffled.app/support` | Must resolve. If no support page yet, point at `https://waffled.app` or a docs page. |
+| **Support URL** *(required)* | `https://waffled.app/support` | Must resolve — **it 404s today**. Publish the page, or point the field at `https://waffled.app` or a docs page. |
 | **Marketing URL** *(optional)* | `https://waffled.app` | |
 | **Privacy Policy URL** *(required)* | `https://waffled.app/privacy` | Required before you can submit for review. Must be a live page. |
 
@@ -165,10 +186,16 @@ Thanks for using Waffled — we'd love your feedback!
 
 These can't be text-pasted — they're uploads/answers in App Store Connect:
 
-- [ ] **Screenshots** — at minimum 6.7" iPhone; add 12.9"/13" iPad since we support iPad.
+- [x] **Screenshots** — upload-ready sets are committed under `screenshots/iphone/` and
+      `screenshots/ipad/`; re-shoot when the UI moves on (the iPhone calendar changed in 0.15.1).
 - [ ] **App Privacy** questionnaire (Data collection) — declare what Waffled collects
       (self-hosted → likely "Data Not Collected" for the hosted app, but confirm).
 - [ ] **Age rating** questionnaire.
-- [ ] **Privacy Policy URL** live and reachable.
-- [ ] **Select a build** for the 1.0 version (this also fixes the blank app-level icon).
+- [x] **Privacy Policy URL** live and reachable — `https://waffled.app/privacy` answers 200
+      (shipped in 0.14.2, alongside `/terms`).
+- [ ] **Support URL** — `https://waffled.app/support` currently **404s**, and Apple requires a
+      Support URL that resolves. Publish the page or point the field at `https://waffled.app`
+      or a docs page before submitting.
+- [ ] **Select a build** — the current version is 0.15.1 (`MARKETING_VERSION` in
+      `apps/ios/project.yml`); selecting the build also fixes the blank app-level icon.
 ```
