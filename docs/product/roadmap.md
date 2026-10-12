@@ -74,7 +74,7 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   the two platforms read identically with the lights off.
 - **Self-host packaging** — one-command `./waffled up` (pulls multi-arch GHCR images by
   default; `--build` for source), in-container migrations, and one-command `./waffled
-  upgrade` (repo fast-forward + version bump + DB snapshot + pull + migrate).
+  upgrade` (move to the newest release's tag + version bump + DB snapshot + pull + migrate).
 - **Observability** — structured JSON logging, a deep `/api/health` + **Settings → System
   Health** panel, **`./waffled doctor`**, baked build provenance, and **OpenTelemetry**
   (off by default) with an all-local **`./waffled observability up`** Grafana stack. Restore

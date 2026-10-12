@@ -4,8 +4,9 @@
 #
 # Design: cloud-specific customization lives in UNTRACKED files — an
 # infra/compose/docker-compose.oci.yml (published ports + a Caddy front for
-# PowerSync) and a caddy/Caddyfile.oci — so `git pull --ff-only` stays clean on
-# upgrade. It's applied via `./waffled --override infra/compose/docker-compose.oci.yml`
+# PowerSync) and a caddy/Caddyfile.oci — so the checkout move `./waffled upgrade` makes
+# (onto the target release's tag) never has to touch them. It's applied via
+# `./waffled --override infra/compose/docker-compose.oci.yml`
 # (explicit opt-in; nothing auto-loads), so normal installs are never affected.
 set -euxo pipefail
 exec > /var/log/waffled-bootstrap.log 2>&1

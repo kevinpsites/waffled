@@ -279,8 +279,9 @@ cd /opt/waffled
 sudo ./waffled --override infra/compose/docker-compose.oci.yml upgrade
 ```
 
-`./waffled upgrade` does a `git pull`, a pre-upgrade database backup, pulls the new images, and
-runs migrations. The override (published ports + PowerSync front) is applied **only** via that
+`./waffled upgrade` moves the checkout to the newest release's tag, takes a pre-upgrade database
+backup, pulls the new images, and runs migrations. The override (published ports + PowerSync
+front) is applied **only** via that
 explicit `--override` flag — nothing auto-loads, so ordinary Waffled installs are untouched. **You
 must include the flag** on `up`/`upgrade`/`restart`, or Caddy gets recreated from the base compose
 and loses port 443.
@@ -293,10 +294,11 @@ waffled() { sudo /opt/waffled/waffled --override /opt/waffled/infra/compose/dock
 Then `waffled upgrade`, `waffled status`, etc. just work.
 :::
 
-Two things to know: `upgrade` moves you to the **latest** release (to stay on a pinned
-`waffled_version`, re-run `terraform apply` instead of `upgrade`), and if you deployed on a **tag
-or SHA** the checkout is a detached HEAD, so `upgrade` refreshes images but won't advance the code
-(re-`apply` with a new `waffled_ref` for that).
+Two things to know: `upgrade` moves you to the **latest** release — to stay where you are, don't
+run it (or move deliberately with `./waffled upgrade --version X.Y.Z`) — and a box deployed on a
+**tag or SHA** has a detached HEAD, which `upgrade` now advances by checking out the target
+release's tag rather than leaving the code behind. Re-`apply` with a new `waffled_ref` only when
+you want Terraform's pin to change too.
 
 ## Day 2
 
