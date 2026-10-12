@@ -39,8 +39,10 @@ enum Recurrence {
     static let weekdaySet = "MO,TU,WE,TH,FR"
     private static let plainDay: Set<String> = Set(weekdays)
     private static let dayName: [String: String] = ["SU": "Sun", "MO": "Mon", "TU": "Tue", "WE": "Wed", "TH": "Thu", "FR": "Fri", "SA": "Sat"]
-    private static let fullDay: [String: String] = ["SU": "Sunday", "MO": "Monday", "TU": "Tuesday", "WE": "Wednesday", "TH": "Thursday", "FR": "Friday", "SA": "Saturday"]
-    private static let ordinals = ["", "first", "second", "third", "fourth", "fifth"]
+    // Internal, not private: `RhythmFormat.dayHintLabel` names a rule's day with these, so a
+    // rhythm row and the event editor can't spell one weekday two ways.
+    static let fullDay: [String: String] = ["SU": "Sunday", "MO": "Monday", "TU": "Tuesday", "WE": "Wednesday", "TH": "Thursday", "FR": "Friday", "SA": "Saturday"]
+    static let ordinals = ["", "first", "second", "third", "fourth", "fifth"]
 
     /// The RRULE weekday code for a date's local weekday (Calendar: 1=Sun…7=Sat).
     static func weekdayCode(_ d: Date, _ cal: Calendar = .current) -> String {
@@ -180,8 +182,9 @@ enum Recurrence {
 
     // MARK: helpers
 
-    /// Strip a leading "RRULE:" (case-insensitive) and surrounding whitespace.
-    private static func stripPrefix(_ s: String) -> String {
+    /// Strip a leading "RRULE:" (case-insensitive) and surrounding whitespace. Internal for
+    /// the same reason as `fullDay`.
+    static func stripPrefix(_ s: String) -> String {
         var raw = s.trimmingCharacters(in: .whitespaces)
         if let r = raw.range(of: "^RRULE:", options: [.regularExpression, .caseInsensitive]) {
             raw.removeSubrange(r)
@@ -189,7 +192,7 @@ enum Recurrence {
         return raw.trimmingCharacters(in: .whitespaces)
     }
 
-    private static func ruleParts(_ raw: String) -> [String: String] {
+    static func ruleParts(_ raw: String) -> [String: String] {
         var parts: [String: String] = [:]
         for seg in raw.uppercased().split(separator: ";") {
             let kv = seg.split(separator: "=", maxSplits: 1)

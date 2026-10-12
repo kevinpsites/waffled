@@ -4,7 +4,7 @@ import { api, usePersons, useGoals, useRhythms, goalsApi, goalCalendarApi, calen
 import { suggestGoalForEvent } from '../../lib/goal-match'
 import { Icon } from '../icons'
 import { createEventLocal, updateEventLocal, deleteEventLocal, tombstoneEvent } from '../../lib/powersync/events-local'
-import { parseRepeat, buildRrule, describeRrule, weekdayCode, nthWeekdayOfMonth, type RepeatFreq, type CustomUnit, type MonthlyMode } from './recurrence'
+import { parseRepeat, buildRrule, describeRrule, weekdayCode, nthWeekdayOfMonth, FULL_DAY, ORDINALS, type RepeatFreq, type CustomUnit, type MonthlyMode } from './recurrence'
 import { WeekdayChips } from './WeekdayChips'
 import { EventWhenField } from './EventWhenField'
 import { allDayExclusiveEnd, allDayLastDay } from './event-when'
@@ -19,8 +19,6 @@ const REPEAT_OPTIONS: Array<{ value: RepeatFreq; label: string }> = [
   { value: 'monthly', label: 'Monthly' },
   { value: 'custom', label: 'Custom…' },
 ]
-const FULL_WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-const ORDINAL_LABEL = ['', 'first', 'second', 'third', 'fourth', 'fifth']
 const clampInterval = (v: string) => Math.max(1, Math.min(99, Math.round(Number(v) || 1)))
 
 // Calendars an event can be written to: writable (owner/writer), not read-only.
@@ -217,7 +215,10 @@ export function EventModal({
   // The event's start, used for the default weekly day and monthly nth-weekday.
   const startDate = new Date(`${form.day}T${form.time || '12:00'}`)
   const weekday = weekdayCode(startDate)
-  const baseRrule = buildRrule(repeat, startDate)
+  // The ordinal is dropped so it is re-read from the start date: this modal's monthly
+  // option IS "whichever week the start date falls in" (it has no ordinal picker, unlike
+  // RhythmModal), so a parsed one would outlive a move to another week.
+  const baseRrule = buildRrule({ ...repeat, monthlyOrdinal: undefined }, startDate)
   // COUNT lives in the rule; an end date is passed separately as recurrenceEndAt.
   const rrule = baseRrule && endMode === 'after' && count > 0 ? `${baseRrule};COUNT=${count}` : baseRrule
   const recurrenceEndAt = endMode === 'on' && until ? toIso(until, '23:59') : null
@@ -775,8 +776,8 @@ export function EventModal({
                     style={{ marginTop: 10, width: '100%' }}
                   >
                     <option value="day">On day {startDate.getDate()}</option>
-                    <option value="weekday">On the {ORDINAL_LABEL[nthWeekdayOfMonth(startDate)] ?? `${nthWeekdayOfMonth(startDate)}th`} {FULL_WEEKDAY[startDate.getDay()]}</option>
-                    <option value="lastWeekday">On the last {FULL_WEEKDAY[startDate.getDay()]}</option>
+                    <option value="weekday">On the {ORDINALS[nthWeekdayOfMonth(startDate)] ?? `${nthWeekdayOfMonth(startDate)}th`} {FULL_DAY[weekdayCode(startDate)]}</option>
+                    <option value="lastWeekday">On the last {FULL_DAY[weekdayCode(startDate)]}</option>
                   </select>
                 )}
 

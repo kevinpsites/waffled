@@ -20,6 +20,8 @@ struct BookRhythmSheet: View {
     @State private var error: String?
     /// The bookable window, computed once — not per render.
     @State private var window: ClosedRange<Date>?
+    /// The rhythm's suggested day, when the sheet opened on it.
+    @State private var suggestion: String?
 
     private var rhythm: WaffledAPI.Rhythm { item.rhythm }
     /// True only when there is no recurrence left, so the offer really is to put a series
@@ -66,6 +68,12 @@ struct BookRhythmSheet: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
+                    if let suggestion {
+                        Text(suggestion)
+                            .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
                     if let error {
                         Text(error).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.danger)
                             .fixedSize(horizontal: false, vertical: true)
@@ -88,20 +96,22 @@ struct BookRhythmSheet: View {
         }
     }
 
-    /// Default to today when today is inside the period (the common case — the runway only
-    /// opens near the end), otherwise the first day it could go. Six in the evening is the
-    /// same default the web picks.
+    /// The day comes from `RhythmFormat.bookingDay` — the suggestion, else today, else the
+    /// first day it could go. Six in the evening is the same default the web picks.
     private func seed() {
         let cal = Cal.current
-        guard let start = item.periodStart.flatMap({ DateFmt.date($0, "yyyy-MM-dd", cal.timeZone) }),
+        guard let day = RhythmFormat.bookingDay(periodStart: item.periodStart, bookableUntil: item.bookableUntil,
+                                                suggestedOn: item.suggestedOn, calendar: cal),
+              let start = item.periodStart.flatMap({ DateFmt.date($0, "yyyy-MM-dd", cal.timeZone) }),
               let end = item.bookableUntil.flatMap({ DateFmt.date(RhythmFormat.lastDayOfPeriod($0), "yyyy-MM-dd", cal.timeZone) })
         else { return }
         let last = cal.date(bySettingHour: 23, minute: 59, second: 0, of: end) ?? end
-        guard start <= last else { return }
         window = start...last
-        let today = cal.startOfDay(for: Date())
-        let day = (today >= start && today <= last) ? today : start
         when = cal.date(bySettingHour: 18, minute: 0, second: 0, of: day).map { min(max($0, start), last) } ?? day
+        if let suggested = item.suggestedOn, RhythmFormat.ymd(day, calendar: cal) == suggested {
+            suggestion = RhythmFormat.suggestionNote(
+                day, hint: rhythm.autoSchedule ? nil : RhythmFormat.dayHintLabel(rhythm.rrule), calendar: cal)
+        }
     }
 
     private func book() async {

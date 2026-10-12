@@ -284,12 +284,14 @@ describe('New rhythm — what gets created', () => {
     fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'months' } })
     fireEvent.click(moreOptions())
     fireEvent.click(within(dialog).getByRole('switch', { name: /on the calendar automatically/i }))
-    fireEvent.change(within(dialog).getByLabelText(/which day of the month/i), { target: { value: 'weekday' } })
+    const monthly = within(dialog).getByLabelText(/which day of the month/i)
+    // Today is 2026-08-19, a Wednesday, so the options are named after Wednesdays.
+    expect(within(monthly).getByRole('option', { name: 'The third Wednesday' })).toBeTruthy()
+    fireEvent.change(monthly, { target: { value: 'weekday:3' } })
     fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
 
     await waitFor(() => expect(posts().length).toBe(1))
     const body = posts()[0].body!
-    // Today is 2026-08-19 — the third Wednesday of August.
     expect(body.startsOn).toBe('2026-08-01')
     expect(body.rrule).toBe('FREQ=MONTHLY;BYDAY=3WE')
   })
@@ -337,6 +339,93 @@ describe('New rhythm — what gets created', () => {
     expect(body.satisfiedBy).toBe('scheduling')
     expect(body.startsOn).toBe('2026-08-19')
     expect(body).not.toHaveProperty('nextDueAt')
+  })
+})
+
+const toBooking = () => {
+  openMode()
+  fireEvent.click(within(screen.getByRole('listbox')).getByText(/it's on the calendar/i))
+}
+
+describe('New rhythm — which day, and asking ahead', () => {
+  it('starts a monthly rhythm you book by hand on the first, with any day allowed', async () => {
+    const dialog = openCreate()
+    fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Family outing' } })
+    toBooking()
+    fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'months' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
+
+    await waitFor(() => expect(posts().length).toBe(1))
+    const body = posts()[0].body!
+    expect(body.startsOn).toBe('2026-08-01')
+    expect(body.autoSchedule).toBe(false)
+    expect(body.rrule ?? null).toBeNull()
+  })
+
+  it('offers which day of the month without booking itself, and sends it as a hint', async () => {
+    const dialog = openCreate()
+    fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Family outing' } })
+    toBooking()
+    fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'months' } })
+    fireEvent.click(moreOptions())
+    // The date picks the weekday, as it does for a series; the ordinal is chosen outright,
+    // so a Saturday anywhere in the month gets you "the third Saturday".
+    fireEvent.change(within(dialog).getByLabelText(/first period starts/i), { target: { value: '2026-08-08' } })
+    fireEvent.change(within(dialog).getByLabelText(/which day of the month/i), { target: { value: 'weekday:3' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
+
+    await waitFor(() => expect(posts().length).toBe(1))
+    const body = posts()[0].body!
+    expect(body.autoSchedule).toBe(false)
+    expect(body.rrule).toBe('FREQ=MONTHLY;BYDAY=3SA')
+    expect(body.startsOn).toBe('2026-08-01')
+  })
+
+  it('picks a weekday for a weekly rhythm you book by hand, with no day picked by default', async () => {
+    const dialog = openCreate()
+    fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Long run' } })
+    toBooking()
+    fireEvent.click(moreOptions())
+    expect(within(dialog).getByRole('button', { name: 'SA' })).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'SA' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
+
+    await waitFor(() => expect(posts().length).toBe(1))
+    const body = posts()[0].body!
+    expect(body.autoSchedule).toBe(false)
+    expect(body.rrule).toBe('FREQ=WEEKLY;BYDAY=SA')
+  })
+
+  it('asks ahead of a booking window, sending the notice plus the window as the runway', async () => {
+    const dialog = openCreate()
+    fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Date night' } })
+    toBooking()
+    fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'months' } })
+    fireEvent.click(moreOptions())
+    fireEvent.change(within(dialog).getByLabelText(/first .* days/i), { target: { value: '7' } })
+    fireEvent.change(within(dialog).getByLabelText(/days before it opens/i), { target: { value: '14' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
+
+    await waitFor(() => expect(posts().length).toBe(1))
+    const body = posts()[0].body!
+    expect(body.bookWithin).toBe('7 days')
+    expect(body.leadTime).toBe('21 days')
+  })
+
+  it('shows the day a hand-booked rhythm suggests, and can let any day count again', async () => {
+    const outing = {
+      ...filter, id: 'r-outing', title: 'Family outing', satisfiedBy: 'scheduling' as const, every: '1 mon',
+      startsOn: '2026-08-01', nextDueAt: null, lastCompletedAt: null, rrule: 'FREQ=MONTHLY;BYDAY=3SA',
+      bookWithin: null, leadTime: '1 mon',
+    }
+    const dialog = openEdit(outing)
+    fireEvent.click(moreOptions())
+    expect(within(dialog).getByText(/suggests the third saturday/i)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: /any day instead/i }))
+    fireEvent.click(within(dialog).getByRole('button', { name: /save changes/i }))
+
+    await waitFor(() => expect(calls.some((c) => c.method === 'PATCH')).toBe(true))
+    expect(calls.find((c) => c.method === 'PATCH')!.body!.rrule).toBeNull()
   })
 })
 
@@ -398,5 +487,51 @@ describe('the history a completion rhythm keeps', () => {
     openEdit({ ...filter, id: 'r-temple', satisfiedBy: 'scheduling', startsOn: '2026-07-01', nextDueAt: null })
     await screen.findByRole('dialog')
     expect(calls.some((c) => c.url.includes('/completions'))).toBe(false)
+  })
+
+  // "Clean the floors in the 1st and 3rd week" — set weeks instead of a clock that
+  // restarts from the tap. The weeks are the schedule, so there is no due date to pick.
+  it('sends the chosen weeks of the month as a grid, and no due date', async () => {
+    const dlg = openCreate()
+    fireEvent.change(within(dlg).getByLabelText('What'), { target: { value: 'Floors' } })
+    fireEvent.change(within(dlg).getByLabelText('Unit'), { target: { value: 'months' } })
+    fireEvent.click(moreOptions())
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Set weeks of the month' }))
+    fireEvent.click(within(dlg).getByRole('button', { name: '1st' }))
+    fireEvent.click(within(dlg).getByRole('button', { name: '3rd' }))
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Add rhythm' }))
+
+    await waitFor(() => expect(posts()).toHaveLength(1))
+    expect(posts()[0].body).toMatchObject({ satisfiedBy: 'completion', gridDays: [1, 15] })
+    expect(posts()[0].body).not.toHaveProperty('nextDueAt')
+  })
+
+  // The card above the form promises what the rhythm will do. On a grid it must not keep
+  // promising the rolling shape's behaviour — "the next one moves with it" is the exact
+  // thing setting weeks turns off.
+  it('stops promising that a late one moves the next when weeks are set', async () => {
+    const dlg = openCreate()
+    fireEvent.change(within(dlg).getByLabelText('What'), { target: { value: 'Floors' } })
+    fireEvent.change(within(dlg).getByLabelText('Unit'), { target: { value: 'months' } })
+    fireEvent.click(moreOptions())
+    expect(within(dlg).getByText(/misses never stack up/i)).toBeInTheDocument()
+
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Set weeks of the month' }))
+    fireEvent.click(within(dlg).getByRole('button', { name: '1st' }))
+    expect(within(dlg).queryByText(/the next one moves with it/i)).toBeNull()
+    expect(within(dlg).queryByText(/misses never stack up/i)).toBeNull()
+    expect(within(dlg).getByText(/never shifts the ones after it/i)).toBeInTheDocument()
+  })
+
+  // Off by default: an ordinary completion rhythm still measures from when you did it.
+  it('leaves the grid off unless weeks are chosen', async () => {
+    const dlg = openCreate()
+    fireEvent.change(within(dlg).getByLabelText('What'), { target: { value: 'Air filter' } })
+    fireEvent.change(within(dlg).getByLabelText('Unit'), { target: { value: 'months' } })
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Add rhythm' }))
+
+    await waitFor(() => expect(posts()).toHaveLength(1))
+    expect(posts()[0].body).not.toHaveProperty('gridDays')
+    expect(posts()[0].body).toHaveProperty('nextDueAt')
   })
 })

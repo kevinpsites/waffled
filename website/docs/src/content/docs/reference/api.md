@@ -209,12 +209,15 @@ support and keep the `google` segment, but they cover accounts from **every** pr
 | POST | `/api/rhythms/:id/schedule` | Book a period into a real calendar event | module(rhythms) tenant |
 | GET | `/api/rhythms/:id/completions` | Completion history | module(rhythms) tenant |
 
-`PATCH` covers `title`, `emoji`, `notes`, `personId`, `every`, `leadTime`, `bookWithin`
-and `isActive` only — **not** `satisfiedBy`, `startsOn`, `autoSchedule` or `rrule`.
-Re-anchoring a live rhythm would re-interpret the periods it has already skipped and point
-its bookings at periods that no longer exist. `leadTime` is clamped on create and on every edit, to a ceiling that differs by shape: the
-**whole** of `every` on a scheduling rhythm, **half** of it on a completion one, and
-`bookWithin` wherever a booking window is set. Only the completion shape needs halving —
+`PATCH` covers `title`, `emoji`, `notes`, `personId`, `every`, `leadTime`, `bookWithin`,
+`isActive` and — on a hand-booked scheduling rhythm only — `rrule`, the which-day hint (null
+clears it). It does **not** take `satisfiedBy`, `startsOn`, `autoSchedule`, or the `rrule`
+of a rhythm that books itself. Re-anchoring a live rhythm would re-interpret the periods it
+has already skipped and point its bookings at periods that no longer exist. `leadTime` is
+clamped on create and on every edit, to a ceiling that differs by shape: the **whole** of
+`every` on a scheduling rhythm, window or not, and **half** of it on a completion one. On a
+scheduling rhythm it is measured back from the booking window's end, so with a window it can
+open before the window does. Only the completion shape needs halving —
 its attention feed has no upper bound (an overdue thing can still be done and should keep
 asking), so a runway as long as its cycle would surface it the instant it was completed and
 never let it go quiet. A scheduling rhythm's feed closes when its window does, so a
@@ -236,7 +239,19 @@ when a window is set: the period end is where the **next** period starts (what t
 skips are keyed against), while the window end is the last moment a booking still settles
 this one.
 
-A rhythm with `autoSchedule` is refused at create if its `rrule` **skips a period** —
+The period both endpoints report is the **earliest period whose booking window has not
+closed**, tiled by one shared SQL fragment. Without a window that is the period containing
+today; with one, the rhythm moves on to its next period the day after its window closes, and
+a rhythm whose anchor is still ahead reports its first period. `/attention` can therefore
+return an `unscheduled` item for a period that has not started yet — asking ahead — and
+weekly-planning loose ends leaves those out.
+
+Both also return `suggestedOn` (`YYYY-MM-DD`, or null): the first day the rhythm's `rrule`
+allows inside that period's window. On a hand-booked rhythm the rule is only a hint — it
+seeds the booking sheet and never decides satisfaction.
+
+A rhythm's `rrule` — a series, or a hand-booked hint on create or `PATCH` — is refused if it
+**skips a period** (or, with a booking window, never lands inside one) —
 checked by walking the rule across the first twelve periods. `starts_on` anchors the grid
 *and* seeds the series, and for a rule like `FREQ=MONTHLY;BYDAY=3SA` those disagree: third
 Saturdays fall between the 15th and the 21st, so periods anchored on the 19th leave some

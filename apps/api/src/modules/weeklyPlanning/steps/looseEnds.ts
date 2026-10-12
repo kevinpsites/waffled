@@ -336,6 +336,8 @@ async function rhythmsPastDue(householdId: string, today: string): Promise<Sourc
         actions: ['done'],
       })
     } else {
+      // Asking ahead about a period that has not started: a nudge, not something left undone.
+      if (item.periodStart > today) continue
       out.push({
         key: `rhythm:${item.rhythm.id}`,
         kind: 'rhythm',

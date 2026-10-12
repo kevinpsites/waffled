@@ -15,7 +15,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Put a rhythm you mark off on set weeks of the month.** *Clean the floors in the 1st and
+  3rd week* is now sayable: pick the weeks on a monthly rhythm and they become the schedule,
+  instead of the clock restarting whenever you last did it. One week asks at a time, a missed
+  one keeps asking until the next opens and is then let go, and marking off late still counts
+  for the week that is open — so being late never shifts everything after it. On web, iPhone
+  and iPad.
+- **Suggest a day for a rhythm you book yourself.** A rhythm you put on the calendar by hand
+  can now carry a day — *the third Saturday* for a monthly family outing, *Saturdays* for a
+  weekly one. Its row and the Today card name the day, and **Book a time** opens on it; a
+  booking on any other day still counts. On web, iPhone and iPad.
+
 ### Changed
+
+- **A monthly rhythm's day picker says which day it means.** It now lists the days by name —
+  *The 19th of the month*, *The first Saturday* through *The fourth Saturday*, *The last
+  Saturday* — instead of asking you to decode "the last of that weekday", and you pick the
+  ordinal outright rather than hunting the calendar for a date that happens to be a third
+  Saturday. A fifth weekday is no longer offered anywhere: most months don't have one, so the
+  rhythm could never be booked in those months.
+
+- **Rhythms with a booking window can ask you ahead of time.** "Date night in the first week
+  of the month" can now start nudging you days before that week, so there's time to plan it —
+  set **Start nudging me … days before it opens**. Once a window has passed, the rhythm moves
+  on to the next one instead of reporting a week that's already gone, and a new monthly
+  rhythm you book by hand starts on the 1st.
 
 ### Fixed
 
