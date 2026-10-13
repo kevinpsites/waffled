@@ -106,8 +106,11 @@
   --sh-3: 0 8px 30px rgba(40,33,24,.10), 0 2px 8px rgba(40,33,24,.05);
 
   /* type */
-  --sans: -apple-system, "SF Pro Text", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
-  --serif: "New York", "Iowan Old Style", ui-serif, Georgia, "Times New Roman", serif;
+  /* --font-* are the palette's own faces; a chosen typeface (typefaces.css) swaps --sans/--serif. */
+  --font-sans: -apple-system, "SF Pro Text", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+  --font-serif: "New York", "Iowan Old Style", ui-serif, Georgia, "Times New Roman", serif;
+  --sans: var(--font-sans);
+  --serif: var(--font-serif);
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   color-scheme: light;

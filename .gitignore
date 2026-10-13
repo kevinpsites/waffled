@@ -50,3 +50,7 @@ postgres/data/
 
 # claude code agent workspace (local only)
 .claude/
+
+# local design-system export and sync tools
+/apps/web/ds-bundle/
+/apps/web/.ds-sync/

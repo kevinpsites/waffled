@@ -6,6 +6,9 @@ import {
   applyTheme,
   initTheme,
   THEME_KEY,
+  TYPEFACE_KEY,
+  readTypeface,
+  setTypeface,
   type ThemePref,
 } from './theme'
 
@@ -35,6 +38,7 @@ function installMatchMedia(dark: boolean) {
 beforeEach(() => {
   localStorage.clear()
   document.documentElement.removeAttribute('data-theme')
+  document.documentElement.removeAttribute('data-typeface')
 })
 afterEach(() => {
   vi.restoreAllMocks()
@@ -121,6 +125,38 @@ describe('theme store', () => {
     setPref('dark')
     expect(spy).toHaveBeenCalledOnce()
     window.removeEventListener('waffled:theme-changed', spy)
+  })
+})
+
+describe('typeface store', () => {
+  it('defaults to "classic", also for a garbage stored value', () => {
+    expect(readTypeface()).toBe('classic')
+    localStorage.setItem(TYPEFACE_KEY, 'comic-sans')
+    expect(readTypeface()).toBe('classic')
+  })
+
+  it('setTypeface persists, stamps data-typeface and notifies listeners', () => {
+    const spy = vi.fn()
+    window.addEventListener('waffled:theme-changed', spy)
+    setTypeface('clear')
+    expect(localStorage.getItem(TYPEFACE_KEY)).toBe('clear')
+    expect(document.documentElement.getAttribute('data-typeface')).toBe('clear')
+    expect(spy).toHaveBeenCalledOnce()
+    window.removeEventListener('waffled:theme-changed', spy)
+  })
+
+  it('"classic" removes data-typeface so the palette\'s own fonts return', () => {
+    setTypeface('early-reader')
+    setTypeface('classic')
+    expect(document.documentElement.hasAttribute('data-typeface')).toBe(false)
+    expect(readTypeface()).toBe('classic')
+  })
+
+  it('initTheme applies the stored typeface on boot', () => {
+    installMatchMedia(false)
+    localStorage.setItem(TYPEFACE_KEY, 'friendly')
+    initTheme()
+    expect(document.documentElement.getAttribute('data-typeface')).toBe('friendly')
   })
 })
 

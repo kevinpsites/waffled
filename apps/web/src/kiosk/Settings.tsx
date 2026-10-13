@@ -11,6 +11,7 @@ import { familyColorHex } from '../lib/event-color'
 import { PersonModal } from './components/PersonModal'
 import { ColorPicker, COLOR_SWATCHES } from './components/ColorPicker'
 import { SettingCard } from './components/SettingCard'
+import { TypefacePicker } from './components/TypefacePicker'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { Screensaver, screensaverPhotos } from './components/Screensaver'
 import '../styles/settings.css'
@@ -3231,6 +3232,8 @@ function DisplayKioskPanel() {
         )}
       </SettingCard>
 
+      <TypefaceSection />
+
       {error && <SettingCard style={{ marginTop: 16 }}><div className="muted" style={{ fontWeight: 600 }}>Couldn’t load display settings.</div></SettingCard>}
       {cfg && (
         <>
@@ -3379,6 +3382,22 @@ function ThemePreview({ label, active, pinned, colors, onSelect }: {
   )
 }
 
+// Shared by Appearance and Display & Kiosk. Saved per device.
+function TypefaceSection() {
+  const { typeface, setTypeface } = useThemePref()
+  return (
+    <>
+      <div className="flabel" style={{ padding: '18px 2px 10px' }}>TYPEFACE ON THIS DEVICE</div>
+      <SettingCard>
+        <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
+          Changes the lettering on this screen. Pick the one that's easiest to read from where you stand.
+        </div>
+        <TypefacePicker value={typeface} onChange={setTypeface} />
+      </SettingCard>
+    </>
+  )
+}
+
 function AppearancePanel() {
   const { pref, resolved, setPref } = useThemePref()
   const matchSystem = pref === 'system'
@@ -3417,8 +3436,10 @@ function AppearancePanel() {
         </SettingRow>
       </SettingCard>
 
+      <TypefaceSection />
+
       <div className="tiny muted" style={{ padding: '12px 2px 0', fontWeight: 600 }}>
-        This choice is saved on this device only.
+        These choices are saved on this device only.
       </div>
     </div>
   )

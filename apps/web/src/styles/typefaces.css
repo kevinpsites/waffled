@@ -1,0 +1,84 @@
+/* Typefaces — a per-device choice stamped as <html data-typeface> by lib/theme.ts.
+   It swaps --sans/--serif for the whole app; with no attribute ("classic") the
+   palette's own --font-sans/--font-serif stay. Load after every palette stylesheet:
+   these rules share their specificity, so source order decides. */
+:root {
+  --font-clear: "Lexend Variable", "Lexend", system-ui, sans-serif;
+  --font-hyperlegible: "Atkinson Hyperlegible Next Variable", "Atkinson Hyperlegible Next", "Atkinson Hyperlegible", system-ui, sans-serif;
+  --font-friendly: "Nunito Variable", "Nunito", system-ui, sans-serif;
+  --font-early-reader: "Andika", system-ui, sans-serif;
+}
+:root[data-typeface="clear"] { --sans: var(--font-clear); --serif: var(--font-clear); }
+:root[data-typeface="hyperlegible"] { --sans: var(--font-hyperlegible); --serif: var(--font-hyperlegible); }
+:root[data-typeface="friendly"] { --sans: var(--font-friendly); --serif: var(--font-friendly); }
+:root[data-typeface="early-reader"] { --sans: var(--font-early-reader); --serif: var(--font-early-reader); }
+:root[data-typeface="hyperlegible"] .wf,
+:root[data-typeface="early-reader"] .wf { letter-spacing: 0; }
+:root[data-typeface="hyperlegible"] .wf-serif,
+:root[data-typeface="early-reader"] .wf-serif { letter-spacing: -0.005em; }
+
+/* TypefacePicker (components/TypefacePicker.tsx) */
+.tp {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.tp-opt {
+  --tp-d: var(--font-serif);
+  --tp-b: var(--font-sans);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 48px;
+  padding: 16px 16px 14px;
+  border: 2px solid var(--hair-2);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  letter-spacing: 0;
+}
+.tp-opt:hover { background: var(--card-2); }
+.tp-opt:focus-visible { outline: 3px solid var(--primary-t); outline-offset: 2px; }
+.tp-opt[aria-checked="true"] { border-color: var(--primary); background: var(--card); }
+.tp-opt[data-tp="clear"] { --tp-d: var(--font-clear); --tp-b: var(--font-clear); }
+.tp-opt[data-tp="hyperlegible"] { --tp-d: var(--font-hyperlegible); --tp-b: var(--font-hyperlegible); }
+.tp-opt[data-tp="friendly"] { --tp-d: var(--font-friendly); --tp-b: var(--font-friendly); }
+.tp-opt[data-tp="early-reader"] { --tp-d: var(--font-early-reader); --tp-b: var(--font-early-reader); }
+.tp-clock {
+  font-family: var(--tp-d);
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.tp-title { font-family: var(--tp-d); font-size: 22px; font-weight: 800; line-height: 1.2; }
+.tp-body { font-family: var(--tp-b); font-size: 16px; line-height: 1.35; color: var(--ink-2); }
+.tp-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: stretch;
+  margin-top: 6px;
+  font-family: var(--tp-b);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--ink-2);
+}
+.tp-opt[aria-checked="true"] .tp-name { color: var(--primary-d); }
+.tp-tick {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--on-accent);
+}
+.tp-note { font-family: var(--tp-b); font-size: 13px; line-height: 1.35; color: var(--ink-3); }

@@ -9,13 +9,21 @@
 //   'light' | 'dark'  → pinned, ignores the OS
 //   'system'          → mirrors prefers-color-scheme and follows live OS changes
 // Default is 'system' so a fresh install matches the device out of the box.
+//
+// The typeface is a second, independent axis, `data-typeface`, which swaps
+// `--sans`/`--serif` (styles/typefaces.css). 'classic' removes it so the
+// palette's own fonts return.
 
 import { useSyncExternalStore } from 'react'
 
 export type ThemePref = 'light' | 'dark' | 'system'
 export type ResolvedTheme = 'light' | 'dark'
 
+export type Typeface = 'classic' | 'clear' | 'hyperlegible' | 'friendly' | 'early-reader'
+export const TYPEFACE_IDS: readonly Typeface[] = ['classic', 'clear', 'hyperlegible', 'friendly', 'early-reader']
+
 export const THEME_KEY = 'waffled:theme'
+export const TYPEFACE_KEY = 'waffled:typeface'
 const DARK_MQ = '(prefers-color-scheme: dark)'
 
 /** The stored preference, defaulting to 'system' (also for any garbage value). */
@@ -60,11 +68,43 @@ export function setPref(pref: ThemePref): void {
   }
 }
 
+/** The stored typeface, defaulting to 'classic' (also for any garbage value). */
+export function readTypeface(): Typeface {
+  try {
+    const v = localStorage.getItem(TYPEFACE_KEY)
+    if (v && (TYPEFACE_IDS as readonly string[]).includes(v)) return v as Typeface
+  } catch {
+    // Same private-mode caveat as readPref.
+  }
+  return 'classic'
+}
+
+export function applyTypeface(typeface: Typeface): void {
+  if (typeof document === 'undefined') return
+  if (typeface === 'classic') document.documentElement.removeAttribute('data-typeface')
+  else document.documentElement.setAttribute('data-typeface', typeface)
+}
+
+/** Persist a typeface, apply it, and notify listeners. */
+export function setTypeface(typeface: Typeface): void {
+  try {
+    if (typeface === 'classic') localStorage.removeItem(TYPEFACE_KEY)
+    else localStorage.setItem(TYPEFACE_KEY, typeface)
+  } catch {
+    // Non-fatal: the choice just won't survive a reload.
+  }
+  applyTypeface(typeface)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('waffled:theme-changed'))
+  }
+}
+
 // Apply the stored preference and wire up the OS listener so 'system' tracks
 // live prefers-color-scheme changes. Explicit light/dark ignore the OS. Called
 // once at startup; applyTheme is idempotent so a stray re-call is harmless.
 export function initTheme(): void {
   applyTheme(resolveTheme(readPref()))
+  applyTypeface(readTypeface())
   if (typeof window === 'undefined' || !window.matchMedia) return
   const mq = window.matchMedia(DARK_MQ)
   const onChange = () => {
@@ -96,15 +136,17 @@ function subscribe(cb: () => void): () => void {
 // re-renders — a bare pref snapshot would be identical and bail out.
 function snapshot(): string {
   const p = readPref()
-  return `${p}|${resolveTheme(p)}`
+  return `${p}|${resolveTheme(p)}|${readTypeface()}`
 }
 
 export function useThemePref(): {
   pref: ThemePref
   resolved: ResolvedTheme
+  typeface: Typeface
   setPref: (p: ThemePref) => void
+  setTypeface: (t: Typeface) => void
 } {
-  const snap = useSyncExternalStore(subscribe, snapshot, () => 'system|light')
-  const [pref, resolved] = snap.split('|') as [ThemePref, ResolvedTheme]
-  return { pref, resolved, setPref }
+  const snap = useSyncExternalStore(subscribe, snapshot, () => 'system|light|classic')
+  const [pref, resolved, typeface] = snap.split('|') as [ThemePref, ResolvedTheme, Typeface]
+  return { pref, resolved, typeface, setPref, setTypeface }
 }

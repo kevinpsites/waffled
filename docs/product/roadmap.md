@@ -72,6 +72,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   `[data-theme="dark"]` override; iOS: dark-aware `Color(light:dark:)` tokens re-resolved by UIKit
   on the appearance change), with a shared palette and semantic success/danger/warn/info tokens so
   the two platforms read identically with the lights off.
+- **Typeface picker (web/kiosk)** — a per-device choice of five legibility-first typefaces
+  (Classic, Clear, Hyperlegible, Friendly, Early reader) in Settings → Appearance and Display &
+  Kiosk, drawn as live specimens; a `data-typeface` axis beside light/dark.
 - **Self-host packaging** — one-command `./waffled up` (pulls multi-arch GHCR images by
   default; `--build` for source), in-container migrations, and one-command `./waffled
   upgrade` (repo fast-forward + version bump + DB snapshot + pull + migrate).
