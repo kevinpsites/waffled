@@ -1,7 +1,7 @@
 // The /mcp endpoint: stateless MCP Streamable-HTTP JSON-RPC over the normal auth gate,
 // driven through real routes against a throwaway Postgres (Testcontainers).
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { startMcpHarness, bearer, keyed, json, header, type McpHarness } from './helpers/mcp'
+import { startMcpHarness, mint, bearer, keyed, json, header, type McpHarness } from './helpers/mcp'
 
 let h: McpHarness
 let kevin = ''
@@ -154,10 +154,7 @@ describe('tools with a user session (full rights)', () => {
 
   // Pins existing behavior: a device sub has no identity row, so it resolves to no person.
   it('a kiosk device token is refused — it resolves to no person', async () => {
-    const device = jwt.sign({ kind: 'device', household_id: householdId }, SECRET, {
-      algorithm: 'HS256', subject: 'device:00000000-0000-4000-8000-000000000001',
-      issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h',
-    })
+    const device = mint('device:00000000-0000-4000-8000-000000000001')
     const r = await rpc(bearer(device), 'tools/list')
     expect(r.statusCode).toBe(403)
   })
