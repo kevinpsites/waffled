@@ -1,5 +1,5 @@
 // The MCP tool registry. Each tool declares the one API scope it needs, so scope lives on
-// the tool instead of a path prefix (docs/product/mcp-plan.md §3). `canUse` is the single
+// the tool instead of a path prefix (docs/product/mcp-plan.md §3). `denialFor` is the single
 // visibility rule: tools/list filters by it and tools/call re-checks it, so the two cannot
 // drift. A scope that is not a real catalog string fails closed even for a full-rights user.
 import { ALL_SCOPES, keyHasScope } from '../api-keys/api-keys'
@@ -71,8 +71,4 @@ export function denialFor(tool: ToolDef, ctx: ToolContext): string | null {
     return `The ${tool.module} module is not enabled`
   }
   return null
-}
-
-export function canUse(tool: ToolDef, ctx: ToolContext): boolean {
-  return denialFor(tool, ctx) === null
 }

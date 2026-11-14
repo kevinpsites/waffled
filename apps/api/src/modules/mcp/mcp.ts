@@ -38,8 +38,9 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
-// The spec requires rejecting a foreign Origin (DNS-rebinding defence). Server-to-server
-// clients send none, so an absent Origin passes.
+// The spec requires rejecting a foreign Origin. Without PUBLIC_BASE_URL the expected origin
+// comes from Host, so this is weak against DNS rebinding; that is tolerable because /mcp
+// takes only bearer credentials, never cookies. Server-to-server clients send no Origin.
 function originAllowed(req: Request): boolean {
   const origin = req.headers.origin
   if (typeof origin !== 'string' || !origin) return true
