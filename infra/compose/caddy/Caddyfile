@@ -27,9 +27,10 @@
 		reverse_proxy api:3000
 	}
 
-	# MCP endpoint for AI agents. Exact paths so /mcpanything still falls to the SPA; the
-	# api checks a browser Origin against the forwarded host, so pin the same headers.
-	@mcp path /mcp /mcp/*
+	# MCP endpoint for AI agents, plus its OAuth discovery documents. Exact paths so
+	# /mcpanything still falls to the SPA; the api checks a browser Origin against the
+	# forwarded host and builds every OAuth URL from it, so pin the same headers.
+	@mcp path /mcp /mcp/* /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/* /.well-known/oauth-authorization-server
 	handle @mcp {
 		reverse_proxy api:3000 {
 			header_up X-Forwarded-For {remote_host}
