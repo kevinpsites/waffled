@@ -1,6 +1,6 @@
 // Pure helpers behind OAuth client registration: which addresses a Client ID Metadata
 // Document may be fetched from, and which redirect URIs match a registration.
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { isPublicAddress, redirectAllowed, validRedirectUri, cacheSeconds } from '../src/modules/oauth/clients'
 
 describe('isPublicAddress', () => {
@@ -73,6 +73,23 @@ describe('the real metadata-document fetcher', () => {
     await expect(resolveClient('https://127.0.0.1/meta')).rejects.toThrow(/non-public/)
     await expect(resolveClient('https://[::1]/meta')).rejects.toThrow(/non-public/)
     await expect(resolveClient('https://localhost/meta')).rejects.toThrow(/non-public/)
+  })
+})
+
+describe('the metadata-document deadline', () => {
+  it('gives up after 5 seconds overall, even on a fetch that trickles or hangs', async () => {
+    const { resolveClient, setClientMetadataFetcherForTest } = await import('../src/modules/oauth/clients')
+    vi.useFakeTimers()
+    setClientMetadataFetcherForTest(() => new Promise(() => {}))
+    try {
+      const pending = resolveClient('https://slow.example/meta')
+      const settled = expect(pending).rejects.toThrow(/timed out/)
+      await vi.advanceTimersByTimeAsync(5001)
+      await settled
+    } finally {
+      setClientMetadataFetcherForTest(null)
+      vi.useRealTimers()
+    }
   })
 })
 

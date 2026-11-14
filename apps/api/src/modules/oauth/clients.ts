@@ -121,7 +121,7 @@ const httpsFetcher: MetadataFetcher = (url) =>
     if (net.isIP(literal) && !isPublicAddress(literal)) return reject(new Error('non-public address'))
     const req = https.get(
       u,
-      { lookup: safeLookup as never, timeout: CIMD_TIMEOUT_MS, headers: { accept: 'application/json' } },
+      { lookup: safeLookup as never, timeout: CIMD_TIMEOUT_MS, headers: { accept: 'application/json', 'user-agent': 'Waffled (MCP client metadata fetch)' } },
       (res) => {
         let size = 0
         const chunks: Buffer[] = []
@@ -164,10 +164,18 @@ async function fetchMetadataDocument(clientId: string): Promise<OAuthClient> {
   if (cached && cached.expiresAt > Date.now()) return cached.client
 
   let res: Awaited<ReturnType<MetadataFetcher>>
+  // One deadline over the whole fetch: the socket timeout only measures idle gaps, so a
+  // server trickling a byte at a time would otherwise hold the consent request open.
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('timed out')), CIMD_TIMEOUT_MS)
+  })
   try {
-    res = await fetcher(clientId)
+    res = await Promise.race([fetcher(clientId), deadline])
   } catch (err) {
     throw new ClientError(`Could not fetch the client metadata document: ${(err as Error).message}`)
+  } finally {
+    clearTimeout(timer)
   }
   if (res.status !== 200) throw new ClientError(`The client metadata document answered ${res.status}`)
   if (Buffer.byteLength(res.body) > CIMD_MAX_BYTES) throw new ClientError('The client metadata document is too large')

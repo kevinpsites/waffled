@@ -359,6 +359,28 @@ describe('authorize', () => {
     }
   })
 
+  // Clients form-encode the query, so a space in `scope` arrives as `+`. The harness hands
+  // the app a ready-made object; only the real Node server decodes a raw query string.
+  it('reads a +-encoded scope through the real HTTP server', async () => {
+    const { createHttpServer } = await import('../src/platform/http-server')
+    const app = (await import('../src/app')).default
+    const server = createHttpServer(app)
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    try {
+      const { port } = server.address() as import('node:net').AddressInfo
+      const flow = await startFlow()
+      const qs = new URLSearchParams({ ...flow.params, scope: 'family:read calendar:read', state: 'a b%c' }).toString()
+      expect(qs).toContain('scope=family%3Aread+calendar%3Aread')
+      const res = await fetch(`http://127.0.0.1:${port}/api/oauth/authorize/info?${qs}`, {
+        headers: { ...HOST, authorization: `Bearer ${session}` },
+      })
+      expect(res.status, await res.clone().text()).toBe(200)
+      expect(((await res.json()) as { scopes: Array<{ scope: string }> }).scopes.map((s) => s.scope)).toEqual(['family:read', 'calendar:read'])
+    } finally {
+      await new Promise((resolve) => server.close(resolve))
+    }
+  })
+
   it('accepts the resource in any canonical spelling', async () => {
     const flow = await startFlow({ resource: 'https://WAFFLED.example/mcp/' })
     expect((await info(flow.params)).statusCode).toBe(200)
