@@ -2,6 +2,7 @@
 // endpoints directly (no bearer) and persist the returned session via setSession,
 // which signals the AuthGate to render the app.
 import { apiGet, apiSend, setSession, clearSession, tagIfGateway, trackedFetch } from './client'
+import { rememberReturnPath } from '../returnPath'
 
 export interface AuthStatus {
   initialized: boolean
@@ -60,8 +61,10 @@ export const authApi = {
     const d = await post('/api/auth/setup', input)
     setSession(d.accessToken, d.refreshToken)
   },
-  // Full-page handoff to the backend OIDC flow; it redirects back to /auth/callback.
+  // Full-page handoff to the backend OIDC flow; it redirects back to /auth/callback, and
+  // AuthGate then returns to the page that started it.
   startOidc(): void {
+    rememberReturnPath()
     window.location.href = `/api/auth/oidc/start?redirect=${encodeURIComponent(window.location.origin + '/')}`
   },
   // /auth/callback exchanges the one-time handoff code for a real session.
