@@ -5,7 +5,7 @@ import { capped, clip, DATE_SCHEMA, ID_SCHEMA, isIsoDate, isUuid, optBool, optSt
 import { DATA_NOTE, READ, WRITE } from './shared'
 
 const MAX_SPAN_DAYS = 62
-const MAX_EVENTS = 200
+const MAX_EVENTS = 150
 
 export function presentEventForAgent(e: EventRow) {
   return {
@@ -15,7 +15,7 @@ export function presentEventForAgent(e: EventRow) {
     startsAt: e.starts_at,
     endsAt: e.ends_at,
     allDay: e.all_day,
-    location: e.location,
+    location: clip(e.location, 200),
     description: clip(e.description),
     person: e.person_id ? { id: e.person_id, name: e.person_name ?? null } : null,
     participants: (e.participants ?? []).map((p) => ({ id: p.id, name: p.name })),
@@ -52,13 +52,15 @@ defineTool({
 
 const DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/
 
-// An all-day event is stored at the day's UTC midnight (as the calendar UI writes it);
-// a timed one without an offset is household-local wall time.
+// All-day events are written the way the calendar editor writes them: household-local noon,
+// with an exclusive end the day after the last day (event-when.ts). A timed value without
+// an offset is household-local wall time.
 function eventInstant(value: string, allDay: boolean, tz: string, key: string): string {
   if (allDay) {
     const day = value.slice(0, 10)
     if (!isIsoDate(day)) throw new ToolInputError(`${key} must start with a date as YYYY-MM-DD`)
-    return `${day}T00:00:00.000Z`
+    const stored = key === 'endsAt' ? new Date(Date.parse(`${day}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10) : day
+    return zonedToUtc(`${stored}T12:00`, tz)
   }
   if (!DATETIME_RE.test(value) || !isIsoDate(value.slice(0, 10))) {
     throw new ToolInputError(`${key} must be a date and time like 2026-11-20T15:30 (set allDay for a whole day)`)
@@ -69,7 +71,7 @@ function eventInstant(value: string, allDay: boolean, tz: string, key: string): 
 defineTool({
   name: 'add_event',
   description:
-    "Add a calendar event. startsAt/endsAt are YYYY-MM-DDTHH:MM in the household's timezone (or include an offset); for allDay give just the date. personId is whose event it is (its color, and their default calendar if they have one connected); rrule (e.g. FREQ=WEEKLY;BYDAY=TU) makes it repeat." +
+    "Add a calendar event. startsAt/endsAt are YYYY-MM-DDTHH:MM in the household's timezone (or include an offset); for allDay give just dates, endsAt being the last day. personId is whose event it is (its color, and their default calendar if they have one connected); rrule (e.g. FREQ=WEEKLY;BYDAY=TU) makes it repeat." +
     DATA_NOTE,
   scope: 'calendar:write',
   annotations: { title: 'Add an event', ...WRITE },

@@ -6,7 +6,7 @@ import { DATA_NOTE, READ } from './shared'
 defineTool({
   name: 'whoami',
   description:
-    'Who this connection acts as: the household and the family member signed in, with their role. Call it first to learn whose data the other tools return.',
+    'Who this connection acts as: the household and the family member signed in, with their role. Call it first to learn whose data the other tools return.' + DATA_NOTE,
   scope: 'family:read',
   annotations: { title: 'Who am I', ...READ },
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },

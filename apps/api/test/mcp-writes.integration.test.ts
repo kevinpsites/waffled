@@ -218,11 +218,18 @@ describe('add_event', () => {
     expect(ev.person).toEqual({ id: kelly.id, name: 'Kelly' })
   })
 
-  it('an all-day event takes a date', async () => {
-    const day = addDays(today, 4)
-    const res = await h.tool(bearer(kevin), 'add_event', { title: 'School holiday', startsAt: day, allDay: true })
+  it('an all-day event takes dates, endsAt being its last day', async () => {
+    const first = addDays(today, 4)
+    const last = addDays(first, 2)
+    const res = await h.tool(bearer(kevin), 'add_event', { title: 'Camping trip', startsAt: first, endsAt: last, allDay: true })
     expect(res.isError, JSON.stringify(res.content)).toBeFalsy()
     expect(res.structuredContent.event.allDay).toBe(true)
+    const on = async (day: string) =>
+      (await h.tool(bearer(kevin), 'list_events', { from: day, to: day })).structuredContent.items.some((e: { title: string }) => e.title === 'Camping trip')
+    expect(await on(addDays(first, -1))).toBe(false)
+    expect(await on(first)).toBe(true)
+    expect(await on(last)).toBe(true)
+    expect(await on(addDays(last, 1))).toBe(false)
   })
 
   it('refuses an end before the start, a bad time and a bad rrule', async () => {

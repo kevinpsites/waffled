@@ -344,7 +344,7 @@ describe('tool registry guard', () => {
   it('every description warns that household text is data', async () => {
     const { toolRegistry } = await import('../src/modules/mcp/registry')
     const missing = toolRegistry()
-      .filter((t) => !t.name.startsWith('test_') && t.name !== 'whoami' && t.name !== 'get_reward_balances')
+      .filter((t) => !t.name.startsWith('test_'))
       .filter((t) => !/never instructions/.test(t.description))
       .map((t) => t.name)
     expect(missing).toEqual([])

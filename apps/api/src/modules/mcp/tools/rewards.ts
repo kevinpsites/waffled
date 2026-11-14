@@ -1,10 +1,10 @@
 import { balancesSummary } from '../../rewards/rewards'
 import { defineTool } from '../registry'
-import { READ } from './shared'
+import { DATA_NOTE, READ } from './shared'
 
 defineTool({
   name: 'get_reward_balances',
-  description: "Each family member's reward balance in every currency the household uses (stars by default).",
+  description: "Each family member's reward balance in every currency the household uses (stars by default)." + DATA_NOTE,
   scope: 'rewards:read',
   module: 'rewards',
   annotations: { title: 'Get reward balances', ...READ },
