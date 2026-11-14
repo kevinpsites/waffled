@@ -205,3 +205,30 @@ describe('add_list_item', () => {
     expect((await h.tool(bearer(kevin), 'add_list_item', { name: 'X', priority: 9 })).isError).toBe(true)
   })
 })
+
+describe('add_event', () => {
+  it('reads a time without an offset as household-local, like the app does', async () => {
+    const day = addDays(today, 3)
+    const res = await h.tool(bearer(kevin), 'add_event', { title: 'Dentist', startsAt: `${day}T18:30`, endsAt: `${day}T19:15`, personId: kelly.id })
+    expect(res.isError, JSON.stringify(res.content)).toBeFalsy()
+    expect(await lastAudit()).toMatchObject({ tool: 'add_event', outcome: 'ok', target_ids: { personId: kelly.id, created: res.structuredContent.event.id } })
+    const listed = await h.tool(bearer(kevin), 'list_events', { from: day, to: day })
+    const ev = listed.structuredContent.items.find((e: { title: string }) => e.title === 'Dentist')
+    expect(new Date(ev.startsAt).toISOString()).toBe(zonedToUtc(`${day}T18:30`, TZ))
+    expect(ev.person).toEqual({ id: kelly.id, name: 'Kelly' })
+  })
+
+  it('an all-day event takes a date', async () => {
+    const day = addDays(today, 4)
+    const res = await h.tool(bearer(kevin), 'add_event', { title: 'School holiday', startsAt: day, allDay: true })
+    expect(res.isError, JSON.stringify(res.content)).toBeFalsy()
+    expect(res.structuredContent.event.allDay).toBe(true)
+  })
+
+  it('refuses an end before the start, a bad time and a bad rrule', async () => {
+    const day = addDays(today, 5)
+    expect((await h.tool(bearer(kevin), 'add_event', { title: 'X', startsAt: `${day}T10:00`, endsAt: `${day}T09:00` })).isError).toBe(true)
+    expect((await h.tool(bearer(kevin), 'add_event', { title: 'X', startsAt: 'soon' })).isError).toBe(true)
+    expect((await h.tool(bearer(kevin), 'add_event', { title: 'X', startsAt: `${day}T10:00`, rrule: 'NOT A RULE' })).isError).toBe(true)
+  })
+})
