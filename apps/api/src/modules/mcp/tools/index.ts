@@ -1,2 +1,9 @@
 // Every tool module registers itself on import; mcp.ts imports this once.
 import './household'
+import './today'
+import './calendar'
+import './chores'
+import './lists'
+import './meals'
+import './goals'
+import './rewards'
