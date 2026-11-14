@@ -52,10 +52,18 @@ export interface CaptureTarget {
   // confirm button that would always fail.
   supportedVerbs: MutateVerb[]
   resolveCandidates(ctx: ResolveCtx, req: ResolveRequest): Promise<Candidate[]>
-  applyMutation(ctx: ResolveCtx, cmd: MutateCommand): Promise<{ message: string }>
+  applyMutation(ctx: ResolveCtx, cmd: MutateCommand): Promise<MutationResult>
+}
+
+// `scope` says how much a delete touched, for callers that must report it (an event
+// target cancels one occurrence of a recurring series, never the series).
+export interface MutationResult {
+  message: string
+  scope?: 'occurrence' | 'event'
 }
 
 const REGISTRY = new Map<TargetKind, CaptureTarget>()
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // Register (or overwrite) the resolver/applier for a target kind. Idempotent — a
 // re-register (e.g. re-imported routes in tests) simply replaces the entry.
@@ -68,6 +76,23 @@ export function getCaptureTarget(kind: TargetKind): CaptureTarget | undefined {
 }
 
 // ── Shared helpers for target implementations + the dispatcher ────────────────
+
+// The resolve/commit context for a resolved Tenant: the household's settings + timezone
+// plus a fresh `now`. Shared by the capture routes and the MCP action tools.
+export async function buildResolveCtx(tenant: Tenant): Promise<ResolveCtx> {
+  const { rows } = await query<{ timezone: string; settings: unknown }>(
+    `select timezone, settings from households where id = $1`,
+    [tenant.householdId]
+  )
+  return {
+    tenant,
+    householdId: tenant.householdId,
+    personId: tenant.personId,
+    now: new Date(),
+    timezone: rows[0]?.timezone ?? 'UTC',
+    settings: rows[0]?.settings ?? null,
+  }
+}
 
 // A thrown domain error the /api/capture/commit dispatcher shapes into a 4xx
 // { error, message } (it reads .statusCode + .message). Using a real Error keeps
@@ -90,6 +115,20 @@ export async function findPersonByName(householdId: string, name: string): Promi
     [householdId, name.trim()]
   )
   return rows[0] ?? null
+}
+
+// The person a verb names: `personId` (an MCP agent passes ids) or a spoken `personName`.
+export async function personFromArgs(householdId: string, args: Record<string, unknown>): Promise<{ id: string; name: string } | null> {
+  if (args.personId != null) {
+    if (typeof args.personId !== 'string' || !UUID_RE.test(args.personId)) return null
+    const { rows } = await query<{ id: string; name: string }>(
+      `select id, name from persons where household_id = $1 and id = $2 and deleted_at is null`,
+      [householdId, args.personId]
+    )
+    return rows[0] ?? null
+  }
+  const name = typeof args.personName === 'string' ? args.personName.trim() : ''
+  return name ? findPersonByName(householdId, name) : null
 }
 
 // Does the spoken phrase say "my"/"mine"/"our"? Then a resolver should prefer/scope to

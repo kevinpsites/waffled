@@ -19,7 +19,7 @@ import {
   type MutateCommand,
 } from '../capture/capture-resolvers'
 import { conceptKeywords } from './goal-match'
-import { listGoals, logProgress, goalLogAmount, personsInHousehold } from './goals.service'
+import { listGoals, logProgress, goalLogAmount, personsInHousehold, visibleGoalLists } from './goals.service'
 
 // A short progress/target line for the pick-one preview.
 function goalSubtitle(g: { totalProgress: number; target: number | null; unit: string | null; goalType: string }): string {
@@ -50,9 +50,11 @@ const goalTarget: CaptureTarget = {
   supportedVerbs: ['log'],
 
   async resolveCandidates(ctx: ResolveCtx, req: ResolveRequest): Promise<Candidate[]> {
-    const goals = await listGoals(ctx.householdId)
+    const [goals, lists] = await Promise.all([listGoals(ctx.householdId), visibleGoalLists(ctx.tenant)])
+    const visible = new Set(lists.map((l) => l.id))
     // Checklist goals have no numeric progress — they can't be /log'd, so never offer them.
-    let rows = goals.filter((g) => g.goalType !== 'checklist')
+    // Nor a goal in a private list the speaker isn't in.
+    let rows = goals.filter((g) => g.goalType !== 'checklist' && (g.goalListId == null || visible.has(g.goalListId)))
     // "my …" → keep the speaker's own goals (participant) and unassigned family goals;
     // drop goals that belong to someone else.
     if (impliesMine(req.target.description)) {
