@@ -1,5 +1,7 @@
 import {
+  addItemFromInput,
   getList,
+  getOrCreateGroceryList,
   groceryBoard,
   householdWeekStart,
   householdWeekStartFor,
@@ -8,8 +10,8 @@ import {
   presentListItem,
 } from '../../lists/lists.service'
 import { defineTool, ToolInputError } from '../registry'
-import { capped, DATE_SCHEMA, ID_SCHEMA, optDate, optUuid, truncNote } from '../args'
-import { DATA_NOTE, READ } from './shared'
+import { capped, DATE_SCHEMA, ID_SCHEMA, optDate, optNumber, optString, optUuid, reqString, truncNote } from '../args'
+import { DATA_NOTE, READ, WRITE } from './shared'
 
 const MAX_ITEMS = 300
 
@@ -75,5 +77,42 @@ defineTool({
       data: { items: lists, list: { id: list.id, name: list.name, items: c.items, total: c.total, truncated: c.truncated } },
       summary: `${lists.length} list(s); ${c.total} item(s) on ${list.name}${truncNote(c)}.`,
     }
+  },
+})
+
+defineTool({
+  name: 'add_list_item',
+  description:
+    "Add an item to a list: the grocery list unless listId (from list_lists) names another. quantity is free text (\"2 lb\", \"x4\"); priority 1 (not urgent) to 5 (urgent), default 3." +
+    DATA_NOTE,
+  scope: 'lists:write',
+  module: 'lists',
+  annotations: { title: 'Add a list item', ...WRITE },
+  inputSchema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string' },
+      listId: { ...ID_SCHEMA, description: 'Default: the grocery list' },
+      quantity: { type: 'string' },
+      section: { type: 'string', description: 'Aisle or section, e.g. Produce' },
+      store: { type: 'string' },
+      assignedTo: { ...ID_SCHEMA, description: 'A member id from list_family' },
+      priority: { type: 'integer', minimum: 1, maximum: 5 },
+    },
+    required: ['name'],
+    additionalProperties: false,
+  },
+  run: async (tenant, args) => {
+    const listId = optUuid(args, 'listId') ?? (await getOrCreateGroceryList(tenant)).id
+    const priority = optNumber(args, 'priority')
+    const item = await addItemFromInput(tenant, listId, {
+      name: reqString(args, 'name', 200),
+      quantity: optString(args, 'quantity', 100),
+      category: optString(args, 'section', 100),
+      store: optString(args, 'store', 100),
+      assignedTo: optUuid(args, 'assignedTo'),
+      ...(priority !== undefined ? { priority } : {}),
+    })
+    return { data: { item: presentItemForAgent(presentListItem(item)) }, summary: `Added "${item.name}".`, createdId: item.id }
   },
 })

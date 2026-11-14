@@ -344,6 +344,17 @@ describe('list items — sections, quantity, assignee', () => {
     ).toBe(404)
   })
 
+  // Pins the route's error bodies before its body moved into addItemFromInput.
+  it('keeps its error bodies for a bad name, a bad priority and a missing list', async () => {
+    const body = async (path: string, b: unknown) => JSON.parse((await call('POST', path, kevin, b)).body)
+    expect(await body(`/api/lists/${listId}/items`, { name: '' })).toEqual({ error: 'BadRequest', message: 'name is required' })
+    expect(await body(`/api/lists/${listId}/items`, { name: 'X', priority: 9 })).toEqual({
+      error: 'BadRequest', message: 'priority must be an integer from 1 (not urgent) to 5 (urgent)',
+    })
+    expect(await body('/api/lists/not-a-uuid/items', { name: 'X' })).toEqual({ error: 'NotFound', message: 'list not found' })
+    expect(await body('/api/lists/00000000-0000-0000-0000-000000000000/items', { name: 'X' })).toEqual({ error: 'NotFound', message: 'list not found' })
+  })
+
   it('rejects assignees from another household on create and patch', async () => {
     expect((await call('POST', `/api/lists/${listId}/items`, kevin, {
       name: 'Unsafe assignee', assignedTo: foreignPersonId,

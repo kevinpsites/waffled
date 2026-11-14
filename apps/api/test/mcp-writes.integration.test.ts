@@ -183,3 +183,25 @@ describe('create_chore', () => {
     expect((await h.tool(bearer(kevin), 'create_chore', { title: 'x', rewardAmount: -1 })).isError).toBe(true)
   })
 })
+
+describe('add_list_item', () => {
+  it('adds to the grocery list by default and to any list by id', async () => {
+    const res = await h.tool(bearer(kevin), 'add_list_item', { name: 'Eggs', quantity: '12' })
+    expect(res.isError, JSON.stringify(res.content)).toBeFalsy()
+    expect(await lastAudit()).toMatchObject({ tool: 'add_list_item', outcome: 'ok', target_ids: { created: res.structuredContent.item.id } })
+    const grocery = await h.tool(bearer(kevin), 'get_grocery_list', {})
+    expect(grocery.structuredContent.items.find((i: { name: string }) => i.name === 'Eggs')).toMatchObject({ quantity: '12' })
+
+    const camping = json(await h.call('POST', '/api/lists', kevin, { name: 'Camping' })).list.id
+    const tent = await h.tool(bearer(kevin), 'add_list_item', { listId: camping, name: 'Tent', assignedTo: kelly.id })
+    expect(tent.isError, JSON.stringify(tent.content)).toBeFalsy()
+    const lists = await h.tool(bearer(kevin), 'list_lists', { listId: camping })
+    expect(lists.structuredContent.list.items).toEqual([expect.objectContaining({ name: 'Tent', assignee: { id: kelly.id, name: 'Kelly' } })])
+  })
+
+  it('refuses an unknown list, an empty name and a bad priority', async () => {
+    expect((await h.tool(bearer(kevin), 'add_list_item', { listId: '11111111-2222-4333-8444-555555555555', name: 'X' })).isError).toBe(true)
+    expect((await h.tool(bearer(kevin), 'add_list_item', { name: ' ' })).isError).toBe(true)
+    expect((await h.tool(bearer(kevin), 'add_list_item', { name: 'X', priority: 9 })).isError).toBe(true)
+  })
+})
