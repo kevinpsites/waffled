@@ -11,8 +11,11 @@ defineTool({
   run: async (tenant) => {
     const { household, person } = await getContext(tenant)
     return {
-      household: { id: household.id, name: household.name },
-      person: { id: person.id, name: person.name, memberType: person.member_type, isAdmin: person.is_admin },
+      data: {
+        household: { id: household.id, name: household.name },
+        person: { id: person.id, name: person.name, memberType: person.member_type, isAdmin: person.is_admin },
+      },
+      summary: `Signed in as ${person.name} in ${household.name}.`,
     }
   },
 })

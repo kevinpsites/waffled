@@ -1,101 +1,26 @@
 // The /mcp endpoint: stateless MCP Streamable-HTTP JSON-RPC over the normal auth gate,
 // driven through real routes against a throwaway Postgres (Testcontainers).
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
-import jwt from 'jsonwebtoken'
-import { runMigrations } from '../src/migrate'
+import { startMcpHarness, bearer, keyed, json, header, type McpHarness } from './helpers/mcp'
 
-const SECRET = 'waffled-local-dev-secret-change-me'
-
-let pg: StartedPostgreSqlContainer
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let app: any
-let closePool: () => Promise<void>
-
-interface RunResult {
-  statusCode: number
-  headers?: Record<string, string>
-  multiValueHeaders?: Record<string, string[]>
-  body: string
-}
-
-function mint(sub: string): string {
-  return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
-}
-
-function run(method: string, path: string, headers: Record<string, string>, body?: unknown, raw?: string) {
-  const h: Record<string, string> = { ...headers }
-  if (body !== undefined || raw !== undefined) h['content-type'] = 'application/json'
-  return app.run(
-    {
-      httpMethod: method,
-      path,
-      headers: h,
-      queryStringParameters: {},
-      body: raw ?? (body !== undefined ? JSON.stringify(body) : null),
-      isBase64Encoded: false,
-    },
-    {}
-  ) as Promise<RunResult>
-}
-
-function call(method: string, path: string, token?: string, body?: unknown) {
-  return run(method, path, token ? { authorization: `Bearer ${token}` } : {}, body)
-}
-
-const bearer = (t: string) => ({ authorization: `Bearer ${t}` })
-const keyed = (k: string) => ({ 'x-api-key': k })
-
-function rpc(headers: Record<string, string>, method: string, params?: unknown, id: number | string = 1) {
-  return run('POST', '/mcp', headers, { jsonrpc: '2.0', id, method, ...(params !== undefined ? { params } : {}) })
-}
-
-const json = (r: RunResult) => JSON.parse(r.body)
-
-function header(r: RunResult, name: string): string | undefined {
-  const lower = name.toLowerCase()
-  for (const [k, v] of Object.entries(r.headers ?? {})) if (k.toLowerCase() === lower) return v
-  for (const [k, v] of Object.entries(r.multiValueHeaders ?? {})) if (k.toLowerCase() === lower) return v.join(', ')
-  return undefined
-}
-
-const kevin = mint('dev|kevin')
+let h: McpHarness
+let kevin = ''
 let householdId = ''
 let ownerId = ''
-
-async function mintKey(name: string, scopes: string[]): Promise<string> {
-  const res = await call('POST', '/api/api-keys', kevin, { name, scopes })
-  expect(res.statusCode).toBe(201)
-  return json(res).key as string
-}
+const run: McpHarness['run'] = (...a) => h.run(...a)
+const call: McpHarness['call'] = (...a) => h.call(...a)
+const rpc: McpHarness['rpc'] = (...a) => h.rpc(...a)
+const mintKey = (name: string, scopes: string[]) => h.mintKey(kevin, name, scopes)
 
 beforeAll(async () => {
-  pg = await new PostgreSqlContainer('postgres:16').start()
-  const url = pg.getConnectionUri()
-  await runMigrations(url)
-  process.env.DATABASE_URL = url
-  delete process.env.AUTH0_DOMAIN
-  delete process.env.PUBLIC_BASE_URL
-  app = (await import('../src/app')).default
-  closePool = (await import('../src/platform/db')).closePool
-
-  const setup = await call('POST', '/api/auth/setup', undefined, {
-    household: { name: 'Sites', timezone: 'America/Chicago' },
-    admin: { name: 'Kevin', email: 'kevin@example.com', password: 'ownerpass1' },
-  })
-  expect(setup.statusCode).toBe(201)
-  householdId = json(setup).household.id
-  ownerId = json(setup).person.id
-  const { query } = await import('../src/platform/db')
-  await query(
-    `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1,$2,'password','dev|kevin',true)`,
-    [householdId, ownerId]
-  )
+  h = await startMcpHarness()
+  kevin = h.owner
+  householdId = h.householdId
+  ownerId = h.ownerId
 })
 
 afterAll(async () => {
-  await closePool?.()
-  await pg?.stop()
+  await h?.close()
 })
 
 describe('transport', () => {
@@ -300,7 +225,7 @@ describe('module gate', () => {
       scope: 'pantry:read',
       module: 'pantry',
       inputSchema: { type: 'object', properties: {} },
-      run: async () => ({ ok: true }),
+      run: async () => ({ data: { ok: true }, summary: 'ok' }),
     })
     try {
       // pantry is off by default
