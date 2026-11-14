@@ -9,7 +9,8 @@ import { query } from '../../platform/db'
 import { log } from '../../platform/logger'
 import { version } from '../../platform/version'
 import { baseUrl } from '../auth/oidc'
-import { denialFor, findTool, toolRegistry, ToolInputError, type CallerScopes, type ToolContext } from './registry'
+import { denialFor, findTool, isWriteTool, toolRegistry, ToolInputError, type CallerScopes, type ToolContext } from './registry'
+import { auditTargets, recordAudit, type AuditOutcome } from './audit'
 import './tools'
 
 type Api = ReturnType<typeof createAPI>
@@ -144,12 +145,25 @@ export function registerMcpRoutes(api: Api): void {
         if (!tool) return rpcError(res, 200, rid, INVALID_PARAMS, `Unknown tool: ${String(name)}`)
         const tenant = await requireTenant(req)
         const ctx = await toolContext(req, tenant.householdId)
+        const rawArgs = params.arguments ?? {}
+        const args = isObject(rawArgs) ? rawArgs : {}
+        const audit = (outcome: AuditOutcome, error: string | null, createdId?: string) =>
+          isWriteTool(tool)
+            ? recordAudit({ tenant, apiKeyId: req.apiKey?.id ?? null, tool: tool.name, targets: auditTargets(args, createdId), outcome, error })
+            : Promise.resolve()
+
         const denied = denialFor(tool, ctx)
-        if (denied) return rpcResult(res, rid, toolError(denied))
-        const args = params.arguments ?? {}
-        if (!isObject(args)) return rpcResult(res, rid, toolError('arguments must be an object'))
+        if (denied) {
+          await audit('denied', denied)
+          return rpcResult(res, rid, toolError(denied))
+        }
+        if (!isObject(rawArgs)) {
+          await audit('error', 'arguments must be an object')
+          return rpcResult(res, rid, toolError('arguments must be an object'))
+        }
         try {
           const out = await tool.run(tenant, args, ctx)
+          await audit('ok', null, out.createdId)
           // The JSON comes first: the spec asks a tool returning structuredContent to
           // also return it serialized, for clients that only read text.
           return rpcResult(res, rid, {
@@ -160,8 +174,14 @@ export function registerMcpRoutes(api: Api): void {
             structuredContent: out.data,
           })
         } catch (err) {
-          if (clientErrorStatus(err) !== null) return rpcResult(res, rid, toolError((err as Error).message))
+          const status = clientErrorStatus(err)
+          if (status !== null) {
+            const message = (err as Error).message
+            await audit(status === 403 ? 'denied' : 'error', message)
+            return rpcResult(res, rid, toolError(message))
+          }
           log.error('mcp tool failed', { err, tool: tool.name })
+          await audit('error', 'Internal error')
           return rpcError(res, 200, rid, INTERNAL_ERROR, 'Internal error')
         }
       }

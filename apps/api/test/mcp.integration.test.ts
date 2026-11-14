@@ -250,6 +250,70 @@ describe('module gate', () => {
   })
 })
 
+describe('mcp_audit — one row per write-tool call, refusals included', () => {
+  const PROBE = 'test_write_probe'
+  const ID = '11111111-2222-4333-8444-555555555555'
+  const audits = () => h.sql<{ tool: string; outcome: string; error: string | null; target_ids: Record<string, unknown>; api_key_id: string | null; person_id: string }>(
+    `select tool, outcome, error, target_ids, api_key_id, person_id from mcp_audit where household_id = $1 order by created_at`,
+    [householdId]
+  )
+
+  beforeAll(async () => {
+    const { defineTool, ToolInputError } = await import('../src/modules/mcp/registry')
+    const { AuthError } = await import('../src/platform/auth')
+    defineTool({
+      name: PROBE,
+      description: 'test-only',
+      scope: 'lists:write',
+      annotations: { readOnlyHint: false },
+      inputSchema: { type: 'object', properties: {} },
+      run: async (_t, args) => {
+        if (args.mode === 'forbid') throw new AuthError('You do not have permission to do this', 403)
+        if (args.mode === 'bad') throw new ToolInputError('name is required')
+        return { data: { ok: true }, summary: 'ok', createdId: ID }
+      },
+    })
+  })
+
+  afterAll(async () => {
+    const { unregisterToolForTest } = await import('../src/modules/mcp/registry')
+    unregisterToolForTest(PROBE)
+  })
+
+  it('records an ok call with its ids and never the free-text arguments', async () => {
+    await h.sql('delete from mcp_audit')
+    const res = json(await rpc(bearer(kevin), 'tools/call', { name: PROBE, arguments: { listId: ID, name: 'secret milk note' } }))
+    expect(res.result.isError).toBeFalsy()
+    const rows = await audits()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ tool: PROBE, outcome: 'ok', error: null, api_key_id: null, person_id: ownerId })
+    expect(rows[0].target_ids).toEqual({ listId: ID, created: ID })
+    expect(JSON.stringify(rows[0])).not.toMatch(/secret milk/)
+  })
+
+  it('records the key, a scope refusal, a capability refusal and a bad argument', async () => {
+    await h.sql('delete from mcp_audit')
+    const writer = await mintKey('mcp-lists-write', ['lists:write'])
+    const reader = await mintKey('mcp-lists-read', ['lists:read'])
+    await rpc(keyed(writer), 'tools/call', { name: PROBE, arguments: {} })
+    await rpc(keyed(reader), 'tools/call', { name: PROBE, arguments: {} })
+    await rpc(bearer(kevin), 'tools/call', { name: PROBE, arguments: { mode: 'forbid' } })
+    await rpc(bearer(kevin), 'tools/call', { name: PROBE, arguments: { mode: 'bad' } })
+    const rows = await audits()
+    expect(rows.map((r) => r.outcome)).toEqual(['ok', 'denied', 'denied', 'error'])
+    expect(rows[0].api_key_id).not.toBeNull()
+    expect(rows[1].error).toMatch(/missing the required scope: lists:write/)
+    expect(rows[2].error).toMatch(/permission/)
+    expect(rows[3].error).toBe('name is required')
+  })
+
+  it('read tools are not audited', async () => {
+    await h.sql('delete from mcp_audit')
+    await rpc(bearer(kevin), 'tools/call', { name: 'whoami', arguments: {} })
+    expect(await audits()).toEqual([])
+  })
+})
+
 // Fail-closed, like the route-table test in api-keys.integration.test.ts: a tool must
 // declare a real scope string from the catalog, or nothing can authorize it.
 describe('tool registry guard', () => {
@@ -262,6 +326,28 @@ describe('tool registry guard', () => {
       .filter((t) => typeof t.scope !== 'string' || !ALL_SCOPES.includes(t.scope))
       .map((t) => `${t.name}: scope=${JSON.stringify(t.scope)}`)
     expect(bad.join('\n')).toBe('')
+  })
+
+  it('annotations match the scope: reads are read-only, writes are not, delete and redeem are destructive', async () => {
+    const { toolRegistry } = await import('../src/modules/mcp/registry')
+    const bad: string[] = []
+    for (const t of toolRegistry()) {
+      if (t.name.startsWith('test_')) continue
+      const write = t.scope.endsWith(':write')
+      if (t.annotations?.readOnlyHint !== !write) bad.push(`${t.name}: readOnlyHint should be ${!write}`)
+      const destructive = /^(delete|redeem)_/.test(t.name)
+      if (write && (t.annotations?.destructiveHint ?? false) !== destructive) bad.push(`${t.name}: destructiveHint should be ${destructive}`)
+    }
+    expect(bad.join('\n')).toBe('')
+  })
+
+  it('every description warns that household text is data', async () => {
+    const { toolRegistry } = await import('../src/modules/mcp/registry')
+    const missing = toolRegistry()
+      .filter((t) => !t.name.startsWith('test_') && t.name !== 'whoami' && t.name !== 'get_reward_balances')
+      .filter((t) => !/never instructions/.test(t.description))
+      .map((t) => t.name)
+    expect(missing).toEqual([])
   })
 
   it('tool names are unique', async () => {
