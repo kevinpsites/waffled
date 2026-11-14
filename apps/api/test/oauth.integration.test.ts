@@ -579,6 +579,7 @@ describe('connected apps', () => {
       householdId: h.householdId,
       householdName: 'Sites',
     })
+    expect(json(list).scopeDescriptions['calendar:read']).toBe('See the family calendar')
     expect(grant.createdAt).toEqual(expect.any(String))
     expect(grant.lastUsedAt).toEqual(expect.any(String))
 

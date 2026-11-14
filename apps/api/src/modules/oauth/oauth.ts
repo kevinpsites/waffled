@@ -440,6 +440,7 @@ export function registerOAuthRoutes(api: Api): void {
         createdAt: r.created_at,
         lastUsedAt: r.last_used_at,
       })),
+      scopeDescriptions: SCOPE_DESCRIPTIONS,
     }
   })
 
