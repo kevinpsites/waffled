@@ -148,7 +148,7 @@ both call, so validation, capability checks and side effects cannot drift:
 |---|---|---|---|
 | `add_event` | `calendar:write` | — | `createEventFromInput` (`POST /api/events`) |
 | `add_list_item(listId?)` | `lists:write` | lists | `addItemFromInput` (`POST /api/lists/:id/items`); grocery list by default |
-| `plan_meal` | `meals:write` | meals | `planMealSlot` (`POST /api/meals/plan`), calendar mirroring included |
+| `plan_meal` | `meals:write` | meals | `planMealSlot` (`POST /api/meals/plan`), calendar mirroring included; destructive (replaces the slot) |
 | `create_chore` | `chores:write` | chores | `createChoreFromInput` (`POST /api/chores`), `chore.manage` for someone else |
 
 `add_event` reads a time without an offset as household-local. Events still have three
@@ -260,7 +260,8 @@ Code and local MCP clients work on the LAN. The how-to must lead with this.
 
 - **Two gates, same as API keys:** scope (granted at consent) and capability (the
   person's role). Neither is new.
-- **Destructive tools** (`delete`, `redeem`) carry `destructiveHint: true` so clients
+- **Destructive tools** (`delete`, `redeem`, and `plan_meal`, which replaces the slot's
+  meal, calendar event and prep reminder) carry `destructiveHint: true` so clients
   confirm; `delete` on a recurring series states the scope in its result.
 - **Attribution without touching every table:** `mcp_audit` (`0107_mcp_audit.sql`) —
   household, person, `api_key_id`, `grant_id` (no FK until grants exist), tool,

@@ -3,7 +3,7 @@ import { householdWeekStart, householdWeekStartFor } from '../../lists/lists.ser
 import { rankCandidates } from '../../capture/candidate-match'
 import { defineTool, ToolInputError } from '../registry'
 import { capped, DATE_SCHEMA, ID_SCHEMA, optDate, optEnum, optNumber, optString, optUuid, reqString, truncNote } from '../args'
-import { DATA_NOTE, READ, WRITE } from './shared'
+import { DATA_NOTE, DESTRUCTIVE, READ } from './shared'
 
 const DEFAULT_RECIPES = 10
 const MAX_RECIPES = 25
@@ -53,7 +53,7 @@ defineTool({
     DATA_NOTE,
   scope: 'meals:write',
   module: 'meals',
-  annotations: { title: 'Plan a meal', ...WRITE },
+  annotations: { title: 'Plan a meal', ...DESTRUCTIVE },
   inputSchema: {
     type: 'object',
     properties: {
