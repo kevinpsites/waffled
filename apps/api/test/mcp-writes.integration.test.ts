@@ -144,6 +144,13 @@ describe('goals', () => {
     expect(kel.structuredContent.candidates[0].title).toBe('Secret savings')
   })
 
+  it('log_goal refuses a malformed personId as a tool error', async () => {
+    const g = await findOne(bearer(kevin), 'find_goals', 'reading')
+    const res = await h.tool(bearer(kevin), 'log_goal', { id: g.id, amount: 1, personId: 'not-a-uuid' })
+    expect(res.isError).toBe(true)
+    expect(res.content[0].text).toMatch(/personId/)
+  })
+
   it("log_goal by id refuses a goal in a private list the caller isn't in", async () => {
     const list = json(await h.call('POST', '/api/goal-lists', kelly.token, { name: 'Hers', isPrivate: true, memberIds: [kelly.id] })).list.id
     const goal = json(await h.call('POST', '/api/goals', kelly.token, {
