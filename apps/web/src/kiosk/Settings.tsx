@@ -12,6 +12,7 @@ import { PersonModal } from './components/PersonModal'
 import { ColorPicker, COLOR_SWATCHES } from './components/ColorPicker'
 import { SettingCard } from './components/SettingCard'
 import { ConfirmDialog } from './components/ConfirmDialog'
+import { ConnectedAppsPanel } from './components/ConnectedAppsPanel'
 import { Screensaver, screensaverPhotos } from './components/Screensaver'
 import '../styles/settings.css'
 
@@ -23,6 +24,8 @@ const NAV = [
   { key: 'profile', icon: '🙂', label: 'My Profile', group: 'account' },
   { key: 'account', icon: '🔒', label: 'My Account', group: 'account' },
   { key: 'households', icon: '🏠', label: 'Households', group: 'account' },
+  // Personal, not admin: anyone allowed to connect an AI app must be able to revoke it.
+  { key: 'connected', icon: '🤖', label: 'Connected apps', group: 'account' },
   // Family — shared household configuration (admin)
   { key: 'family', icon: '👨‍👩‍👧‍👦', label: 'Family & People', admin: true, group: 'family' },
   { key: 'calendars', icon: '📅', label: 'Calendars', admin: true, group: 'family' },
@@ -3448,7 +3451,7 @@ export function Settings() {
   const showHouseholds = memberships.length > 1 || pendingInvites.length > 0
     // The self-service Account items appear only for a real personal login.
   const showAccount = !isKioskMode() && !!account?.hasAccount
-  const nav = NAV.filter((n) => (!n.admin || isAdmin) && (n.key !== 'households' || showHouseholds) && ((n.key !== 'profile' && n.key !== 'account') || showAccount))
+  const nav = NAV.filter((n) => (!n.admin || isAdmin) && (n.key !== 'households' || showHouseholds) && ((n.key !== 'profile' && n.key !== 'account' && n.key !== 'connected') || showAccount))
     // Fall back to About (which holds sign-out) rather than whatever sorts first.
   const activeTab = nav.some((n) => n.key === tab) ? tab : (nav.some((n) => n.key === 'about') ? 'about' : nav[0]?.key ?? 'about')
 
@@ -3479,7 +3482,7 @@ export function Settings() {
         </div>
       </div>
       <div className="set-content">
-        {activeTab === 'appearance' ? <AppearancePanel /> : activeTab === 'profile' ? <MyProfilePanel /> : activeTab === 'account' ? <MyAccountPanel /> : activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <><CalendarsPanel /><CountdownsSettings /></> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'modules' ? <ModulesPanel /> : activeTab === 'apikeys' ? <ApiKeysPanel /> : activeTab === 'households' ? <HouseholdsPanel /> : <AboutPanel />}
+        {activeTab === 'appearance' ? <AppearancePanel /> : activeTab === 'profile' ? <MyProfilePanel /> : activeTab === 'account' ? <MyAccountPanel /> : activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <><CalendarsPanel /><CountdownsSettings /></> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'modules' ? <ModulesPanel /> : activeTab === 'apikeys' ? <ApiKeysPanel /> : activeTab === 'connected' ? <ConnectedAppsPanel /> : activeTab === 'households' ? <HouseholdsPanel /> : <AboutPanel />}
       </div>
     </div>
   )
