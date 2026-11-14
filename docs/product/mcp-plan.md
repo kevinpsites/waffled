@@ -166,7 +166,7 @@ Nobody copies a key anywhere.
 
 ---
 
-## 6. Change notifications — deferred
+## 6. Change notifications — deferred (tier A may join phase 1)
 
 What they would add: MCP by itself is pull-only, so the agent learns things only when
 asked. Notifications would let an agent *react* ("tell me when the kids finish their
@@ -176,9 +176,25 @@ Why deferred: today's hosted clients (claude.ai) do not hold an open session to 
 server pushes, so push would mainly serve scheduled or long-running agents, which are not
 the first use case. The tools in §3 already answer "what's open/due now".
 
-If picked up later, the order would be: a trigger-fed `household_changes` table (it catches
-all three write paths — REST, PowerSync uploads, calendar sync), then a
-`changes_since(cursor)` tool, then optionally webhooks or MCP resource subscriptions.
+**Proactive agents poll.** Claude Duet (research preview, 2026-10) checks connected
+accounts every few hours rather than holding a connection open. What it needs from us is a
+cheap, accurate "what changed since my last check" read, not push. Three tiers:
+
+| Tier | What | Size |
+|---|---|---|
+| A | `whats_new(since)` read tool derived from existing columns: every domain table already has `household_id`, `updated_at`, soft-delete `deleted_at`; plus `chore_instances.completed_at`, goal logs and ledger entries (stars earned/spent). No migration. | ~2–3 days, fits in phase 1 |
+| B | A real change log: one generic trigger (same pattern as `set_updated_at`) on ~15 tables into `household_changes` (cursor, entity, op, changed columns, actor, source), a pruning job beside the existing schedulers in `server.ts`, and `changes_since(cursor)`. Catches all three write paths (REST, PowerSync uploads, calendar sync) and gives "who changed what". | ~1 week |
+| C | Push: webhooks per grant, or MCP resource subscriptions over SSE fed by LISTEN/NOTIFY. No current client benefits. | ~1 week, skip |
+
+Tier A's limits: it reports current state, so an edit shows as "updated" without what
+changed or who did it, and hard deletes are invisible (most tables soft-delete). Tier B's
+hard part is **actor attribution**: a trigger only knows the actor if the write path sets
+it (`set_config('waffled.actor', …, true)` inside the transaction), so each of the three
+write paths needs that one line.
+
+**Both tiers must filter by what the reading person may see.** A private calendar event
+(`0074_calendar_visibility`) must not leak through the feed to another member's agent, so
+the feed reuses each module's read filters rather than returning raw rows.
 
 ---
 
