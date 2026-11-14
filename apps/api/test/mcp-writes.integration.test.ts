@@ -250,6 +250,22 @@ describe('add_event', () => {
     expect((await h.tool(bearer(kevin), 'add_event', { title: 'X', startsAt: 'soon' })).isError).toBe(true)
     expect((await h.tool(bearer(kevin), 'add_event', { title: 'X', startsAt: `${day}T10:00`, rrule: 'NOT A RULE' })).isError).toBe(true)
   })
+
+  it('refuses an endsAt that does not parse or ends before it starts, timed or all-day', async () => {
+    const day = addDays(today, 6)
+    const cases = [
+      { title: 'Bad end', startsAt: `${day}T10:00`, endsAt: 'later' },
+      { title: 'Bad end', startsAt: `${day}T10:00`, endsAt: `${day}T09:00` },
+      { title: 'Bad end', startsAt: `${day}T10:00-05:00`, endsAt: `${day}T10:30-03:00` },
+      { title: 'Bad end', startsAt: day, endsAt: addDays(day, -1), allDay: true },
+    ]
+    for (const args of cases) {
+      const res = await h.tool(bearer(kevin), 'add_event', args)
+      expect(res.isError, JSON.stringify(args)).toBe(true)
+      expect(res.content[0].text, JSON.stringify(args)).toMatch(/endsAt/)
+    }
+    expect(await h.sql(`select 1 from events where title = 'Bad end'`)).toHaveLength(0)
+  })
 })
 
 describe('plan_meal', () => {

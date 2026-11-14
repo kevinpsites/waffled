@@ -95,6 +95,12 @@ defineTool({
     const allDay = optBool(args, 'allDay') ?? false
     const startsAt = eventInstant(reqString(args, 'startsAt', 40), allDay, ctx.timezone, 'startsAt')
     const endsRaw = optString(args, 'endsAt', 40)
+    const endsAt = endsRaw ? eventInstant(endsRaw, allDay, ctx.timezone, 'endsAt') : null
+    // An all-day endsAt is the last day, stored as the day after, so a day-before end
+    // lands exactly on the start, which assertEventTimes accepts for all-day spans.
+    if (endsAt && Date.parse(endsAt) <= Date.parse(startsAt)) {
+      throw new ToolInputError(allDay ? 'endsAt must not be before startsAt' : 'endsAt must be after startsAt')
+    }
     const participantIds = args.participantIds
     if (participantIds != null && (!Array.isArray(participantIds) || !participantIds.every(isUuid))) {
       throw new ToolInputError('participantIds must be a list of member ids')
@@ -102,7 +108,7 @@ defineTool({
     const event = await createEventFromInput(tenant, {
       title: reqString(args, 'title', 200),
       startsAt,
-      endsAt: endsRaw ? eventInstant(endsRaw, allDay, ctx.timezone, 'endsAt') : null,
+      endsAt,
       allDay,
       location: optString(args, 'location', 300) ?? null,
       description: optString(args, 'description', 2000) ?? null,
