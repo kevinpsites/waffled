@@ -35,10 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   permission decides who may connect one (adults yes, teens and kids no, adjustable per
   role). Connectors need Waffled on public HTTPS with an IPv4 address; LAN-only installs can
   keep using Claude Code with an API key. See "Connect Claude to Waffled" in the docs.
-- **Signing in with SSO returns you to the page you started from** instead of the home
-  screen.
 
 ### Changed
+
+- **Signing in with SSO returns you to the page you started from** instead of the home
+  screen.
 
 ### Fixed
 
