@@ -77,6 +77,10 @@ export function OAuthAuthorize({ onLeave = leaveForUrl }: { onLeave?: (url: stri
     }
   }
 
+  // A framed consent page could be overlaid to trick the Approve click.
+  if (window.top !== window.self) {
+    return <AuthShell title="Connect an app" sub="For your safety, open this page in its own window to approve it.">{null}</AuthShell>
+  }
   if (state.kind === 'loading') return <AuthShell title="Connect an app" sub="Loading…">{null}</AuthShell>
   if (state.kind === 'leaving') return <AuthShell title="Returning to the app" sub="You can close this tab if it doesn’t close itself.">{null}</AuthShell>
   if (state.kind === 'error') {

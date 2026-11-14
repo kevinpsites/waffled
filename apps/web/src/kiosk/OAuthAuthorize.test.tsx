@@ -125,6 +125,18 @@ describe('OAuth consent screen', () => {
     expect(onLeave).not.toHaveBeenCalled()
   })
 
+  it('will not offer consent inside a frame (clickjacking)', async () => {
+    mockFetch(INFO)
+    const top = vi.spyOn(window, 'top', 'get').mockReturnValue({} as Window)
+    try {
+      renderConsent()
+      expect(await screen.findByText(/open this page in its own window/i)).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
+    } finally {
+      top.mockRestore()
+    }
+  })
+
   it('returns a redirectable error to the app', async () => {
     mockFetch({ error: 'invalid_scope', error_description: 'unknown scope', redirect: 'https://claude.ai/api/mcp/auth_callback?error=invalid_scope&state=s1' }, { status: 400 })
     const onLeave = renderConsent()
