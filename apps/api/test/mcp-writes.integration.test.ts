@@ -159,3 +159,27 @@ describe('rewards', () => {
     expect(stars(kelly.id)).toBe(20)
   })
 })
+
+describe('create_chore', () => {
+  it('creates a chore through the same path as POST /api/chores', async () => {
+    const res = await h.tool(bearer(kevin), 'create_chore', { title: 'Water the plants', personId: wally.id, rewardAmount: 2 })
+    expect(res.isError, JSON.stringify(res.content)).toBeFalsy()
+    const id = res.structuredContent.chore.id
+    expect(await lastAudit()).toMatchObject({ tool: 'create_chore', outcome: 'ok', target_ids: { personId: wally.id, created: id } })
+    const listed = await h.tool(bearer(kevin), 'list_chores', { personId: wally.id })
+    expect(listed.structuredContent.items.map((i: { title: string }) => i.title)).toContain('Water the plants')
+  })
+
+  it('a kid may add a chore for themselves but not for someone else', async () => {
+    expect((await h.tool(bearer(wally.token), 'create_chore', { title: 'Tidy my room' })).isError).toBeFalsy()
+    const res = await h.tool(bearer(wally.token), 'create_chore', { title: 'Mow the lawn', personId: kelly.id })
+    expect(res.isError).toBe(true)
+    expect(await lastAudit()).toMatchObject({ tool: 'create_chore', outcome: 'denied', person_id: wally.id })
+  })
+
+  it('validates its arguments', async () => {
+    expect((await h.tool(bearer(kevin), 'create_chore', {})).isError).toBe(true)
+    expect((await h.tool(bearer(kevin), 'create_chore', { title: 'x', dueOn: '2026-02-31' })).isError).toBe(true)
+    expect((await h.tool(bearer(kevin), 'create_chore', { title: 'x', rewardAmount: -1 })).isError).toBe(true)
+  })
+})
