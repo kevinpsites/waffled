@@ -232,3 +232,24 @@ describe('add_event', () => {
     expect((await h.tool(bearer(kevin), 'add_event', { title: 'X', startsAt: `${day}T10:00`, rrule: 'NOT A RULE' })).isError).toBe(true)
   })
 })
+
+describe('plan_meal', () => {
+  it('plans a recipe into a slot and the week shows it, mirrored onto the calendar', async () => {
+    const recipe = json(await h.call('POST', '/api/recipes', kevin, { title: 'Lasagna' })).recipe.id
+    const day = addDays(today, 2)
+    const res = await h.tool(bearer(kevin), 'plan_meal', { date: day, mealType: 'dinner', recipeId: recipe, cookPersonId: kelly.id })
+    expect(res.isError, JSON.stringify(res.content)).toBeFalsy()
+    expect(await lastAudit()).toMatchObject({ tool: 'plan_meal', outcome: 'ok', target_ids: { recipeId: recipe, cookPersonId: kelly.id } })
+    const plan = await h.tool(bearer(kevin), 'get_meal_plan', { week: day })
+    expect(plan.structuredContent.entries).toContainEqual(expect.objectContaining({ date: day, mealType: 'dinner', title: 'Lasagna', cook: { id: kelly.id, name: 'Kelly' } }))
+    const events = await h.tool(bearer(kevin), 'list_events', { from: day, to: day })
+    expect(events.structuredContent.items.map((e: { title: string }) => e.title).join(' ')).toMatch(/Lasagna/)
+  })
+
+  it('takes a free-text title for a meal with no recipe, and validates the slot', async () => {
+    const day = addDays(today, 2)
+    expect((await h.tool(bearer(kevin), 'plan_meal', { date: day, mealType: 'lunch', title: 'Leftovers' })).isError).toBeFalsy()
+    expect((await h.tool(bearer(kevin), 'plan_meal', { date: day, mealType: 'brunch', title: 'X' })).isError).toBe(true)
+    expect((await h.tool(bearer(kevin), 'plan_meal', { date: day, mealType: 'lunch' })).isError).toBe(true)
+  })
+})

@@ -30,6 +30,8 @@ import {
   presentRecipe,
   getOrCreateActivePlan,
   upsertEntry,
+  planMealSlot,
+  type PlanSlotBody,
   clearEntry,
   weekEntries,
   presentEntry,
@@ -391,72 +393,7 @@ export function registerMealRoutes(api: Api): void {
   // Plan (or re-plan) a meal slot. Assigns a recipe or free-text title (and
   // optionally who's cooking). Powers the Meals-screen "+" picker.
   api.post('/api/meals/plan', tenantRoute(async (tenant, req: Request, res: Response) => {
-    const body = (req.body ?? {}) as {
-      date?: string
-      mealType?: string
-      recipeId?: string
-      mealId?: string
-      title?: string
-      cookPersonId?: string
-    }
-    if (!body.date || !DATE_RE.test(body.date) || !body.mealType || !MEAL_TYPES.has(body.mealType)) {
-      return res
-        .status(400)
-        .json({ error: 'BadRequest', message: 'date (YYYY-MM-DD) and mealType are required' })
-    }
-    // recipeId is optional (null = leftovers/takeout); reject a malformed one.
-    let recipeId: string | null = null
-    if (body.recipeId != null && body.recipeId !== '') {
-      if (!UUID_RE.test(body.recipeId)) {
-        return res.status(400).json({ error: 'BadRequest', message: 'recipeId must be a uuid' })
-      }
-      recipeId = body.recipeId
-      await assertRecipeInHousehold(tenant.householdId, recipeId)
-    }
-    // A slot points at EITHER a recipe or a Meal Builder plate. Re-planning with a
-    // plate is how a planner **drag** moves a dinner — the same plate relocates, it is
-    // not copied (that's `POST /api/meals/:id/schedule`, which deliberately copies a
-    // saved plate so editing next week's can't rewrite last week's). Without this, a
-    // dragged plate lands as a bare title and its dishes, cooks and grocery
-    // contribution are all silently dropped.
-    // A slot points at ONE thing. With both written, `isMealBacked` and `hasRecipe` are
-    // simultaneously true and two surfaces disagree about the same night — the planner
-    // opens the plate while the Today card opens the recipe. There's no CHECK constraint
-    // behind this, so the route is where it has to be refused.
-    if (recipeId && body.mealId != null && body.mealId !== '') {
-      return res
-        .status(400)
-        .json({ error: 'BadRequest', message: 'a slot takes recipeId or mealId, not both' })
-    }
-    let mealId: string | null = null
-    if (body.mealId != null && body.mealId !== '') {
-      if (!UUID_RE.test(body.mealId)) {
-        return res.status(400).json({ error: 'BadRequest', message: 'mealId must be a uuid' })
-      }
-      mealId = body.mealId
-      await assertMealInHousehold(tenant.householdId, mealId)
-    }
-    let cookPersonId: string | null = null
-    if (body.cookPersonId != null && body.cookPersonId !== '') {
-      if (!UUID_RE.test(body.cookPersonId)) {
-        return res.status(400).json({ error: 'BadRequest', message: 'cookPersonId must be a uuid' })
-      }
-      cookPersonId = body.cookPersonId
-      await assertPersonInHousehold(tenant.householdId, cookPersonId)
-    }
-    const plan = await getOrCreateActivePlan(tenant)
-    const entry = await upsertEntry(plan.id, tenant, {
-      date: body.date,
-      mealType: body.mealType,
-      recipeId,
-      mealId,
-      title: body.title ?? null,
-      cookPersonId,
-    })
-    // Mirror the meal onto the calendar (and Google, if opted in). Never fail the
-    // plan write if the calendar sync hiccups.
-    await syncMealEventForEntry(tenant, entry.id).catch((err) => console.error('meal event sync failed', err))
-    await syncPrepReminderForEntry(tenant, entry.id).catch((err) => console.error('prep reminder sync failed', err))
+    const entry = await planMealSlot(tenant, (req.body ?? {}) as PlanSlotBody)
     return res.status(200).json({ entry: presentEntry(entry) })
   }))
 

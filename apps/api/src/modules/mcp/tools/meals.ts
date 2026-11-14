@@ -1,9 +1,9 @@
-import { listRecipes, presentRecipe, weekEntries } from '../../meals/meals.service'
+import { listRecipes, planMealSlot, presentEntry, presentRecipe, weekEntries } from '../../meals/meals.service'
 import { householdWeekStart, householdWeekStartFor } from '../../lists/lists.service'
 import { rankCandidates } from '../../capture/candidate-match'
 import { defineTool, ToolInputError } from '../registry'
-import { capped, DATE_SCHEMA, optDate, optNumber, reqString, truncNote } from '../args'
-import { DATA_NOTE, READ } from './shared'
+import { capped, DATE_SCHEMA, ID_SCHEMA, optDate, optEnum, optNumber, optString, optUuid, reqString, truncNote } from '../args'
+import { DATA_NOTE, READ, WRITE } from './shared'
 
 const DEFAULT_RECIPES = 10
 const MAX_RECIPES = 25
@@ -41,6 +41,40 @@ defineTool({
     const weekStart = week ? await householdWeekStartFor(tenant.householdId, week) : await householdWeekStart(tenant.householdId)
     const entries = (await weekEntries(tenant.householdId, weekStart, 7)).map(presentEntryForAgent)
     return { data: { weekStart, entries }, summary: `${entries.length} planned meal(s) in the week of ${weekStart}.` }
+  },
+})
+
+const MEAL_TYPE_LIST = ['breakfast', 'lunch', 'dinner', 'snack'] as const
+
+defineTool({
+  name: 'plan_meal',
+  description:
+    'Put a meal in a slot of the meal plan (replacing whatever was planned there): a recipe from search_recipes, or a free-text title such as "Leftovers" or "Pizza night". The meal also appears on the calendar.' +
+    DATA_NOTE,
+  scope: 'meals:write',
+  module: 'meals',
+  annotations: { title: 'Plan a meal', ...WRITE },
+  inputSchema: {
+    type: 'object',
+    properties: {
+      date: { ...DATE_SCHEMA, description: 'The day, YYYY-MM-DD' },
+      mealType: { type: 'string', enum: [...MEAL_TYPE_LIST] },
+      recipeId: { ...ID_SCHEMA, description: 'A recipe id from search_recipes' },
+      title: { type: 'string', description: 'What to show when there is no recipe' },
+      cookPersonId: { ...ID_SCHEMA, description: "Who's cooking (from list_family)" },
+    },
+    required: ['date', 'mealType'],
+    additionalProperties: false,
+  },
+  run: async (tenant, args) => {
+    const date = optDate(args, 'date')
+    const mealType = optEnum(args, 'mealType', MEAL_TYPE_LIST)
+    if (!date || !mealType) throw new ToolInputError('date (YYYY-MM-DD) and mealType are required')
+    const recipeId = optUuid(args, 'recipeId')
+    const title = optString(args, 'title', 200)
+    if (!recipeId && !title) throw new ToolInputError('give a recipeId or a title')
+    const entry = await planMealSlot(tenant, { date, mealType, recipeId, title, cookPersonId: optUuid(args, 'cookPersonId') })
+    return { data: { entry: presentEntry(entry) }, summary: `Planned ${mealType} on ${date}.`, createdId: entry.id }
   },
 })
 
