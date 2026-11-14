@@ -83,7 +83,10 @@ than its owner person can.
 agents is key-reachable but not scoped by path: each MCP tool declares one of the scopes above,
 and a key only sees and calls the tools its scopes cover (a user session sees all of them). On
 `/mcp` a key may also be sent as `Authorization: Bearer waffled_…`. Only that exact path is
-excepted — anything under it still 403s for a key.
+excepted — anything under it still 403s for a key. A tool that changes something is also held
+to the key owner's own permissions (a kid's key can't do what the kid can't), and every such
+call is recorded with the key that made it. The tool list is in the
+[feature matrix](/reference/features/#modules--extensibility).
 
 ---
 
