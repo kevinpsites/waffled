@@ -18,7 +18,7 @@ describe('DEFAULT_PERMISSIONS', () => {
     }
   })
 
-  it('exposes the full capability set, including goal.manage and planning.manage', () => {
+  it('exposes the full capability set, including goal.manage, planning.manage and ai.connect', () => {
     expect(CAPABILITIES).toEqual([
       'chore.manage',
       'chore.approve',
@@ -28,6 +28,8 @@ describe('DEFAULT_PERMISSIONS', () => {
       'goal.manage',
       // Not "run the weekly planning session" — anybody may do that. See lib/api/permissions.ts.
       'planning.manage',
+      // Who may connect an AI agent (an MCP connector grant) to the household.
+      'ai.connect',
     ])
     expect(DEFAULT_PERMISSIONS.adult['goal.manage']).toBe(true)
     expect(DEFAULT_PERMISSIONS.teen['goal.manage']).toBe(false)
@@ -35,6 +37,9 @@ describe('DEFAULT_PERMISSIONS', () => {
     expect(DEFAULT_PERMISSIONS.adult['planning.manage']).toBe(true)
     expect(DEFAULT_PERMISSIONS.teen['planning.manage']).toBe(false)
     expect(DEFAULT_PERMISSIONS.kid['planning.manage']).toBe(false)
+    expect(DEFAULT_PERMISSIONS.adult['ai.connect']).toBe(true)
+    expect(DEFAULT_PERMISSIONS.teen['ai.connect']).toBe(false)
+    expect(DEFAULT_PERMISSIONS.kid['ai.connect']).toBe(false)
   })
 })
 

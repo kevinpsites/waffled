@@ -8,18 +8,19 @@ import type { Tenant } from '../modules/households/households'
 
 // `planning.manage` is the odd one out: it does not gate RUNNING a weekly planning session —
 // anybody in the household can — only the household-wide choices the session offers, currently
-// which of your lists its first step asks about.
-export type Capability = 'chore.manage' | 'chore.approve' | 'reward.manage' | 'reward.approve' | 'reward.grant' | 'goal.manage' | 'planning.manage'
-export const CAPABILITIES: Capability[] = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'reward.grant', 'goal.manage', 'planning.manage']
+// which of your lists its first step asks about. `ai.connect` gates approving an MCP connector
+// (OAuth grant); it is re-checked on every refresh and every /mcp call, not only at consent.
+export type Capability = 'chore.manage' | 'chore.approve' | 'reward.manage' | 'reward.approve' | 'reward.grant' | 'goal.manage' | 'planning.manage' | 'ai.connect'
+export const CAPABILITIES: Capability[] = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'reward.grant', 'goal.manage', 'planning.manage', 'ai.connect']
 
 export type MemberRole = 'adult' | 'teen' | 'kid'
 export const ROLES: MemberRole[] = ['adult', 'teen', 'kid']
 
 // adult = full rights; teen/kid = nothing until an admin grants it.
 export const DEFAULT_PERMISSIONS: Record<MemberRole, Record<Capability, boolean>> = {
-  adult: { 'chore.manage': true, 'chore.approve': true, 'reward.manage': true, 'reward.approve': true, 'reward.grant': true, 'goal.manage': true, 'planning.manage': true },
-  teen: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'goal.manage': false, 'planning.manage': false },
-  kid: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'goal.manage': false, 'planning.manage': false },
+  adult: { 'chore.manage': true, 'chore.approve': true, 'reward.manage': true, 'reward.approve': true, 'reward.grant': true, 'goal.manage': true, 'planning.manage': true, 'ai.connect': true },
+  teen: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'goal.manage': false, 'planning.manage': false, 'ai.connect': false },
+  kid: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'goal.manage': false, 'planning.manage': false, 'ai.connect': false },
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {

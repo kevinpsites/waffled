@@ -209,7 +209,7 @@ describe('Settings screen', () => {
 
   it('renders the permissions grid with a Manage goals column and toggles it', async () => {
     const puts: PermissionMatrix[] = []
-    const emptyRow = { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'goal.manage': false, 'planning.manage': false }
+    const emptyRow = { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'goal.manage': false, 'planning.manage': false, 'ai.connect': false }
     const matrix: PermissionMatrix = { adult: { ...emptyRow }, teen: { ...emptyRow }, kid: { ...emptyRow } }
     globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
       const u = String(url)
@@ -234,6 +234,10 @@ describe('Settings screen', () => {
     expect(await screen.findByText('Manage goals')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('checkbox', { name: 'Teen: Manage goals' }))
     await waitFor(() => expect(puts.some((m) => m.teen['goal.manage'] === true)).toBe(true))
+
+    // Who may connect an AI app is an ordinary, editable column too.
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Teen: Connect AI apps' }))
+    await waitFor(() => expect(puts.some((m) => m.teen['ai.connect'] === true)).toBe(true))
   })
 
   it('plumbs the Countdowns config (sleeps toggle + birthday horizon) under Calendars', async () => {

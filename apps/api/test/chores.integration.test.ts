@@ -962,7 +962,7 @@ describe('chore capability gating (non-admin members)', () => {
 
   it('a non-admin adult holds the default capabilities; a kid holds none', async () => {
     const adult = JSON.parse((await call('GET', '/api/household', adultToken)).body).person
-    expect(adult.capabilities.sort()).toEqual(['chore.approve', 'chore.manage', 'goal.manage', 'planning.manage', 'reward.approve', 'reward.grant', 'reward.manage'])
+    expect(adult.capabilities.sort()).toEqual(['ai.connect', 'chore.approve', 'chore.manage', 'goal.manage', 'planning.manage', 'reward.approve', 'reward.grant', 'reward.manage'])
     const kid = JSON.parse((await call('GET', '/api/household', kidToken)).body).person
     expect(kid.capabilities).toEqual([])
   })
