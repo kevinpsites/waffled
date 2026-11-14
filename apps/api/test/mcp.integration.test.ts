@@ -273,7 +273,7 @@ describe('mcp_audit — one row per write-tool call, refusals included', () => {
       description: 'test-only',
       scope: 'lists:write',
       annotations: { readOnlyHint: false },
-      inputSchema: { type: 'object', properties: {} },
+      inputSchema: { type: 'object', properties: { listId: { type: 'string' }, itemIds: { type: 'array' }, mode: { type: 'string' } } },
       run: async (_t, args) => {
         if (args.mode === 'forbid') throw new AuthError('You do not have permission to do this', 403)
         if (args.mode === 'bad') throw new ToolInputError('name is required')
@@ -296,6 +296,15 @@ describe('mcp_audit — one row per write-tool call, refusals included', () => {
     expect(rows[0]).toMatchObject({ tool: PROBE, outcome: 'ok', error: null, api_key_id: null, person_id: ownerId })
     expect(rows[0].target_ids).toEqual({ listId: ID, created: ID })
     expect(JSON.stringify(rows[0])).not.toMatch(/secret milk/)
+  })
+
+  it('stores only ids under declared argument keys, and at most ten of them', async () => {
+    await h.sql('delete from mcp_audit')
+    const ids = Array.from({ length: 15 }, (_, i) => `11111111-2222-4333-8444-${String(i).padStart(12, '0')}`)
+    await rpc(bearer(kevin), 'tools/call', { name: PROBE, arguments: { listId: ID, itemIds: ids, sneaky: ID, more: ids } })
+    const [row] = await audits()
+    expect(Object.keys(row.target_ids).sort()).toEqual(['created', 'itemIds', 'listId'])
+    expect(row.target_ids.itemIds).toEqual(ids.slice(0, 9))
   })
 
   it('records the key, a scope refusal, a capability refusal and a bad argument', async () => {
@@ -335,14 +344,17 @@ describe('tool registry guard', () => {
     expect(bad.join('\n')).toBe('')
   })
 
-  it('annotations match the scope: reads are read-only, writes are not, delete and redeem are destructive', async () => {
+  // plan_meal overwrites the slot's meal, its calendar event and its prep reminder.
+  const DESTRUCTIVE_TOOLS = ['delete_event', 'delete_list_item', 'plan_meal', 'redeem_reward']
+
+  it('annotations match the scope: reads are read-only, writes are not, only the listed writes are destructive', async () => {
     const { toolRegistry } = await import('../src/modules/mcp/registry')
     const bad: string[] = []
     for (const t of toolRegistry()) {
       if (t.name.startsWith('test_')) continue
       const write = t.scope.endsWith(':write')
       if (t.annotations?.readOnlyHint !== !write) bad.push(`${t.name}: readOnlyHint should be ${!write}`)
-      const destructive = /^(delete|redeem)_/.test(t.name)
+      const destructive = DESTRUCTIVE_TOOLS.includes(t.name)
       if (write && (t.annotations?.destructiveHint ?? false) !== destructive) bad.push(`${t.name}: destructiveHint should be ${destructive}`)
     }
     expect(bad.join('\n')).toBe('')

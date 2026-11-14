@@ -11,7 +11,7 @@ import { rankCandidates, type Candidate, type RankRow } from '../capture/candida
 import {
   registerCaptureTarget,
   httpError,
-  findPersonByName,
+  personFromArgs,
   impliesMine,
   type CaptureTarget,
   type ResolveCtx,
@@ -19,7 +19,7 @@ import {
   type MutateCommand,
 } from '../capture/capture-resolvers'
 import { conceptKeywords } from './goal-match'
-import { listGoals, logProgress, goalLogAmount, personsInHousehold, visibleGoalLists } from './goals.service'
+import { listGoals, logProgress, goalLogAmount, visibleGoalLists } from './goals.service'
 
 // A short progress/target line for the pick-one preview.
 function goalSubtitle(g: { totalProgress: number; target: number | null; unit: string | null; goalType: string }): string {
@@ -31,17 +31,11 @@ function goalSubtitle(g: { totalProgress: number; target: number | null; unit: s
 // default self-log). Validates the id/name is a live member of this household.
 async function resolveOtherPerson(ctx: ResolveCtx, args: Record<string, unknown>): Promise<string | null> {
   const pid = typeof args.personId === 'string' && args.personId.trim() ? args.personId.trim() : null
-  if (pid) {
-    if (!(await personsInHousehold(ctx.householdId, [pid]))) throw httpError(400, 'unknown person')
-    return pid
-  }
   const name = typeof args.personName === 'string' && args.personName.trim() ? args.personName.trim() : null
-  if (name) {
-    const person = await findPersonByName(ctx.householdId, name)
-    if (!person) throw httpError(400, 'unknown person')
-    return person.id
-  }
-  return null
+  if (!pid && !name) return null
+  const person = await personFromArgs(ctx.householdId, pid ? { personId: pid } : { personName: name })
+  if (!person) throw httpError(400, 'unknown person')
+  return person.id
 }
 
 const goalTarget: CaptureTarget = {
@@ -78,12 +72,19 @@ const goalTarget: CaptureTarget = {
 
   async applyMutation(ctx: ResolveCtx, cmd: MutateCommand): Promise<{ message: string }> {
     if (cmd.verb !== 'log') throw httpError(400, "Can't do that to a goal")
-    const { rows } = await query<{ title: string; goal_type: string; unit: string | null }>(
-      `select title, goal_type, unit from goals where household_id=$1 and id=$2 and deleted_at is null`,
-      [ctx.householdId, cmd.targetId]
-    )
+    const [{ rows }, lists] = await Promise.all([
+      query<{ title: string; goal_type: string; unit: string | null; goal_list_id: string | null }>(
+        `select title, goal_type, unit, goal_list_id from goals where household_id=$1 and id=$2 and deleted_at is null`,
+        [ctx.householdId, cmd.targetId]
+      ),
+      visibleGoalLists(ctx.tenant),
+    ])
     const goal = rows[0]
-    if (!goal) throw httpError(404, 'goal not found')
+    // A goal in a private list the caller isn't in is not theirs to see — same rule as
+    // resolveCandidates, since a commit can name any id.
+    if (!goal || (goal.goal_list_id != null && !lists.some((l) => l.id === goal.goal_list_id))) {
+      throw httpError(404, 'goal not found')
+    }
     const args = cmd.args ?? {}
 
     // Self-log is open; attributing to another person takes goal.manage (mirrors

@@ -143,6 +143,25 @@ describe('goals', () => {
     const kel = await h.tool(bearer(kelly.token), 'find_goals', { description: 'secret savings' })
     expect(kel.structuredContent.candidates[0].title).toBe('Secret savings')
   })
+
+  it('log_goal refuses a malformed personId as a tool error', async () => {
+    const g = await findOne(bearer(kevin), 'find_goals', 'reading')
+    const res = await h.tool(bearer(kevin), 'log_goal', { id: g.id, amount: 1, personId: 'not-a-uuid' })
+    expect(res.isError).toBe(true)
+    expect(res.content[0].text).toMatch(/personId/)
+  })
+
+  it("log_goal by id refuses a goal in a private list the caller isn't in", async () => {
+    const list = json(await h.call('POST', '/api/goal-lists', kelly.token, { name: 'Hers', isPrivate: true, memberIds: [kelly.id] })).list.id
+    const goal = json(await h.call('POST', '/api/goals', kelly.token, {
+      title: 'Hidden habit', goalListId: list, goalType: 'count', targetValue: 3, trackingMode: 'shared_total',
+    })).goal.id
+    const res = await h.tool(bearer(kevin), 'log_goal', { id: goal, amount: 1 })
+    expect(res.isError).toBe(true)
+    expect(res.content[0].text).toMatch(/not found/)
+    const logs = await h.sql('select 1 from goal_logs where goal_id = $1', [goal])
+    expect(logs).toHaveLength(0)
+  })
 })
 
 describe('rewards', () => {
@@ -237,6 +256,22 @@ describe('add_event', () => {
     expect((await h.tool(bearer(kevin), 'add_event', { title: 'X', startsAt: `${day}T10:00`, endsAt: `${day}T09:00` })).isError).toBe(true)
     expect((await h.tool(bearer(kevin), 'add_event', { title: 'X', startsAt: 'soon' })).isError).toBe(true)
     expect((await h.tool(bearer(kevin), 'add_event', { title: 'X', startsAt: `${day}T10:00`, rrule: 'NOT A RULE' })).isError).toBe(true)
+  })
+
+  it('refuses an endsAt that does not parse or ends before it starts, timed or all-day', async () => {
+    const day = addDays(today, 6)
+    const cases = [
+      { title: 'Bad end', startsAt: `${day}T10:00`, endsAt: 'later' },
+      { title: 'Bad end', startsAt: `${day}T10:00`, endsAt: `${day}T09:00` },
+      { title: 'Bad end', startsAt: `${day}T10:00-05:00`, endsAt: `${day}T10:30-03:00` },
+      { title: 'Bad end', startsAt: day, endsAt: addDays(day, -1), allDay: true },
+    ]
+    for (const args of cases) {
+      const res = await h.tool(bearer(kevin), 'add_event', args)
+      expect(res.isError, JSON.stringify(args)).toBe(true)
+      expect(res.content[0].text, JSON.stringify(args)).toMatch(/endsAt/)
+    }
+    expect(await h.sql(`select 1 from events where title = 'Bad end'`)).toHaveLength(0)
   })
 })
 

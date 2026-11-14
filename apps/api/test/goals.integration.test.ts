@@ -1092,6 +1092,14 @@ describe('capture — goals target', () => {
     expect(await goalProgress(habitGoal)).toBe(1)
   })
 
+  it('400s a malformed personId instead of handing it to a uuid column', async () => {
+    const before = await goalProgress(readCountGoal)
+    const res = await commit(capToken, { verb: 'log', targetKind: 'goal', targetId: readCountGoal, args: { amount: 1, personId: 'not-a-uuid' } })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).message).toMatch(/unknown person/)
+    expect(await goalProgress(readCountGoal)).toBe(before)
+  })
+
   it('rejects a non-log verb', async () => {
     const res = await commit(capToken, { verb: 'delete', targetKind: 'goal', targetId: readCountGoal, args: {} })
     expect(res.statusCode).toBe(400)
