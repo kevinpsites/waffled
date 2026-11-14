@@ -79,6 +79,12 @@ resource are refused too, so `POST /api/persons/:id/award` and
 capability **and** module checks still apply on top of the scope, so a key can never do more
 than its owner person can.
 
+**One exception: `/mcp` (preview).** The [MCP](https://modelcontextprotocol.io) endpoint for AI
+agents is key-reachable but not scoped by path: each MCP tool declares one of the scopes above,
+and a key only sees and calls the tools its scopes cover (a user session sees all of them). On
+`/mcp` a key may also be sent as `Authorization: Bearer waffled_…`. Only that exact path is
+excepted — anything under it still 403s for a key.
+
 ---
 
 ## Endpoint reference

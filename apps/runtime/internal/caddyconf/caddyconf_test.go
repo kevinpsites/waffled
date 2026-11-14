@@ -152,7 +152,8 @@ func TestRewritesTheRepoCaddyfile(t *testing.T) {
 			t.Errorf("%q survived the rewrite of the real Caddyfile", gone)
 		}
 	}
-	if n := strings.Count(out, "127.0.0.1:3002"); n != 2 {
-		t.Errorf("the real Caddyfile has %d api upstreams rewritten, expected 2", n)
+	// /api/*, /auth/google/* and /mcp.
+	if n := strings.Count(out, "127.0.0.1:3002"); n != 3 {
+		t.Errorf("the real Caddyfile has %d api upstreams rewritten, expected 3", n)
 	}
 }
