@@ -328,8 +328,11 @@ describe('the deny list, not mere absence, refuses a denied path', () => {
 describe('scope catalog covers the route table', () => {
   it('leaves no live route both unscoped and unlisted', async () => {
     const { scopeForRequest } = await import('../src/modules/api-keys/api-keys')
+    const { SCOPED_PER_CALL } = await import('../src/modules/api-keys/api-keys')
     const allowed = NOT_KEY_REACHABLE.flatMap((g) => g.prefixes)
-    const covered = (path: string) => allowed.some((p) => path === p || path.startsWith(p + '/'))
+    const perCall = SCOPED_PER_CALL.flatMap((g) => g.paths)
+    const covered = (path: string) =>
+      perCall.includes(path) || allowed.some((p) => path === p || path.startsWith(p + '/'))
 
     const orphans = (app.routes() as string[][])
       .map(([method, path]) => [method, path] as const)
@@ -360,6 +363,23 @@ describe('scope catalog covers the route table', () => {
     // Assert on the joined text: vitest collapses a long string inside an array to
     // "expected [ Array(1) ]", hiding the instruction this test exists to give.
     expect(stale.join('\n')).toBe('')
+  })
+
+  // A per-call path skips the central scope check, so it must be a live route that neither
+  // API_SCOPES nor a deny entry also claims — either overlap would make the gate ambiguous.
+  it('every per-call-scoped path is a live route claimed by nothing else', async () => {
+    const { SCOPED_PER_CALL, scopeForRequest, denyForPath } = await import('../src/modules/api-keys/api-keys')
+    const routes = (app.routes() as string[][]).map(([method, path]) => [method, path] as const)
+    const problems = SCOPED_PER_CALL.flatMap((entry) =>
+      entry.paths.flatMap((path) => {
+        const out: string[] = []
+        if (!routes.some(([, p]) => p === path)) out.push(`${path}: no live route — DELETE its SCOPED_PER_CALL entry`)
+        if (routes.some(([m, p]) => p === path && scopeForRequest(m, p))) out.push(`${path}: also matched by an API_SCOPES prefix`)
+        if (denyForPath(path)) out.push(`${path}: also on a deny list`)
+        return out
+      })
+    )
+    expect(problems.join('\n')).toBe('')
   })
 
   // A debt entry that doesn't say where the work lives is indistinguishable from a decision.

@@ -27,6 +27,17 @@
 		reverse_proxy api:3000
 	}
 
+	# MCP endpoint for AI agents. Exact paths so /mcpanything still falls to the SPA; the
+	# api checks a browser Origin against the forwarded host, so pin the same headers.
+	@mcp path /mcp /mcp/*
+	handle @mcp {
+		reverse_proxy api:3000 {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Host {hostport}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
 	# Uploaded media blobs. The api writes to the waffled_media volume (/data/media);
 	# Caddy serves it read-only so the api stays out of the read path. handle_path
 	# strips the /media prefix, so /media/<household>/<hex>.jpg → /data/media/<household>/<hex>.jpg.

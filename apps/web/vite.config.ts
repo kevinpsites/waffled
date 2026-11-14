@@ -55,18 +55,23 @@ function stampServiceWorkerPlugin(): Plugin {
 // proto so the api can build correct absolute URLs (OIDC redirect_uri, the
 // "Back to Waffled" links) — otherwise it only sees its own :3000 address and SSO
 // callbacks point at the wrong place.
-const apiProxy: Record<string, ProxyOptions> = {
-  '/api': {
-    target: 'http://localhost:3000',
-    changeOrigin: false,
-    configure: (proxy) => {
-      proxy.on('proxyReq', (proxyReq, req) => {
-        if (req.headers.host) proxyReq.setHeader('x-forwarded-host', req.headers.host)
-        const encrypted = (req.socket as { encrypted?: boolean }).encrypted
-        proxyReq.setHeader('x-forwarded-proto', encrypted ? 'https' : 'http')
-      })
-    },
+const toApi: ProxyOptions = {
+  target: 'http://localhost:3000',
+  changeOrigin: false,
+  configure: (proxy) => {
+    proxy.on('proxyReq', (proxyReq, req) => {
+      if (req.headers.host) proxyReq.setHeader('x-forwarded-host', req.headers.host)
+      const encrypted = (req.socket as { encrypted?: boolean }).encrypted
+      proxyReq.setHeader('x-forwarded-proto', encrypted ? 'https' : 'http')
+    })
   },
+}
+
+const apiProxy: Record<string, ProxyOptions> = {
+  '/api': toApi,
+  // The MCP endpoint for AI agents lives outside /api. A `^` key is a RegExp to Vite, so
+  // this matches /mcp and /mcp/… but not a sibling like /mcpanything.
+  '^/mcp(/|$)': toApi,
   // Uploaded media (/media/*) is served by Caddy off the shared waffled_media volume,
   // NOT by the api — so in dev we forward to the running stack's Caddy (:8080) the
   // same way it's served in production. Without this, the dev server returns

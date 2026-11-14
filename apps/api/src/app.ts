@@ -57,6 +57,7 @@ import { registerCaptureRoutes } from './modules/capture/capture'
 import { registerWeatherRoutes } from './integrations/weather'
 import { registerPowerSyncRoutes } from './modules/powersync/powersync'
 import { registerPowerSyncCrudRoutes } from './modules/powersync/powersync-crud'
+import { MCP_PATH, registerMcpRoutes } from './modules/mcp/mcp'
 
 const api = createAPI()
 
@@ -102,6 +103,15 @@ const PUBLIC_PATHS = new Set([
   '/api/waffled-bites/device/token',
 ])
 
+// MCP clients configure one `Authorization` header, so /mcp also takes a key as a Bearer.
+// Keys are `waffled_…` and never look like a JWT, so the two cannot be confused.
+function apiKeyFrom(req: Request): string | null {
+  const header = req.headers['x-api-key']
+  if (typeof header === 'string' && header) return header
+  if (req.path === MCP_PATH && req.auth?.type === 'Bearer' && req.auth.value?.startsWith('waffled_')) return req.auth.value
+  return null
+}
+
 // Auth gate — authenticates every non-public route. An `x-api-key` header takes the API-key
 // path: it resolves to the owning person and is scope-checked centrally here against a
 // path-prefix catalog. Central because that is fail-closed by construction — a route absent
@@ -109,9 +119,9 @@ const PUBLIC_PATHS = new Set([
 // api-keys.ts). Otherwise the Bearer JWT is verified. Either failure throws AuthError.
 api.use(async (req: Request, res: Response, next: NextFunction) => {
   if (req.method === 'OPTIONS' || PUBLIC_PATHS.has(req.path)) return next()
-  const apiKeyHeader = req.headers['x-api-key']
-  if (typeof apiKeyHeader === 'string' && apiKeyHeader) {
-    await authenticateApiKey(req, apiKeyHeader)
+  const apiKey = apiKeyFrom(req)
+  if (apiKey) {
+    await authenticateApiKey(req, apiKey)
     enforceApiKeyScope(req)
     return next()
   }
@@ -285,6 +295,9 @@ registerApiKeyRoutes(api)
 registerHealthRoutes(api)
 
 registerUpdateRoutes(api)
+
+// MCP endpoint for AI agents (/mcp) — see docs/product/mcp-plan.md.
+registerMcpRoutes(api)
 
 // One structured access-log line per request, after the response is sent. status & duration
 // are read here because lambda-api's next() doesn't return a promise.

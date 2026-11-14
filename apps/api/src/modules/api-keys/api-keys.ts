@@ -13,7 +13,8 @@
 // Both halves of that decision are declared here: API_SCOPES is the allow list, and
 // NEVER_KEY_REACHABLE / UNSCOPED_YET name the paths held back on purpose. Absence from
 // both still denies, so the deny list adds no gate — it makes a deliberate exclusion
-// reviewable beside the routes, and tells `forgotten` apart from `excluded`.
+// reviewable beside the routes, and tells `forgotten` apart from `excluded`. The one
+// exception to path scoping is SCOPED_PER_CALL (/mcp), whose scope is checked per tool.
 import { createHash, randomBytes } from 'node:crypto'
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
@@ -99,6 +100,24 @@ export const UNSCOPED_YET: UnscopedYet[] = [
 ]
 
 export const NOT_KEY_REACHABLE: (NeverReachable | UnscopedYet)[] = [...NEVER_KEY_REACHABLE, ...UNSCOPED_YET]
+
+// Key-reachable paths whose scope is checked per CALL, not per path: one endpoint fronts
+// many operations, each needing a different scope. EXACT paths, never prefixes — anything
+// under them is still absent from the catalog and so 403s. The registry named in `gate`
+// must refuse an operation whose scope the key does not hold.
+export interface ScopedPerCall {
+  why: string
+  paths: string[]
+  gate: string
+}
+
+export const SCOPED_PER_CALL: ScopedPerCall[] = [
+  { why: 'the MCP endpoint — every tool declares its own scope', paths: ['/mcp'], gate: 'modules/mcp/registry.ts' },
+]
+
+function scopedPerCall(path: string): boolean {
+  return SCOPED_PER_CALL.some((e) => e.paths.includes(path))
+}
 
 // A prefix matches only on a `/` boundary, so a hyphenated sibling of a listed
 // prefix (/api/chore-instances vs /api/chores) does NOT match — it has to be listed
@@ -207,6 +226,7 @@ export function enforceApiKeyScope(req: Request): void {
   if (denyForPath(req.path)) {
     throw new AuthError('This endpoint is not available to API keys', 403)
   }
+  if (scopedPerCall(req.path)) return
   const need = scopeForRequest(req.method, req.path)
   // Absence still denies: fail-closed by construction, so an uncatalogued route family cannot
   // become key-reachable. Deliberately not logged — this runs on every key-authed request and

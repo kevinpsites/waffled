@@ -48,10 +48,10 @@ func Render(source string, cfg Config) (string, error) {
 		return "", err
 	}
 
-	// ReplaceAll, not a single replace: api:3000 appears under /api/* AND under the
-	// Google browser callback. Rewriting only the first leaves /auth/google/* pointing
-	// at a compose hostname that does not resolve here — Caddy still starts, /healthz
-	// still answers 200, and only Google sign-in breaks.
+	// ReplaceAll, not a single replace: api:3000 appears under /api/*, the Google browser
+	// callback and /mcp. Rewriting only the first leaves the others pointing at a compose
+	// hostname that does not resolve here — Caddy still starts, /healthz still answers
+	// 200, and only Google sign-in or AI agents break.
 	// Checked in a fixed order so the message is reproducible and always names the most
 	// load-bearing missing token first.
 	for _, token := range []string{apiUpstream, powersyncUpstream, webRootDirective, mediaRootDirectiv} {
