@@ -1,7 +1,7 @@
 # MCP server — let an AI agent query and act on a household
 
-**Status:** in progress — §2 (the endpoint) and the §3 registry are built, with one `whoami`
-tool and API-key auth; the real tools and §4 sign-in are next. **Written:** 2026-11-13.
+**Status:** in progress — §2 (the endpoint), §3 (the tools) and the §5 audit trail are
+built, with API-key auth; §4 sign-in is next. **Written:** 2026-11-13.
 **Scope agreed:** the endpoint (§2), the tools (§3), sign-in through the normal Waffled
 login (§4), the safety rules (§5) and change-notification tier A (§6), one PR each (§7).
 Web + api first; iOS after.
@@ -93,19 +93,66 @@ A guard test walks the tool registry and fails on any tool whose `scope` is not 
 (`denialFor` in `modules/mcp/registry.ts`): a tool the caller's scopes don't cover, or whose
 `module` is off for the household, is hidden from the list and refused on call.
 
-**Read (first cut):** `get_today` (overview), `list_events(from, to)`, `list_chores(status,
-person)`, `get_grocery_list`, `get_meal_plan(week)`, `list_goals` (the display axis —
-`periodDone` for habits, steps for checklists — never raw `totalProgress`), `get_reward_balances`, `list_family`, `search_recipes`.
+**What `run` gets and returns.** `run(tenant, args, ctx)`: `ctx` carries the caller's
+scopes, the household settings and timezone. It returns `{ data, summary, createdId? }`;
+`tools/call` sends `data` as `structuredContent` and its JSON as the first text block (the
+spec asks for both), plus the one-line `summary`. Lists are capped (`{ items, total,
+truncated }`, and the summary says when it cut). Arguments are checked by hand in
+`modules/mcp/args.ts`; any 4xx a service throws becomes an `isError` result.
 
-**Write (first cut):** the capture verbs — `complete`, `log`, `reschedule`, `reassign`,
-`redeem`, `delete` — exposed as a `find_*` tool returning candidates (`resolveCandidates`)
-plus an action tool taking the chosen id (`applyMutation`), so the agent confirms ambiguity
-with the user instead of guessing. Plus create tools: `add_event`, `add_list_item`,
-`plan_meal`, `create_chore`. These are **not** capture verbs: each needs its create logic
-lifted out of its route handler into a service function the route and the tool share.
+**Read tools** (`readOnlyHint: true`):
 
-**Weeks:** every week-shaped tool takes or returns the **server's** week key (household
-`week_start`), never a client-computed one.
+| Tool | Scope | Module | Reuses |
+|---|---|---|---|
+| `whoami` | `family:read` | — | `getContext` |
+| `get_today` | `family:read` + each section's own | per section | the reads below |
+| `list_events(from, to)` | `calendar:read` | — | `rangeEvents` (viewer visibility), ≤ 62 days |
+| `list_chores(date?, status?, personId?)` | `chores:read` | chores | `ensureTodayInstances` + `listTodayInstances` |
+| `get_grocery_list(week?)` | `lists:read` | lists | `groceryBoard` on `householdWeekStart(For)` |
+| `list_lists(listId?)` | `lists:read` | lists | `listLists`, `listItems` |
+| `get_meal_plan(week?)` | `meals:read` | meals | `weekEntries` on the household week |
+| `list_goals(personId?)` | `goals:read` | goals | `listGoals` + `visibleGoalLists`, `goalDisplay` |
+| `get_reward_balances` | `rewards:read` | rewards | `balancesSummary` |
+| `list_family` | `family:read` | — | `listPersons` (no account emails) |
+| `search_recipes(query, limit?)` | `meals:read` | meals | `listRecipes` ranked by `rankCandidates` |
+
+`get_today`'s sections are events (`calendar:read`), chores (`chores:read`, chores on),
+meals (`meals:read`, meals on) and the open grocery count (`lists:read`, lists on); a
+section the grant or the household rules out is left out and named in `omitted`.
+
+**Find + action tools.** One scope per tool means one tool per target kind, not one per
+verb across kinds. `find_chores`, `find_list_items`, `find_events`, `find_goals` and
+`find_rewards` (read scopes) return up to 20 `resolveCandidates` matches with ids and a
+confidence. The action tools take that id and call `applyMutation` after re-checking
+`supportedVerbs` and `isEnabled`:
+
+| Tool | Scope | Hints |
+|---|---|---|
+| `complete_chore`, `reassign_chore(personId)` | `chores:write` | |
+| `complete_list_item` | `lists:write` | |
+| `delete_list_item` | `lists:write` | destructive |
+| `reschedule_event(date?, time?)` | `calendar:write` | |
+| `delete_event` | `calendar:write` | destructive; result `scope: 'occurrence' \| 'event'` |
+| `log_goal(amount? hours? minutes? personId?)` | `goals:write` | |
+| `redeem_reward(personId?)` | `rewards:write` | destructive |
+
+The capability checks are the capture targets' own (a kid reassigning a chore to a sibling,
+or spending a sibling's stars, is refused). The capture targets now take a `personId` as
+well as a spoken name, and the goal target no longer offers goals in a private list the
+speaker isn't in.
+
+**Create tools.** Each create path moved out of its route into a service function that
+both call, so validation, capability checks and side effects cannot drift:
+
+| Tool | Scope | Module | Service (route) |
+|---|---|---|---|
+| `add_event` | `calendar:write` | — | `createEventFromInput` (`POST /api/events`) |
+| `add_list_item(listId?)` | `lists:write` | lists | `addItemFromInput` (`POST /api/lists/:id/items`); grocery list by default |
+| `plan_meal` | `meals:write` | meals | `planMealSlot` (`POST /api/meals/plan`), calendar mirroring included |
+| `create_chore` | `chores:write` | chores | `createChoreFromInput` (`POST /api/chores`), `chore.manage` for someone else |
+
+`add_event` reads a time without an offset as household-local. Events still have three
+write paths; the tool uses the REST one.
 
 **Natural-language questions need no LLM on our side** — the agent reads with the tools
 and answers. `platform/llm.ts` is not involved.
@@ -215,15 +262,18 @@ Code and local MCP clients work on the LAN. The how-to must lead with this.
   person's role). Neither is new.
 - **Destructive tools** (`delete`, `redeem`) carry `destructiveHint: true` so clients
   confirm; `delete` on a recurring series states the scope in its result.
-- **Attribution without touching every table:** a new `mcp_audit` table written by the
-  tool registry — tool, caller (`api_key_id` or `grant_id`), person, target ids, outcome,
-  time. One migration, no `source` column on events, chores, list items or meal plans.
-  It ships **with the write tools**, keyed by API key until grants exist, so there is no
-  window of untraceable agent writes.
+- **Attribution without touching every table:** `mcp_audit` (`0107_mcp_audit.sql`) —
+  household, person, `api_key_id`, `grant_id` (no FK until grants exist), tool,
+  `target_ids`, outcome `ok | error | denied`, error text, time. `tools/call` writes one
+  row for every call to a `:write`-scoped tool, including scope, module and capability
+  refusals (a 403 is `denied`). `target_ids` keeps only id-shaped arguments plus the
+  created row's id, never free text. Reads are not audited. No `source` column on events,
+  chores, list items or meal plans.
 - **Rate limits** per key or grant on `tools/call`.
 - **Prompt injection:** household text (list items, event notes, recipe bodies) reaches
-  the agent as data. Tool descriptions say so; tools return structured fields, not
-  free-form prose that mixes data and instructions.
+  the agent as data. Every tool description that returns household text says so (a guard
+  test checks), the `initialize` instructions repeat it, and tools return structured
+  fields, not free-form prose that mixes data and instructions.
 - **No secrets in tool output:** never return tokens, OIDC config, invite codes or other
   members' account emails.
 
@@ -268,5 +318,5 @@ Each PR is based on the previous one and ships its own tests, changelog line and
 | 1 | §2 | `/mcp` endpoint (stateless JSON-RPC, version + Origin checks), tool registry with per-tool scopes + guard tests, the `/mcp` API-key carve-out, one `whoami` tool. Usable from Claude Code with an API key sent as `Authorization: Bearer waffled_…`. | ~2–3 days |
 | 2 | §3 | Read tools, `find_*` + capture-verb write tools, create tools (service functions lifted out of their routes), `mcp_audit`. | ~1–2 weeks |
 | 3 | §4 | OAuth 2.1: metadata, CIMD + DCR, authorize/token, `mintMcpAccess` + the `/mcp` verify path, `oauth_grants` / `oauth_refresh_tokens`, `ai.connect`, web consent route, Settings → Connected apps, the "Connect Claude" how-to. | ~2 weeks |
-| 4 | §5 | Rate limits, injection-safe tool descriptions, the secrets-in-output guard test; audit gains `grant_id`. | ~2–3 days |
+| 4 | §5 | Rate limits, the secrets-in-output guard test; audit rows carry `grant_id`. | ~2–3 days |
 | 5 | §6 A | `whats_new(since)`, filtered through each module's read rules; roadmap item → Done. | ~2–3 days |

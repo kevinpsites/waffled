@@ -10,7 +10,7 @@ import { rewardsEnabled } from '../../platform/modules'
 import {
   registerCaptureTarget,
   httpError,
-  findPersonByName,
+  personFromArgs,
   type CaptureTarget,
   type ResolveCtx,
   type ResolveRequest,
@@ -47,9 +47,9 @@ const rewardCaptureTarget: CaptureTarget = {
     // mirrors the route's `personId ?? tenant.personId` default.
     let personId = ctx.personId
     let forName: string | null = null
-    const personName = typeof cmd.args.personName === 'string' ? cmd.args.personName.trim() : ''
-    if (personName) {
-      const person = await findPersonByName(ctx.householdId, personName)
+    const named = cmd.args.personId != null || (typeof cmd.args.personName === 'string' && cmd.args.personName.trim() !== '')
+    if (named) {
+      const person = await personFromArgs(ctx.householdId, cmd.args)
       if (!person) throw httpError(400, "Couldn't find that person.")
       personId = person.id
       forName = person.name

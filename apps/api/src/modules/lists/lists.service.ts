@@ -12,6 +12,8 @@ import { aisleFor, isStaple } from './aisles'
 import { pantryHitsForNames } from '../pantry/presence'
 import { formatAmount, normalizeQuantity, parseQuantity, plainQuantity } from './quantity'
 import type { ListRow, ListItemRow, CreateListInput, PatchItemInput } from './lists.types'
+import { badRequest, httpError } from '../../platform/http-error'
+import { assertPersonInHousehold } from '../../platform/household-refs'
 
 export async function getOrCreateGroceryList(tenant: Tenant): Promise<ListRow> {
   const found = await query<ListRow>(
@@ -301,6 +303,43 @@ export async function addItem(
     ]
   )
   return rows[0]
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export interface AddItemBody {
+  name?: string
+  quantity?: string
+  category?: string
+  store?: string
+  assignedTo?: string
+  priority?: number
+}
+
+// Priority is a 1–5 urgency scale: 1 = not urgent, 3 = normal, 5 = urgent.
+export function isValidPriority(v: unknown): v is 1 | 2 | 3 | 4 | 5 {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 5
+}
+
+// POST /api/lists/:id/items and the MCP add_list_item tool: validate, then add.
+export async function addItemFromInput(tenant: Tenant, listId: string, body: AddItemBody): Promise<ListItemRow> {
+  const notFound = () => httpError(404, 'list not found', 'NotFound')
+  if (!UUID_RE.test(listId)) throw notFound()
+  const list = await getList(tenant.householdId, listId)
+  if (!list) throw notFound()
+  if (!body.name || !body.name.trim()) throw badRequest('name is required')
+  if ('priority' in body && !isValidPriority(body.priority)) {
+    throw badRequest('priority must be an integer from 1 (not urgent) to 5 (urgent)')
+  }
+  if (body.assignedTo != null) await assertPersonInHousehold(tenant.householdId, body.assignedTo)
+  return addItem(tenant, listId, {
+    name: body.name.trim(),
+    quantity: body.quantity ?? null,
+    category: body.category ?? null,
+    store: body.store ?? null,
+    assignedTo: body.assignedTo ?? null,
+    priority: body.priority,
+  })
 }
 
 // Toggle an item's checked state (records who/when). Household-scoped; null if

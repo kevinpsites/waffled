@@ -8,10 +8,10 @@ import { requireTenant } from '../households/households'
 import { query } from '../../platform/db'
 import { log } from '../../platform/logger'
 import { version } from '../../platform/version'
-import { AuthError } from '../../platform/auth'
 import { baseUrl } from '../auth/oidc'
-import { denialFor, findTool, toolRegistry, ToolInputError, type CallerScopes, type ToolContext } from './registry'
-import './tools/household'
+import { denialFor, findTool, isWriteTool, toolRegistry, ToolInputError, type CallerScopes, type ToolContext } from './registry'
+import { auditTargets, recordAudit, type AuditOutcome } from './audit'
+import './tools'
 
 type Api = ReturnType<typeof createAPI>
 type JsonRpcId = string | number
@@ -59,9 +59,20 @@ function toolError(message: string) {
   return { content: [{ type: 'text', text: message }], isError: true }
 }
 
-async function householdSettings(householdId: string): Promise<unknown> {
-  const { rows } = await query<{ settings: unknown }>('select settings from households where id = $1', [householdId])
-  return rows[0]?.settings
+async function toolContext(req: Request, householdId: string): Promise<ToolContext> {
+  const { rows } = await query<{ settings: unknown; timezone: string | null }>(
+    'select settings, timezone from households where id = $1',
+    [householdId]
+  )
+  return { scopes: callerScopes(req), householdSettings: rows[0]?.settings, timezone: rows[0]?.timezone || 'UTC' }
+}
+
+// A 4xx thrown by a service (AuthError, httpError, InvalidReferenceError, …) is the
+// caller's to fix, so it becomes an isError result; anything else is ours.
+function clientErrorStatus(err: unknown): number | null {
+  if (err instanceof ToolInputError) return 400
+  const status = (err as { statusCode?: unknown } | null)?.statusCode
+  return typeof status === 'number' && Number.isInteger(status) && status >= 400 && status < 500 ? status : null
 }
 
 export function registerMcpRoutes(api: Api): void {
@@ -118,7 +129,7 @@ export function registerMcpRoutes(api: Api): void {
         return rpcResult(res, rid, {})
       case 'tools/list': {
         const tenant = await requireTenant(req)
-        const ctx: ToolContext = { scopes: callerScopes(req), householdSettings: await householdSettings(tenant.householdId) }
+        const ctx = await toolContext(req, tenant.householdId)
         const tools = toolRegistry()
           .filter((t) => denialFor(t, ctx) === null)
           .map((t) => ({
@@ -134,23 +145,44 @@ export function registerMcpRoutes(api: Api): void {
         const tool = typeof name === 'string' ? findTool(name) : undefined
         if (!tool) return rpcError(res, 200, rid, INVALID_PARAMS, `Unknown tool: ${String(name)}`)
         const tenant = await requireTenant(req)
-        const ctx: ToolContext = { scopes: callerScopes(req), householdSettings: await householdSettings(tenant.householdId) }
+        const ctx = await toolContext(req, tenant.householdId)
+        const rawArgs = params.arguments ?? {}
+        const args = isObject(rawArgs) ? rawArgs : {}
+        const audit = (outcome: AuditOutcome, error: string | null, createdId?: string) =>
+          isWriteTool(tool)
+            ? recordAudit({ tenant, apiKeyId: req.apiKey?.id ?? null, tool: tool.name, targets: auditTargets(args, createdId), outcome, error })
+            : Promise.resolve()
+
         const denied = denialFor(tool, ctx)
-        if (denied) return rpcResult(res, rid, toolError(denied))
-        const args = params.arguments ?? {}
-        if (!isObject(args)) return rpcResult(res, rid, toolError('arguments must be an object'))
+        if (denied) {
+          await audit('denied', denied)
+          return rpcResult(res, rid, toolError(denied))
+        }
+        if (!isObject(rawArgs)) {
+          await audit('error', 'arguments must be an object')
+          return rpcResult(res, rid, toolError('arguments must be an object'))
+        }
         try {
-          const out = await tool.run(tenant, args)
+          const out = await tool.run(tenant, args, ctx)
+          await audit('ok', null, out.createdId)
+          // The JSON comes first: the spec asks a tool returning structuredContent to
+          // also return it serialized, for clients that only read text.
           return rpcResult(res, rid, {
-            content: [{ type: 'text', text: JSON.stringify(out) }],
-            ...(isObject(out) ? { structuredContent: out } : {}),
+            content: [
+              { type: 'text', text: JSON.stringify(out.data) },
+              { type: 'text', text: out.summary },
+            ],
+            structuredContent: out.data,
           })
         } catch (err) {
-          // A capability check or bad input inside the tool is the caller's to fix.
-          if (err instanceof ToolInputError || (err instanceof AuthError && err.statusCode < 500)) {
-            return rpcResult(res, rid, toolError(err.message))
+          const status = clientErrorStatus(err)
+          if (status !== null) {
+            const message = (err as Error).message
+            await audit(status === 403 ? 'denied' : 'error', message)
+            return rpcResult(res, rid, toolError(message))
           }
           log.error('mcp tool failed', { err, tool: tool.name })
+          await audit('error', 'Internal error')
           return rpcError(res, 200, rid, INTERNAL_ERROR, 'Internal error')
         }
       }

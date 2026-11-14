@@ -14,6 +14,9 @@ import {
   softDeleteList,
   listItems,
   addItem,
+  addItemFromInput,
+  isValidPriority,
+  type AddItemBody,
   patchItem,
   softDeleteItem,
   bulkPatchItems,
@@ -47,10 +50,6 @@ const { tenantRoute } = moduleRoutes('lists')
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-// Priority is a 1–5 urgency scale: 1 = not urgent, 3 = normal, 5 = urgent.
-function isValidPriority(v: unknown): v is 1 | 2 | 3 | 4 | 5 {
-  return typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 5
-}
 
 export function registerListRoutes(api: Api): void {
   // ---- the household's lists (sidebar) --------------------------------------
@@ -172,26 +171,7 @@ export function registerListRoutes(api: Api): void {
 
   // Add an item to any list.
   api.post('/api/lists/:id/items', tenantRoute(async (tenant, req: Request, res: Response) => {
-    const id = req.params.id ?? ''
-    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
-    const list = await getList(tenant.householdId, id)
-    if (!list) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
-    const body = (req.body ?? {}) as { name?: string; quantity?: string; category?: string; store?: string; assignedTo?: string; priority?: number }
-    if (!body.name || !body.name.trim()) {
-      return res.status(400).json({ error: 'BadRequest', message: 'name is required' })
-    }
-    if ('priority' in body && !isValidPriority(body.priority)) {
-      return res.status(400).json({ error: 'BadRequest', message: 'priority must be an integer from 1 (not urgent) to 5 (urgent)' })
-    }
-    if (body.assignedTo != null) await assertPersonInHousehold(tenant.householdId, body.assignedTo)
-    const item = await addItem(tenant, id, {
-      name: body.name.trim(),
-      quantity: body.quantity ?? null,
-      category: body.category ?? null,
-      store: body.store ?? null,
-      assignedTo: body.assignedTo ?? null,
-      priority: body.priority,
-    })
+    const item = await addItemFromInput(tenant, req.params.id ?? '', (req.body ?? {}) as AddItemBody)
     return res.status(201).json({ item: presentListItem(item) })
   }))
 

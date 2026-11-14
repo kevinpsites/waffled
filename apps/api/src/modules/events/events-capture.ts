@@ -16,6 +16,7 @@ import {
   type CaptureTarget,
   type ResolveCtx,
   type MutateCommand,
+  type MutationResult,
 } from '../capture/capture-resolvers'
 import { rankCandidates, type Candidate, type RankRow } from '../capture/candidate-match'
 import { wallParts, wallToUtc, localYmd, whenLabel } from '../capture/tz'
@@ -152,7 +153,7 @@ const eventCaptureTarget: CaptureTarget = {
     })
   },
 
-  async applyMutation(ctx: ResolveCtx, cmd: MutateCommand): Promise<{ message: string }> {
+  async applyMutation(ctx: ResolveCtx, cmd: MutateCommand): Promise<MutationResult> {
     const row = await findTargetRow(ctx, cmd.targetId)
     if (!row) throw httpError(404, 'That event is gone.')
     // resolveCandidates already hides these, so this only catches a client that
@@ -201,13 +202,13 @@ const eventCaptureTarget: CaptureTarget = {
       if (isOccurrence) {
         const ok = await overrideOccurrence(ctx.householdId, row.series_id!, row.occurrence_start!.toISOString(), {}, { cancel: true })
         if (!ok) throw httpError(404, 'That event is gone.')
-        return { message: `Canceled "${row.title}" (just this one)` }
+        return { message: `Canceled "${row.title}" (just this one)`, scope: 'occurrence' }
       }
       const ok = await softDeleteEvent(ctx.householdId, cmd.targetId)
       if (!ok) throw httpError(404, 'That event is gone.')
       // Tombstone any occurrences (no-op for a single event) — same as the route.
       await materializeMaster(cmd.targetId)
-      return { message: `Canceled "${row.title}"` }
+      return { message: `Canceled "${row.title}"`, scope: 'event' }
     }
 
     // supportedVerbs gates everything else at the dispatcher already.

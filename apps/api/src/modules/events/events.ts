@@ -22,6 +22,7 @@ import {
   assertRhythmInHousehold,
 } from '../../platform/household-refs'
 import { registerEventCaptureTarget } from './events-capture'
+import { badRequest } from '../../platform/http-error'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -303,6 +304,16 @@ export async function createEvent(tenant: Tenant, input: CreateEventInput): Prom
   } finally {
     client.release()
   }
+}
+
+// POST /api/events and the MCP add_event tool: validate the request, check every
+// referenced id belongs to the household, then create.
+export async function createEventFromInput(tenant: Tenant, body: Partial<CreateEventInput>): Promise<EventRow> {
+  if (!body.title || !body.title.trim()) throw badRequest('title is required')
+  if (!body.startsAt || Number.isNaN(Date.parse(body.startsAt))) throw badRequest('startsAt must be a valid timestamp')
+  if (body.rrule && !isValidRrule(body.rrule)) throw badRequest('rrule is not a valid RFC5545 recurrence rule')
+  await assertEventReferences(tenant.householdId, body as Record<string, unknown>)
+  return createEvent(tenant, { ...body, title: body.title.trim() } as CreateEventInput)
 }
 
 // Reads UNION two row kinds (see EventRow): plain single/Google events
@@ -861,18 +872,7 @@ export function registerEventRoutes(api: Api): void {
   registerEventCaptureTarget()
 
   api.post('/api/events', tenantRoute(async (tenant, req: Request, res: Response) => {
-    const body = (req.body ?? {}) as Partial<CreateEventInput>
-    if (!body.title || !body.title.trim()) {
-      return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
-    }
-    if (!body.startsAt || Number.isNaN(Date.parse(body.startsAt))) {
-      return res.status(400).json({ error: 'BadRequest', message: 'startsAt must be a valid timestamp' })
-    }
-    if (body.rrule && !isValidRrule(body.rrule)) {
-      return res.status(400).json({ error: 'BadRequest', message: 'rrule is not a valid RFC5545 recurrence rule' })
-    }
-    await assertEventReferences(tenant.householdId, body as Record<string, unknown>)
-    const event = await createEvent(tenant, { ...body, title: body.title.trim() } as CreateEventInput)
+    const event = await createEventFromInput(tenant, (req.body ?? {}) as Partial<CreateEventInput>)
     return res.status(201).json({ event: presentEvent(event) })
   }))
 

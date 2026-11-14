@@ -13,7 +13,7 @@
 import type { PoolClient } from 'pg'
 import { query, getPool } from '../../../platform/db'
 import type { Tenant } from '../../households/households'
-import { listGoalLists, listGoals, periodStartSQL } from '../../goals/goals.service'
+import { listGoalLists, listGoals, periodStartSQL, visibleGoalLists } from '../../goals/goals.service'
 import { getSessionById } from '../weeklyPlanning'
 
 const STEP_KEY = 'goals'
@@ -269,11 +269,6 @@ async function writeFocus(client: PoolClient, sessionId: string, focus: FocusMap
   )
 }
 
-// Every shared list plus the private ones this caller belongs to — the single privacy gate.
-async function visibleLists(tenant: Tenant): Promise<GoalList[]> {
-  const lists = await listGoalLists(tenant.householdId)
-  return lists.filter((l) => !l.isPrivate || l.members.some((m) => m.personId === tenant.personId))
-}
 
 export async function getGoalsStepView(
   tenant: Tenant,
@@ -281,7 +276,7 @@ export async function getGoalsStepView(
   weekStart: string | null = null
 ): Promise<GoalsStepView> {
   const [lists, goals, focus, activity, people, week] = await Promise.all([
-    visibleLists(tenant),
+    visibleGoalLists(tenant),
     listGoals(tenant.householdId),
     sessionId ? readFocus(sessionId) : Promise.resolve({} as FocusMap),
     recentActivity(tenant.householdId),
@@ -342,7 +337,7 @@ export async function setGroupFocus(
 
   // Privacy AND ownership in one check: a list this caller can't see is one they can't
   // answer for.
-  const lists = await visibleLists(tenant)
+  const lists = await visibleGoalLists(tenant)
   if (!lists.some((l) => l.id === listId)) return { ok: false }
 
   if (goalId) {
@@ -398,7 +393,7 @@ export async function setWeekTarget(
   const session = await getSessionById(tenant.householdId, sessionId)
   if (!session) return { ok: false }
   const [lists, { rows }] = await Promise.all([
-    visibleLists(tenant),
+    visibleGoalLists(tenant),
     query<{ goal_type: string; goal_list_id: string | null }>(
       `select goal_type, goal_list_id from goals where household_id = $1 and id = $2 and deleted_at is null and is_active`,
       [tenant.householdId, goalId]
@@ -438,7 +433,7 @@ export interface WeekTargetReadBack {
 // its week start in between still sees them. Only goals on lists the caller can see.
 export async function weekTargetsReadBack(tenant: Tenant, weekStart: string): Promise<WeekTargetReadBack[]> {
   const [lists, { rows }] = await Promise.all([
-    visibleLists(tenant),
+    visibleGoalLists(tenant),
     query<{
       goal_id: string; goal_list_id: string | null; title: string; emoji: string | null
       unit: string | null; target: string; done: string | null

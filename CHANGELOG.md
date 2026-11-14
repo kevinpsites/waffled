@@ -17,13 +17,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **MCP endpoint (preview).** The api now answers the Model Context Protocol at `/mcp`, so an
   AI agent such as Claude Code can connect to your Waffled server with an API key (sent as
-  `x-api-key` or `Authorization: Bearer waffled_…`). It has one tool so far, `whoami`; each
-  tool needs the matching API-key scope and is hidden when its module is off. Household
-  tools and sign-in through the normal Waffled login are on the way.
+  `x-api-key` or `Authorization: Bearer waffled_…`) and work with your household. It can
+  read today's overview, the calendar, chores, the grocery list and other lists, the meal
+  plan, goals (counted the way the Goals page counts them), reward balances, the family and
+  the recipe library; and it can add an event, a list item, a chore or a planned meal,
+  complete or reassign a chore, check off or remove a list item, move or cancel an event
+  (one occurrence of a repeating event, never the series), log goal progress and redeem a
+  reward. Each tool needs the matching API-key scope, is hidden when its module is off, and
+  is held to the same permissions as the person who made the key, so a kid's key can't do
+  what the kid can't. Every change an agent makes is recorded with the key that made it.
+  Sign-in through the normal Waffled login (for claude.ai connectors) is on the way.
 
 ### Changed
 
 ### Fixed
+
+- **Quick-add no longer offers goals from a private goal list you aren't in.** "Log 20
+  minutes on my reading goal" could match a goal in another member's private list; those
+  goals are now left out of the matches, as they are everywhere else.
 
 ## [0.15.3] - 2026-10-07
 

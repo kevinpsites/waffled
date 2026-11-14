@@ -368,8 +368,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   connectors, Desktop, Code) can query a household and act on it, signed in through the
   normal Waffled login plus a consent screen (OAuth 2.1), bounded by the existing scopes
   and capability matrix. Change notifications deferred. **In progress:** the stateless
-  `/mcp` endpoint, the per-tool-scoped registry and API-key auth are in (preview, one
-  `whoami` tool); the household tools and OAuth sign-in remain. Plan:
+  `/mcp` endpoint, API-key auth, the read, action and create tools and the `mcp_audit`
+  trail are in (preview); OAuth sign-in, rate limits and `whats_new` remain. Plan:
   [`mcp-plan.md`](./mcp-plan.md).
 - **The rest of the Mac Settings design** — each its own piece of runtime work before a
   control can appear: photos in a folder of their own (media relocation), backups in a

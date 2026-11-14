@@ -9,14 +9,13 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
 import { log } from '../../platform/logger'
 import { tenantRoute, adminRoute } from '../../platform/route-guards'
-import type { Tenant } from '../households/households'
 import {
+  buildResolveCtx,
   getCaptureTarget,
   unsupportedKindReason,
   unsupportedVerbReason,
   type TargetKind,
   type MutateVerb,
-  type ResolveCtx,
 } from './capture-resolvers'
 import config from '../../platform/config'
 import { zonedToUtc, localYmd, whenLabel } from './tz'
@@ -657,24 +656,6 @@ export async function warmProvider(householdId: string): Promise<void> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ model: m, prompt: '', keep_alive: '30m' }),
   }).catch(() => {})
-}
-
-// Build the richer resolve/commit context from a resolved Tenant — the household's
-// settings + timezone (same select shape parseWithProvider uses) plus a fresh `now`.
-// This is distinct from CaptureContext (names-only, for the stateless parse).
-async function buildResolveCtx(tenant: Tenant): Promise<ResolveCtx> {
-  const { rows } = await query<{ timezone: string; settings: unknown }>(
-    `select timezone, settings from households where id = $1`,
-    [tenant.householdId]
-  )
-  return {
-    tenant,
-    householdId: tenant.householdId,
-    personId: tenant.personId,
-    now: new Date(),
-    timezone: rows[0]?.timezone ?? 'UTC',
-    settings: rows[0]?.settings ?? null,
-  }
 }
 
 // ── Routes ───────────────────────────────────────────────────────────────────
