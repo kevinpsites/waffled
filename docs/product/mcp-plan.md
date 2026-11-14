@@ -1,7 +1,8 @@
 # MCP server — let an AI agent query and act on a household
 
-**Status:** in progress — §2 (the endpoint), §3 (the tools) and the §5 audit trail are
-built, with API-key auth; §4 sign-in is next. **Written:** 2026-11-13.
+**Status:** in progress — §2 (the endpoint), §3 (the tools), §4 (sign-in through the
+Waffled login, consent, Connected apps) and the §5 audit trail are built; §5 rate limits and
+§6 `whats_new` remain, and iOS Connected apps follows the web. **Written:** 2026-11-13.
 **Scope agreed:** the endpoint (§2), the tools (§3), sign-in through the normal Waffled
 login (§4), the safety rules (§5) and change-notification tier A (§6), one PR each (§7).
 Web + api first; iOS after.
@@ -56,7 +57,8 @@ Caddyfile verbatim, and the Vite dev proxy forwards `/mcp` too.
   `-32601`; unknown tool → `-32602`. Notifications and client responses → 202, no body.
   A tool's own failures (bad arguments, missing scope, module off, capability denied) are
   a tool result with `isError: true` so the model can see and react to them.
-- **Auth (until §4 lands):** a user Bearer JWT carries the person's full rights; an API key
+- **Auth:** a connector's grant token (§4) is bounded by its granted scopes; a user Bearer
+  JWT carries the person's full rights; an API key
   (`x-api-key`, or `Authorization: Bearer waffled_…` on `/mcp` only) is bounded by its
   scopes. The central key gate is path-based and fails closed, so `/mcp` — and only that
   exact path — is listed in `SCOPED_PER_CALL` in `api-keys.ts`: the gate skips its path
@@ -224,9 +226,10 @@ password or Google/OIDC — followed by a consent screen. Nobody copies a key an
   requires it for public clients).
 - **Scope gate:** `/mcp` keeps the per-tool check from §3. A token holding a scope no tool
   uses grants nothing, because MCP tokens reach nothing but `/mcp`.
-- **Revocation:** **Settings → Connected apps** lists grants and revokes them, beside
-  Settings → API Keys. Revoking kills the grant's refresh tokens; the short access-token TTL
-  bounds the rest, and `/mcp` checks the grant is unrevoked on each call.
+- **Revocation:** **Settings → Connected apps** lists grants and revokes them (in the
+  Account group, not beside the admin-only API Keys tab: any adult may connect, so any adult
+  must be able to disconnect). Revoking kills the grant's refresh tokens, and `/mcp` checks
+  the grant is unrevoked on each call, so the access token dies with it.
 
 ### Who may connect
 
@@ -246,13 +249,44 @@ public hostname (a tunnel, or a domain with Caddy TLS like `demo.waffled.app`; t
 "a hostname Caddy actually serves" is still planned in `mac-settings-redesign.md`). Claude
 Code and local MCP clients work on the LAN. The how-to must lead with this.
 
-### Still to settle while building
+### As built (PR 3)
 
-- **Origins behind Caddy:** build every metadata URL from `PUBLIC_BASE_URL` or the
-  forwarded Host/Proto, the way `oidc.ts` does.
-- **Auth0 mode:** v1 targets local mode (the self-host default). In Auth0 mode the
-  authorization server would be Auth0's, so the metadata points there instead; decide
-  later.
+- **Where it lives:** `modules/oauth/` — `metadata.ts` (both discovery documents, the
+  `WWW-Authenticate` challenge, the scope copy), `clients.ts` (DCR + CIMD), `tokens.ts`
+  (`mintMcpAccess`, `verifyMcpAccess`), `oauth.ts` (consent, token endpoint, grants, the
+  per-call grant check). Tables in `0108_oauth_mcp_grants.sql`: `oauth_clients`,
+  `oauth_grants` (composite household FK to `persons`), `oauth_codes`,
+  `oauth_refresh_tokens`, plus the `mcp_audit.grant_id` FK.
+- **Origins:** every URL comes from `PUBLIC_BASE_URL`, else the forwarded Host/Proto (the
+  `baseUrl` OIDC uses). The resource is `<origin>/mcp` and a token minted for one host is
+  refused at another. Caddy routes `/.well-known/oauth-*` to the api on the `@mcp` matcher.
+- **How `/mcp` tells callers apart:** a `waffled_…` Bearer (or `x-api-key`) is an API key; a
+  JWT carrying `grant_id` goes to `verifyMcpAccess` (same secret and issuer, audience = the
+  MCP resource) and then the grant is re-read: unrevoked, its person still signed in as the
+  token's account, `ai.connect` still held, else 401; anything else is a user session via
+  `requireAuth`. Grant scopes are the token's `scope` claim intersected with the grant's, fed
+  to the registry as `CallerScopes`; write audits carry `grant_id`.
+- **Every 401 from `/mcp`** carries the `WWW-Authenticate` challenge, with
+  `error="invalid_token"` when a credential was presented.
+- **Insufficient scope stays an `isError` result**, not `403 insufficient_scope`: scopes are
+  fixed at consent, so there is nothing to step up to, and the tool is hidden from
+  `tools/list` anyway.
+- **Requested scopes:** only tool scopes are offered; `offline_access` is accepted and dropped
+  (we always issue a refresh token); an empty request offers every tool scope.
+- **Lifetimes:** code 60 s, single use (a replay revokes its grant); access token 1 h
+  (`MCP_ACCESS_TOKEN_TTL_SECONDS`); refresh token 30 days (`MCP_REFRESH_TOKEN_TTL_DAYS`),
+  rotated every use, replay revokes the grant. Never-used DCR clients are pruned after 7 days
+  on the next registration; registration is rate limited per address.
+- **CIMD fetch:** https only, the resolved address checked inside the connection (so DNS
+  rebinding cannot swap it), private/loopback/link-local/CGNAT/mapped addresses refused, no
+  redirects, 5 s, 64 KB, cached per `Cache-Control` (5 min default, 24 h cap).
+- **Consent and the web:** `/oauth/authorize` renders outside the kiosk shell; an OIDC sign-in
+  keeps the consent URL in `sessionStorage` and router-navigates back to it. The server builds
+  every redirect, including Cancel's `access_denied`. Connected apps sits in the Account group,
+  open to every signed-in member, and lists the account's grants across its households.
+- **Auth0 mode:** the authorization server still signs with the local secret, which
+  production already requires to be set; consent uses whatever session the web has. Pointing
+  the metadata at Auth0 instead is not built.
 
 ---
 
@@ -263,7 +297,7 @@ Code and local MCP clients work on the LAN. The how-to must lead with this.
 - **Destructive tools** (`delete`, `redeem`) carry `destructiveHint: true` so clients
   confirm; `delete` on a recurring series states the scope in its result.
 - **Attribution without touching every table:** `mcp_audit` (`0107_mcp_audit.sql`) —
-  household, person, `api_key_id`, `grant_id` (no FK until grants exist), tool,
+  household, person, `api_key_id`, `grant_id` (FK to `oauth_grants` since 0108), tool,
   `target_ids`, outcome `ok | error | denied`, error text, time. `tools/call` writes one
   row for every call to a `:write`-scoped tool, including scope, module and capability
   refusals (a 403 is `denied`). `target_ids` keeps only id-shaped arguments plus the
@@ -318,5 +352,5 @@ Each PR is based on the previous one and ships its own tests, changelog line and
 | 1 | §2 | `/mcp` endpoint (stateless JSON-RPC, version + Origin checks), tool registry with per-tool scopes + guard tests, the `/mcp` API-key carve-out, one `whoami` tool. Usable from Claude Code with an API key sent as `Authorization: Bearer waffled_…`. | ~2–3 days |
 | 2 | §3 | Read tools, `find_*` + capture-verb write tools, create tools (service functions lifted out of their routes), `mcp_audit`. | ~1–2 weeks |
 | 3 | §4 | OAuth 2.1: metadata, CIMD + DCR, authorize/token, `mintMcpAccess` + the `/mcp` verify path, `oauth_grants` / `oauth_refresh_tokens`, `ai.connect`, web consent route, Settings → Connected apps, the "Connect Claude" how-to. | ~2 weeks |
-| 4 | §5 | Rate limits, the secrets-in-output guard test; audit rows carry `grant_id`. | ~2–3 days |
+| 4 | §5 | Rate limits, the secrets-in-output guard test. (Audit rows already carry `grant_id`, from PR 3.) | ~2–3 days |
 | 5 | §6 A | `whats_new(since)`, filtered through each module's read rules; roadmap item → Done. | ~2–3 days |

@@ -71,7 +71,7 @@ listed in their own right rather than inherited from `/api/chores`, `/api/goals`
 part of the grocery board and the route sits behind the `lists` module gate.
 
 Everything else always 403s for a key — auth and self-service account, household creation and
-invites, api-keys, `/api/kiosk`, `/api/waffled-bites`, permissions,
+invites, api-keys, OAuth (`/api/oauth`, `/.well-known`), `/api/kiosk`, `/api/waffled-bites`, permissions,
 powersync, capture, media, countdowns, family-night, goal-calendar, the rest of `/api/calendar`
 (Google, Outlook and ICS feeds), today-layout, rhythms, weekly-planning, health and updates. Writes under a read-only
 resource are refused too, so `POST /api/persons/:id/award` and
@@ -87,6 +87,17 @@ excepted — anything under it still 403s for a key. A tool that changes somethi
 to the key owner's own permissions (a kid's key can't do what the kid can't), and every such
 call is recorded with the key that made it. The tool list is in the
 [feature matrix](/reference/features/#modules--extensibility).
+
+**Signing in instead of a key.** MCP clients such as claude.ai connectors sign in through the
+normal Waffled login (OAuth 2.1 with PKCE; see [Connect Claude](/guides/connect-claude/)). A
+`/mcp` request without credentials answers **401** with
+`WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp"`,
+which leads the client to the metadata, registration, consent and token endpoints below. The
+access token it ends up with is bound to `<origin>/mcp` and **401s on every other route**; its
+scopes bound the tools exactly as a key's do. A tool outside them is hidden from `tools/list`
+and answers an `isError` result if called (no `403 insufficient_scope` step-up: the scopes
+are fixed at consent). Revoking the connection, or the person losing the `ai.connect`
+permission, ends it on its next request.
 
 ---
 
@@ -355,6 +366,21 @@ it at `/device/token` for a token each time it needs one. The device routes auth
 that token alone. A kid can have one paired Bite at a
 time; pairing a second returns 409. The device can start and end a timer but not pause it, add
 time, or touch quiet time — those stay with the parent routes.
+
+### MCP & OAuth for connectors
+
+| Method | Path | Purpose | Auth |
+|---|---|---|---|
+| POST | `/mcp` | MCP Streamable HTTP (JSON-RPC, stateless) | tenant · key · connector token |
+| GET | `/.well-known/oauth-protected-resource` · `/…/mcp` | Protected-resource metadata (RFC 9728) | public |
+| GET | `/.well-known/oauth-authorization-server` | Authorization-server metadata (RFC 8414) | public |
+| POST | `/api/oauth/register` | Dynamic client registration (RFC 7591), public clients only | public |
+| GET | `/api/oauth/authorize/info` | Validate an authorization request for the consent screen | tenant |
+| POST | `/api/oauth/authorize` | Approve or decline; answers the redirect URL | tenant · cap:ai.connect |
+| POST | `/api/oauth/token` | `authorization_code` / `refresh_token` (form-encoded) | public |
+| GET · DELETE | `/api/oauth/grants[/:id]` | Your connected apps / revoke one | tenant |
+
+The consent page itself is the web route `/oauth/authorize`.
 
 ### Layout, sync, health, updates
 
