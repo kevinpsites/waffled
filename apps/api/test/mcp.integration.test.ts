@@ -152,6 +152,16 @@ describe('tools with a user session (full rights)', () => {
     expect(body.error.code).toBe(-32602)
   })
 
+  // Pins existing behavior: a device sub has no identity row, so it resolves to no person.
+  it('a kiosk device token is refused — it resolves to no person', async () => {
+    const device = jwt.sign({ kind: 'device', household_id: householdId }, SECRET, {
+      algorithm: 'HS256', subject: 'device:00000000-0000-4000-8000-000000000001',
+      issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h',
+    })
+    const r = await rpc(bearer(device), 'tools/list')
+    expect(r.statusCode).toBe(403)
+  })
+
   it('bad arguments are a tool result with isError, not a JSON-RPC error', async () => {
     const body = json(await rpc(bearer(kevin), 'tools/call', { name: 'whoami', arguments: 'x' }))
     expect(body.error).toBeUndefined()
