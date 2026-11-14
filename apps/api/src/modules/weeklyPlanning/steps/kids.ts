@@ -11,7 +11,7 @@ import type { PoolClient } from 'pg'
 import { query, getPool } from '../../../platform/db'
 import { moduleEnabled, rewardsEnabled, type ModuleKey } from '../../../platform/modules'
 import type { Tenant } from '../../households/households'
-import { listGoalLists, listGoals } from '../../goals/goals.service'
+import { goalDisplay, listGoals, visibleGoalLists } from '../../goals/goals.service'
 import { rangeEvents, presentEvent } from '../../events/events'
 import { balancesSummary } from '../../rewards/rewards'
 import { getTasksBoard, type TasksBoardChore } from './tasks'
@@ -272,22 +272,15 @@ function goalDetail(g: Goal): string {
 }
 
 function goalFraction(g: Goal): number {
-  const p = g.goalType === 'habit' ? g.periodDone : g.goalType === 'checklist' ? g.stepDone : g.totalProgress
-  const t = g.goalType === 'habit'
-    ? (g.habitTargetPerPeriod ?? g.target)
-    : g.goalType === 'checklist'
-      ? (g.stepTotal || null)
-      : g.target
-  return t != null && t > 0 ? Math.min(p / t, 1) : 0
+  const { done, target } = goalDisplay(g)
+  return target != null && target > 0 ? Math.min(done / target, 1) : 0
 }
 
 // `listGoals` does not enforce `goal_lists.is_private`, so without the visibility filter a
 // kid's goal in a list private to the other parent leaks onto this card.
 async function goalsPerKid(tenant: Tenant, kids: KidPerson[]): Promise<Map<string, Goal[]>> {
-  const [lists, goals] = await Promise.all([listGoalLists(tenant.householdId), listGoals(tenant.householdId)])
-  const visible = new Set(
-    lists.filter((l) => !l.isPrivate || l.members.some((m) => m.personId === tenant.personId)).map((l) => l.id)
-  )
+  const [lists, goals] = await Promise.all([visibleGoalLists(tenant), listGoals(tenant.householdId)])
+  const visible = new Set(lists.map((l) => l.id))
   const out = new Map<string, Goal[]>()
   for (const k of kids) {
     const mine = goals
