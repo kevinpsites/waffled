@@ -364,6 +364,11 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Planned 🚧
 
+- **MCP server — connect an AI agent.** A `/mcp` endpoint in the api so Claude (claude.ai
+  connectors, Desktop, Code) can query a household and act on it, signed in through the
+  normal Waffled login plus a consent screen (OAuth 2.1), bounded by the existing scopes
+  and capability matrix. Change notifications deferred. Plan:
+  [`mcp-plan.md`](./mcp-plan.md).
 - **The rest of the Mac Settings design** — each its own piece of runtime work before a
   control can appear: photos in a folder of their own (media relocation), backups in a
   folder of their own, backups that include photos, keeping every backup ("Forever"), an
