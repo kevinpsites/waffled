@@ -153,8 +153,9 @@ function oidcSubject(issuer: string, sub: string): string {
 // ── flow helpers ───────────────────────────────────────────────────────────────
 // Absolute base URL for building the redirect_uri the IdP calls back. Honors
 // PUBLIC_BASE_URL (set it when behind a proxy that rewrites host), else derives
-// from the forwarded request headers (Caddy sets x-forwarded-proto/host).
-function baseUrl(req: Request): string {
+// from the forwarded request headers (Caddy sets x-forwarded-proto/host). Exported because
+// /mcp's Origin check must agree with it about what "this server's origin" is.
+export function baseUrl(req: Request): string {
   const env = process.env.PUBLIC_BASE_URL?.replace(/\/$/, '')
   if (env) return env
   const h = req.headers as Record<string, string | undefined>

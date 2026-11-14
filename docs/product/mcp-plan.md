@@ -1,6 +1,7 @@
 # MCP server — let an AI agent query and act on a household
 
-**Status:** planned, not started. **Written:** 2026-11-13.
+**Status:** in progress — §2 (the endpoint) and the §3 registry are built, with one `whoami`
+tool and API-key auth; the real tools and §4 sign-in are next. **Written:** 2026-11-13.
 **Scope agreed:** the endpoint (§2), the tools (§3), sign-in through the normal Waffled
 login (§4) and the safety rules (§5). Change notifications (§6) are **deferred**.
 
@@ -30,20 +31,39 @@ OIDC *client*), and any change history / notification plumbing.
 
 ## 2. The endpoint
 
-**`/mcp` lives inside the existing api process**, not a new service. Reasons: it inherits
-the auth gate in `app.ts`, and it ships everywhere the api already ships (compose, the Mac
-runtime, Lambda) with no new compose service, supervisor entry or esbuild bundle. Caddy
-needs one `handle /mcp*` (plus the `/.well-known/oauth-*` paths, §4) next to `/api/*`.
+**`/mcp` lives inside the existing api process**, not a new service. It is an ordinary
+lambda-api route (`modules/mcp/mcp.ts`), so it passes through the auth gate in `app.ts` and
+ships everywhere the api already ships (compose, the Mac runtime, Lambda) with no new
+compose service, supervisor entry or esbuild bundle. Caddy has a `handle @mcp` block
+(`path /mcp /mcp/*`, same forwarding headers as `/api/*`); the Mac runtime copies that
+Caddyfile verbatim, and the Vite dev proxy forwards `/mcp` too.
 
-- **Transport:** Streamable HTTP, **stateless** (each POST is a self-contained JSON-RPC
-  call). No session store, so it works on Lambda and behind any number of api replicas.
-- **SDK vs hand-rolled:** try `@modelcontextprotocol/sdk` first; it pulls in zod, which
-  bundles cleanly with esbuild. Its transport wants Node `req`/`res`, so `/mcp` is
-  intercepted in `platform/http-server.ts` before lambda-api (the Lambda entry adapts the
-  event). Fallback if that fights the bundle: hand-write `initialize`, `tools/list`,
-  `tools/call` — a few hundred lines, no streaming needed.
+- **Transport:** Streamable HTTP, **stateless**: one JSON-RPC message per POST, one
+  `application/json` answer, no session id, no SSE. Works on Lambda and behind any number
+  of api replicas. `GET`/`DELETE /mcp` → 405 (`Allow: POST`).
+- **Hand-rolled, no SDK.** `initialize`, `ping`, `tools/list`, `tools/call` are a few
+  hundred lines; the SDK's transport wants Node `req`/`res`, which would have meant
+  intercepting `/mcp` ahead of lambda-api and outside the auth gate.
+- **Protocol versions:** `2025-03-26`, `2025-06-18`, `2025-11-25`. `initialize` echoes the
+  client's version if supported, else answers `2025-11-25`. On later requests an
+  unsupported `MCP-Protocol-Version` header → HTTP 400; an absent one is accepted.
+- **Origin:** a browser `Origin` that is not this server's own origin (`PUBLIC_BASE_URL`,
+  else the forwarded host/proto — the same `baseUrl` OIDC uses) → 403. No `Origin` passes:
+  server-to-server clients send none.
+- **Errors:** unparseable JSON → `-32700`; a bad envelope → `-32600`; **batches** (a JSON
+  array) → `-32600` with HTTP 400, since 2025-06-18 dropped batching; unknown method →
+  `-32601`; unknown tool → `-32602`. Notifications and client responses → 202, no body.
+  A tool's own failures (bad arguments, missing scope, module off, capability denied) are
+  a tool result with `isError: true` so the model can see and react to them.
+- **Auth (until §4 lands):** a user Bearer JWT carries the person's full rights; an API key
+  (`x-api-key`, or `Authorization: Bearer waffled_…` on `/mcp` only) is bounded by its
+  scopes. The central key gate is path-based and fails closed, so `/mcp` — and only that
+  exact path — is listed in `SCOPED_PER_CALL` in `api-keys.ts`: the gate skips its path
+  check there and the registry checks each tool's scope instead. A route-table guard test
+  requires every such path to be live and claimed by no scope prefix or deny entry.
 - **Tools call service functions directly**, never HTTP back into our own routes. Each
-  tool gets the same `Tenant` and runs the same capability check a route would.
+  tool gets the resolved `Tenant` (`requireTenant`) and runs the same capability check a
+  route would.
 
 ---
 
@@ -58,13 +78,16 @@ defineTool({
   scope: 'chores:write',
   module: 'chores',
   annotations: { destructiveHint: false },
-  input: { /* JSON Schema */ },
+  inputSchema: { type: 'object', properties: { /* JSON Schema */ } },
   run: (tenant, args) => choresCapture.commit(tenant, 'complete', args),
 })
 ```
 
-A guard test walks the tool registry and fails on any tool without a `scope` (fail-closed,
-same idea as the route-table test in `api-keys.integration.test.ts`).
+A guard test walks the tool registry and fails on any tool whose `scope` is not a real
+`API_SCOPES` string (fail-closed, same idea as the route-table test in
+`api-keys.integration.test.ts`). `tools/list` and `tools/call` share one predicate
+(`denialFor` in `modules/mcp/registry.ts`): a tool the caller's scopes don't cover, or whose
+`module` is off for the household, is hidden from the list and refused on call.
 
 **Read (first cut):** `get_today` (overview), `list_events(from, to)`, `list_chores(status,
 person)`, `get_grocery_list`, `get_meal_plan(week)`, `list_goals` (the display axis —
@@ -202,7 +225,7 @@ the feed reuses each module's read filters rather than returning raw rows.
 
 | Phase | Delivers | Size |
 |---|---|---|
-| 1 | `/mcp` (stateless), tool registry with per-tool scopes + guard test, read + write tools, integration tests over real HTTP (testcontainer PG). Testable immediately with an existing API key in Claude Code. | ~1–2 weeks |
+| 1 | `/mcp` (stateless), tool registry with per-tool scopes + guard test, read + write tools, integration tests over real HTTP (testcontainer PG). Testable with an existing API key in Claude Code (`x-api-key` or `Authorization: Bearer waffled_…` against `/mcp`) — the endpoint, registry and key path are built; the tools are next. | ~1–2 weeks |
 | 2 | OAuth 2.1 authorization server on the existing login: metadata, DCR, `/oauth/authorize` web route + consent, token endpoint, `oauth_grants`, scoped-principal gate, Settings → Connected apps. Works as a claude.ai connector. | ~2 weeks |
 | — | Safety items (§5) land with the phase that introduces the thing they guard. | — |
 

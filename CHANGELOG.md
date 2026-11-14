@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **MCP endpoint (preview).** The api now answers the Model Context Protocol at `/mcp`, so an
+  AI agent such as Claude Code can connect to your Waffled server with an API key (sent as
+  `x-api-key` or `Authorization: Bearer waffled_…`). It has one tool so far, `whoami`; each
+  tool needs the matching API-key scope and is hidden when its module is off. Household
+  tools and sign-in through the normal Waffled login are on the way.
+
 ### Changed
 
 ### Fixed

@@ -41,6 +41,18 @@ describe('Compose network defaults', () => {
     expect(api).toContain('header_up X-Forwarded-Proto {scheme}')
   })
 
+  // /mcp's Origin check compares against the same forwarded pair, so it needs the same
+  // overwrite. Exact paths: a bare /mcp* would also send /mcpanything to the api.
+  it('routes /mcp to the api with the same forwarding-header overwrite', async () => {
+    const caddyfile = await readFile(resolve(root, 'infra/compose/caddy/Caddyfile'), 'utf8')
+    expect(caddyfile).toContain('@mcp path /mcp /mcp/*')
+    const mcp = caddyfile.split('handle @mcp {')[1].split('\n\t}')[0]
+    expect(mcp).toContain('reverse_proxy api:3000')
+    expect(mcp).toContain('header_up X-Forwarded-For {remote_host}')
+    expect(mcp).toContain('header_up X-Forwarded-Host {hostport}')
+    expect(mcp).toContain('header_up X-Forwarded-Proto {scheme}')
+  })
+
   it('leaves the sync URL unset by default so the api derives it per device', async () => {
     // A baked-in http://localhost:8090 would win over the derive and put every
     // non-local device back on "Offline". The api still needs POWERSYNC_PORT to
