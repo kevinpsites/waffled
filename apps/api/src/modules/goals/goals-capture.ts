@@ -78,12 +78,19 @@ const goalTarget: CaptureTarget = {
 
   async applyMutation(ctx: ResolveCtx, cmd: MutateCommand): Promise<{ message: string }> {
     if (cmd.verb !== 'log') throw httpError(400, "Can't do that to a goal")
-    const { rows } = await query<{ title: string; goal_type: string; unit: string | null }>(
-      `select title, goal_type, unit from goals where household_id=$1 and id=$2 and deleted_at is null`,
-      [ctx.householdId, cmd.targetId]
-    )
+    const [{ rows }, lists] = await Promise.all([
+      query<{ title: string; goal_type: string; unit: string | null; goal_list_id: string | null }>(
+        `select title, goal_type, unit, goal_list_id from goals where household_id=$1 and id=$2 and deleted_at is null`,
+        [ctx.householdId, cmd.targetId]
+      ),
+      visibleGoalLists(ctx.tenant),
+    ])
     const goal = rows[0]
-    if (!goal) throw httpError(404, 'goal not found')
+    // A goal in a private list the caller isn't in is not theirs to see — same rule as
+    // resolveCandidates, since a commit can name any id.
+    if (!goal || (goal.goal_list_id != null && !lists.some((l) => l.id === goal.goal_list_id))) {
+      throw httpError(404, 'goal not found')
+    }
     const args = cmd.args ?? {}
 
     // Self-log is open; attributing to another person takes goal.manage (mirrors

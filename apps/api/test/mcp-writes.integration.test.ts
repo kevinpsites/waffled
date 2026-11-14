@@ -143,6 +143,18 @@ describe('goals', () => {
     const kel = await h.tool(bearer(kelly.token), 'find_goals', { description: 'secret savings' })
     expect(kel.structuredContent.candidates[0].title).toBe('Secret savings')
   })
+
+  it("log_goal by id refuses a goal in a private list the caller isn't in", async () => {
+    const list = json(await h.call('POST', '/api/goal-lists', kelly.token, { name: 'Hers', isPrivate: true, memberIds: [kelly.id] })).list.id
+    const goal = json(await h.call('POST', '/api/goals', kelly.token, {
+      title: 'Hidden habit', goalListId: list, goalType: 'count', targetValue: 3, trackingMode: 'shared_total',
+    })).goal.id
+    const res = await h.tool(bearer(kevin), 'log_goal', { id: goal, amount: 1 })
+    expect(res.isError).toBe(true)
+    expect(res.content[0].text).toMatch(/not found/)
+    const logs = await h.sql('select 1 from goal_logs where goal_id = $1', [goal])
+    expect(logs).toHaveLength(0)
+  })
 })
 
 describe('rewards', () => {
