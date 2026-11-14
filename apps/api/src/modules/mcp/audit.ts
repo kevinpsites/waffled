@@ -23,6 +23,7 @@ export function auditTargets(args: Record<string, unknown>, createdId?: string):
 export async function recordAudit(entry: {
   tenant: Tenant
   apiKeyId: string | null
+  grantId?: string | null
   tool: string
   targets: Record<string, string | string[]>
   outcome: AuditOutcome
@@ -30,12 +31,13 @@ export async function recordAudit(entry: {
 }): Promise<void> {
   try {
     await query(
-      `insert into mcp_audit (household_id, person_id, api_key_id, tool, target_ids, outcome, error)
-       values ($1, $2, $3, $4, $5, $6, $7)`,
+      `insert into mcp_audit (household_id, person_id, api_key_id, grant_id, tool, target_ids, outcome, error)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         entry.tenant.householdId,
         entry.tenant.personId,
         entry.apiKeyId,
+        entry.grantId ?? null,
         entry.tool,
         JSON.stringify(entry.targets),
         entry.outcome,

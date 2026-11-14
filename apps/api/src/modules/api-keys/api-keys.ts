@@ -79,6 +79,7 @@ export const NEVER_KEY_REACHABLE: NeverReachable[] = [
   { why: 'echoes the token sub — tells a key nothing it does not already know', prefixes: ['/api/me'] },
   { why: 'login, OIDC, invites and self-service account are session-only', prefixes: ['/api/auth', '/auth', '/api/account', '/api/households'] },
   { why: 'a key can never mint or manage keys', prefixes: ['/api/api-keys'] },
+  { why: 'OAuth for MCP connectors: discovery, registration and tokens are pre-session, consent and Connected apps are session-only', prefixes: ['/.well-known', '/api/oauth'] },
   { why: 'kiosk and Waffled-Bite pairing run on their own device tokens', prefixes: ['/api/kiosk', '/api/waffled-bites'] },
   { why: 'the capability grid is an admin session surface', prefixes: ['/api/permissions'] },
   { why: 'offline sync is the first-party clients own transport', prefixes: ['/api/powersync'] },
