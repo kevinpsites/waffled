@@ -150,7 +150,7 @@ export function registerMcpRoutes(api: Api): void {
         const args = isObject(rawArgs) ? rawArgs : {}
         const audit = (outcome: AuditOutcome, error: string | null, createdId?: string) =>
           isWriteTool(tool)
-            ? recordAudit({ tenant, apiKeyId: req.apiKey?.id ?? null, tool: tool.name, targets: auditTargets(args, createdId), outcome, error })
+            ? recordAudit({ tenant, apiKeyId: req.apiKey?.id ?? null, tool: tool.name, targets: auditTargets(args, tool.inputSchema.properties, createdId), outcome, error })
             : Promise.resolve()
 
         const denied = denialFor(tool, ctx)

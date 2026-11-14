@@ -9,11 +9,27 @@ export type AuditOutcome = 'ok' | 'error' | 'denied'
 
 const MAX_ERROR = 300
 
-export function auditTargets(args: Record<string, unknown>, createdId?: string): Record<string, string | string[]> {
+const MAX_TARGET_IDS = 10
+
+// Only keys the tool declares, so a caller can't invent keys to write into the row, and
+// a bounded count, so one call can't bloat it.
+export function auditTargets(
+  args: Record<string, unknown>,
+  declared: Record<string, unknown> | undefined,
+  createdId?: string
+): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {}
-  for (const [k, v] of Object.entries(args)) {
-    if (isUuid(v)) out[k] = v
-    else if (Array.isArray(v) && v.length > 0 && v.every(isUuid)) out[k] = v as string[]
+  let room = MAX_TARGET_IDS
+  for (const k of Object.keys(declared ?? {})) {
+    if (room <= 0) break
+    const v = args[k]
+    if (isUuid(v)) {
+      out[k] = v
+      room -= 1
+    } else if (Array.isArray(v) && v.length > 0 && v.every(isUuid)) {
+      out[k] = (v as string[]).slice(0, room)
+      room -= out[k].length
+    }
   }
   if (createdId) out.created = createdId
   return out
