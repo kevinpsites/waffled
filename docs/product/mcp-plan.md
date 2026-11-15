@@ -372,7 +372,12 @@ days back and not in the future (60 s of clock skew allowed); anything else is a
 and module (`sectionOn` in the registry, shared with `get_today`); left-out sections are
 named in `omitted`. Items are `{ kind, at, who, title, ids, … }`, oldest first, capped at
 200; a cut result says so and returns `nextSince` (the last item's `at`) to continue from.
-`at` is microsecond UTC text and `since` is passed to SQL as given, since a millisecond
+A call reports changes with `since < at <= until`, and every section's query is bounded by
+the same `until`. `until` is the database clock minus 5 s (`SETTLE_MS`), never earlier
+than `since`: a row is stamped with its transaction's start time, so a write still in
+flight would otherwise commit behind the cursor and never be reported. Results therefore
+lag real time by a few seconds, and a write transaction longer than that (a very large
+calendar-feed sync) can still slip behind the cursor. `at` is microsecond UTC text and `since` is passed to SQL as given, since a millisecond
 `Date` cursor would land below its own row and repeat it. A page ends before the instant it
 would split, so paging never repeats or skips one; if a single instant holds more than 200
 changes (one bulk statement), the page shows 200 of them, names it in `partialAt`, and the

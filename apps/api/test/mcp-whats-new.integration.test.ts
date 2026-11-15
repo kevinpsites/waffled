@@ -12,6 +12,7 @@ let kelly = { id: '', token: '' }
 let wally = { id: '', token: '' }
 let today = ''
 let since = ''
+let settleMs = 0
 
 interface Item {
   kind: string
@@ -28,9 +29,11 @@ const ago = (ms: number) => new Date(Date.now() - ms).toISOString()
 async function whatsNew(headers: Record<string, string>, args: Record<string, unknown> = { since }) {
   const res = await h.tool(headers, 'whats_new', args)
   expect(res.isError, JSON.stringify(res.content)).toBeFalsy()
-  return res.structuredContent as { items: Item[]; truncated: boolean; nextSince?: string; partialAt?: string; omitted: string[]; sections: string[] }
+  return res.structuredContent as { until: string; items: Item[]; truncated: boolean; nextSince?: string; partialAt?: string; omitted: string[]; sections: string[] }
 }
 const titled = (items: Item[], kind: string) => items.filter((i) => i.kind === kind).map((i) => i.title)
+// whats_new lags real time, so a change is only reported once it is older than the lag.
+const settle = () => new Promise((r) => setTimeout(r, settleMs + 500))
 
 async function find(headers: Record<string, string>, tool: string, description: string, verb?: string) {
   const res = await h.tool(headers, tool, { description, ...(verb ? { verb } : {}) })
@@ -40,6 +43,7 @@ async function find(headers: Record<string, string>, tool: string, description: 
 
 beforeAll(async () => {
   h = await startMcpHarness()
+  settleMs = (await import('../src/modules/mcp/tools/whats-new')).SETTLE_MS
   kevin = h.owner
   kelly = await h.addMember('Kelly', 'adult')
   wally = await h.addMember('Wally', 'kid')
@@ -86,6 +90,20 @@ beforeAll(async () => {
   expect((await h.tool(bearer(wally.token), 'redeem_reward', { id: await find(bearer(wally.token), 'find_rewards', 'ice cream') })).isError).toBeFalsy()
 
   expect((await h.call('POST', '/api/meals/plan', kevin, { date: today, mealType: 'dinner', title: 'Tacos' })).statusCode).toBe(200)
+
+  expect((await h.call('POST', '/api/events', kevin, { title: 'Piano lesson', startsAt: at(addDays(today, 1), '16:00'), rrule: 'FREQ=WEEKLY' })).statusCode).toBe(201)
+  const occ = await find(bearer(kevin), 'find_events', 'piano lesson', 'delete')
+  expect((await h.tool(bearer(kevin), 'delete_event', { id: occ })).structuredContent.scope).toBe('occurrence')
+
+  // A re-sync rewrites every feed row, so updated_at is now while the event is old.
+  const [school] = await h.sql<{ id: string }>(`insert into ics_feeds (household_id, url, name) values ($1, 'https://example.com/school.ics', 'School') returning id`, [h.householdId])
+  await h.sql(
+    `insert into events (household_id, title, starts_at, timezone, origin, origin_ref_id, google_event_id, sync_state, created_at)
+     values ($1, 'School assembly', $2, 'America/Chicago', 'ics', $3, 'uid-1', 'synced', now() - interval '3 days')`,
+    [h.householdId, at(addDays(today, 4), '09:00'), school.id]
+  )
+
+  await settle()
 })
 
 afterAll(async () => {
@@ -124,23 +142,12 @@ describe('whats_new — events', () => {
   })
 
   it('reports one cancelled occurrence of a recurring event', async () => {
-    const start = zonedToUtc(`${addDays(today, 1)}T16:00`, TZ)
-    expect((await h.call('POST', '/api/events', kevin, { title: 'Piano lesson', startsAt: start, rrule: 'FREQ=WEEKLY' })).statusCode).toBe(201)
-    const occ = await find(bearer(kevin), 'find_events', 'piano lesson', 'delete')
-    const res = await h.tool(bearer(kevin), 'delete_event', { id: occ })
-    expect(res.structuredContent.scope).toBe('occurrence')
     expect(titled((await whatsNew(bearer(kevin))).items, 'occurrence_cancelled')).toContain('Piano lesson')
   })
 
   it('does not report a calendar-feed event as changed just because the feed was polled again', async () => {
-    const [feed] = await h.sql<{ id: string }>(`insert into ics_feeds (household_id, url, name) values ($1, 'https://example.com/school.ics', 'School') returning id`, [h.householdId])
-    // A re-sync rewrites every feed row, so updated_at is now while the event is old.
-    await h.sql(
-      `insert into events (household_id, title, starts_at, timezone, origin, origin_ref_id, google_event_id, sync_state, created_at)
-       values ($1, 'School assembly', $2, 'America/Chicago', 'ics', $3, 'uid-1', 'synced', now() - interval '3 days')`,
-      [h.householdId, zonedToUtc(`${addDays(today, 4)}T09:00`, TZ), feed.id]
-    )
-    expect((await whatsNew(bearer(kevin))).items.map((i) => i.title)).not.toContain('School assembly')
+    const titles = (await whatsNew(bearer(kevin))).items.map((i) => i.title)
+    expect(titles).not.toContain('School assembly')
   })
 
   it('a key without calendar:read gets no events section, and says so', async () => {
@@ -193,6 +200,23 @@ describe('whats_new — chores, lists, goals, rewards, meals', () => {
     const { items } = await whatsNew(bearer(kevin))
     const times = items.map((i) => Date.parse(i.at))
     expect([...times].sort((a, b) => a - b)).toEqual(times)
+  })
+})
+
+describe('whats_new — cursor', () => {
+  it('lags real time by a few seconds, leaving the newest changes to the next call', async () => {
+    const recent = ago(60_000)
+    expect((await h.call('POST', '/api/lists/grocery/items', kevin, { name: 'Fresh basil' })).statusCode).toBe(201)
+    expect((await h.call('POST', '/api/events', kevin, { title: 'Fresh event', startsAt: zonedToUtc(`${addDays(today, 2)}T12:00`, TZ) })).statusCode).toBe(201)
+    const first = await whatsNew(bearer(kevin), { since: recent })
+    expect(first.truncated).toBe(false)
+    expect(first.items.map((i) => i.title)).not.toContain('Fresh basil')
+    expect(first.items.map((i) => i.title)).not.toContain('Fresh event')
+    expect(Date.parse(first.until)).toBeLessThan(Date.now() - settleMs + 1000)
+    await settle()
+    const next = await whatsNew(bearer(kevin), { since: first.until })
+    expect(titled(next.items, 'list_item_added')).toContain('Fresh basil')
+    expect(titled(next.items, 'event_added')).toContain('Fresh event')
   })
 })
 

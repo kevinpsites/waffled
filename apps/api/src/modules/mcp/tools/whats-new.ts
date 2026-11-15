@@ -15,6 +15,9 @@ import type { Tenant } from '../../households/households'
 const MAX_ITEMS = 200
 const MAX_DAYS_BACK = 14
 const CLOCK_SKEW_MS = 60_000
+// `until` trails the database clock by this much. A row is stamped with its transaction's
+// start time, so a write still in flight when we read would otherwise land behind the cursor.
+export const SETTLE_MS = 5_000
 const DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/
 
 interface Who {
@@ -42,14 +45,15 @@ interface Section {
   name: string
   scope: string
   module?: 'chores' | 'lists' | 'goals' | 'meals' | 'rewards'
-  read: (tenant: Tenant, since: string, limit: number) => Promise<Change[]>
+  // Reports changes with since < at <= until.
+  read: (tenant: Tenant, since: string, until: string, limit: number) => Promise<Change[]>
 }
 
 const SECTIONS: Section[] = [
   {
     name: 'events',
     scope: 'calendar:read',
-    read: async (tenant, since, limit) => {
+    read: async (tenant, since, until, limit) => {
       // One item per event, at its latest change; a deletion or a synced cancellation wins.
       const { rows } = await query<{
         id: string; title: string; starts_at: Date; all_day: boolean; person_id: string | null; person_name: string | null
@@ -64,11 +68,12 @@ const SECTIONS: Section[] = [
            left join persons p on p.id = e.person_id
           where e.household_id = $1 ${visibleTo('e', '$3')} and (e.deleted_at is null or e.deleted_at > $2)
             and greatest(e.created_at, e.updated_at, coalesce(e.deleted_at, '-infinity')) > $2
+            and greatest(e.created_at, e.updated_at, coalesce(e.deleted_at, '-infinity')) <= $5
             -- A feed re-sync rewrites every row it holds, so for feed events only an add or a
             -- removal is a change worth reporting.
             and (e.origin is distinct from 'ics' or e.created_at > $2 or e.deleted_at > $2)
           order by at limit $4`,
-        [tenant.householdId, since, tenant.personId, limit]
+        [tenant.householdId, since, tenant.personId, limit, until]
       )
       const overrides = await query<{ id: string; event_id: string; title: string; original_start: Date; is_cancelled: boolean; at: string }>(
         `select ov.id, ov.event_id, coalesce(ov.title, m.title) as title, ov.original_start, ov.is_cancelled,
@@ -76,9 +81,9 @@ const SECTIONS: Section[] = [
            from event_overrides ov
            join events m on m.id = ov.event_id and m.deleted_at is null
           where ov.household_id = $1 and ov.deleted_at is null ${visibleTo('m', '$3')}
-            and greatest(ov.created_at, ov.updated_at) > $2
+            and greatest(ov.created_at, ov.updated_at) > $2 and greatest(ov.created_at, ov.updated_at) <= $5
           order by at limit $4`,
-        [tenant.householdId, since, tenant.personId, limit]
+        [tenant.householdId, since, tenant.personId, limit, until]
       )
       return [
         ...rows.map((r) => ({
@@ -106,24 +111,24 @@ const SECTIONS: Section[] = [
     name: 'chores',
     scope: 'chores:read',
     module: 'chores',
-    read: async (tenant, since, limit) => {
+    read: async (tenant, since, until, limit) => {
       const done = await query<{ id: string; chore_id: string; title: string; at: string; due_on: string; by: string | null; by_name: string | null; approval_status: string | null }>(
         `select ci.id, ci.chore_id, c.title, ${us('ci.completed_at')} as at, to_char(ci.due_on, 'YYYY-MM-DD') as due_on,
                 ci.completed_by as by, p.name as by_name, ci.approval_status
            from chore_instances ci
            join chores c on c.id = ci.chore_id
            left join persons p on p.id = ci.completed_by
-          where ci.household_id = $1 and ci.deleted_at is null and ci.completed_at > $2
+          where ci.household_id = $1 and ci.deleted_at is null and ci.completed_at > $2 and ci.completed_at <= $4
           order by at limit $3`,
-        [tenant.householdId, since, limit]
+        [tenant.householdId, since, limit, until]
       )
       const added = await query<{ id: string; title: string; at: string; person_id: string | null; person_name: string | null; rrule: string | null }>(
         `select c.id, c.title, ${us('c.created_at')} as at, c.person_id, p.name as person_name, c.rrule
            from chores c
            left join persons p on p.id = c.person_id
-          where c.household_id = $1 and c.deleted_at is null and c.created_at > $2
+          where c.household_id = $1 and c.deleted_at is null and c.created_at > $2 and c.created_at <= $4
           order by at limit $3`,
-        [tenant.householdId, since, limit]
+        [tenant.householdId, since, limit, until]
       )
       return [
         ...done.rows.map((r) => ({
@@ -151,7 +156,7 @@ const SECTIONS: Section[] = [
     name: 'lists',
     scope: 'lists:read',
     module: 'lists',
-    read: async (tenant, since, limit) => {
+    read: async (tenant, since, until, limit) => {
       // Rows the meal plan generates ('auto') are rebuilt wholesale, so their adds and
       // removals are noise; the meals section reports the plan change behind them.
       const { rows } = await query<{ kind: string; id: string; list_id: string; list_name: string; title: string; at: string; by: string | null; by_name: string | null }>(
@@ -172,8 +177,9 @@ const SECTIONS: Section[] = [
              from li where deleted_at > $2 and source <> 'auto'
          ) x
          left join persons p on p.id = x.by
+         where x.at <= $4
          order by x.at limit $3`,
-        [tenant.householdId, since, limit]
+        [tenant.householdId, since, limit, until]
       )
       return rows.map((r) => ({
         kind: r.kind,
@@ -189,7 +195,7 @@ const SECTIONS: Section[] = [
     name: 'goals',
     scope: 'goals:read',
     module: 'goals',
-    read: async (tenant, since, limit) => {
+    read: async (tenant, since, until, limit) => {
       const goals = new Map((await goalsVisibleTo(tenant)).map((g) => [g.id, g]))
       if (!goals.size) return []
       const { rows } = await query<{ id: string; goal_id: string; amount: number; at: string; by: string | null; by_name: string | null }>(
@@ -197,9 +203,10 @@ const SECTIONS: Section[] = [
                 coalesce(gl.person_id, gl.created_by) as by, p.name as by_name
            from goal_logs gl
            left join persons p on p.id = coalesce(gl.person_id, gl.created_by)
-          where gl.household_id = $1 and gl.deleted_at is null and gl.created_at > $2 and gl.goal_id = any($3::uuid[])
+          where gl.household_id = $1 and gl.deleted_at is null and gl.created_at > $2 and gl.created_at <= $5
+            and gl.goal_id = any($3::uuid[])
           order by at limit $4`,
-        [tenant.householdId, since, [...goals.keys()], limit]
+        [tenant.householdId, since, [...goals.keys()], limit, until]
       )
       return rows.map((r) => {
         const g = goals.get(r.goal_id)!
@@ -220,14 +227,14 @@ const SECTIONS: Section[] = [
     name: 'rewards',
     scope: 'rewards:read',
     module: 'rewards',
-    read: async (tenant, since, limit) => {
+    read: async (tenant, since, until, limit) => {
       const { rows } = await query<{ id: string; person_id: string; name: string | null; amount: number; currency: string; reason: string; note: string | null; at: string }>(
         `select le.id, le.person_id, p.name, le.amount, le.currency, le.reason, le.note, ${us('le.created_at')} as at
            from ledger_entries le
            left join persons p on p.id = le.person_id
-          where le.household_id = $1 and le.deleted_at is null and le.created_at > $2
+          where le.household_id = $1 and le.deleted_at is null and le.created_at > $2 and le.created_at <= $4
           order by at limit $3`,
-        [tenant.householdId, since, limit]
+        [tenant.householdId, since, limit, until]
       )
       return rows.map((r) => ({
         kind: r.amount >= 0 ? 'reward_earned' : 'reward_spent',
@@ -245,7 +252,7 @@ const SECTIONS: Section[] = [
     name: 'meals',
     scope: 'meals:read',
     module: 'meals',
-    read: async (tenant, since, limit) => {
+    read: async (tenant, since, until, limit) => {
       const { rows } = await query<{ id: string; date: string; meal_type: string; title: string | null; recipe_id: string | null; kind: string; at: string }>(
         `select mpe.id, to_char(mpe.date, 'YYYY-MM-DD') as date, mpe.meal_type,
                 coalesce(r.title, ml.name, mpe.title) as title, mpe.recipe_id,
@@ -258,8 +265,9 @@ const SECTIONS: Section[] = [
            left join meals ml on ml.id = mpe.meal_id
           where mpe.household_id = $1 and (mpe.deleted_at is null or mpe.deleted_at > $2)
             and greatest(mpe.created_at, mpe.updated_at, coalesce(mpe.deleted_at, '-infinity')) > $2
+            and greatest(mpe.created_at, mpe.updated_at, coalesce(mpe.deleted_at, '-infinity')) <= $4
           order by at limit $3`,
-        [tenant.householdId, since, limit]
+        [tenant.householdId, since, limit, until]
       )
       return rows.map((r) => ({
         kind: r.kind,
@@ -289,7 +297,7 @@ function readSince(args: Record<string, unknown>): string {
 defineTool({
   name: 'whats_new',
   description:
-    "What changed in the household since a time (at most 14 days back): events added, changed or cancelled; chores completed (and by whom) or added; list items added, checked off or removed; goal progress logged; stars earned or spent; meal plan changes. Oldest first. Built for checking in periodically: pass the previous call's `until` (or `nextSince` when the result was cut) as the next `since`, exactly as given. A section the connection isn't allowed to read, or whose feature is off, is left out and named in `omitted`." +
+    "What changed in the household since a time (at most 14 days back): events added, changed or cancelled; chores completed (and by whom) or added; list items added, checked off or removed; goal progress logged; stars earned or spent; meal plan changes. Oldest first, and a few seconds behind real time, so a change made just now shows up on the next call. Built for checking in periodically: pass the previous call's `until` (or `nextSince` when the result was cut) as the next `since`, exactly as given. A section the connection isn't allowed to read, or whose feature is off, is left out and named in `omitted`." +
     DATA_NOTE,
   scope: 'family:read',
   annotations: { title: "What's new", ...READ },
@@ -301,7 +309,11 @@ defineTool({
   },
   run: async (tenant, args, ctx: ToolContext) => {
     const since = readSince(args)
-    const until = new Date().toISOString()
+    // Never earlier than since, so the cursor a caller hands back cannot move backwards.
+    const [{ until }] = (await query<{ until: string }>(
+      `select ${us(`greatest(now() - interval '${SETTLE_MS} milliseconds', $1::timestamptz)`)} as until`,
+      [since]
+    )).rows
     const sections: string[] = []
     const omitted: string[] = []
     const all: Change[] = []
@@ -313,7 +325,7 @@ defineTool({
         continue
       }
       sections.push(s.name)
-      all.push(...(await s.read(tenant, since, MAX_ITEMS + 1)))
+      all.push(...(await s.read(tenant, since, until, MAX_ITEMS + 1)))
     }
     // `at` is fixed-width UTC text, so it sorts as a string.
     all.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
