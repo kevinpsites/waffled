@@ -79,12 +79,13 @@ export async function resolveTenant(principal: Principal): Promise<Tenant | null
   return findTenantBySub(principal.sub)
 }
 
-// Resolve the caller's household, or 403 if they haven't onboarded yet. A key-
-// authenticated request already resolved its owner tenant in the auth gate, so we
-// return that directly (the key's owner person is the tenant).
+// Resolve the caller's household, or 403 if they haven't onboarded yet. A key- or
+// connector-grant-authenticated request already resolved its tenant in the auth gate, so
+// we return that directly.
 export async function requireTenant(req: Request): Promise<Tenant> {
-  const fromKey = (req as Request & { apiKeyTenant?: Tenant }).apiKeyTenant
-  if (fromKey) return fromKey
+  const r = req as Request & { apiKeyTenant?: Tenant; mcpGrant?: { tenant: Tenant } }
+  const resolved = r.apiKeyTenant ?? r.mcpGrant?.tenant
+  if (resolved) return resolved
   const tenant = await resolveTenant(req.principal!)
   if (!tenant) throw new NoHouseholdError()
   return tenant

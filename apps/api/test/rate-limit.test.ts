@@ -34,3 +34,21 @@ describe('sensitive route client address', () => {
     )
   })
 })
+
+describe('OAuth client registration', () => {
+  afterEach(() => delete process.env.RATE_LIMIT_OAUTH_REGISTER_MAX)
+
+  it('is rate limited per address, since it writes a row before any sign-in', () => {
+    process.env.RATE_LIMIT_OAUTH_REGISTER_MAX = '1'
+    const register = () => {
+      const req = { method: 'POST', path: '/api/oauth/register', ip: '198.51.100.9' } as unknown as Request
+      const json = vi.fn()
+      const res = { status: vi.fn().mockReturnThis(), header: vi.fn().mockReturnThis(), json } as unknown as Response
+      const next = vi.fn() as unknown as NextFunction
+      sensitiveRouteRateLimit(req, res, next)
+      return { json, next }
+    }
+    expect(register().next).toHaveBeenCalledOnce()
+    expect(register().json).toHaveBeenCalledWith(expect.objectContaining({ error: 'TooManyRequests' }))
+  })
+})

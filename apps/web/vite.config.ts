@@ -72,6 +72,8 @@ const apiProxy: Record<string, ProxyOptions> = {
   // The MCP endpoint for AI agents lives outside /api. A `^` key is a RegExp to Vite, so
   // this matches /mcp and /mcp/… but not a sibling like /mcpanything.
   '^/mcp(/|$)': toApi,
+  // OAuth discovery for MCP connectors (the rest of OAuth is under /api).
+  '^/\\.well-known/oauth-': toApi,
   // Uploaded media (/media/*) is served by Caddy off the shared waffled_media volume,
   // NOT by the api — so in dev we forward to the running stack's Caddy (:8080) the
   // same way it's served in production. Without this, the dev server returns

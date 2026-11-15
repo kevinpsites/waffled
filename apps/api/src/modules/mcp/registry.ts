@@ -48,7 +48,8 @@ export class ToolInputError extends Error {
   }
 }
 
-// `null` = a user session, which carries the person's full rights; a key's scopes otherwise.
+// `null` = a user session, which carries the person's full rights; a key's or a connector
+// grant's scopes otherwise.
 export type CallerScopes = string[] | null
 
 export interface ToolContext {
@@ -86,7 +87,7 @@ export function unregisterToolForTest(name: string): void {
 export function denialFor(tool: ToolDef, ctx: ToolContext): string | null {
   if (!ALL_SCOPES.includes(tool.scope)) return `Tool ${tool.name} declares no valid scope`
   if (ctx.scopes !== null && !keyHasScope(ctx.scopes, tool.scope)) {
-    return `API key is missing the required scope: ${tool.scope}`
+    return `This connection is missing the required scope: ${tool.scope}`
   }
   if (tool.module === 'rewards') {
     if (!rewardsEnabled(ctx.householdSettings)) return 'Rewards are turned off'

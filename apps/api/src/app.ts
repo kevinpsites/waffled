@@ -58,6 +58,9 @@ import { registerWeatherRoutes } from './integrations/weather'
 import { registerPowerSyncRoutes } from './modules/powersync/powersync'
 import { registerPowerSyncCrudRoutes } from './modules/powersync/powersync-crud'
 import { MCP_PATH, registerMcpRoutes } from './modules/mcp/mcp'
+import { OAUTH_DISCOVERY_PATHS, registerOAuthMetadataRoutes, wwwAuthenticate } from './modules/oauth/metadata'
+import { registerClientRoutes } from './modules/oauth/clients'
+import { authenticateMcpGrant, claimsGrant, registerOAuthRoutes } from './modules/oauth/oauth'
 
 const api = createAPI()
 
@@ -101,6 +104,11 @@ const PUBLIC_PATHS = new Set([
   // Waffled-Bites pairing: same shape, pre-session.
   '/api/waffled-bites/pair',
   '/api/waffled-bites/device/token',
+  // OAuth for MCP connectors: discovery, client registration and the token endpoint all
+  // run before the connector holds a token. Consent (/api/oauth/authorize*) stays gated.
+  ...OAUTH_DISCOVERY_PATHS,
+  '/api/oauth/register',
+  '/api/oauth/token',
 ])
 
 // MCP clients configure one `Authorization` header, so /mcp also takes a key as a Bearer.
@@ -123,6 +131,12 @@ api.use(async (req: Request, res: Response, next: NextFunction) => {
   if (apiKey) {
     await authenticateApiKey(req, apiKey)
     enforceApiKeyScope(req)
+    return next()
+  }
+  // A connector's grant token is accepted on /mcp alone. Anywhere else it falls to
+  // requireAuth, whose audience check refuses it.
+  if (req.path === MCP_PATH && req.auth?.type === 'Bearer' && req.auth.value && claimsGrant(req.auth.value)) {
+    await authenticateMcpGrant(req, req.auth.value)
     return next()
   }
   await requireAuth(req)
@@ -298,6 +312,10 @@ registerUpdateRoutes(api)
 
 // MCP endpoint for AI agents (/mcp) — see docs/product/mcp-plan.md.
 registerMcpRoutes(api)
+// OAuth 2.1 for MCP connectors: discovery, registration, consent, tokens, Connected apps.
+registerOAuthMetadataRoutes(api)
+registerClientRoutes(api)
+registerOAuthRoutes(api)
 
 // One structured access-log line per request, after the response is sent. status & duration
 // are read here because lambda-api's next() doesn't return a promise.
@@ -319,6 +337,10 @@ api.finally((req: Request, res: Response) => {
 api.use(
   (err: Error & { statusCode?: number }, req: Request, res: Response, _next: NextFunction) => {
     const status = err.statusCode ?? 500
+    // Every 401 from /mcp tells the client where to sign in (RFC 9728 §5.1).
+    if (status === 401 && req.path === MCP_PATH) {
+      res.header('WWW-Authenticate', wwwAuthenticate(req, !!req.auth?.value))
+    }
     if (status >= 500) {
       log.error('unhandled', { err, requestId: (req as Request & { requestId?: string }).requestId })
     }

@@ -97,6 +97,12 @@ function routeLimits(req: Request): Limit[] {
         scope: 'auth-refresh', key: ip,
         max: positiveInt('RATE_LIMIT_REFRESH_MAX', 60), windowMs: 5 * 60_000,
       }]
+    // Unauthenticated and writes a row; Claude registers once per new connection.
+    case 'POST /api/oauth/register':
+      return [{
+        scope: 'oauth-register', key: ip,
+        max: positiveInt('RATE_LIMIT_OAUTH_REGISTER_MAX', 30), windowMs: 10 * 60_000,
+      }]
     case 'POST /api/kiosk/pair':
       return [{
         scope: 'kiosk-pair', key: ip,

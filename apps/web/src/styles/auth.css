@@ -39,6 +39,7 @@
   margin: 0 auto 14px;
 }
 .auth-title {
+  margin: 0;
   font-size: 26px;
   font-weight: 600;
   line-height: 1.15;
@@ -136,6 +137,56 @@
   height: 1px;
   background: var(--hair);
 }
+/* OAuth consent (/oauth/authorize): where the app returns to, then one row per scope. */
+.oauth-host {
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: var(--card-2);
+  border: 1px solid var(--hair);
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.oauth-host strong {
+  color: var(--ink);
+  font-weight: 800;
+}
+.oauth-scopes {
+  display: flex;
+  flex-direction: column;
+}
+.oauth-scope {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--hair);
+}
+.oauth-scope:last-child {
+  border-bottom: 0;
+}
+.oauth-scope-t {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.oauth-scope button.toggle {
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  appearance: none;
+}
+.oauth-note {
+  margin-top: 12px;
+  color: var(--ink-3);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
 /* Segmented pairing-code input (6 boxes). */
 .pair-code {
   display: flex;

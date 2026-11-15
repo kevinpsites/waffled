@@ -59,7 +59,7 @@ export async function startMcpHarness(): Promise<McpHarness> {
 
   const run: McpHarness['run'] = (method, path, headers, body, raw, qs) => {
     const h: Record<string, string> = { ...headers }
-    if (body !== undefined || raw !== undefined) h['content-type'] = 'application/json'
+    if ((body !== undefined || raw !== undefined) && !h['content-type']) h['content-type'] = 'application/json'
     return app.run(
       {
         httpMethod: method,

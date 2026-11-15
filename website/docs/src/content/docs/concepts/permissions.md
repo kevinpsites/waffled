@@ -44,6 +44,7 @@ owner can flip any cell per household in **Settings → Family & People**. The m
 | `reward.manage` | Manage the rewards catalog, currencies, conversions; redeem or convert *for others* |
 | `reward.approve` | Approve/deny redemptions |
 | `goal.manage` | Log progress *for others*, edit/delete shared or others' goals, manage goal lists |
+| `ai.connect` | Connect an AI app such as Claude ([how-to](/guides/connect-claude/)). Checked at sign-in and again on every request the app makes, so turning it off disconnects that role's apps at once |
 
 Clients never "show, then 403". `/api/household` returns the caller's resolved
 `capabilities`, and the UI renders capable affordances only.

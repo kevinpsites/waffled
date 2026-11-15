@@ -51,8 +51,11 @@ function originAllowed(req: Request): boolean {
   }
 }
 
+// An API key or a connector grant is bounded by its scopes; a user session is not.
 function callerScopes(req: Request): CallerScopes {
-  return req.apiKey ? req.apiKey.scopes : null
+  if (req.apiKey) return req.apiKey.scopes
+  if (req.mcpGrant) return req.mcpGrant.scopes
+  return null
 }
 
 function toolError(message: string) {
@@ -150,7 +153,7 @@ export function registerMcpRoutes(api: Api): void {
         const args = isObject(rawArgs) ? rawArgs : {}
         const audit = (outcome: AuditOutcome, error: string | null, createdId?: string) =>
           isWriteTool(tool)
-            ? recordAudit({ tenant, apiKeyId: req.apiKey?.id ?? null, tool: tool.name, targets: auditTargets(args, tool.inputSchema.properties, createdId), outcome, error })
+            ? recordAudit({ tenant, apiKeyId: req.apiKey?.id ?? null, grantId: req.mcpGrant?.id ?? null, tool: tool.name, targets: auditTargets(args, tool.inputSchema.properties, createdId), outcome, error })
             : Promise.resolve()
 
         const denied = denialFor(tool, ctx)

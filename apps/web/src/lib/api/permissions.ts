@@ -3,7 +3,7 @@
 // needs no special-casing.
 import { apiGet, apiSend } from './client'
 
-export const CAPABILITIES = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'reward.grant', 'goal.manage', 'planning.manage'] as const
+export const CAPABILITIES = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'reward.grant', 'goal.manage', 'planning.manage', 'ai.connect'] as const
 export type Capability = (typeof CAPABILITIES)[number]
 
 export type Role = 'adult' | 'teen' | 'kid'
@@ -20,6 +20,8 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   // Not "run the session" — anybody can do that. This is the household-wide choices the
   // session offers, currently which lists its first step asks about.
   'planning.manage': 'Set up planning',
+  // Approve an AI app (a Claude connector) to act on the household as them.
+  'ai.connect': 'Connect AI apps',
 }
 export const ROLE_LABELS: Record<Role, string> = { adult: 'Adult', teen: 'Teen', kid: 'Kid' }
 

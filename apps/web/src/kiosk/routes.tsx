@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, Outlet } from 'react-router'
 import { useHousehold } from '../lib/api'
 import { moduleEnabled, type ModuleKey } from '../lib/modules'
 import { KioskLayout } from './KioskLayout'
+import { OAuthAuthorize } from './OAuthAuthorize'
 
 // Every screen is loaded on demand. Statically imported, all twenty landed in the
 // entry bundle, so opening the kiosk to Today downloaded Settings, the recipe
@@ -55,6 +56,8 @@ function ModuleGate({ module }: { module: ModuleKey }) {
 export function KioskRoutes() {
   return (
     <Routes>
+      {/* An AI app's consent step: a full-screen card like sign-in, outside the kiosk shell. */}
+      <Route path="oauth/authorize" element={<OAuthAuthorize />} />
       <Route element={<KioskLayout />}>
         <Route index element={<Today />} />
         <Route path="calendar" element={<Calendar />} />

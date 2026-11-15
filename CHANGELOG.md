@@ -26,9 +26,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reward. Each tool needs the matching API-key scope, is hidden when its module is off, and
   is held to the same permissions as the person who made the key, so a kid's key can't do
   what the kid can't. Every change an agent makes is recorded with the key that made it.
-  Sign-in through the normal Waffled login (for claude.ai connectors) is on the way.
+- **Connect Claude with your Waffled login.** Waffled can now be added as a custom connector
+  in claude.ai, Claude Desktop and the Claude mobile app: Claude sends you to Waffled to sign
+  in the usual way (password or SSO), then a consent screen shows which app is asking, where
+  it will send you back to, which household it gets, and what it may do — reading is on,
+  changing things is off until you switch it on. Settings → Connected apps lists every app
+  you approved and revokes one, effective on its next request. A new **Connect AI apps**
+  permission decides who may connect one (adults yes, teens and kids no, adjustable per
+  role). Connectors need Waffled on public HTTPS with an IPv4 address; LAN-only installs can
+  keep using Claude Code with an API key. See "Connect Claude to Waffled" in the docs.
 
 ### Changed
+
+- **Signing in with SSO returns you to the page you started from** instead of the home
+  screen.
 
 ### Fixed
 

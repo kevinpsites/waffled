@@ -4,6 +4,7 @@ import { authApi, getAccessToken, isKioskMode, type AuthStatus, type SetupInput 
 import { SERVER_PROBE_EVENT, SERVER_REACHABLE_EVENT, ensureProbing, isUnansweredError } from '../lib/api/reachability'
 import { UNREACHABLE_HEADLINE } from './components/ServerUnreachableBanner'
 import { useOnline } from '../lib/pwa'
+import { takeReturnPath } from '../lib/returnPath'
 import { ProfilePicker } from './ProfilePicker'
 import { PairDevice } from './PairDevice'
 import '../styles/auth.css'
@@ -34,7 +35,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       try {
         if (!code) throw new Error('Sign-in was cancelled.')
         await authApi.oidcExchange(code) // fires waffled:auth-changed on success
-        navigate('/', { replace: true })
+        navigate(takeReturnPath(), { replace: true })
         return
       } catch (err) {
         setOidcError((err as Error).message)
@@ -105,12 +106,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
 const SUBMIT_UNREACHABLE = 'Can’t reach the Waffled server right now — try again in a moment.'
 const submitError = (err: unknown) => (isUnansweredError(err) ? SUBMIT_UNREACHABLE : (err as Error).message)
 
-function AuthShell({ title, sub, children }: { title: string; sub: string; children: ReactNode }) {
+// Exported for the OAuth consent screen, which sits on the same card as sign-in.
+export function AuthShell({ title, sub, children }: { title: string; sub: string; children: ReactNode }) {
   return (
     <div className="auth-screen">
       <div className="auth-card">
         <img className="auth-logo-img" src="/logo.png" alt="Waffled" width={96} height={96} />
-        <div className="auth-title wf-serif">{title}</div>
+        <h1 className="auth-title wf-serif">{title}</h1>
         <div className="auth-sub">{sub}</div>
         {children}
       </div>

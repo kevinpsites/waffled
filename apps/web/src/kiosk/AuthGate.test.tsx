@@ -1,12 +1,15 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach } from 'vitest'
 import axe from 'axe-core'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useLocation } from 'react-router'
 import { AuthGate } from './AuthGate'
+import { rememberReturnPath } from '../lib/returnPath'
 
 const mocks = vi.hoisted(() => ({
   status: vi.fn(),
   login: vi.fn(),
   setup: vi.fn(),
+  oidcExchange: vi.fn(),
 }))
 
 vi.mock('../lib/api', () => ({
@@ -15,7 +18,7 @@ vi.mock('../lib/api', () => ({
     login: mocks.login,
     setup: mocks.setup,
     startOidc: vi.fn(),
-    oidcExchange: vi.fn(),
+    oidcExchange: mocks.oidcExchange,
   },
   getAccessToken: () => null,
   isKioskMode: () => false,
@@ -83,4 +86,53 @@ describe('AuthGate accessibility', () => {
     expect(email).toHaveAttribute('aria-describedby', hint.id)
     await expectNoAxeViolations(container)
   }, 30_000)
+})
+
+function Where() {
+  const loc = useLocation()
+  return <div data-testid="where">{loc.pathname + loc.search}</div>
+}
+
+describe('AuthGate OIDC return', () => {
+  afterEach(() => {
+    window.history.pushState({}, '', '/')
+    sessionStorage.clear()
+  })
+
+  it('router-navigates back to the page that started sign-in, query intact', async () => {
+    const consent = '/oauth/authorize?client_id=wfc_1&state=s%201&redirect_uri=https%3A%2F%2Fclaude.ai%2Fcb'
+    window.history.pushState({}, '', consent)
+    rememberReturnPath()
+    window.history.pushState({}, '', '/auth/callback?code=handoff-1')
+    mocks.oidcExchange.mockResolvedValue(undefined)
+    mocks.status.mockResolvedValue({ initialized: true, methods: ['password'] })
+
+    render(
+      <MemoryRouter initialEntries={['/auth/callback?code=handoff-1']}>
+        <AuthGate><div>Signed in</div></AuthGate>
+        <Where />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent(consent))
+    expect(mocks.oidcExchange).toHaveBeenCalledWith('handoff-1')
+    expect(sessionStorage.getItem('waffled.returnTo')).toBeNull()
+  })
+
+  it('never returns to another origin', async () => {
+    sessionStorage.setItem('waffled.returnTo', '//evil.example/x')
+    window.history.pushState({}, '', '/auth/callback?code=handoff-2')
+    mocks.oidcExchange.mockResolvedValue(undefined)
+    mocks.status.mockResolvedValue({ initialized: true, methods: ['password'] })
+
+    render(
+      <MemoryRouter initialEntries={['/auth/callback?code=handoff-2']}>
+        <AuthGate><div>Signed in</div></AuthGate>
+        <Where />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(mocks.oidcExchange).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent(/^\/$/))
+  })
 })
