@@ -47,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   like Claude Duet, and only ever shows what that person could already see: someone else's
   personal events and goals in private lists stay out, and each part needs the matching
   permission granted at sign-in.
+  `RATE_LIMIT_MCP_CALL_MAX`, `RATE_LIMIT_OAUTH_TOKEN_MAX` and `RATE_LIMIT_OAUTH_TOKEN_IP_MAX`,
+  in `.env` or, on a Mac, in `config.env`.
 
 ### Changed
 

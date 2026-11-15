@@ -319,8 +319,9 @@ Code and local MCP clients work on the LAN. The how-to must lead with this.
     and per address (300 / 10 min, `RATE_LIMIT_OAUTH_TOKEN_IP_MAX`), since `client_id` is
     unauthenticated input. Over it: 429, `Retry-After`, `{"error":"temporarily_unavailable"}`
     (`slow_down` is device-flow only, and `invalid_grant` would make a client drop its tokens).
-  - The Mac runtime does not pass the four connector limits through yet (its env allowlist
-    in `apps/runtime/internal/services/services.go` and `SettingsCatalog.swift`).
+  - The Mac runtime forwards the four connector limits from `config.env` (its env allowlist
+    in `apps/runtime/internal/services/services.go`); `SettingsCatalog.swift` has no rows
+    for them yet.
 - **Prompt injection:** household text (list items, event notes, recipe bodies) reaches
   the agent as data. Every tool description that returns household text says so (a guard
   test checks), the `initialize` instructions repeat it, and tools return structured

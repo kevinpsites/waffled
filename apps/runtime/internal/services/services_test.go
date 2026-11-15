@@ -125,18 +125,22 @@ func TestAPIRunsTheBundledNodeInProductionOnLoopback(t *testing.T) {
 func TestHouseholdSettingsReachTheAPI(t *testing.T) {
 	p := testPlan(t)
 	want := map[string]string{
-		"AI_TIMEOUT_MS":                "45000",
-		"AI_MAX_RETRIES":               "1",
-		"OIDC_NATIVE_REDIRECT_URI":     "waffled://auth/callback",
-		"RATE_LIMIT_SETUP_MAX":         "6",
-		"RATE_LIMIT_LOGIN_ACCOUNT_MAX": "11",
-		"RATE_LIMIT_LOGIN_IP_MAX":      "51",
-		"RATE_LIMIT_OIDC_START_MAX":    "31",
-		"RATE_LIMIT_OIDC_EXCHANGE_MAX": "21",
-		"RATE_LIMIT_REFRESH_MAX":       "61",
-		"RATE_LIMIT_KIOSK_PAIR_MAX":    "12",
-		"RATE_LIMIT_KIOSK_TOKEN_MAX":   "32",
-		"RATE_LIMIT_MEDIA_MAX":         "33",
+		"AI_TIMEOUT_MS":                 "45000",
+		"AI_MAX_RETRIES":                "1",
+		"OIDC_NATIVE_REDIRECT_URI":      "waffled://auth/callback",
+		"RATE_LIMIT_SETUP_MAX":          "6",
+		"RATE_LIMIT_LOGIN_ACCOUNT_MAX":  "11",
+		"RATE_LIMIT_LOGIN_IP_MAX":       "51",
+		"RATE_LIMIT_OIDC_START_MAX":     "31",
+		"RATE_LIMIT_OIDC_EXCHANGE_MAX":  "21",
+		"RATE_LIMIT_REFRESH_MAX":        "61",
+		"RATE_LIMIT_KIOSK_PAIR_MAX":     "12",
+		"RATE_LIMIT_KIOSK_TOKEN_MAX":    "32",
+		"RATE_LIMIT_MEDIA_MAX":          "33",
+		"RATE_LIMIT_OAUTH_REGISTER_MAX": "34",
+		"RATE_LIMIT_OAUTH_TOKEN_MAX":    "35",
+		"RATE_LIMIT_OAUTH_TOKEN_IP_MAX": "301",
+		"RATE_LIMIT_MCP_CALL_MAX":       "121",
 	}
 	for k, v := range want {
 		p.Env.Set(k, v)
