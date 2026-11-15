@@ -58,7 +58,7 @@ export async function startMcpHarness(): Promise<McpHarness> {
   delete process.env.PUBLIC_BASE_URL
   // Every harness request shares one caller address and a few callers, so the suites would
   // trip the per-caller limits; a limit test lowers one and restores it with RELAXED_LIMIT.
-  for (const k of RELAXED_LIMITS) process.env[k] ??= RELAXED_LIMIT
+  for (const k of RELAXED_LIMITS) process.env[k] = RELAXED_LIMIT
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const app: any = (await import('../../src/app')).default
   const db = await import('../../src/platform/db')
