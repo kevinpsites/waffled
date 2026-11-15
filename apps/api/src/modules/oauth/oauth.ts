@@ -23,6 +23,9 @@ declare module 'lambda-api' {
 }
 
 const CODE_TTL_SECONDS = 60
+// A rotated refresh token presented again this soon is taken for a client racing itself
+// (Claude refreshes both proactively and on a 401), not a theft: refused, not revoked.
+const REFRESH_REUSE_GRACE_SECONDS = 30
 const REFRESH_TTL_DAYS = Number(process.env.MCP_REFRESH_TOKEN_TTL_DAYS) || 30
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 // Claude appends offline_access when a server lists it; we always issue a refresh token,
@@ -271,18 +274,19 @@ async function refreshTokenGrant(body: Record<string, string>, res: Response) {
   const token = body.refresh_token
   if (!token || !body.client_id) return tokenError(res, 'invalid_request', 'refresh_token and client_id are required')
   const hash = sha256(token)
-  const { rows } = await query<{ grant_id: string; used: boolean; expired: boolean }>(
-    `select grant_id, used_at is not null as used, expires_at <= now() as expired
+  const { rows } = await query<{ grant_id: string; used: boolean; recently_used: boolean; expired: boolean }>(
+    `select grant_id, used_at is not null as used, expires_at <= now() as expired,
+            used_at > now() - ($2 || ' seconds')::interval as recently_used
        from oauth_refresh_tokens where token_hash = $1`,
-    [hash]
+    [hash, String(REFRESH_REUSE_GRACE_SECONDS)]
   )
   const t = rows[0]
-  const replayed = async () => {
-    await revokeGrant(t.grant_id)
-    return tokenError(res, 'invalid_grant', 'The refresh token is invalid, expired or was already used')
+  const refused = () => tokenError(res, 'invalid_grant', 'The refresh token is invalid, expired or was already used')
+  if (!t || t.expired) return refused()
+  if (t.used) {
+    if (!t.recently_used) await revokeGrant(t.grant_id)
+    return refused()
   }
-  if (!t || t.expired) return tokenError(res, 'invalid_grant', 'The refresh token is invalid, expired or was already used')
-  if (t.used) return replayed()
   const grant = await liveGrant(t.grant_id)
   if (!grant || grant.clientId !== body.client_id) return tokenError(res, 'invalid_grant', 'This connection is no longer allowed')
   if (resourceMismatch(body, grant.resource)) return tokenError(res, 'invalid_target', `resource must be ${grant.resource}`)
@@ -293,9 +297,10 @@ async function refreshTokenGrant(body: Record<string, string>, res: Response) {
     if (!asked.every((s) => grant.scopes.includes(s))) return tokenError(res, 'invalid_scope', 'A refresh cannot widen the granted scopes')
     scopes = asked
   }
-  // Spent only once every check passed; of two concurrent refreshes, one wins this update.
+  // Spent only once every check passed. Of two concurrent refreshes one wins this update;
+  // the loser is inside the grace window by definition.
   const spent = await query(`update oauth_refresh_tokens set used_at = now() where token_hash = $1 and used_at is null`, [hash])
-  if (!spent.rowCount) return replayed()
+  if (!spent.rowCount) return refused()
   return issueTokens(res, grant, scopes)
 }
 

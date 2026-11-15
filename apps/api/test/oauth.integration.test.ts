@@ -17,6 +17,7 @@ const RESOURCE = `${ORIGIN}/mcp`
 const CALLBACK = 'https://claude.ai/api/mcp/auth_callback'
 
 const b64url = (b: Buffer) => b.toString('base64url')
+const sha256hex = (s: string) => createHash('sha256').update(s).digest('hex')
 function pkce() {
   const verifier = b64url(randomBytes(32))
   return { verifier, challenge: b64url(createHash('sha256').update(verifier).digest()) }
@@ -515,12 +516,23 @@ describe('token endpoint', () => {
     const access2 = json(second).access_token
     expect((await mcp(access2, 'ping')).statusCode).toBe(200)
 
+    await h.sql(`update oauth_refresh_tokens set used_at = now() - interval '31 seconds' where token_hash = $1`, [sha256hex(r1)])
     const replay = await refresh(flow.clientId, r1)
     expect(replay.statusCode).toBe(400)
     expect(json(replay).error).toBe('invalid_grant')
     // The replay revoked the grant, so the newest pair is dead too.
     expect(json(await refresh(flow.clientId, r2)).error).toBe('invalid_grant')
     expect((await mcp(access2, 'ping')).statusCode).toBe(401)
+  })
+
+  it('a reuse within 30 seconds of rotation is refused without revoking (a refresh race)', async () => {
+    const { flow, refresh: r1 } = await connect(['calendar:read'])
+    const second = await refresh(flow.clientId, r1)
+    expect(second.statusCode).toBe(200)
+    await h.sql(`update oauth_refresh_tokens set used_at = now() - interval '29 seconds' where token_hash = $1`, [sha256hex(r1)])
+    expect(json(await refresh(flow.clientId, r1)).error).toBe('invalid_grant')
+    expect((await mcp(json(second).access_token, 'ping')).statusCode).toBe(200)
+    expect((await refresh(flow.clientId, json(second).refresh_token)).statusCode).toBe(200)
   })
 
   it('a refresh by another client is invalid_grant', async () => {
