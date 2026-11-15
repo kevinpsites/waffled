@@ -263,7 +263,7 @@ Code and local MCP clients work on the LAN. The how-to must lead with this.
 - **Destructive tools** (`delete`, `redeem`, and `plan_meal`, which replaces the slot's
   meal, calendar event and prep reminder) carry `destructiveHint: true` so clients
   confirm; `delete` on a recurring series states the scope in its result.
-- **Attribution without touching every table:** `mcp_audit` (`0107_mcp_audit.sql`) —
+- **Attribution without touching every table:** `mcp_audit` (`0108_mcp_audit.sql`) —
   household, person, `api_key_id`, `grant_id` (no FK until grants exist), tool,
   `target_ids`, outcome `ok | error | denied`, error text, time. `tools/call` writes one
   row for every call to a `:write`-scoped tool, including scope, module and capability
