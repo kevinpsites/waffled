@@ -93,6 +93,29 @@ describe('the metadata-document deadline', () => {
   })
 })
 
+describe('the metadata-document cache', () => {
+  it('holds at most 500 documents, dropping the oldest first', async () => {
+    const { resolveClient, setClientMetadataFetcherForTest } = await import('../src/modules/oauth/clients')
+    const fetched: string[] = []
+    setClientMetadataFetcherForTest(async (url) => {
+      fetched.push(url)
+      return { status: 200, cacheControl: 'max-age=600', body: JSON.stringify({ client_id: url, client_name: 'C', redirect_uris: ['https://c.example/cb'] }) }
+    })
+    try {
+      const url = (i: number) => `https://c.example/m/${i}`
+      for (let i = 0; i <= 500; i++) await resolveClient(url(i))
+      fetched.length = 0
+      await resolveClient(url(500))
+      await resolveClient(url(1))
+      expect(fetched).toEqual([])
+      await resolveClient(url(0))
+      expect(fetched).toEqual([url(0)])
+    } finally {
+      setClientMetadataFetcherForTest(null)
+    }
+  })
+})
+
 describe('consent copy', () => {
   it('describes every grantable scope in plain words', async () => {
     const { ALL_SCOPES } = await import('../src/modules/api-keys/api-keys')

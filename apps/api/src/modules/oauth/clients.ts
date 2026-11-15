@@ -26,6 +26,8 @@ const CIMD_TIMEOUT_MS = 5000
 const CIMD_MAX_BYTES = 64 * 1024
 const CIMD_DEFAULT_TTL = 300
 const CIMD_MAX_TTL = 86400
+// The cache is keyed by a client-supplied URL, so it must not grow without bound.
+const CIMD_CACHE_MAX = 500
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
 
@@ -195,7 +197,12 @@ async function fetchMetadataDocument(clientId: string): Promise<OAuthClient> {
 
   const client: OAuthClient = { clientId, clientName: name, redirectUris: uris as string[], kind: 'metadata-document' }
   const ttl = cacheSeconds(res.cacheControl)
-  if (ttl > 0) documentCache.set(clientId, { client, expiresAt: Date.now() + ttl * 1000 })
+  if (ttl > 0) {
+    documentCache.delete(clientId)
+    // A Map iterates in insertion order, so the first key is the oldest entry.
+    while (documentCache.size >= CIMD_CACHE_MAX) documentCache.delete(documentCache.keys().next().value!)
+    documentCache.set(clientId, { client, expiresAt: Date.now() + ttl * 1000 })
+  }
   return client
 }
 
