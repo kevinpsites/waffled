@@ -62,7 +62,8 @@ Claude can read today's overview, the calendar, chores, the grocery list and you
 lists, the meal plan, goals, reward balances, the family and the recipe library. With the
 matching switches on, it can add an event, a list item, a chore or a planned meal; complete
 or reassign a chore; check off or remove a list item; move or cancel an event; log goal
-progress; and redeem a reward. The full list is in the
+progress; and redeem a reward. It can also ask **what's new since** a time — handy for an
+agent that checks in on its own every few hours. The full list is in the
 [feature matrix](/reference/features/#modules--extensibility).
 
 It can never do more than you can: a tool is hidden when its module is off for the

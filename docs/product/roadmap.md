@@ -17,6 +17,20 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Done ✅
 
+- **MCP server — connect an AI agent (preview)** — a `/mcp` endpoint inside the api
+  (stateless JSON-RPC, no new service) so Claude (claude.ai connectors, Desktop, mobile,
+  Code) or any MCP client can query a household and act on it: read tools, `find_*` + action
+  tools over the capture verbs, and create tools that share their route's service function.
+  Connectors sign in through the normal Waffled login plus a consent screen (OAuth 2.1 with
+  PKCE, DCR and Client ID Metadata Documents), bounded by the granted scopes, the module
+  toggles and the person's capabilities; **Settings → Connected apps** revokes, and the new
+  `ai.connect` permission decides who may connect. Every write is in `mcp_audit`, tool calls
+  and the token endpoint are rate limited, a guard test keeps secrets out of tool output,
+  and `whats_new(since)` gives polling agents (Claude Duet) a "what changed" feed filtered
+  by each module's read rules. **Still open:** Connected apps on iOS, change-log tier B
+  (`changes_since` with actor attribution) and push tier C, and pointing the OAuth metadata
+  at Auth0 in Auth0 mode. Plan: [`mcp-plan.md`](./mcp-plan.md).
+
 - **iPhone calendar: Month → Week → Day** — the phone Calendar tab rebuilt from the design
   handoff: a full-height month grid with ISO week numbers and up to four titles a day, a
   horizontal week card rail (tap an event to edit it), and a pushed Day timeline with overlap
@@ -364,15 +378,6 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Planned 🚧
 
-- **MCP server — connect an AI agent.** A `/mcp` endpoint in the api so Claude (claude.ai
-  connectors, Desktop, Code) can query a household and act on it, signed in through the
-  normal Waffled login plus a consent screen (OAuth 2.1), bounded by the existing scopes
-  and capability matrix. Change notifications deferred. **In progress:** the stateless
-  `/mcp` endpoint, API-key auth, the read, action and create tools, the `mcp_audit`
-  trail, and OAuth sign-in for connectors (consent, Settings → Connected apps, the
-  `ai.connect` permission) are in (preview); rate limits, `whats_new` and iOS Connected
-  apps remain. Plan:
-  [`mcp-plan.md`](./mcp-plan.md).
 - **The rest of the Mac Settings design** — each its own piece of runtime work before a
   control can appear: photos in a folder of their own (media relocation), backups in a
   folder of their own, backups that include photos, keeping every backup ("Forever"), an

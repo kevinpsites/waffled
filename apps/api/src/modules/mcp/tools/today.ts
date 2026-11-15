@@ -4,16 +4,11 @@ import { todayEvents } from '../../events/events'
 import { todayDate } from '../../chores/chores.service'
 import { weekEntries } from '../../meals/meals.service'
 import { groceryBoard, householdWeekStart } from '../../lists/lists.service'
-import { moduleEnabled, type ModuleKey } from '../../../platform/modules'
-import { callerHas, defineTool, type ToolContext } from '../registry'
+import { defineTool, sectionOn } from '../registry'
 import { presentEventForAgent } from './calendar'
 import { choresForDay, presentChoreForAgent } from './chores'
 import { presentEntryForAgent } from './meals'
 import { DATA_NOTE, READ } from './shared'
-
-function sectionOn(ctx: ToolContext, scope: string, module?: ModuleKey): boolean {
-  return callerHas(ctx, scope) && (!module || moduleEnabled(ctx.householdSettings, module))
-}
 
 defineTool({
   name: 'get_today',
