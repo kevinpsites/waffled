@@ -667,9 +667,14 @@ describe('rate limits', () => {
     process.env.RATE_LIMIT_OAUTH_TOKEN_MAX = '2'
     const rotated = await refresh(a.flow.clientId, a.refresh)
     expect(rotated.statusCode, rotated.body).toBe(200)
-    expectOAuthLimited(await refresh(a.flow.clientId, json(rotated).refresh_token))
-    // The refused request never reached the token logic: the refresh token still works later.
+    const kept = json(rotated).refresh_token
+    expectOAuthLimited(await refresh(a.flow.clientId, kept))
+    // Another connector from the same address has its own bucket.
     expect((await refresh(b.flow.clientId, b.refresh)).statusCode).toBe(200)
+    // The refused request never reached the token logic, so it did not spend the token: a
+    // throttled connector is slowed down, never disconnected.
+    process.env.RATE_LIMIT_OAUTH_TOKEN_MAX = RELAXED_LIMIT
+    expect((await refresh(a.flow.clientId, kept)).statusCode).toBe(200)
   })
 
   it('the token endpoint is also limited per address, so rotating client_id does not escape it', async () => {
