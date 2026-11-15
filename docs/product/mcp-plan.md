@@ -371,6 +371,13 @@ days back and not in the future (60 s of clock skew allowed); anything else is a
 and module (`sectionOn` in the registry, shared with `get_today`); left-out sections are
 named in `omitted`. Items are `{ kind, at, who, title, ids, … }`, oldest first, capped at
 200; a cut result says so and returns `nextSince` (the last item's `at`) to continue from.
+`at` is microsecond UTC text and `since` is passed to SQL as given, since a millisecond
+`Date` cursor would land below its own row and repeat it. A page ends before the instant it
+would split, so paging never repeats or skips one; if a single instant holds more than 200
+changes (one bulk statement), the page shows 200 of them, names it in `partialAt`, and the
+next page moves past it — the rest of that instant are skipped rather than loop forever.
+Calendar-feed (`origin = 'ics'`) events report only adds and removals: every poll rewrites
+each feed row, so their `updated_at` is not a change.
 
 | Section | Scope / module | Kinds (source columns) | Visibility |
 |---|---|---|---|

@@ -28,7 +28,7 @@ const ago = (ms: number) => new Date(Date.now() - ms).toISOString()
 async function whatsNew(headers: Record<string, string>, args: Record<string, unknown> = { since }) {
   const res = await h.tool(headers, 'whats_new', args)
   expect(res.isError, JSON.stringify(res.content)).toBeFalsy()
-  return res.structuredContent as { items: Item[]; truncated: boolean; nextSince?: string; omitted: string[]; sections: string[] }
+  return res.structuredContent as { items: Item[]; truncated: boolean; nextSince?: string; partialAt?: string; omitted: string[]; sections: string[] }
 }
 const titled = (items: Item[], kind: string) => items.filter((i) => i.kind === kind).map((i) => i.title)
 
@@ -123,6 +123,26 @@ describe('whats_new — events', () => {
     expect(titled((await whatsNew(bearer(kelly.token))).items, 'event_added')).toContain('Kelly therapy')
   })
 
+  it('reports one cancelled occurrence of a recurring event', async () => {
+    const start = zonedToUtc(`${addDays(today, 1)}T16:00`, TZ)
+    expect((await h.call('POST', '/api/events', kevin, { title: 'Piano lesson', startsAt: start, rrule: 'FREQ=WEEKLY' })).statusCode).toBe(201)
+    const occ = await find(bearer(kevin), 'find_events', 'piano lesson', 'delete')
+    const res = await h.tool(bearer(kevin), 'delete_event', { id: occ })
+    expect(res.structuredContent.scope).toBe('occurrence')
+    expect(titled((await whatsNew(bearer(kevin))).items, 'occurrence_cancelled')).toContain('Piano lesson')
+  })
+
+  it('does not report a calendar-feed event as changed just because the feed was polled again', async () => {
+    const [feed] = await h.sql<{ id: string }>(`insert into ics_feeds (household_id, url, name) values ($1, 'https://example.com/school.ics', 'School') returning id`, [h.householdId])
+    // A re-sync rewrites every feed row, so updated_at is now while the event is old.
+    await h.sql(
+      `insert into events (household_id, title, starts_at, timezone, origin, origin_ref_id, google_event_id, sync_state, created_at)
+       values ($1, 'School assembly', $2, 'America/Chicago', 'ics', $3, 'uid-1', 'synced', now() - interval '3 days')`,
+      [h.householdId, zonedToUtc(`${addDays(today, 4)}T09:00`, TZ), feed.id]
+    )
+    expect((await whatsNew(bearer(kevin))).items.map((i) => i.title)).not.toContain('School assembly')
+  })
+
   it('a key without calendar:read gets no events section, and says so', async () => {
     const key = await h.mintKey(kevin, 'wn-chores', ['family:read', 'chores:read'])
     const out = await whatsNew(keyed(key))
@@ -190,5 +210,26 @@ describe('whats_new — caps', () => {
     expect(first.nextSince).toBe(first.items[first.items.length - 1].at)
     const rest = await whatsNew(bearer(kevin), { since: first.nextSince })
     expect(rest.items.map((i) => i.title)).toContain('Bulk 260')
+    const seen = new Set(first.items.map((i) => JSON.stringify(i.ids) + i.kind))
+    expect(rest.items.filter((i) => seen.has(JSON.stringify(i.ids) + i.kind))).toEqual([])
+  })
+
+  it('never splits or repeats a group of changes sharing one timestamp, so paging always moves on', async () => {
+    const [grocery] = await h.sql<{ id: string }>(`select id from lists where household_id = $1 and list_type = 'grocery'`, [h.householdId])
+    // One statement: every row gets the same now(), as a bulk import would.
+    await h.sql(
+      `insert into list_items (household_id, list_id, name, created_at)
+       select $1, $2, 'Same ' || g, now() - interval '5 hours' from generate_series(1, 250) g`,
+      [h.householdId, grocery.id]
+    )
+    const first = await whatsNew(bearer(kevin), { since: ago(6 * 3600_000) })
+    expect(first.truncated).toBe(true)
+    // More rows share that instant than fit on a page: it says so rather than loop on them.
+    expect(first.partialAt).toBe(first.nextSince)
+    const rest = await whatsNew(bearer(kevin), { since: first.nextSince })
+    const seen = new Set(first.items.map((i) => JSON.stringify(i.ids) + i.kind))
+    expect(rest.items.filter((i) => seen.has(JSON.stringify(i.ids) + i.kind))).toEqual([])
+    expect(rest.items.some((i) => i.title.startsWith('Bulk '))).toBe(true)
+    expect(rest.nextSince ?? '').not.toBe(first.nextSince)
   })
 })
