@@ -9,6 +9,7 @@ import { query } from '../../platform/db'
 import { log } from '../../platform/logger'
 import { version } from '../../platform/version'
 import { baseUrl } from '../auth/oidc'
+import { mcpToolCallRetryAfter } from '../../platform/rate-limit'
 import { denialFor, findTool, isWriteTool, toolRegistry, ToolInputError, type CallerScopes, type ToolContext } from './registry'
 import { auditTargets, recordAudit, type AuditOutcome } from './audit'
 import './tools'
@@ -25,6 +26,8 @@ const INVALID_REQUEST = -32600
 const METHOD_NOT_FOUND = -32601
 const INVALID_PARAMS = -32602
 const INTERNAL_ERROR = -32603
+// JSON-RPC leaves -32000..-32099 to the server; this one means "slow down".
+const RATE_LIMITED = -32000
 
 function rpcError(res: Response, httpStatus: number, id: JsonRpcId | null, code: number, message: string) {
   return res.status(httpStatus).json({ jsonrpc: '2.0', id, error: { code, message } })
@@ -56,6 +59,13 @@ function callerScopes(req: Request): CallerScopes {
   if (req.apiKey) return req.apiKey.scopes
   if (req.mcpGrant) return req.mcpGrant.scopes
   return null
+}
+
+// Bucketed by credential, so two connections of one person don't share a limit.
+function callerKey(req: Request): string {
+  if (req.apiKey) return `key:${req.apiKey.id}`
+  if (req.mcpGrant) return `grant:${req.mcpGrant.id}`
+  return `sub:${req.principal?.sub ?? 'unknown'}`
 }
 
 function toolError(message: string) {
@@ -144,6 +154,20 @@ export function registerMcpRoutes(api: Api): void {
         return rpcResult(res, rid, { tools })
       }
       case 'tools/call': {
+        // Only tool calls count: tools/list and ping are as cheap as any REST read, and a
+        // client re-lists after every reconnect. A refused call is not audited either; an
+        // audit row per flooded call is the write load the limit is there to stop.
+        const retryAfter = mcpToolCallRetryAfter(callerKey(req))
+        if (retryAfter !== null) {
+          return res
+            .status(429)
+            .header('Retry-After', String(retryAfter))
+            .json({
+              jsonrpc: '2.0',
+              id: rid,
+              error: { code: RATE_LIMITED, message: `Too many tool calls. Slow down and retry after ${retryAfter} seconds.`, data: { retryAfter } },
+            })
+        }
         const name = params.name
         const tool = typeof name === 'string' ? findTool(name) : undefined
         if (!tool) return rpcError(res, 200, rid, INVALID_PARAMS, `Unknown tool: ${String(name)}`)

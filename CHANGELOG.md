@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   permission decides who may connect one (adults yes, teens and kids no, adjustable per
   role). Connectors need Waffled on public HTTPS with an IPv4 address; LAN-only installs can
   keep using Claude Code with an API key. See "Connect Claude to Waffled" in the docs.
+- **AI agents that call too fast are told to slow down.** An agent connected over MCP may
+  make up to 120 tool calls a minute per API key or connection; past that it gets a "too
+  many requests, retry in N seconds" answer instead of a result, and the connector sign-in
+  endpoint is throttled the same way. Operators can change the limits with
+  `RATE_LIMIT_MCP_CALL_MAX`, `RATE_LIMIT_OAUTH_TOKEN_MAX` and `RATE_LIMIT_OAUTH_TOKEN_IP_MAX`,
+  in `.env` or, on a Mac, in `config.env`.
 
 ### Changed
 

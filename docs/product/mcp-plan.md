@@ -1,8 +1,8 @@
 # MCP server — let an AI agent query and act on a household
 
 **Status:** in progress — §2 (the endpoint), §3 (the tools), §4 (sign-in through the
-Waffled login, consent, Connected apps) and the §5 audit trail are built; §5 rate limits and
-§6 `whats_new` remain, and iOS Connected apps follows the web. **Written:** 2026-11-13.
+Waffled login, consent, Connected apps) and §5 (audit trail, rate limits, the secrets guard)
+are built; §6 `whats_new` remains, and iOS Connected apps follows the web. **Written:** 2026-11-13.
 **Scope agreed:** the endpoint (§2), the tools (§3), sign-in through the normal Waffled
 login (§4), the safety rules (§5) and change-notification tier A (§6), one PR each (§7).
 Web + api first; iOS after.
@@ -304,13 +304,35 @@ Code and local MCP clients work on the LAN. The how-to must lead with this.
   refusals (a 403 is `denied`). `target_ids` keeps only id-shaped arguments plus the
   created row's id, never free text. Reads are not audited. No `source` column on events,
   chores, list items or meal plans.
-- **Rate limits** per key or grant on `tools/call`.
+- **Rate limits** (built, PR 4), on the sensitive-route limiter's buckets
+  (`platform/rate-limit.ts`, process-local like the others):
+  - `tools/call`: per API key, grant, or signed-in subject (`key:` / `grant:` / `sub:`
+    buckets, so a person's two connections don't share one), 120 a minute
+    (`RATE_LIMIT_MCP_CALL_MAX`). Over it: HTTP 429, `Retry-After`, JSON-RPC error `-32000`
+    with `data.retryAfter`. Checked before the tool lookup, so unknown-tool spam counts.
+  - `tools/list`, `ping` and `initialize` are not counted: each is as cheap as any REST read
+    (which are unlimited), and clients re-list on every reconnect.
+  - A refused call is not audited; a row per flooded call is the load the limit prevents.
+  - `POST /api/oauth/token`: per client+address (30 / 10 min, `RATE_LIMIT_OAUTH_TOKEN_MAX`)
+    and per address (300 / 10 min, `RATE_LIMIT_OAUTH_TOKEN_IP_MAX`), since `client_id` is
+    unauthenticated input. Over it: 429, `Retry-After`, `{"error":"temporarily_unavailable"}`
+    (`slow_down` is device-flow only, and `invalid_grant` would make a client drop its tokens).
+  - The Mac runtime forwards the four connector limits from `config.env` (its env allowlist
+    in `apps/runtime/internal/services/services.go`); `SettingsCatalog.swift` has no rows
+    for them yet.
 - **Prompt injection:** household text (list items, event notes, recipe bodies) reaches
   the agent as data. Every tool description that returns household text says so (a guard
   test checks), the `initialize` instructions repeat it, and tools return structured
   fields, not free-form prose that mixes data and instructions.
 - **No secrets in tool output:** never return tokens, OIDC config, invite codes or other
-  members' account emails.
+  members' account emails. `mcp-secrets.integration.test.ts` runs every read and find tool
+  (as a session and as a key) against a household holding an API key, a grant and its
+  refresh token, login refresh tokens, an invite, a kiosk pairing code, OIDC config, a
+  calendar account, an ICS feed URL, a PIN hash and another member's account email, and
+  fails on any of those values or a secret-named field; a read tool with no argument
+  fixture fails it too. It found no leak.
+- The "household text is data" rule above is enforced by the registry guard test in
+  `mcp.integration.test.ts` (every description must say so).
 
 ---
 

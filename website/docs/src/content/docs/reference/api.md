@@ -99,6 +99,19 @@ and answers an `isError` result if called (no `403 insufficient_scope` step-up: 
 are fixed at consent). Revoking the connection, or the person losing the `ai.connect`
 permission, ends it on its next request.
 
+**Rate limits.** `tools/call` is limited per API key, connection or signed-in member: 120 a
+minute by default (`RATE_LIMIT_MCP_CALL_MAX`). Over it, `/mcp` answers **HTTP 429** with a
+`Retry-After` header and a JSON-RPC error (`code: -32000`, `data.retryAfter` in seconds);
+`initialize`, `ping` and `tools/list` are not counted. `POST /api/oauth/token` is limited per
+client and address (30 per 10 minutes, `RATE_LIMIT_OAUTH_TOKEN_MAX`) and per address (300,
+`RATE_LIMIT_OAUTH_TOKEN_IP_MAX`), answering 429 with `Retry-After` and
+`{"error":"temporarily_unavailable"}`; registration has its own per-address limit
+(`RATE_LIMIT_OAUTH_REGISTER_MAX`). See [environment variables](/install/environment-variables/#rate-limits).
+
+**No secrets in tool output.** No tool returns a token, key, hash, invite, pairing code, SSO
+setting or any member's sign-in email; a test runs every read tool against a household
+holding each of them.
+
 ---
 
 ## Endpoint reference

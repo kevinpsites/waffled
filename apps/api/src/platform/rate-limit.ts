@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { NextFunction, Request, Response } from 'lambda-api'
 
 interface Bucket {
@@ -10,6 +11,8 @@ interface Limit {
   key: string
   max: number
   windowMs: number
+  // An OAuth endpoint answers in RFC 6749's error shape, which its clients parse.
+  oauth?: boolean
 }
 
 const buckets = new Map<string, Bucket>()
@@ -35,16 +38,24 @@ function sweep(now: number): void {
   }
 }
 
-function consume(limit: Limit, now: number): number | null {
+const mapKey = (limit: Limit) => `${limit.scope}:${limit.key}`
+
+// Seconds to wait if this limit is spent, else null. Reads only.
+function retryAfter(limit: Limit, now: number): number | null {
+  const current = buckets.get(mapKey(limit))
+  if (current && current.resetAt > now && current.count >= limit.max) {
+    return Math.max(1, Math.ceil((current.resetAt - now) / 1000))
+  }
+  return null
+}
+
+function charge(limit: Limit, now: number): void {
   if (++checks % 500 === 0) sweep(now)
-  const mapKey = `${limit.scope}:${limit.key}`
-  const current = buckets.get(mapKey)
+  const key = mapKey(limit)
+  const current = buckets.get(key)
   if (current && current.resetAt > now) {
-    if (current.count >= limit.max) {
-      return Math.max(1, Math.ceil((current.resetAt - now) / 1000))
-    }
     current.count += 1
-    return null
+    return
   }
 
   if (!current && buckets.size >= MAX_BUCKETS) {
@@ -54,11 +65,10 @@ function consume(limit: Limit, now: number): number | null {
       if (oldest) buckets.delete(oldest)
     }
   }
-  buckets.set(mapKey, { count: 1, resetAt: now + limit.windowMs })
-  return null
+  buckets.set(key, { count: 1, resetAt: now + limit.windowMs })
 }
 
-function routeLimits(req: Request): Limit[] {
+export function routeLimits(req: Request): Limit[] {
   const ip = clientAddress(req)
   const route = `${req.method.toUpperCase()} ${req.path}`
   switch (route) {
@@ -97,6 +107,25 @@ function routeLimits(req: Request): Limit[] {
         scope: 'auth-refresh', key: ip,
         max: positiveInt('RATE_LIMIT_REFRESH_MAX', 60), windowMs: 5 * 60_000,
       }]
+    // Public. A connector exchanges a code once and refreshes about hourly. client_id is
+    // unauthenticated input, so the address bucket stops rotating it to dodge the first.
+    case 'POST /api/oauth/token': {
+      const raw = (req.body as { client_id?: unknown } | undefined)?.client_id
+      // Hashed so an unbounded input can't grow the shared bucket map's keys.
+      const clientId = typeof raw === 'string' && raw
+        ? createHash('sha256').update(raw).digest('hex').slice(0, 16)
+        : '<missing>'
+      return [
+        {
+          scope: 'oauth-token-client', key: `${ip}|${clientId}`, oauth: true,
+          max: positiveInt('RATE_LIMIT_OAUTH_TOKEN_MAX', 30), windowMs: 10 * 60_000,
+        },
+        {
+          scope: 'oauth-token-ip', key: ip, oauth: true,
+          max: positiveInt('RATE_LIMIT_OAUTH_TOKEN_IP_MAX', 300), windowMs: 10 * 60_000,
+        },
+      ]
+    }
     // Unauthenticated and writes a row; Claude registers once per new connection.
     case 'POST /api/oauth/register':
       return [{
@@ -125,19 +154,44 @@ function routeLimits(req: Request): Limit[] {
 
 export function sensitiveRouteRateLimit(req: Request, res: Response, next: NextFunction): void {
   const now = Date.now()
-  for (const limit of routeLimits(req)) {
-    const retryAfter = consume(limit, now)
-    if (retryAfter !== null) {
+  const limits = routeLimits(req)
+  // Every bucket is checked before any is charged, so a refused request costs nothing.
+  for (const limit of limits) {
+    const wait = retryAfter(limit, now)
+    if (wait !== null && limit.oauth) {
       res
         .status(429)
-        .header('Retry-After', String(retryAfter))
+        .header('Retry-After', String(wait))
+        .header('Cache-Control', 'no-store')
+        .json({ error: 'temporarily_unavailable', error_description: `Too many token requests. Retry after ${wait} seconds.` })
+      return
+    }
+    if (wait !== null) {
+      res
+        .status(429)
+        .header('Retry-After', String(wait))
         .json({
           error: 'TooManyRequests',
           message: 'Too many requests. Try again soon.',
-          retryAfter,
+          retryAfter: wait,
         })
       return
     }
   }
+  for (const limit of limits) charge(limit, now)
   next()
+}
+
+// Per caller, checked by /mcp after authentication (this middleware runs before it): the
+// caller is the API key, the connector grant, or the signed-in subject. Returns the
+// seconds to wait when over the limit, else null.
+export function mcpToolCallRetryAfter(caller: string): number | null {
+  const limit = {
+    scope: 'mcp-tool-call', key: caller,
+    max: positiveInt('RATE_LIMIT_MCP_CALL_MAX', 120), windowMs: 60_000,
+  }
+  const now = Date.now()
+  const wait = retryAfter(limit, now)
+  if (wait === null) charge(limit, now)
+  return wait
 }

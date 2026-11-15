@@ -115,6 +115,10 @@ services:
       RATE_LIMIT_KIOSK_PAIR_MAX: ${RATE_LIMIT_KIOSK_PAIR_MAX:-}
       RATE_LIMIT_KIOSK_TOKEN_MAX: ${RATE_LIMIT_KIOSK_TOKEN_MAX:-}
       RATE_LIMIT_MEDIA_MAX: ${RATE_LIMIT_MEDIA_MAX:-}
+      RATE_LIMIT_OAUTH_REGISTER_MAX: ${RATE_LIMIT_OAUTH_REGISTER_MAX:-}
+      RATE_LIMIT_OAUTH_TOKEN_MAX: ${RATE_LIMIT_OAUTH_TOKEN_MAX:-}
+      RATE_LIMIT_OAUTH_TOKEN_IP_MAX: ${RATE_LIMIT_OAUTH_TOKEN_IP_MAX:-}
+      RATE_LIMIT_MCP_CALL_MAX: ${RATE_LIMIT_MCP_CALL_MAX:-}
       # Break-glass: always show the password form even if SSO-only is toggled on.
       AUTH_FORCE_PASSWORD: ${AUTH_FORCE_PASSWORD:-}
       # Public origin for redirect URLs (OIDC + Google calendar callbacks). Set this

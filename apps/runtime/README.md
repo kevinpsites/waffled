@@ -262,7 +262,7 @@ The api's environment is built from scratch (`services.Plan.API`), not inherited
 an allowlist of household settings is forwarded from `config.env` (`passthroughKeys`): the
 AI provider keys, models, `OPENAI_BASE_URL`, `OLLAMA_HOST`, `AI_TIMEOUT_MS`,
 `AI_MAX_RETRIES`; Google and Microsoft calendar OAuth; `PUBLIC_BASE_URL`, the token
-lifetimes, `AUTH_FORCE_PASSWORD`, `OIDC_NATIVE_REDIRECT_URI`; the nine `RATE_LIMIT_*_MAX`
+lifetimes, `AUTH_FORCE_PASSWORD`, `OIDC_NATIVE_REDIRECT_URI`; the thirteen `RATE_LIMIT_*_MAX`
 throttles; and `TZ`. `LOG_LEVEL` (`debug|info|warn|error`) and `LOG_FORMAT`
 (`json|pretty`) are read by the runtime itself, defaulting to `info`/`json`. Anything
 else written to `config.env` reaches nothing — deliberately, and pinned by a test:
