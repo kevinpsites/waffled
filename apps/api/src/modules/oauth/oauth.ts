@@ -235,26 +235,32 @@ async function authorizationCodeGrant(body: Record<string, string>, res: Respons
     redirect_uri: string
     code_challenge: string
     resource: string
+    consumed: boolean
     expired: boolean
   }>(
-    `update oauth_codes set consumed_at = now()
-      where code_hash = $1 and consumed_at is null
-      returning grant_id, client_id, redirect_uri, code_challenge, resource, expires_at <= now() as expired`,
+    `select grant_id, client_id, redirect_uri, code_challenge, resource,
+            consumed_at is not null as consumed, expires_at <= now() as expired
+       from oauth_codes where code_hash = $1`,
     [hash]
   )
   const c = rows[0]
-  if (!c) {
-    // A second use of a code means it leaked; OAuth 2.1 §4.1.3 says kill what it issued.
-    const spent = await query<{ grant_id: string }>(`select grant_id from oauth_codes where code_hash = $1`, [hash])
-    if (spent.rows[0]) await revokeGrant(spent.rows[0].grant_id)
-    return tokenError(res, 'invalid_grant', 'The authorization code is invalid or was already used')
-  }
-  if (c.expired) return tokenError(res, 'invalid_grant', 'The authorization code has expired')
+  if (!c) return tokenError(res, 'invalid_grant', 'The authorization code is invalid or was already used')
+  // Nothing is spent or revoked until the caller proves it is the client that asked: a
+  // leaked code alone must not be able to burn a code or kill a grant.
   if (c.client_id !== body.client_id || c.redirect_uri !== body.redirect_uri) {
     return tokenError(res, 'invalid_grant', 'client_id or redirect_uri does not match the authorization request')
   }
   if (!pkceMatches(body.code_verifier, c.code_challenge)) return tokenError(res, 'invalid_grant', 'PKCE verification failed')
+  const replayed = async () => {
+    // A second use of a code means it leaked; OAuth 2.1 §4.1.3 says kill what it issued.
+    await revokeGrant(c.grant_id)
+    return tokenError(res, 'invalid_grant', 'The authorization code is invalid or was already used')
+  }
+  if (c.consumed) return replayed()
+  if (c.expired) return tokenError(res, 'invalid_grant', 'The authorization code has expired')
   if (resourceMismatch(body, c.resource)) return tokenError(res, 'invalid_target', `resource must be ${c.resource}`)
+  const consumed = await query(`update oauth_codes set consumed_at = now() where code_hash = $1 and consumed_at is null`, [hash])
+  if (!consumed.rowCount) return replayed()
 
   const grant = await liveGrant(c.grant_id)
   if (!grant) return tokenError(res, 'invalid_grant', 'This connection is no longer allowed')

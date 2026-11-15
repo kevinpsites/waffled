@@ -471,6 +471,27 @@ describe('token endpoint', () => {
     expect((await mcp(json(first).access_token, 'ping')).statusCode).toBe(401)
   })
 
+  it('a failed exchange does not spend the code or revoke its grant', async () => {
+    const flow = await startFlow()
+    const code = await codeFrom(await approve(flow, ['calendar:read']))
+    const bad: Array<Record<string, string>> = [{ code_verifier: b64url(randomBytes(32)) }, { client_id: 'someone-else' }, { resource: 'https://other.example/mcp' }]
+    for (const extra of bad) {
+      expect((await exchange(flow, code, extra)).statusCode, JSON.stringify(extra)).toBe(400)
+    }
+    const ok = await exchange(flow, code)
+    expect(ok.statusCode, ok.body).toBe(200)
+    expect((await mcp(json(ok).access_token, 'ping')).statusCode).toBe(200)
+  })
+
+  it('a replay without the verifier is refused but does not revoke', async () => {
+    const flow = await startFlow()
+    const code = await codeFrom(await approve(flow, ['calendar:read']))
+    const first = await exchange(flow, code)
+    expect(first.statusCode).toBe(200)
+    expect(json(await exchange(flow, code, { code_verifier: b64url(randomBytes(32)) })).error).toBe('invalid_grant')
+    expect((await mcp(json(first).access_token, 'ping')).statusCode).toBe(200)
+  })
+
   it('an expired code is invalid_grant', async () => {
     const flow = await startFlow()
     const code = await codeFrom(await approve(flow, ['calendar:read']))
