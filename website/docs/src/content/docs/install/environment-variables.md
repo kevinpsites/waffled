@@ -96,7 +96,7 @@ are fixed. Over a limit the api answers **429** with `Retry-After`.
 | `RATE_LIMIT_MCP_CALL_MAX` | MCP tool calls per API key, connected app or signed-in member, per minute | `120` |
 
 On a Mac the first nine are on **Settings… → Advanced → Rate limits**; the four AI-connector
-rows aren't passed on yet, so a Mac keeps their defaults.
+limits aren't in Settings yet, but the api reads them when you add them to `config.env` by hand.
 
 ### Auth0 mode (optional, advanced)
 

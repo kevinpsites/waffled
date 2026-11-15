@@ -39,7 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   make up to 120 tool calls a minute per API key or connection; past that it gets a "too
   many requests, retry in N seconds" answer instead of a result, and the connector sign-in
   endpoint is throttled the same way. Operators can change the limits with
-  `RATE_LIMIT_MCP_CALL_MAX`, `RATE_LIMIT_OAUTH_TOKEN_MAX` and `RATE_LIMIT_OAUTH_TOKEN_IP_MAX`.
+  `RATE_LIMIT_MCP_CALL_MAX`, `RATE_LIMIT_OAUTH_TOKEN_MAX` and `RATE_LIMIT_OAUTH_TOKEN_IP_MAX`,
+  in `.env` or, on a Mac, in `config.env`.
 
 ### Changed
 
