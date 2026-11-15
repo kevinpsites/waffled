@@ -74,6 +74,30 @@ their defaults.
 **OIDC/SSO is configured in-app** (Settings → Login & security), *not* via env — the encrypted
 client secret lives in the database. See [Authentication & SSO](/administration/authentication/).
 
+### Rate limits
+
+Each is a request count per built-in window, per caller address unless noted; the windows
+are fixed. Over a limit the api answers **429** with `Retry-After`.
+
+| Variable | Limits | Default |
+|---|---|---|
+| `RATE_LIMIT_SETUP_MAX` | First-time setup, per hour | `5` |
+| `RATE_LIMIT_LOGIN_ACCOUNT_MAX` | Sign-ins per account email, per 15 min | `10` |
+| `RATE_LIMIT_LOGIN_IP_MAX` | Sign-ins per address, per 15 min | `50` |
+| `RATE_LIMIT_OIDC_START_MAX` | SSO starts, per 5 min | `30` |
+| `RATE_LIMIT_OIDC_EXCHANGE_MAX` | SSO returns, per 5 min | `20` |
+| `RATE_LIMIT_REFRESH_MAX` | Session refreshes, per 5 min | `60` |
+| `RATE_LIMIT_KIOSK_PAIR_MAX` | Kiosk pairing, per 10 min | `10` |
+| `RATE_LIMIT_KIOSK_TOKEN_MAX` | Kiosk sign-ins, per 10 min | `30` |
+| `RATE_LIMIT_MEDIA_MAX` | Photo uploads, per minute | `30` |
+| `RATE_LIMIT_OAUTH_REGISTER_MAX` | AI connector registrations, per 10 min | `30` |
+| `RATE_LIMIT_OAUTH_TOKEN_MAX` | AI connector token requests per connector and address, per 10 min | `30` |
+| `RATE_LIMIT_OAUTH_TOKEN_IP_MAX` | AI connector token requests per address, per 10 min | `300` |
+| `RATE_LIMIT_MCP_CALL_MAX` | MCP tool calls per API key, connected app or signed-in member, per minute | `120` |
+
+On a Mac the first nine are on **Settings… → Advanced → Rate limits**; the four AI-connector
+rows aren't passed on yet, so a Mac keeps their defaults.
+
 ### Auth0 mode (optional, advanced)
 
 Setting `AUTH0_DOMAIN` switches the whole app from local HS256 to Auth0 RS256 validation. Most
