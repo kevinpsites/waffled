@@ -513,6 +513,28 @@ export async function listGoals(householdId: string, listId?: string | null) {
   return goals.map((g) => ({ ...g, streakDays: streaks.get(g.id) ?? 0 }))
 }
 
+// Every shared goal list plus the private ones this caller belongs to. `listGoals` does
+// not apply this, so any per-person read must — there is no admin bypass.
+export async function visibleGoalLists(tenant: Tenant) {
+  const lists = await listGoalLists(tenant.householdId)
+  return lists.filter((l) => !l.isPrivate || l.members.some((m) => m.personId === tenant.personId))
+}
+
+type GoalAxisFields = Pick<
+  ReturnType<typeof mapGoal>,
+  'goalType' | 'periodDone' | 'stepDone' | 'stepTotal' | 'totalProgress' | 'target' | 'habitTargetPerPeriod' | 'habitPeriod'
+>
+
+// The number a person should see for a goal: a habit counts THIS period, a checklist its
+// steps, everything else the lifetime total. Mirrors the web `goalDisplayProgress`.
+export function goalDisplay(g: GoalAxisFields): { axis: 'period' | 'steps' | 'lifetime'; done: number; target: number | null; period?: string } {
+  if (g.goalType === 'habit') {
+    return { axis: 'period', period: g.habitPeriod ?? 'week', done: g.periodDone, target: g.habitTargetPerPeriod ?? g.target ?? null }
+  }
+  if (g.goalType === 'checklist') return { axis: 'steps', done: g.stepDone, target: g.stepTotal || null }
+  return { axis: 'lifetime', done: g.totalProgress, target: g.target }
+}
+
 // Consecutive-day streak ending today/yesterday (household timezone).
 async function goalStreak(householdId: string, goalId: string): Promise<number> {
   const { rows } = await query<{ day: string }>(

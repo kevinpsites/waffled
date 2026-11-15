@@ -6,6 +6,9 @@ import { type Tenant } from '../households/households'
 import { completeJson } from '../../platform/llm'
 import { aisleFor, isStaple } from '../lists/aisles'
 import { getBlobStore, mediaUrl } from '../../platform/storage'
+import { badRequest } from '../../platform/http-error'
+import { assertMealInHousehold, assertPersonInHousehold, assertRecipeInHousehold } from '../../platform/household-refs'
+import { syncMealEventForEntry, syncPrepReminderForEntry } from './meal-events'
 import type {
   RecipeRow,
   CreateRecipeInput,
@@ -579,6 +582,7 @@ export async function suggestRecipeMetadata(
 
 export const MEAL_TYPES = new Set(['breakfast', 'lunch', 'dinner', 'snack'])
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function todayDate(): string {
   return new Date().toISOString().slice(0, 10)
@@ -603,7 +607,7 @@ export async function getOrCreateActivePlan(tenant: Tenant): Promise<PlanRow> {
   return created.rows[0]
 }
 
-interface EntryRow extends QueryResultRow {
+export interface EntryRow extends QueryResultRow {
   id: string
   date: string
   meal_type: string
@@ -632,6 +636,60 @@ export async function upsertEntry(
     [tenant.householdId, planId, input.date, input.mealType, input.recipeId, input.title, input.cookPersonId, input.mealId ?? null]
   )
   return rows[0]
+}
+
+export interface PlanSlotBody {
+  date?: string
+  mealType?: string
+  recipeId?: string
+  mealId?: string
+  title?: string
+  cookPersonId?: string
+}
+
+// POST /api/meals/plan and the MCP plan_meal tool: validate, write the slot, then mirror
+// it onto the calendar. recipeId is optional (null = leftovers/takeout). A slot points at
+// ONE thing — a recipe or a Meal Builder plate — and no CHECK constraint enforces that,
+// so it is refused here. Re-planning with a plate moves it (a planner drag); it is not a
+// copy, which is POST /api/meals/:id/schedule's job.
+export async function planMealSlot(tenant: Tenant, body: PlanSlotBody): Promise<EntryRow> {
+  if (!body.date || !DATE_RE.test(body.date) || !body.mealType || !MEAL_TYPES.has(body.mealType)) {
+    throw badRequest('date (YYYY-MM-DD) and mealType are required')
+  }
+  let recipeId: string | null = null
+  if (body.recipeId != null && body.recipeId !== '') {
+    if (!UUID_RE.test(body.recipeId)) throw badRequest('recipeId must be a uuid')
+    recipeId = body.recipeId
+    await assertRecipeInHousehold(tenant.householdId, recipeId)
+  }
+  if (recipeId && body.mealId != null && body.mealId !== '') {
+    throw badRequest('a slot takes recipeId or mealId, not both')
+  }
+  let mealId: string | null = null
+  if (body.mealId != null && body.mealId !== '') {
+    if (!UUID_RE.test(body.mealId)) throw badRequest('mealId must be a uuid')
+    mealId = body.mealId
+    await assertMealInHousehold(tenant.householdId, mealId)
+  }
+  let cookPersonId: string | null = null
+  if (body.cookPersonId != null && body.cookPersonId !== '') {
+    if (!UUID_RE.test(body.cookPersonId)) throw badRequest('cookPersonId must be a uuid')
+    cookPersonId = body.cookPersonId
+    await assertPersonInHousehold(tenant.householdId, cookPersonId)
+  }
+  const plan = await getOrCreateActivePlan(tenant)
+  const entry = await upsertEntry(plan.id, tenant, {
+    date: body.date,
+    mealType: body.mealType,
+    recipeId,
+    mealId,
+    title: body.title ?? null,
+    cookPersonId,
+  })
+  // Never fail the plan write if the calendar sync hiccups.
+  await syncMealEventForEntry(tenant, entry.id).catch((err) => console.error('meal event sync failed', err))
+  await syncPrepReminderForEntry(tenant, entry.id).catch((err) => console.error('prep reminder sync failed', err))
+  return entry
 }
 
 // Soft-clear a slot in the active plan. Returns true if a row was cleared.

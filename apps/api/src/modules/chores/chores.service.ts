@@ -5,6 +5,9 @@ import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { getDefaultCurrencyKey } from '../currencies/currencies'
 import { getBlobStore, mediaUrl } from '../../platform/storage'
+import { badRequest } from '../../platform/http-error'
+import { assertPersonInHousehold } from '../../platform/household-refs'
+import { requireCapability } from '../../platform/permissions'
 import type { ChoreEditScope, ChoreRow, CreateChoreInput, PersonChoreSummary, TodayInstance } from './chores.types'
 
 // Rewards sub-toggle (settings.chores.rewards) — the spend half of the economy, default on.
@@ -88,6 +91,22 @@ export function requestedDate(raw: unknown, today: string): string {
   const diff = Math.round((Date.parse(`${raw}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / DAY_MS)
   if (Number.isNaN(diff) || diff < -31 || diff > 31) return today
   return raw
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// POST /api/chores and the MCP create_chore tool. Carving the family up takes
+// 'chore.manage', but anyone can add a chore that's up-for-grabs or one for themselves.
+export async function createChoreFromInput(tenant: Tenant, body: Partial<CreateChoreInput>): Promise<ChoreRow> {
+  if (!body.title || !body.title.trim()) throw badRequest('title is required')
+  if (body.personId != null) {
+    if (!UUID_RE.test(body.personId)) throw badRequest('valid personId required')
+    await assertPersonInHousehold(tenant.householdId, body.personId)
+  }
+  if (body.personId != null && body.personId !== tenant.personId) {
+    await requireCapability(tenant, 'chore.manage')
+  }
+  return createChore(tenant, { ...body, title: body.title.trim() })
 }
 
 export async function createChore(tenant: Tenant, input: CreateChoreInput): Promise<ChoreRow> {

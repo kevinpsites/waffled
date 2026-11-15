@@ -11,7 +11,7 @@ import { mediaKeyBelongsToHousehold } from '../../platform/storage'
 import {
   registerCaptureTarget,
   httpError,
-  findPersonByName,
+  personFromArgs,
   impliesMine,
   type CaptureTarget,
   type ResolveCtx,
@@ -114,9 +114,7 @@ const choreCaptureTarget: CaptureTarget = {
     }
 
     if (cmd.verb === 'reassign') {
-      const personName = typeof cmd.args.personName === 'string' ? cmd.args.personName.trim() : ''
-      if (!personName) throw httpError(400, "Couldn't find that person.")
-      const person = await findPersonByName(ctx.householdId, personName)
+      const person = await personFromArgs(ctx.householdId, cmd.args)
       if (!person) throw httpError(400, "Couldn't find that person.")
       // Same cap the /assign route enforces: assigning to ANOTHER person needs
       // chore.manage; taking it yourself stays open.

@@ -209,6 +209,14 @@ describe('chores today api', () => {
     expect((await call('POST', '/api/chores', kevin, { personId: kevinId })).statusCode).toBe(400)
   })
 
+  // Pins the route's error shape before its body moved into createChoreFromInput.
+  it('a malformed personId is a 400 with the same error body', async () => {
+    const res = await call('POST', '/api/chores', kevin, { title: 'X', personId: 'nope' })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body)).toEqual({ error: 'BadRequest', message: 'valid personId required' })
+    expect(JSON.parse((await call('POST', '/api/chores', kevin, {})).body)).toEqual({ error: 'BadRequest', message: 'title is required' })
+  })
+
   it('creates a chore and surfaces it in today (per-person done/total + stars)', async () => {
     const add = await call('POST', '/api/chores', kevin, {
       title: 'Dishes',

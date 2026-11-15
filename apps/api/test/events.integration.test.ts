@@ -230,6 +230,16 @@ describe('events api', () => {
     expect((await call('POST', '/api/events', kevin, { title: 'X', startsAt: 'not-a-date' })).statusCode).toBe(400)
   })
 
+  // Pins the route's error bodies before its body moved into createEventFromInput.
+  it('keeps its create error bodies, including a bad rrule', async () => {
+    const body = async (b: unknown) => JSON.parse((await call('POST', '/api/events', kevin, b)).body)
+    expect(await body({ startsAt: '2026-06-08T13:30:00Z' })).toEqual({ error: 'BadRequest', message: 'title is required' })
+    expect(await body({ title: 'X', startsAt: 'nope' })).toEqual({ error: 'BadRequest', message: 'startsAt must be a valid timestamp' })
+    expect(await body({ title: 'X', startsAt: '2026-06-08T13:30:00Z', rrule: 'NOT A RULE' })).toEqual({
+      error: 'BadRequest', message: 'rrule is not a valid RFC5545 recurrence rule',
+    })
+  })
+
   it('rejects foreign people, goals, steps, and calendars on create and update', async () => {
     const base = { title: 'Boundary event', startsAt: '2026-06-08T18:00:00Z' }
     for (const foreignRef of [

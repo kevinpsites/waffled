@@ -421,6 +421,18 @@ describe('meal planning api', () => {
     expect((await call('POST', '/api/meals/plan', kevin, { recipeId })).statusCode).toBe(400)
   })
 
+  // Pins the route's error bodies before its body moved into planMealSlot.
+  it('keeps its 400 bodies for each malformed field', async () => {
+    const body = async (b: unknown) => JSON.parse((await call('POST', '/api/meals/plan', kevin, b)).body)
+    const slot = { date: '2026-06-12', mealType: 'dinner' }
+    expect(await body({ recipeId })).toEqual({ error: 'BadRequest', message: 'date (YYYY-MM-DD) and mealType are required' })
+    expect(await body({ ...slot, mealType: 'brunch' })).toEqual({ error: 'BadRequest', message: 'date (YYYY-MM-DD) and mealType are required' })
+    expect(await body({ ...slot, recipeId: 'nope' })).toEqual({ error: 'BadRequest', message: 'recipeId must be a uuid' })
+    expect(await body({ ...slot, recipeId, mealId: recipeId })).toEqual({ error: 'BadRequest', message: 'a slot takes recipeId or mealId, not both' })
+    expect(await body({ ...slot, mealId: 'nope' })).toEqual({ error: 'BadRequest', message: 'mealId must be a uuid' })
+    expect(await body({ ...slot, cookPersonId: 'nope' })).toEqual({ error: 'BadRequest', message: 'cookPersonId must be a uuid' })
+  })
+
   it('rejects a malformed recipeId (400) but allows none (leftovers)', async () => {
     expect(
       (await call('POST', '/api/meals/plan', kevin, { date: '2026-06-10', mealType: 'dinner', recipeId: 'nope' }))

@@ -3,7 +3,7 @@
 // visibility rule: tools/list filters by it and tools/call re-checks it, so the two cannot
 // drift. A scope that is not a real catalog string fails closed even for a full-rights user.
 import { ALL_SCOPES, keyHasScope } from '../api-keys/api-keys'
-import { moduleEnabled, type ModuleKey } from '../../platform/modules'
+import { moduleEnabled, rewardsEnabled, type ModuleKey } from '../../platform/modules'
 import type { Tenant } from '../households/households'
 
 export interface ToolAnnotations {
@@ -14,14 +14,29 @@ export interface ToolAnnotations {
   openWorldHint?: boolean
 }
 
+// What a tool hands back: `data` becomes structuredContent (and its JSON the first text
+// block), `summary` a one-line rendering. `createdId` names a row a write created, so the
+// audit can point at it.
+export interface ToolOutput {
+  data: Record<string, unknown>
+  summary: string
+  createdId?: string
+}
+
 export interface ToolDef {
   name: string
   description: string
   scope: string
-  module?: ModuleKey
+  // 'rewards' is not a module of its own: it is the chores module's rewards sub-toggle.
+  module?: ModuleKey | 'rewards'
   annotations?: ToolAnnotations
   inputSchema: { type: 'object'; properties?: Record<string, unknown>; required?: string[]; [k: string]: unknown }
-  run: (tenant: Tenant, args: Record<string, unknown>) => Promise<unknown>
+  run: (tenant: Tenant, args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolOutput>
+}
+
+// A write tool changes household data; tools/call audits every call to one.
+export function isWriteTool(tool: ToolDef): boolean {
+  return tool.scope.endsWith(':write')
 }
 
 // A bad argument the caller can fix. tools/call reports it as an `isError` result, which
@@ -39,6 +54,12 @@ export type CallerScopes = string[] | null
 export interface ToolContext {
   scopes: CallerScopes
   householdSettings: unknown
+  timezone: string
+}
+
+// Does the caller's grant cover `scope`? A user session (null) covers everything.
+export function callerHas(ctx: ToolContext, scope: string): boolean {
+  return ctx.scopes === null || keyHasScope(ctx.scopes, scope)
 }
 
 const tools = new Map<string, ToolDef>()
@@ -67,7 +88,9 @@ export function denialFor(tool: ToolDef, ctx: ToolContext): string | null {
   if (ctx.scopes !== null && !keyHasScope(ctx.scopes, tool.scope)) {
     return `API key is missing the required scope: ${tool.scope}`
   }
-  if (tool.module && !moduleEnabled(ctx.householdSettings, tool.module)) {
+  if (tool.module === 'rewards') {
+    if (!rewardsEnabled(ctx.householdSettings)) return 'Rewards are turned off'
+  } else if (tool.module && !moduleEnabled(ctx.householdSettings, tool.module)) {
     return `The ${tool.module} module is not enabled`
   }
   return null

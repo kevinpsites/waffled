@@ -5,7 +5,7 @@ import { requireCapability } from '../../platform/permissions'
 import { moduleRoutes } from '../../platform/route-guards'
 import type { ChoreEditScope, CreateChoreInput } from './chores.types'
 import {
-  createChore,
+  createChoreFromInput,
   updateChore,
   softDeleteChore,
   requestedDate,
@@ -112,23 +112,9 @@ export function registerChoreRoutes(api: Api): void {
     cleared: await clearStoredProofs(tenant.householdId),
   })))
 
-  // Create a chore. Carving the family up takes 'chore.manage', but anyone can add a chore
-  // that's up-for-grabs or one for themselves — no gate there.
+  // Create a chore (validation + the chore.manage carve-out live in the service).
   api.post('/api/chores', tenantRoute(async (tenant, req: Request, res: Response) => {
-    const body = (req.body ?? {}) as Partial<CreateChoreInput>
-    if (!body.title || !body.title.trim()) {
-      return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
-    }
-    if (body.personId != null) {
-      if (!UUID_RE.test(body.personId)) {
-        return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
-      }
-      await assertPersonInHousehold(tenant.householdId, body.personId)
-    }
-    if (body.personId != null && body.personId !== tenant.personId) {
-      await requireCapability(tenant, 'chore.manage')
-    }
-    const chore = await createChore(tenant, { ...body, title: body.title.trim() })
+    const chore = await createChoreFromInput(tenant, (req.body ?? {}) as Partial<CreateChoreInput>)
     return res.status(201).json({ chore: presentChore(chore) })
   }))
 
