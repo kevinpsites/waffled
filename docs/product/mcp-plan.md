@@ -254,7 +254,7 @@ Code and local MCP clients work on the LAN. The how-to must lead with this.
 - **Where it lives:** `modules/oauth/` — `metadata.ts` (both discovery documents, the
   `WWW-Authenticate` challenge, the scope copy), `clients.ts` (DCR + CIMD), `tokens.ts`
   (`mintMcpAccess`, `verifyMcpAccess`), `oauth.ts` (consent, token endpoint, grants, the
-  per-call grant check). Tables in `0108_oauth_mcp_grants.sql`: `oauth_clients`,
+  per-call grant check). Tables in `0109_oauth_mcp_grants.sql`: `oauth_clients`,
   `oauth_grants` (composite household FK to `persons`), `oauth_codes`,
   `oauth_refresh_tokens`, plus the `mcp_audit.grant_id` FK.
 - **Origins:** every URL comes from `PUBLIC_BASE_URL`, else the forwarded Host/Proto (the
@@ -297,8 +297,8 @@ Code and local MCP clients work on the LAN. The how-to must lead with this.
 - **Destructive tools** (`delete`, `redeem`, and `plan_meal`, which replaces the slot's
   meal, calendar event and prep reminder) carry `destructiveHint: true` so clients
   confirm; `delete` on a recurring series states the scope in its result.
-- **Attribution without touching every table:** `mcp_audit` (`0107_mcp_audit.sql`) —
-  household, person, `api_key_id`, `grant_id` (FK to `oauth_grants` since 0108), tool,
+- **Attribution without touching every table:** `mcp_audit` (`0108_mcp_audit.sql`) —
+  household, person, `api_key_id`, `grant_id` (FK to `oauth_grants` since 0109), tool,
   `target_ids`, outcome `ok | error | denied`, error text, time. `tools/call` writes one
   row for every call to a `:write`-scoped tool, including scope, module and capability
   refusals (a 403 is `denied`). `target_ids` keeps only id-shaped arguments plus the
