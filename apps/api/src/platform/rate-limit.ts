@@ -10,6 +10,8 @@ interface Limit {
   key: string
   max: number
   windowMs: number
+  // An OAuth endpoint answers in RFC 6749's error shape, which its clients parse.
+  oauth?: boolean
 }
 
 const buckets = new Map<string, Bucket>()
@@ -97,6 +99,21 @@ function routeLimits(req: Request): Limit[] {
         scope: 'auth-refresh', key: ip,
         max: positiveInt('RATE_LIMIT_REFRESH_MAX', 60), windowMs: 5 * 60_000,
       }]
+    // Public. A connector exchanges a code once and refreshes about hourly. client_id is
+    // unauthenticated input, so the address bucket stops rotating it to dodge the first.
+    case 'POST /api/oauth/token': {
+      const clientId = String((req.body as { client_id?: unknown } | undefined)?.client_id ?? '') || '<missing>'
+      return [
+        {
+          scope: 'oauth-token-client', key: `${ip}|${clientId}`, oauth: true,
+          max: positiveInt('RATE_LIMIT_OAUTH_TOKEN_MAX', 30), windowMs: 10 * 60_000,
+        },
+        {
+          scope: 'oauth-token-ip', key: ip, oauth: true,
+          max: positiveInt('RATE_LIMIT_OAUTH_TOKEN_IP_MAX', 300), windowMs: 10 * 60_000,
+        },
+      ]
+    }
     // Unauthenticated and writes a row; Claude registers once per new connection.
     case 'POST /api/oauth/register':
       return [{
@@ -127,6 +144,14 @@ export function sensitiveRouteRateLimit(req: Request, res: Response, next: NextF
   const now = Date.now()
   for (const limit of routeLimits(req)) {
     const retryAfter = consume(limit, now)
+    if (retryAfter !== null && limit.oauth) {
+      res
+        .status(429)
+        .header('Retry-After', String(retryAfter))
+        .header('Cache-Control', 'no-store')
+        .json({ error: 'temporarily_unavailable', error_description: `Too many token requests. Retry after ${retryAfter} seconds.` })
+      return
+    }
     if (retryAfter !== null) {
       res
         .status(429)
@@ -140,4 +165,14 @@ export function sensitiveRouteRateLimit(req: Request, res: Response, next: NextF
     }
   }
   next()
+}
+
+// Per caller, checked by /mcp after authentication (this middleware runs before it): the
+// caller is the API key, the connector grant, or the signed-in subject. Returns the
+// seconds to wait when over the limit, else null.
+export function mcpToolCallRetryAfter(caller: string): number | null {
+  return consume({
+    scope: 'mcp-tool-call', key: caller,
+    max: positiveInt('RATE_LIMIT_MCP_CALL_MAX', 120), windowMs: 60_000,
+  }, Date.now())
 }

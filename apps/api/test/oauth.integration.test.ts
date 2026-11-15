@@ -4,7 +4,7 @@
 // Postgres.
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { createHash, randomBytes } from 'node:crypto'
-import { startMcpHarness, bearer, json, header, type McpHarness, type RunResult } from './helpers/mcp'
+import { startMcpHarness, bearer, json, header, RELAXED_LIMIT, type McpHarness, type RunResult } from './helpers/mcp'
 
 let h: McpHarness
 let session = '' // Kevin's account-scoped session, from a real password login
@@ -643,5 +643,50 @@ describe('full happy path', () => {
     const after = await mcp(rotated.access_token, 'tools/list')
     expect(after.statusCode).toBe(401)
     expect(header(after, 'www-authenticate')).toContain('resource_metadata=')
+  })
+})
+
+describe('rate limits', () => {
+  afterEach(() => {
+    process.env.RATE_LIMIT_OAUTH_TOKEN_MAX = RELAXED_LIMIT
+    process.env.RATE_LIMIT_OAUTH_TOKEN_IP_MAX = RELAXED_LIMIT
+    process.env.RATE_LIMIT_MCP_CALL_MAX = RELAXED_LIMIT
+  })
+
+  function expectOAuthLimited(res: RunResult) {
+    expect(res.statusCode, res.body).toBe(429)
+    expect(Number(header(res, 'Retry-After'))).toBeGreaterThan(0)
+    expect(header(res, 'Cache-Control')).toBe('no-store')
+    expect(json(res)).toMatchObject({ error: 'temporarily_unavailable', error_description: expect.stringMatching(/too many/i) })
+  }
+
+  it('the token endpoint is limited per client and address, answering an OAuth error', async () => {
+    const a = await connect(['family:read'])
+    const b = await connect(['family:read'])
+    // Each connection has spent one token request on its code exchange.
+    process.env.RATE_LIMIT_OAUTH_TOKEN_MAX = '2'
+    const rotated = await refresh(a.flow.clientId, a.refresh)
+    expect(rotated.statusCode, rotated.body).toBe(200)
+    expectOAuthLimited(await refresh(a.flow.clientId, json(rotated).refresh_token))
+    // The refused request never reached the token logic: the refresh token still works later.
+    expect((await refresh(b.flow.clientId, b.refresh)).statusCode).toBe(200)
+  })
+
+  it('the token endpoint is also limited per address, so rotating client_id does not escape it', async () => {
+    process.env.RATE_LIMIT_OAUTH_TOKEN_IP_MAX = '1'
+    expectOAuthLimited(await refresh(`fresh-client-${Date.now()}`, 'not-a-token'))
+  })
+
+  it('a grant token is limited per grant on tools/call', async () => {
+    const a = await connect(['family:read'])
+    const b = await connect(['family:read'])
+    process.env.RATE_LIMIT_MCP_CALL_MAX = '1'
+    const whoami = (t: string) => mcp(t, 'tools/call', { name: 'whoami', arguments: {} })
+    expect((await whoami(a.access)).statusCode).toBe(200)
+    const limited = await whoami(a.access)
+    expect(limited.statusCode).toBe(429)
+    expect(json(limited).error.code).toBe(-32000)
+    // Same person, another connection: its own bucket.
+    expect((await whoami(b.access)).statusCode).toBe(200)
   })
 })

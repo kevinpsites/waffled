@@ -1,7 +1,7 @@
 // The /mcp endpoint: stateless MCP Streamable-HTTP JSON-RPC over the normal auth gate,
 // driven through real routes against a throwaway Postgres (Testcontainers).
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { startMcpHarness, mint, bearer, keyed, json, header, type McpHarness } from './helpers/mcp'
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
+import { startMcpHarness, mint, bearer, keyed, json, header, RELAXED_LIMIT, type McpHarness } from './helpers/mcp'
 
 let h: McpHarness
 let kevin = ''
@@ -327,6 +327,63 @@ describe('mcp_audit — one row per write-tool call, refusals included', () => {
     await h.sql('delete from mcp_audit')
     await rpc(bearer(kevin), 'tools/call', { name: 'whoami', arguments: {} })
     expect(await audits()).toEqual([])
+  })
+})
+
+describe('rate limits on tools/call', () => {
+  afterEach(() => {
+    process.env.RATE_LIMIT_MCP_CALL_MAX = RELAXED_LIMIT
+  })
+  const whoami = (headers: Record<string, string>, id = 1) => rpc(headers, 'tools/call', { name: 'whoami', arguments: {} }, id)
+
+  it('a key over its limit gets HTTP 429, a JSON-RPC error and Retry-After; another key is unaffected', async () => {
+    const a = await mintKey('rl-a', ['family:read'])
+    const b = await mintKey('rl-b', ['family:read'])
+    process.env.RATE_LIMIT_MCP_CALL_MAX = '2'
+    expect((await whoami(keyed(a))).statusCode).toBe(200)
+    expect((await whoami(bearer(a))).statusCode).toBe(200)
+
+    const limited = await whoami(keyed(a), 7)
+    expect(limited.statusCode).toBe(429)
+    expect(Number(header(limited, 'Retry-After'))).toBeGreaterThan(0)
+    const body = json(limited)
+    expect(body).toMatchObject({ jsonrpc: '2.0', id: 7, error: { code: -32000 } })
+    expect(body.error.message).toMatch(/too many tool calls/i)
+    expect(body.error.data.retryAfter).toBeGreaterThan(0)
+
+    expect((await whoami(keyed(b))).statusCode).toBe(200)
+  })
+
+  it('tools/list and ping do not count and still answer while tool calls are limited', async () => {
+    const k = await mintKey('rl-list', ['family:read'])
+    process.env.RATE_LIMIT_MCP_CALL_MAX = '1'
+    for (let i = 0; i < 3; i++) expect((await rpc(keyed(k), 'tools/list')).statusCode).toBe(200)
+    expect((await whoami(keyed(k))).statusCode).toBe(200)
+    expect((await whoami(keyed(k))).statusCode).toBe(429)
+    expect((await rpc(keyed(k), 'tools/list')).statusCode).toBe(200)
+    expect((await rpc(keyed(k), 'ping')).statusCode).toBe(200)
+  })
+
+  it('a user session is limited by its sign-in, and an unknown tool counts too', async () => {
+    const kelly = await h.addMember('Ratelimit', 'adult')
+    const other = await h.addMember('Unlimited', 'adult')
+    process.env.RATE_LIMIT_MCP_CALL_MAX = '1'
+    const unknown = await rpc(bearer(kelly.token), 'tools/call', { name: 'no_such_tool', arguments: {} })
+    expect(json(unknown).error.code).toBe(-32602)
+    expect((await whoami(bearer(kelly.token))).statusCode).toBe(429)
+    expect((await whoami(bearer(other.token))).statusCode).toBe(200)
+  })
+
+  it('a refused call is not audited', async () => {
+    const k = await mintKey('rl-audit', ['lists:write'])
+    process.env.RATE_LIMIT_MCP_CALL_MAX = '1'
+    const add = () => rpc(keyed(k), 'tools/call', { name: 'add_list_item', arguments: { name: 'Eggs' } })
+    expect((await add()).statusCode).toBe(200)
+    expect((await add()).statusCode).toBe(429)
+    const rows = await h.sql<{ n: number }>(
+      `select count(*)::int as n from mcp_audit a join api_keys k on k.id = a.api_key_id where k.name = 'rl-audit'`
+    )
+    expect(rows[0].n).toBe(1)
   })
 })
 

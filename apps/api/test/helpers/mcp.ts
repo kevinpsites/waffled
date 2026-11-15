@@ -8,6 +8,9 @@ import { runMigrations } from '../../src/migrate'
 
 const SECRET = 'waffled-local-dev-secret-change-me'
 
+export const RELAXED_LIMIT = '100000'
+export const RELAXED_LIMITS = ['RATE_LIMIT_MCP_CALL_MAX', 'RATE_LIMIT_OAUTH_TOKEN_MAX', 'RATE_LIMIT_OAUTH_TOKEN_IP_MAX']
+
 export interface RunResult {
   statusCode: number
   headers?: Record<string, string>
@@ -53,6 +56,9 @@ export async function startMcpHarness(): Promise<McpHarness> {
   process.env.DATABASE_URL = url
   delete process.env.AUTH0_DOMAIN
   delete process.env.PUBLIC_BASE_URL
+  // Every harness request shares one caller address and a few callers, so the suites would
+  // trip the per-caller limits; a limit test lowers one and restores it with RELAXED_LIMIT.
+  for (const k of RELAXED_LIMITS) process.env[k] ??= RELAXED_LIMIT
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const app: any = (await import('../../src/app')).default
   const db = await import('../../src/platform/db')
