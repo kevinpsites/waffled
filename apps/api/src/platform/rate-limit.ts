@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { NextFunction, Request, Response } from 'lambda-api'
 
 interface Bucket {
@@ -60,7 +61,7 @@ function consume(limit: Limit, now: number): number | null {
   return null
 }
 
-function routeLimits(req: Request): Limit[] {
+export function routeLimits(req: Request): Limit[] {
   const ip = clientAddress(req)
   const route = `${req.method.toUpperCase()} ${req.path}`
   switch (route) {
@@ -102,7 +103,11 @@ function routeLimits(req: Request): Limit[] {
     // Public. A connector exchanges a code once and refreshes about hourly. client_id is
     // unauthenticated input, so the address bucket stops rotating it to dodge the first.
     case 'POST /api/oauth/token': {
-      const clientId = String((req.body as { client_id?: unknown } | undefined)?.client_id ?? '') || '<missing>'
+      const raw = (req.body as { client_id?: unknown } | undefined)?.client_id
+      // Hashed so an unbounded input can't grow the shared bucket map's keys.
+      const clientId = typeof raw === 'string' && raw
+        ? createHash('sha256').update(raw).digest('hex').slice(0, 16)
+        : '<missing>'
       return [
         {
           scope: 'oauth-token-client', key: `${ip}|${clientId}`, oauth: true,
