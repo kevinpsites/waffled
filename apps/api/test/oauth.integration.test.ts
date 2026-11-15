@@ -528,6 +528,17 @@ describe('token endpoint', () => {
     expect(json(await refresh('someone-else', r1)).error).toBe('invalid_grant')
   })
 
+  it('a refused refresh does not spend the refresh token', async () => {
+    const { flow, refresh: r1 } = await connect(['calendar:read'])
+    expect(json(await refresh('someone-else', r1)).error).toBe('invalid_grant')
+    const widened = await postForm('/api/oauth/token', { grant_type: 'refresh_token', refresh_token: r1, client_id: flow.clientId, scope: 'calendar:read calendar:write' })
+    expect(json(widened).error).toBe('invalid_scope')
+    const wrongResource = await postForm('/api/oauth/token', { grant_type: 'refresh_token', refresh_token: r1, client_id: flow.clientId, resource: 'https://other.example/mcp' })
+    expect(json(wrongResource).error).toBe('invalid_target')
+    const ok = await refresh(flow.clientId, r1)
+    expect(ok.statusCode, ok.body).toBe(200)
+  })
+
   it('refuses a refresh once the person loses ai.connect', async () => {
     const member = await h.addMember('Ada', 'adult')
     const setLogin = await h.call('PUT', `/api/persons/${member.id}/login`, h.owner, { email: 'ada@example.com', password: 'adapass123' })

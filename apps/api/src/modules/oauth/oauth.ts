@@ -271,21 +271,19 @@ async function refreshTokenGrant(body: Record<string, string>, res: Response) {
   const token = body.refresh_token
   if (!token || !body.client_id) return tokenError(res, 'invalid_request', 'refresh_token and client_id are required')
   const hash = sha256(token)
-  // Atomic single use: of two concurrent refreshes, the loser finds used_at set and is
-  // treated as a replay.
-  const { rows } = await query<{ grant_id: string }>(
-    `update oauth_refresh_tokens set used_at = now()
-      where token_hash = $1 and used_at is null and expires_at > now()
-      returning grant_id`,
+  const { rows } = await query<{ grant_id: string; used: boolean; expired: boolean }>(
+    `select grant_id, used_at is not null as used, expires_at <= now() as expired
+       from oauth_refresh_tokens where token_hash = $1`,
     [hash]
   )
-  const r = rows[0]
-  if (!r) {
-    const replay = await query<{ grant_id: string }>(`select grant_id from oauth_refresh_tokens where token_hash = $1 and used_at is not null`, [hash])
-    if (replay.rows[0]) await revokeGrant(replay.rows[0].grant_id)
+  const t = rows[0]
+  const replayed = async () => {
+    await revokeGrant(t.grant_id)
     return tokenError(res, 'invalid_grant', 'The refresh token is invalid, expired or was already used')
   }
-  const grant = await liveGrant(r.grant_id)
+  if (!t || t.expired) return tokenError(res, 'invalid_grant', 'The refresh token is invalid, expired or was already used')
+  if (t.used) return replayed()
+  const grant = await liveGrant(t.grant_id)
   if (!grant || grant.clientId !== body.client_id) return tokenError(res, 'invalid_grant', 'This connection is no longer allowed')
   if (resourceMismatch(body, grant.resource)) return tokenError(res, 'invalid_target', `resource must be ${grant.resource}`)
 
@@ -295,6 +293,9 @@ async function refreshTokenGrant(body: Record<string, string>, res: Response) {
     if (!asked.every((s) => grant.scopes.includes(s))) return tokenError(res, 'invalid_scope', 'A refresh cannot widen the granted scopes')
     scopes = asked
   }
+  // Spent only once every check passed; of two concurrent refreshes, one wins this update.
+  const spent = await query(`update oauth_refresh_tokens set used_at = now() where token_hash = $1 and used_at is null`, [hash])
+  if (!spent.rowCount) return replayed()
   return issueTokens(res, grant, scopes)
 }
 
