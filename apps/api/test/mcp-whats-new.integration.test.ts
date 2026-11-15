@@ -2,6 +2,7 @@
 // A). Derived from existing timestamps, and filtered through each module's own read rules,
 // so a private event or a goal in someone else's private list never shows up.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { createServer, type Server } from 'node:http'
 import { startMcpHarness, bearer, keyed, json, type McpHarness } from './helpers/mcp'
 import { localYmd, zonedToUtc } from '../src/modules/capture/tz'
 
@@ -13,6 +14,8 @@ let wally = { id: '', token: '' }
 let today = ''
 let since = ''
 let settleMs = 0
+let feedServer: Server | undefined
+let feedIcs = ''
 
 interface Item {
   kind: string
@@ -34,6 +37,10 @@ async function whatsNew(headers: Record<string, string>, args: Record<string, un
 const titled = (items: Item[], kind: string) => items.filter((i) => i.kind === kind).map((i) => i.title)
 // whats_new lags real time, so a change is only reported once it is older than the lag.
 const settle = () => new Promise((r) => setTimeout(r, settleMs + 500))
+
+const vevent = (uid: string, summary: string, start: string, extra: string[] = []) =>
+  ['BEGIN:VEVENT', `UID:${uid}`, `DTSTART:${start}`, `SUMMARY:${summary}`, ...extra, 'END:VEVENT']
+const vcal = (events: string[][]) => ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Waffled test//EN', ...events.flat(), 'END:VCALENDAR'].join('\r\n')
 
 async function find(headers: Record<string, string>, tool: string, description: string, verb?: string) {
   const res = await h.tool(headers, tool, { description, ...(verb ? { verb } : {}) })
@@ -117,10 +124,30 @@ beforeAll(async () => {
   expect(swept.deleted_at).not.toBeNull()
   for (const id of [stove, lantern]) expect((await h.call('DELETE', `/api/list-items/${id}`, kevin)).statusCode).toBe(204)
 
+  // A real feed, synced twice: one event vanishes upstream, one is marked cancelled, one stays.
+  const start = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')
+  const gone = vevent('gone@feed', 'Feed field trip', start(5))
+  const kept = vevent('kept@feed', 'Feed spirit week', start(6))
+  feedIcs = vcal([gone, vevent('cancel@feed', 'Feed concert', start(7)), kept])
+  feedServer = createServer((_req, res) => {
+    res.setHeader('content-type', 'text/calendar')
+    res.end(feedIcs)
+  })
+  const port = await new Promise<number>((r) => feedServer!.listen(0, '127.0.0.1', () => r((feedServer!.address() as { port: number }).port)))
+  const feed = json(await h.call('POST', '/api/calendar/feeds', kevin, { url: `http://127.0.0.1:${port}/feed.ics`, name: 'Feed' })).feed.id
+  expect((await h.call('POST', `/api/calendar/feeds/${feed}/sync`, kevin)).statusCode).toBe(200)
+  await h.sql(`alter table events disable trigger trg_events_updated`)
+  await h.sql(`update events set created_at = now() - interval '3 days', updated_at = now() - interval '3 days' where origin_ref_id = $1`, [feed])
+  await h.sql(`alter table events enable trigger trg_events_updated`)
+  feedIcs = vcal([vevent('cancel@feed', 'Feed concert', start(7), ['STATUS:CANCELLED']), kept])
+  const resync = json(await h.call('POST', `/api/calendar/feeds/${feed}/sync`, kevin))
+  expect(resync).toMatchObject({ deleted: 2, updated: 1 })
+
   await settle()
 })
 
 afterAll(async () => {
+  await new Promise<void>((r) => (feedServer ? feedServer.close(() => r()) : r()))
   await h?.close()
 })
 
@@ -162,6 +189,12 @@ describe('whats_new — events', () => {
   it('does not report a calendar-feed event as changed just because the feed was polled again', async () => {
     const titles = (await whatsNew(bearer(kevin))).items.map((i) => i.title)
     expect(titles).not.toContain('School assembly')
+    expect(titles).not.toContain('Feed spirit week')
+  })
+
+  it('reports a feed event removed or cancelled upstream', async () => {
+    const cancelled = titled((await whatsNew(bearer(kevin))).items, 'event_cancelled')
+    expect(cancelled).toEqual(expect.arrayContaining(['Feed field trip', 'Feed concert']))
   })
 
   it('a key without calendar:read gets no events section, and says so', async () => {
