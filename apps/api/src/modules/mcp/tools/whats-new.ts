@@ -319,19 +319,12 @@ defineTool({
       `select ${us(`greatest(now() - interval '${SETTLE_MS} milliseconds', $1::timestamptz)`)} as until`,
       [since]
     )).rows
-    const sections: string[] = []
-    const omitted: string[] = []
-    const all: Change[] = []
+    const on = SECTIONS.filter((s) => sectionOn(ctx, s.scope, s.module))
+    const sections = on.map((s) => s.name)
+    const omitted = SECTIONS.filter((s) => !on.includes(s)).map((s) => s.name)
     // One past the cap per section: a section's own cut is then visible, and the merged
     // oldest-first cut stays exact, since no section dropped anything older than the cap.
-    for (const s of SECTIONS) {
-      if (!sectionOn(ctx, s.scope, s.module)) {
-        omitted.push(s.name)
-        continue
-      }
-      sections.push(s.name)
-      all.push(...(await s.read(tenant, since, until, MAX_ITEMS + 1)))
-    }
+    const all: Change[] = (await Promise.all(on.map((s) => s.read(tenant, since, until, MAX_ITEMS + 1)))).flat()
     // `at` is fixed-width UTC text, so it sorts as a string.
     all.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
     let items = all.slice(0, MAX_ITEMS)
