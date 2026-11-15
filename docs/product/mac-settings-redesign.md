@@ -179,7 +179,10 @@ Re-audited against `apps/api` before any key was added. Corrections to §3:
   `AUTH_FORCE_PASSWORD` were already forwarded** — §3b listed them as missing.
 - **The rate-limit keys are `RATE_LIMIT_*_MAX`**, and there are nine, not eight
   (`RATE_LIMIT_OIDC_EXCHANGE_MAX` was missed). Their windows are fixed in the api; only
-  the counts are tunable.
+  the counts are tunable. The api has since gained four AI-connector limits
+  (`RATE_LIMIT_OAUTH_REGISTER_MAX`, `RATE_LIMIT_OAUTH_TOKEN_MAX`,
+  `RATE_LIMIT_OAUTH_TOKEN_IP_MAX`, `RATE_LIMIT_MCP_CALL_MAX`) that the runtime's allowlist
+  and `SettingsCatalog` don't pass through yet, so a Mac keeps their defaults.
 - **`OTEL_*` would do nothing natively.** The api loads OpenTelemetry only through the
   Dockerfile's `NODE_OPTIONS=--require=/app/dist/otel.js` preload, and the bundle ships
   neither `otel.js` nor `@opentelemetry/*` on purpose. Now §3d item 8.
