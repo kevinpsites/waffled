@@ -103,6 +103,20 @@ beforeAll(async () => {
     [h.householdId, at(addDays(today, 4), '09:00'), school.id]
   )
 
+  // A custom list: the auto-clear sweep removes an item checked more than a day ago when
+  // the list is loaded; people remove the other two.
+  const camping = json(await h.call('POST', '/api/lists', kevin, { name: 'Camping' })).list.id
+  const addCamp = async (name: string) => json(await h.call('POST', `/api/lists/${camping}/items`, kevin, { name })).item.id as string
+  const tent = await addCamp('Tent')
+  const stove = await addCamp('Stove')
+  const lantern = await addCamp('Lantern')
+  for (const id of [tent, lantern]) expect((await h.call('PATCH', `/api/list-items/${id}`, kevin, { checked: true })).statusCode).toBe(200)
+  await h.sql(`update list_items set checked_at = now() - interval '2 days' where id = $1`, [tent])
+  expect((await h.call('GET', `/api/lists/${camping}`, kevin)).statusCode).toBe(200)
+  const [swept] = await h.sql<{ deleted_at: Date | null }>(`select deleted_at from list_items where id = $1`, [tent])
+  expect(swept.deleted_at).not.toBeNull()
+  for (const id of [stove, lantern]) expect((await h.call('DELETE', `/api/list-items/${id}`, kevin)).statusCode).toBe(204)
+
   await settle()
 })
 
@@ -174,6 +188,12 @@ describe('whats_new — chores, lists, goals, rewards, meals', () => {
     const bread = items.find((i) => i.kind === 'list_item_checked' && i.title === 'Bread')
     expect(bread?.who).toEqual({ id: kelly.id, name: 'Kelly' })
     expect(titled(items, 'list_item_removed')).toContain('Eggs')
+  })
+
+  it('reports what a person removed, never what the auto-clear sweep did', async () => {
+    const removed = titled((await whatsNew(bearer(kevin))).items, 'list_item_removed')
+    expect(removed).toEqual(expect.arrayContaining(['Stove', 'Lantern']))
+    expect(removed).not.toContain('Tent')
   })
 
   it("reports goal progress on the goal's display axis, never from a private list the caller isn't in", async () => {

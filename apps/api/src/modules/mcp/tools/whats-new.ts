@@ -161,7 +161,12 @@ const SECTIONS: Section[] = [
       // removals are noise; the meals section reports the plan change behind them.
       const { rows } = await query<{ kind: string; id: string; list_id: string; list_name: string; title: string; at: string; by: string | null; by_name: string | null }>(
         `with li as (
-           select li.*, l.name as list_name
+           select li.*, l.name as list_name,
+                  -- The auto-clear sweep's own rule (autoClearCheckedItems), so a removal it
+                  -- could have made is nobody's action. A person deleting an item already
+                  -- past the window, before the sweep ran, is indistinguishable and left out.
+                  (l.list_type = 'custom' and li.checked and li.deleted_at >= li.checked_at + l.auto_clear_checked)
+                    as auto_cleared
              from list_items li
              join lists l on l.id = li.list_id and l.deleted_at is null and l.list_type <> 'template'
             where li.household_id = $1 and li.status = 'active'
@@ -174,7 +179,7 @@ const SECTIONS: Section[] = [
              from li where checked and checked_at > $2 and deleted_at is null
            union all
            select 'list_item_removed', id, list_id, list_name, name, deleted_at, null
-             from li where deleted_at > $2 and source <> 'auto'
+             from li where deleted_at > $2 and source <> 'auto' and auto_cleared is not true
          ) x
          left join persons p on p.id = x.by
          where x.at <= $4

@@ -389,7 +389,7 @@ each feed row, so their `updated_at` is not a change.
 |---|---|---|---|
 | events | `calendar:read` | `event_added` / `_updated` / `_cancelled` (one per event, at its latest change: `created_at`, `updated_at`, `deleted_at`, synced `status = 'cancelled'`); `occurrence_changed` / `_cancelled` (`event_overrides`) | `visibleTo` (personal events only to their owner); no `who` (events record no author) |
 | chores | `chores:read`, chores | `chore_completed` (`completed_at`, `completed_by`, awaiting approval flagged); `chore_added` (`chores.created_at`) | none beyond the household (chores are family-wide) |
-| lists | `lists:read`, lists | `list_item_added` (`created_by`), `_checked` (`checked_at`, `checked_by`), `_removed` (`deleted_at`) | templates and suggestions left out; meal-plan-built (`auto`) rows' adds and removals left out as rebuild noise |
+| lists | `lists:read`, lists | `list_item_added` (`created_by`), `_checked` (`checked_at`, `checked_by`), `_removed` (`deleted_at`; removals matching the custom-list auto-clear rule, `deleted_at >= checked_at + auto_clear_checked`, are the sweep's and left out) | templates and suggestions left out; meal-plan-built (`auto`) rows' adds and removals left out as rebuild noise |
 | goals | `goals:read`, goals | `goal_logged` (`goal_logs.created_at`, amount, unit, the goal's `goalDisplay` progress) | `goalsVisibleTo`: no goal in a private list the caller isn't in |
 | rewards | `rewards:read`, rewards on | `reward_earned` / `reward_spent` (`ledger_entries`, sign of `amount`) | household-wide, like `get_reward_balances` |
 | meals | `meals:read`, meals | `meal_planned` / `meal_changed` / `meal_removed` (`meal_plan_entries`) | household-wide |
