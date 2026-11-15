@@ -63,6 +63,14 @@ export function callerHas(ctx: ToolContext, scope: string): boolean {
   return ctx.scopes === null || keyHasScope(ctx.scopes, scope)
 }
 
+// A section of a composite read (get_today, whats_new): the caller's grant must cover the
+// section's own scope and its module must be on, so a family:read tool never widens a grant.
+export function sectionOn(ctx: ToolContext, scope: string, module?: ToolDef['module']): boolean {
+  if (!callerHas(ctx, scope)) return false
+  if (module === 'rewards') return rewardsEnabled(ctx.householdSettings)
+  return !module || moduleEnabled(ctx.householdSettings, module)
+}
+
 const tools = new Map<string, ToolDef>()
 
 export function defineTool(def: ToolDef): ToolDef {

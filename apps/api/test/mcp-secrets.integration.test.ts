@@ -112,6 +112,7 @@ function readArgs(today: string): Record<string, Record<string, unknown>> {
     find_events: { description: 'soccer' },
     find_goals: { description: 'reading' },
     find_rewards: { description: 'ice cream' },
+    whats_new: { since: new Date(Date.now() - 86_400_000).toISOString() },
   }
 }
 
