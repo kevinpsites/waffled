@@ -23,6 +23,9 @@ declare module 'lambda-api' {
 }
 
 const CODE_TTL_SECONDS = 60
+// A rotated refresh token presented again this soon is taken for a client racing itself
+// (Claude refreshes both proactively and on a 401), not a theft: refused, not revoked.
+const REFRESH_REUSE_GRACE_SECONDS = 30
 const REFRESH_TTL_DAYS = Number(process.env.MCP_REFRESH_TOKEN_TTL_DAYS) || 30
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 // Claude appends offline_access when a server lists it; we always issue a refresh token,
@@ -235,26 +238,32 @@ async function authorizationCodeGrant(body: Record<string, string>, res: Respons
     redirect_uri: string
     code_challenge: string
     resource: string
+    consumed: boolean
     expired: boolean
   }>(
-    `update oauth_codes set consumed_at = now()
-      where code_hash = $1 and consumed_at is null
-      returning grant_id, client_id, redirect_uri, code_challenge, resource, expires_at <= now() as expired`,
+    `select grant_id, client_id, redirect_uri, code_challenge, resource,
+            consumed_at is not null as consumed, expires_at <= now() as expired
+       from oauth_codes where code_hash = $1`,
     [hash]
   )
   const c = rows[0]
-  if (!c) {
-    // A second use of a code means it leaked; OAuth 2.1 §4.1.3 says kill what it issued.
-    const spent = await query<{ grant_id: string }>(`select grant_id from oauth_codes where code_hash = $1`, [hash])
-    if (spent.rows[0]) await revokeGrant(spent.rows[0].grant_id)
-    return tokenError(res, 'invalid_grant', 'The authorization code is invalid or was already used')
-  }
-  if (c.expired) return tokenError(res, 'invalid_grant', 'The authorization code has expired')
+  if (!c) return tokenError(res, 'invalid_grant', 'The authorization code is invalid or was already used')
+  // Nothing is spent or revoked until the caller proves it is the client that asked: a
+  // leaked code alone must not be able to burn a code or kill a grant.
   if (c.client_id !== body.client_id || c.redirect_uri !== body.redirect_uri) {
     return tokenError(res, 'invalid_grant', 'client_id or redirect_uri does not match the authorization request')
   }
   if (!pkceMatches(body.code_verifier, c.code_challenge)) return tokenError(res, 'invalid_grant', 'PKCE verification failed')
+  const replayed = async () => {
+    // A second use of a code means it leaked; OAuth 2.1 §4.1.3 says kill what it issued.
+    await revokeGrant(c.grant_id)
+    return tokenError(res, 'invalid_grant', 'The authorization code is invalid or was already used')
+  }
+  if (c.consumed) return replayed()
+  if (c.expired) return tokenError(res, 'invalid_grant', 'The authorization code has expired')
   if (resourceMismatch(body, c.resource)) return tokenError(res, 'invalid_target', `resource must be ${c.resource}`)
+  const consumed = await query(`update oauth_codes set consumed_at = now() where code_hash = $1 and consumed_at is null`, [hash])
+  if (!consumed.rowCount) return replayed()
 
   const grant = await liveGrant(c.grant_id)
   if (!grant) return tokenError(res, 'invalid_grant', 'This connection is no longer allowed')
@@ -265,21 +274,20 @@ async function refreshTokenGrant(body: Record<string, string>, res: Response) {
   const token = body.refresh_token
   if (!token || !body.client_id) return tokenError(res, 'invalid_request', 'refresh_token and client_id are required')
   const hash = sha256(token)
-  // Atomic single use: of two concurrent refreshes, the loser finds used_at set and is
-  // treated as a replay.
-  const { rows } = await query<{ grant_id: string }>(
-    `update oauth_refresh_tokens set used_at = now()
-      where token_hash = $1 and used_at is null and expires_at > now()
-      returning grant_id`,
-    [hash]
+  const { rows } = await query<{ grant_id: string; used: boolean; recently_used: boolean; expired: boolean }>(
+    `select grant_id, used_at is not null as used, expires_at <= now() as expired,
+            used_at > now() - ($2 || ' seconds')::interval as recently_used
+       from oauth_refresh_tokens where token_hash = $1`,
+    [hash, String(REFRESH_REUSE_GRACE_SECONDS)]
   )
-  const r = rows[0]
-  if (!r) {
-    const replay = await query<{ grant_id: string }>(`select grant_id from oauth_refresh_tokens where token_hash = $1 and used_at is not null`, [hash])
-    if (replay.rows[0]) await revokeGrant(replay.rows[0].grant_id)
-    return tokenError(res, 'invalid_grant', 'The refresh token is invalid, expired or was already used')
+  const t = rows[0]
+  const refused = () => tokenError(res, 'invalid_grant', 'The refresh token is invalid, expired or was already used')
+  if (!t || t.expired) return refused()
+  if (t.used) {
+    if (!t.recently_used) await revokeGrant(t.grant_id)
+    return refused()
   }
-  const grant = await liveGrant(r.grant_id)
+  const grant = await liveGrant(t.grant_id)
   if (!grant || grant.clientId !== body.client_id) return tokenError(res, 'invalid_grant', 'This connection is no longer allowed')
   if (resourceMismatch(body, grant.resource)) return tokenError(res, 'invalid_target', `resource must be ${grant.resource}`)
 
@@ -289,6 +297,10 @@ async function refreshTokenGrant(body: Record<string, string>, res: Response) {
     if (!asked.every((s) => grant.scopes.includes(s))) return tokenError(res, 'invalid_scope', 'A refresh cannot widen the granted scopes')
     scopes = asked
   }
+  // Spent only once every check passed. Of two concurrent refreshes one wins this update;
+  // the loser is inside the grace window by definition.
+  const spent = await query(`update oauth_refresh_tokens set used_at = now() where token_hash = $1 and used_at is null`, [hash])
+  if (!spent.rowCount) return refused()
   return issueTokens(res, grant, scopes)
 }
 
@@ -332,12 +344,12 @@ interface GrantRow {
 }
 
 // A session sees the grants of its account (any household it belongs to — consent may
-// pick a household other than the active one), or only its own person's without one.
-async function ownGrantsWhere(req: Request): Promise<{ sql: string; param: string }> {
-  const { tenant, accountId } = await sessionAccount(req)
+// pick a household other than the active one). Like consent, it needs a real account: a
+// kiosk or device session must not see or revoke a member's connections.
+async function ownAccountId(req: Request): Promise<string> {
+  const { accountId } = await sessionAccount(req)
+  if (!accountId) throw new AuthError('This session has no Waffled account', 403)
   return accountId
-    ? { sql: 'p.account_id = $1', param: accountId }
-    : { sql: 'g.person_id = $1', param: tenant.personId }
 }
 
 export function registerOAuthRoutes(api: Api): void {
@@ -416,17 +428,17 @@ export function registerOAuthRoutes(api: Api): void {
   })
 
   api.get('/api/oauth/grants', async (req: Request) => {
-    const where = await ownGrantsWhere(req)
+    const accountId = await ownAccountId(req)
     const { rows } = await query<GrantRow>(
       `select g.id, g.client_id, g.client_name, g.redirect_uri, g.scopes, g.household_id, h.name as household_name,
               g.created_at, g.last_used_at
          from oauth_grants g
          join persons p on p.household_id = g.household_id and p.id = g.person_id
          join households h on h.id = g.household_id
-        where ${where.sql} and g.revoked_at is null
+        where p.account_id = $1 and g.revoked_at is null
           and exists (select 1 from oauth_refresh_tokens t where t.grant_id = g.id)
         order by g.created_at desc`,
-      [where.param]
+      [accountId]
     )
     return {
       grants: rows.map((r) => ({
@@ -447,12 +459,12 @@ export function registerOAuthRoutes(api: Api): void {
   api.delete('/api/oauth/grants/:id', async (req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'connection not found' })
-    const where = await ownGrantsWhere(req)
+    const accountId = await ownAccountId(req)
     const { rows } = await query<{ id: string }>(
       `select g.id from oauth_grants g
          join persons p on p.household_id = g.household_id and p.id = g.person_id
-        where ${where.sql} and g.id = $2 and g.revoked_at is null`,
-      [where.param, id]
+        where p.account_id = $1 and g.id = $2 and g.revoked_at is null`,
+      [accountId, id]
     )
     if (!rows[0]) return res.status(404).json({ error: 'NotFound', message: 'connection not found' })
     await revokeGrant(id)

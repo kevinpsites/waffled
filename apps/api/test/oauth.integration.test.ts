@@ -4,7 +4,7 @@
 // Postgres.
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { createHash, randomBytes } from 'node:crypto'
-import { startMcpHarness, bearer, json, header, RELAXED_LIMIT, type McpHarness, type RunResult } from './helpers/mcp'
+import { startMcpHarness, bearer, json, header, mint, RELAXED_LIMIT, type McpHarness, type RunResult } from './helpers/mcp'
 
 let h: McpHarness
 let session = '' // Kevin's account-scoped session, from a real password login
@@ -17,6 +17,7 @@ const RESOURCE = `${ORIGIN}/mcp`
 const CALLBACK = 'https://claude.ai/api/mcp/auth_callback'
 
 const b64url = (b: Buffer) => b.toString('base64url')
+const sha256hex = (s: string) => createHash('sha256').update(s).digest('hex')
 function pkce() {
   const verifier = b64url(randomBytes(32))
   return { verifier, challenge: b64url(createHash('sha256').update(verifier).digest()) }
@@ -471,6 +472,27 @@ describe('token endpoint', () => {
     expect((await mcp(json(first).access_token, 'ping')).statusCode).toBe(401)
   })
 
+  it('a failed exchange does not spend the code or revoke its grant', async () => {
+    const flow = await startFlow()
+    const code = await codeFrom(await approve(flow, ['calendar:read']))
+    const bad: Array<Record<string, string>> = [{ code_verifier: b64url(randomBytes(32)) }, { client_id: 'someone-else' }, { resource: 'https://other.example/mcp' }]
+    for (const extra of bad) {
+      expect((await exchange(flow, code, extra)).statusCode, JSON.stringify(extra)).toBe(400)
+    }
+    const ok = await exchange(flow, code)
+    expect(ok.statusCode, ok.body).toBe(200)
+    expect((await mcp(json(ok).access_token, 'ping')).statusCode).toBe(200)
+  })
+
+  it('a replay without the verifier is refused but does not revoke', async () => {
+    const flow = await startFlow()
+    const code = await codeFrom(await approve(flow, ['calendar:read']))
+    const first = await exchange(flow, code)
+    expect(first.statusCode).toBe(200)
+    expect(json(await exchange(flow, code, { code_verifier: b64url(randomBytes(32)) })).error).toBe('invalid_grant')
+    expect((await mcp(json(first).access_token, 'ping')).statusCode).toBe(200)
+  })
+
   it('an expired code is invalid_grant', async () => {
     const flow = await startFlow()
     const code = await codeFrom(await approve(flow, ['calendar:read']))
@@ -494,6 +516,7 @@ describe('token endpoint', () => {
     const access2 = json(second).access_token
     expect((await mcp(access2, 'ping')).statusCode).toBe(200)
 
+    await h.sql(`update oauth_refresh_tokens set used_at = now() - interval '31 seconds' where token_hash = $1`, [sha256hex(r1)])
     const replay = await refresh(flow.clientId, r1)
     expect(replay.statusCode).toBe(400)
     expect(json(replay).error).toBe('invalid_grant')
@@ -502,9 +525,30 @@ describe('token endpoint', () => {
     expect((await mcp(access2, 'ping')).statusCode).toBe(401)
   })
 
+  it('a reuse within 30 seconds of rotation is refused without revoking (a refresh race)', async () => {
+    const { flow, refresh: r1 } = await connect(['calendar:read'])
+    const second = await refresh(flow.clientId, r1)
+    expect(second.statusCode).toBe(200)
+    await h.sql(`update oauth_refresh_tokens set used_at = now() - interval '29 seconds' where token_hash = $1`, [sha256hex(r1)])
+    expect(json(await refresh(flow.clientId, r1)).error).toBe('invalid_grant')
+    expect((await mcp(json(second).access_token, 'ping')).statusCode).toBe(200)
+    expect((await refresh(flow.clientId, json(second).refresh_token)).statusCode).toBe(200)
+  })
+
   it('a refresh by another client is invalid_grant', async () => {
     const { refresh: r1 } = await connect(['calendar:read'])
     expect(json(await refresh('someone-else', r1)).error).toBe('invalid_grant')
+  })
+
+  it('a refused refresh does not spend the refresh token', async () => {
+    const { flow, refresh: r1 } = await connect(['calendar:read'])
+    expect(json(await refresh('someone-else', r1)).error).toBe('invalid_grant')
+    const widened = await postForm('/api/oauth/token', { grant_type: 'refresh_token', refresh_token: r1, client_id: flow.clientId, scope: 'calendar:read calendar:write' })
+    expect(json(widened).error).toBe('invalid_scope')
+    const wrongResource = await postForm('/api/oauth/token', { grant_type: 'refresh_token', refresh_token: r1, client_id: flow.clientId, resource: 'https://other.example/mcp' })
+    expect(json(wrongResource).error).toBe('invalid_target')
+    const ok = await refresh(flow.clientId, r1)
+    expect(ok.statusCode, ok.body).toBe(200)
   })
 
   it('refuses a refresh once the person loses ai.connect', async () => {
@@ -615,6 +659,20 @@ describe('connected apps', () => {
     expect(json(await refresh(flow.clientId, r)).error).toBe('invalid_grant')
     expect(await h.sql(`select 1 from oauth_refresh_tokens where grant_id = $1`, [grantId])).toEqual([])
     expect(json(await h.run('GET', '/api/oauth/grants', bearer(session))).grants.map((g: { id: string }) => g.id)).not.toContain(grantId)
+  })
+
+  it('a kiosk session cannot list or revoke grants', async () => {
+    const { access } = await connect(['family:read'])
+    const grantId = await grantIdOf(access)
+    const kioskSub = `kiosk:${h.ownerId}`
+    await h.sql(
+      `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1, $2, 'password', $3, true)`,
+      [h.householdId, h.ownerId, kioskSub]
+    )
+    const kiosk = mint(kioskSub)
+    expect((await h.run('GET', '/api/oauth/grants', bearer(kiosk))).statusCode).toBe(403)
+    expect((await h.run('DELETE', `/api/oauth/grants/${grantId}`, bearer(kiosk))).statusCode).toBe(403)
+    expect((await mcp(access, 'ping')).statusCode).toBe(200)
   })
 
   it('an MCP token cannot manage grants', async () => {
