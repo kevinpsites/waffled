@@ -38,16 +38,24 @@ function sweep(now: number): void {
   }
 }
 
-function consume(limit: Limit, now: number): number | null {
+const mapKey = (limit: Limit) => `${limit.scope}:${limit.key}`
+
+// Seconds to wait if this limit is spent, else null. Reads only.
+function retryAfter(limit: Limit, now: number): number | null {
+  const current = buckets.get(mapKey(limit))
+  if (current && current.resetAt > now && current.count >= limit.max) {
+    return Math.max(1, Math.ceil((current.resetAt - now) / 1000))
+  }
+  return null
+}
+
+function charge(limit: Limit, now: number): void {
   if (++checks % 500 === 0) sweep(now)
-  const mapKey = `${limit.scope}:${limit.key}`
-  const current = buckets.get(mapKey)
+  const key = mapKey(limit)
+  const current = buckets.get(key)
   if (current && current.resetAt > now) {
-    if (current.count >= limit.max) {
-      return Math.max(1, Math.ceil((current.resetAt - now) / 1000))
-    }
     current.count += 1
-    return null
+    return
   }
 
   if (!current && buckets.size >= MAX_BUCKETS) {
@@ -57,8 +65,7 @@ function consume(limit: Limit, now: number): number | null {
       if (oldest) buckets.delete(oldest)
     }
   }
-  buckets.set(mapKey, { count: 1, resetAt: now + limit.windowMs })
-  return null
+  buckets.set(key, { count: 1, resetAt: now + limit.windowMs })
 }
 
 export function routeLimits(req: Request): Limit[] {
@@ -147,28 +154,31 @@ export function routeLimits(req: Request): Limit[] {
 
 export function sensitiveRouteRateLimit(req: Request, res: Response, next: NextFunction): void {
   const now = Date.now()
-  for (const limit of routeLimits(req)) {
-    const retryAfter = consume(limit, now)
-    if (retryAfter !== null && limit.oauth) {
+  const limits = routeLimits(req)
+  // Every bucket is checked before any is charged, so a refused request costs nothing.
+  for (const limit of limits) {
+    const wait = retryAfter(limit, now)
+    if (wait !== null && limit.oauth) {
       res
         .status(429)
-        .header('Retry-After', String(retryAfter))
+        .header('Retry-After', String(wait))
         .header('Cache-Control', 'no-store')
-        .json({ error: 'temporarily_unavailable', error_description: `Too many token requests. Retry after ${retryAfter} seconds.` })
+        .json({ error: 'temporarily_unavailable', error_description: `Too many token requests. Retry after ${wait} seconds.` })
       return
     }
-    if (retryAfter !== null) {
+    if (wait !== null) {
       res
         .status(429)
-        .header('Retry-After', String(retryAfter))
+        .header('Retry-After', String(wait))
         .json({
           error: 'TooManyRequests',
           message: 'Too many requests. Try again soon.',
-          retryAfter,
+          retryAfter: wait,
         })
       return
     }
   }
+  for (const limit of limits) charge(limit, now)
   next()
 }
 
@@ -176,8 +186,12 @@ export function sensitiveRouteRateLimit(req: Request, res: Response, next: NextF
 // caller is the API key, the connector grant, or the signed-in subject. Returns the
 // seconds to wait when over the limit, else null.
 export function mcpToolCallRetryAfter(caller: string): number | null {
-  return consume({
+  const limit = {
     scope: 'mcp-tool-call', key: caller,
     max: positiveInt('RATE_LIMIT_MCP_CALL_MAX', 120), windowMs: 60_000,
-  }, Date.now())
+  }
+  const now = Date.now()
+  const wait = retryAfter(limit, now)
+  if (wait === null) charge(limit, now)
+  return wait
 }

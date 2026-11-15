@@ -88,4 +88,16 @@ describe('OAuth token endpoint', () => {
     expect(token('198.51.100.21', { nested: true }).json).toHaveBeenCalledWith(limited)
     expect(token('198.51.100.21', undefined).json).toHaveBeenCalledWith(limited)
   })
+
+  it('does not charge the client bucket for a request the address bucket refuses', () => {
+    process.env.RATE_LIMIT_OAUTH_TOKEN_MAX = '3'
+    process.env.RATE_LIMIT_OAUTH_TOKEN_IP_MAX = '2'
+    expect(token('198.51.100.22', 'client-a').next).toHaveBeenCalledOnce()
+    expect(token('198.51.100.22', 'client-a').next).toHaveBeenCalledOnce()
+    for (let i = 0; i < 3; i++) expect(token('198.51.100.22', 'client-a').json).toHaveBeenCalledWith(limited)
+    // Only the two admitted requests count against client-a.
+    process.env.RATE_LIMIT_OAUTH_TOKEN_IP_MAX = '100'
+    expect(token('198.51.100.22', 'client-a').next).toHaveBeenCalledOnce()
+    expect(token('198.51.100.22', 'client-a').json).toHaveBeenCalledWith(limited)
+  })
 })
