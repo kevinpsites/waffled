@@ -344,12 +344,12 @@ interface GrantRow {
 }
 
 // A session sees the grants of its account (any household it belongs to — consent may
-// pick a household other than the active one), or only its own person's without one.
-async function ownGrantsWhere(req: Request): Promise<{ sql: string; param: string }> {
-  const { tenant, accountId } = await sessionAccount(req)
+// pick a household other than the active one). Like consent, it needs a real account: a
+// kiosk or device session must not see or revoke a member's connections.
+async function ownAccountId(req: Request): Promise<string> {
+  const { accountId } = await sessionAccount(req)
+  if (!accountId) throw new AuthError('This session has no Waffled account', 403)
   return accountId
-    ? { sql: 'p.account_id = $1', param: accountId }
-    : { sql: 'g.person_id = $1', param: tenant.personId }
 }
 
 export function registerOAuthRoutes(api: Api): void {
@@ -428,17 +428,17 @@ export function registerOAuthRoutes(api: Api): void {
   })
 
   api.get('/api/oauth/grants', async (req: Request) => {
-    const where = await ownGrantsWhere(req)
+    const accountId = await ownAccountId(req)
     const { rows } = await query<GrantRow>(
       `select g.id, g.client_id, g.client_name, g.redirect_uri, g.scopes, g.household_id, h.name as household_name,
               g.created_at, g.last_used_at
          from oauth_grants g
          join persons p on p.household_id = g.household_id and p.id = g.person_id
          join households h on h.id = g.household_id
-        where ${where.sql} and g.revoked_at is null
+        where p.account_id = $1 and g.revoked_at is null
           and exists (select 1 from oauth_refresh_tokens t where t.grant_id = g.id)
         order by g.created_at desc`,
-      [where.param]
+      [accountId]
     )
     return {
       grants: rows.map((r) => ({
@@ -459,12 +459,12 @@ export function registerOAuthRoutes(api: Api): void {
   api.delete('/api/oauth/grants/:id', async (req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'connection not found' })
-    const where = await ownGrantsWhere(req)
+    const accountId = await ownAccountId(req)
     const { rows } = await query<{ id: string }>(
       `select g.id from oauth_grants g
          join persons p on p.household_id = g.household_id and p.id = g.person_id
-        where ${where.sql} and g.id = $2 and g.revoked_at is null`,
-      [where.param, id]
+        where p.account_id = $1 and g.id = $2 and g.revoked_at is null`,
+      [accountId, id]
     )
     if (!rows[0]) return res.status(404).json({ error: 'NotFound', message: 'connection not found' })
     await revokeGrant(id)

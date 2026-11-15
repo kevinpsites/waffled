@@ -4,7 +4,7 @@
 // Postgres.
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { createHash, randomBytes } from 'node:crypto'
-import { startMcpHarness, bearer, json, header, type McpHarness, type RunResult } from './helpers/mcp'
+import { startMcpHarness, bearer, json, header, mint, type McpHarness, type RunResult } from './helpers/mcp'
 
 let h: McpHarness
 let session = '' // Kevin's account-scoped session, from a real password login
@@ -659,6 +659,20 @@ describe('connected apps', () => {
     expect(json(await refresh(flow.clientId, r)).error).toBe('invalid_grant')
     expect(await h.sql(`select 1 from oauth_refresh_tokens where grant_id = $1`, [grantId])).toEqual([])
     expect(json(await h.run('GET', '/api/oauth/grants', bearer(session))).grants.map((g: { id: string }) => g.id)).not.toContain(grantId)
+  })
+
+  it('a kiosk session cannot list or revoke grants', async () => {
+    const { access } = await connect(['family:read'])
+    const grantId = await grantIdOf(access)
+    const kioskSub = `kiosk:${h.ownerId}`
+    await h.sql(
+      `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1, $2, 'password', $3, true)`,
+      [h.householdId, h.ownerId, kioskSub]
+    )
+    const kiosk = mint(kioskSub)
+    expect((await h.run('GET', '/api/oauth/grants', bearer(kiosk))).statusCode).toBe(403)
+    expect((await h.run('DELETE', `/api/oauth/grants/${grantId}`, bearer(kiosk))).statusCode).toBe(403)
+    expect((await mcp(access, 'ping')).statusCode).toBe(200)
   })
 
   it('an MCP token cannot manage grants', async () => {
