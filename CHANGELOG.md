@@ -40,6 +40,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   many requests, retry in N seconds" answer instead of a result, and the connector sign-in
   endpoint is throttled the same way. Operators can change the limits with
   `RATE_LIMIT_MCP_CALL_MAX`, `RATE_LIMIT_OAUTH_TOKEN_MAX` and `RATE_LIMIT_OAUTH_TOKEN_IP_MAX`.
+- **"What's new" for AI agents.** A connected agent can ask what changed in the household
+  since a time (up to two weeks back): events added, moved or cancelled, chores finished and
+  by whom, list items added, checked off or removed, goal progress, stars earned or spent,
+  and meal plan changes. It is made for agents that check in on their own every few hours,
+  like Claude Duet, and only ever shows what that person could already see: someone else's
+  personal events and goals in private lists stay out, and each part needs the matching
+  permission granted at sign-in.
 
 ### Changed
 

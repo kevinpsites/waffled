@@ -1,8 +1,9 @@
 # MCP server — let an AI agent query and act on a household
 
-**Status:** in progress — §2 (the endpoint), §3 (the tools), §4 (sign-in through the
-Waffled login, consent, Connected apps) and §5 (audit trail, rate limits, the secrets guard)
-are built; §6 `whats_new` remains, and iOS Connected apps follows the web. **Written:** 2026-11-13.
+**Status:** built (preview) — §2 (the endpoint), §3 (the tools), §4 (sign-in through the
+Waffled login, consent, Connected apps), §5 (audit trail, rate limits, the secrets guard)
+and §6 tier A (`whats_new`). Still open: iOS Connected apps, §6 tiers B and C, and Auth0
+metadata (§4). **Written:** 2026-11-13.
 **Scope agreed:** the endpoint (§2), the tools (§3), sign-in through the normal Waffled
 login (§4), the safety rules (§5) and change-notification tier A (§6), one PR each (§7).
 Web + api first; iOS after.
@@ -117,6 +118,7 @@ truncated }`, and the summary says when it cut). Arguments are checked by hand i
 | `get_reward_balances` | `rewards:read` | rewards | `balancesSummary` |
 | `list_family` | `family:read` | — | `listPersons` (no account emails) |
 | `search_recipes(query, limit?)` | `meals:read` | meals | `listRecipes` ranked by `rankCandidates` |
+| `whats_new(since)` | `family:read` + each section's own | per section | §6 tier A |
 
 `get_today`'s sections are events (`calendar:read`), chores (`chores:read`, chores on),
 meals (`meals:read`, meals on) and the open grocery count (`lists:read`, lists on); a
@@ -335,7 +337,7 @@ Code and local MCP clients work on the LAN. The how-to must lead with this.
 
 ---
 
-## 6. Change notifications — tier A in this stack, B and C deferred
+## 6. Change notifications — tier A built, B and C deferred
 
 What they would add: MCP by itself is pull-only, so the agent learns things only when
 asked. Notifications would let an agent *react* ("tell me when the kids finish their
@@ -347,7 +349,7 @@ cheap, accurate "what changed since my last check" read, not push. Three tiers:
 
 | Tier | What | Size |
 |---|---|---|
-| A | `whats_new(since)` read tool derived from existing columns: every domain table already has `household_id`, `updated_at`, soft-delete `deleted_at`; plus `chore_instances.completed_at`, goal logs and ledger entries (stars earned/spent). No migration. | ~2–3 days, fits in phase 1 |
+| A | `whats_new(since)` read tool derived from existing columns: every domain table already has `household_id`, `updated_at`, soft-delete `deleted_at`; plus `chore_instances.completed_at`, goal logs and ledger entries (stars earned/spent). No migration. | Built (PR 5) |
 | B | A real change log: one generic trigger (same pattern as `set_updated_at`) on ~15 tables into `household_changes` (cursor, entity, op, changed columns, actor, source), a pruning job beside the existing schedulers in `server.ts`, and `changes_since(cursor)`. Catches all three write paths (REST, PowerSync uploads, calendar sync) and gives "who changed what". | ~1 week |
 | C | Push: webhooks per grant, or MCP resource subscriptions over SSE fed by LISTEN/NOTIFY. No current client benefits. | ~1 week, skip |
 
@@ -360,6 +362,24 @@ write paths needs that one line.
 **Both tiers must filter by what the reading person may see.** A private calendar event
 (`0074_calendar_visibility`) must not leak through the feed to another member's agent, so
 the feed reuses each module's read filters rather than returning raw rows.
+
+### As built (PR 5): `whats_new(since)`
+
+`modules/mcp/tools/whats-new.ts`. `since` is an ISO timestamp with an offset, at most 14
+days back and not in the future (60 s of clock skew allowed); anything else is an
+`isError`. Like `get_today` it is `family:read` and each section also needs its own scope
+and module (`sectionOn` in the registry, shared with `get_today`); left-out sections are
+named in `omitted`. Items are `{ kind, at, who, title, ids, … }`, oldest first, capped at
+200; a cut result says so and returns `nextSince` (the last item's `at`) to continue from.
+
+| Section | Scope / module | Kinds (source columns) | Visibility |
+|---|---|---|---|
+| events | `calendar:read` | `event_added` / `_updated` / `_cancelled` (one per event, at its latest change: `created_at`, `updated_at`, `deleted_at`, synced `status = 'cancelled'`); `occurrence_changed` / `_cancelled` (`event_overrides`) | `visibleTo` (personal events only to their owner); no `who` (events record no author) |
+| chores | `chores:read`, chores | `chore_completed` (`completed_at`, `completed_by`, awaiting approval flagged); `chore_added` (`chores.created_at`) | none beyond the household (chores are family-wide) |
+| lists | `lists:read`, lists | `list_item_added` (`created_by`), `_checked` (`checked_at`, `checked_by`), `_removed` (`deleted_at`) | templates and suggestions left out; meal-plan-built (`auto`) rows' adds and removals left out as rebuild noise |
+| goals | `goals:read`, goals | `goal_logged` (`goal_logs.created_at`, amount, unit, the goal's `goalDisplay` progress) | `goalsVisibleTo`: no goal in a private list the caller isn't in |
+| rewards | `rewards:read`, rewards on | `reward_earned` / `reward_spent` (`ledger_entries`, sign of `amount`) | household-wide, like `get_reward_balances` |
+| meals | `meals:read`, meals | `meal_planned` / `meal_changed` / `meal_removed` (`meal_plan_entries`) | household-wide |
 
 ---
 
