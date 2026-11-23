@@ -2,7 +2,7 @@
 // authorize → callback (token exchange + JWKS verify + invite-gated link) → handoff
 // exchange → authed request. Also covers the not-invited rejection and the
 // password-lockout guard. Fresh container so the instance starts uninitialized.
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { createServer, type Server } from 'node:http'
 import { generateKeyPairSync, randomUUID, type KeyObject } from 'node:crypto'
@@ -97,8 +97,8 @@ function startIdp(publicKey: KeyObject): Promise<void> {
 
 // ── app driver ──────────────────────────────────────────────────────────────────
 interface RunResult { statusCode: number; headers: Record<string, string>; body: string }
-function call(method: string, path: string, opts: { body?: unknown; token?: string; query?: Record<string, string> } = {}): Promise<RunResult> {
-  const headers: Record<string, string> = {}
+function call(method: string, path: string, opts: { body?: unknown; token?: string; query?: Record<string, string>; headers?: Record<string, string> } = {}): Promise<RunResult> {
+  const headers: Record<string, string> = { ...opts.headers }
   if (opts.token) headers.authorization = `Bearer ${opts.token}`
   if (opts.body !== undefined) headers['content-type'] = 'application/json'
   return app.run(
@@ -113,6 +113,8 @@ function call(method: string, path: string, opts: { body?: unknown; token?: stri
     {}
   ) as Promise<RunResult>
 }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let config: any
 const json = (r: RunResult) => JSON.parse(r.body)
 const loc = (r: RunResult) => r.headers.location ?? r.headers.Location ?? ''
 const mint = (sub: string) => jwt.sign({}, LOCAL_SECRET, {
@@ -138,6 +140,7 @@ beforeAll(async () => {
   delete process.env.AUTH_FORCE_PASSWORD
   app = (await import('../src/app')).default
   ;({ query, closePool } = await import('../src/platform/db'))
+  ;({ config } = await import('../src/platform/config'))
 }, 120_000)
 afterAll(async () => {
   await closePool?.()
@@ -267,6 +270,35 @@ describe('OIDC login', () => {
     expect((await call('GET', '/api/auth/oidc/start', {
       query: { redirect: 'attacker://auth/callback' },
     })).statusCode).toBe(400)
+  })
+
+  describe('callback origin', () => {
+    const forwarded = { host: 'waffled.test', 'x-forwarded-host': 'evil.example', 'x-forwarded-proto': 'https' }
+    const redirectUriFor = async () => {
+      const start = await call('GET', '/api/auth/oidc/start', { headers: forwarded })
+      expect(start.statusCode).toBe(302)
+      return new URL(loc(start)).searchParams.get('redirect_uri')
+    }
+    afterEach(() => {
+      config.trustProxy = false
+      delete process.env.PUBLIC_BASE_URL
+    })
+
+    it('uses the Host header and ignores x-forwarded-* when TRUST_PROXY is unset', async () => {
+      config.trustProxy = false
+      expect(await redirectUriFor()).toBe('http://waffled.test/api/auth/oidc/callback')
+    })
+
+    it('uses x-forwarded-* when TRUST_PROXY is set', async () => {
+      config.trustProxy = true
+      expect(await redirectUriFor()).toBe('https://evil.example/api/auth/oidc/callback')
+    })
+
+    it('prefers PUBLIC_BASE_URL over any header', async () => {
+      config.trustProxy = true
+      process.env.PUBLIC_BASE_URL = 'https://w.example'
+      expect(await redirectUriFor()).toBe('https://w.example/api/auth/oidc/callback')
+    })
   })
 
   it('escapes identity-provider errors rendered in the browser result page', async () => {

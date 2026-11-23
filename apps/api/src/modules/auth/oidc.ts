@@ -152,14 +152,13 @@ function oidcSubject(issuer: string, sub: string): string {
 
 // ── flow helpers ───────────────────────────────────────────────────────────────
 // Absolute base URL for building the redirect_uri the IdP calls back. Honors
-// PUBLIC_BASE_URL (set it when behind a proxy that rewrites host), else derives
-// from the forwarded request headers (Caddy sets x-forwarded-proto/host).
+// PUBLIC_BASE_URL, else the Host header; x-forwarded-* only when TRUST_PROXY is set.
 function baseUrl(req: Request): string {
   const env = process.env.PUBLIC_BASE_URL?.replace(/\/$/, '')
   if (env) return env
   const h = req.headers as Record<string, string | undefined>
-  const proto = h['x-forwarded-proto'] ?? 'http'
-  const host = h['x-forwarded-host'] ?? h.host ?? 'localhost:8080'
+  const proto = (config.trustProxy && h['x-forwarded-proto']) || 'http'
+  const host = (config.trustProxy && h['x-forwarded-host']) || h.host || 'localhost:8080'
   return `${proto}://${host}`
 }
 function callbackUri(req: Request): string {

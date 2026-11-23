@@ -1,5 +1,6 @@
 import http from 'node:http'
 import { isIP, type AddressInfo } from 'node:net'
+import { config } from './config'
 import { log } from './logger'
 import { serveStatic, type StaticOptions } from './static'
 
@@ -40,20 +41,25 @@ function payloadTooLarge(res: http.ServerResponse, limit: number): void {
   res.end(body)
 }
 
-function clientAddress(req: http.IncomingMessage): string {
-  // The bundled Caddy config replaces X-Forwarded-For with one validated address.
-  // Direct access is bound to host loopback and is therefore a trusted operator path.
-  const forwarded = req.headers['x-forwarded-for']
-  if (typeof forwarded === 'string') {
-    const address = forwarded.trim()
-    if (isIP(address)) return address
+function clientAddress(req: http.IncomingMessage, trustProxy: boolean): string {
+  // X-Forwarded-For is attacker-controlled unless a proxy we run overwrites it.
+  if (trustProxy) {
+    const forwarded = req.headers['x-forwarded-for']
+    if (typeof forwarded === 'string') {
+      const address = forwarded.trim()
+      if (isIP(address)) return address
+    }
   }
   return req.socket.remoteAddress ?? 'unknown'
 }
 
 // Adapt Node requests to the API Gateway REST-v1 event shape used by lambda-api.
 // Limits are enforced while streaming, before any Buffer.concat or JSON parsing.
-export function createHttpServer(api: ApiRunner, opts: StaticOptions = {}): http.Server {
+export function createHttpServer(
+  api: ApiRunner,
+  opts: StaticOptions & { trustProxy?: boolean } = {},
+): http.Server {
+  const trustProxy = opts.trustProxy ?? config.trustProxy
   return http.createServer(async (req, res) => {
     if (opts.webRoot || opts.mediaRoot) {
       try {
@@ -95,7 +101,7 @@ export function createHttpServer(api: ApiRunner, opts: StaticOptions = {}): http
         path: url.pathname,
         queryStringParameters: Object.fromEntries(url.searchParams),
         headers: req.headers,
-        requestContext: { identity: { sourceIp: clientAddress(req) } },
+        requestContext: { identity: { sourceIp: clientAddress(req, trustProxy) } },
         body: chunks.length ? Buffer.concat(chunks).toString('utf8') : null,
         isBase64Encoded: false,
       }
