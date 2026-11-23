@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   setup script, `.env`, or reverse proxy to configure. Upgrading is `docker compose pull && docker
   compose up -d`; existing installs switch with the new migration guide. Requires Docker Compose
   v2.24 or newer.
+- **Nightly backups are opt-in.** The backup service no longer runs by default. Add
+  `BACKUP_ENABLED=true` to `.env` and start with `docker compose --profile backup up -d` to keep
+  nightly dumps; the migration guide covers this.
 
 ### Removed
 

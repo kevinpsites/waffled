@@ -55,6 +55,17 @@ own reverse proxy at port 8080; see [Reverse proxy & TLS](/install/reverse-proxy
 
 ## 3. Start it
 
+> **Nightly backups are now off unless you turn them on.** The old stack backed up every
+> night by default; the new one does not. To keep backups, add `BACKUP_ENABLED=true` to
+> `.env` and start with the backup profile instead:
+>
+> ```bash
+> docker compose --profile backup up -d
+> ```
+>
+> Use `--profile backup` on every later `pull` and `up` too. See
+> [Backup & restore](/operations/backup/).
+
 ```bash
 docker compose up -d
 ```
@@ -75,6 +86,3 @@ Use your own `POSTGRES_USER` if you changed it. You can also remove the old Cadd
 PowerSync volumes (`docker volume ls` shows them) and the old checkout. The compose file
 keeps `wal_level=logical` for 0.16.x so the upgrade can read existing replication state; a
 later release drops it.
-
-Backups work as before but are now opt-in: `docker compose --profile backup up -d` and
-`BACKUP_ENABLED=true` in `.env`. See [Backup & restore](/operations/backup/).
