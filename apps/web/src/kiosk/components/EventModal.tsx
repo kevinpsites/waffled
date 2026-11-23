@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router'
 import { api, usePersons, useGoals, useRhythms, goalsApi, goalCalendarApi, calendarsApi, mealsApi, localToday, invalidateGetCache, type AgendaEvent, type CalendarLink, type GoalStep } from '../../lib/api'
 import { suggestGoalForEvent } from '../../lib/goal-match'
 import { Icon } from '../icons'
-import { createEventLocal, updateEventLocal, deleteEventLocal, tombstoneEvent } from '../../lib/powersync/events-local'
 import { parseRepeat, buildRrule, describeRrule, weekdayCode, nthWeekdayOfMonth, type RepeatFreq, type CustomUnit, type MonthlyMode } from './recurrence'
 import { WeekdayChips } from './WeekdayChips'
 import { EventWhenField } from './EventWhenField'
@@ -173,9 +172,9 @@ export function EventModal({
   const [seriesLoadAttempt, setSeriesLoadAttempt] = useState(0)
   const [scopePrompt, setScopePrompt] = useState<null | 'save' | 'delete'>(null)
 
-  // PowerSync occurrence rows carry the series/occurrence handles but not the
-  // master's recurrence metadata. Hydrate it before enabling edits so a local
-  // occurrence can never fall through the one-off write path.
+  // Occurrence rows carry the series/occurrence handles but not the master's
+  // recurrence metadata. Hydrate it before enabling edits so an occurrence can
+  // never fall through the one-off write path.
   useEffect(() => {
     if (!wasRecurring || initialRrule || !event) return
     let alive = true
@@ -557,17 +556,13 @@ export function EventModal({
       return
     }
     setSaving(true)
-    const { draft, restPayload, chosenCal } = buildPayloads()
+    const { restPayload, chosenCal } = buildPayloads()
     try {
-      // Prefer the local DB (instant, offline-capable); fall back to REST when
-      // PowerSync isn't running.
       if (editing) {
-        if (!(await updateEventLocal(event!.id, draft))) await api.updateEvent(event!.id, restPayload)
+        await api.updateEvent(event!.id, restPayload)
         invalidateGetCache(`/api/events/${event!.id}/insight`)
       } else {
-        if (!(await createEventLocal({ ...draft, calendarId: chosenCal }))) {
-          await api.createEvent(ownerCals.length > 1 ? { ...restPayload, calendarId: chosenCal } : restPayload)
-        }
+        await api.createEvent(ownerCals.length > 1 ? { ...restPayload, calendarId: chosenCal } : restPayload)
       }
       // The week digest reflects this event — refresh it next time it's shown.
       invalidateGetCache('/api/calendar/heads-up')
@@ -610,13 +605,7 @@ export function EventModal({
     }
     setSaving(true)
     try {
-      // Prefer the local delete (instant, offline); when the row isn't in the local
-      // DB yet it returns false and we delete via REST, tombstoning on success so
-      // the UI hides it through the refetch/replication window.
-      if (!(await deleteEventLocal(event!.id))) {
-        await api.deleteEvent(event!.id)
-        tombstoneEvent(event!.id)
-      }
+      await api.deleteEvent(event!.id)
       invalidateGetCache('/api/calendar/heads-up')
       onSaved()
       onClose()

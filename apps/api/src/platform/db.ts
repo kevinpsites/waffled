@@ -1,5 +1,5 @@
 // Lazily-created pg connection pool. The pool isn't opened until the first query,
-// so DB-free routes (/healthz, /api/me) and the e2e container (no DATABASE_URL)
+// so DB-free routes (/healthz, /api/me) and a container started without DATABASE_URL
 // never touch Postgres.
 import { Pool, types, type QueryResult, type QueryResultRow } from 'pg'
 import { traceDb } from './telemetry'

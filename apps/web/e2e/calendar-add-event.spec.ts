@@ -71,10 +71,6 @@ async function mockApi(page: Page) {
     else if (path === '/api/updates') body = { enabled: false, updateAvailable: false }
     else if (path === '/api/calendar/status') body = { connected: false, configured: false }
     else if (path === '/api/events') body = { events: [dentist] }
-    else if (path === '/api/powersync/token') {
-      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'disabled' }) })
-      return
-    }
 
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
   })

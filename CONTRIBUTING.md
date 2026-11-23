@@ -9,12 +9,11 @@ a good PR.
 
 Quick version:
 
-- The stack runs via the root `./waffled` CLI — `./waffled up` (first run bootstraps
-  `infra/compose/.env` with generated secrets), `./waffled web` for Vite HMR. Requires
-  **Docker** and **Node 24** for source development (the API container itself
-  remains on Node 20).
+- The stack runs from the root `compose.yaml` — `docker compose up -d --build` builds the
+  `waffled` image from source; `npm run dev` in `apps/web` gives Vite HMR. Requires
+  **Docker Compose v2.24+** and **Node 24** for source development.
 - Run the checks before opening a PR: `cd apps/api && npm test && npm run typecheck`, and the
-  same in `apps/web`. For iOS, `xcodebuild test -project Waffled.xcodeproj -scheme Waffled`.
+  same in `apps/web`.
 - Use conventional-commit messages with a scope; keep PRs focused; add tests for behavior
   changes; log user-facing changes in `CHANGELOG.md` under `[Unreleased]`.
 - Security issues: see [`SECURITY.md`](SECURITY.md) — report those **privately**, not as public

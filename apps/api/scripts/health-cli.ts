@@ -1,7 +1,7 @@
-// In-container health printer for `./waffled doctor`. Runs inside waffled-api (where
+// In-container health printer for operators (`docker compose exec waffled node dist/health-cli.js`). Runs inside the waffled container (where
 // DATABASE_URL + MEDIA_DIR are set), so it reaches the DB and media volume with no
 // HTTP call or admin token. Prints JSON by default, or a colored human report with
-// --pretty. Exits non-zero when degraded (1) or down (2) so the CLI can flag it.
+// --pretty. Exits non-zero when degraded (1) or down (2) so scripts can flag it.
 import { buildHealthReport, type Status } from '../src/modules/health/health'
 import { closePool } from '../src/platform/db'
 

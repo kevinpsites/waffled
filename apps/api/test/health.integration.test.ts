@@ -127,6 +127,26 @@ describe('GET /api/health — backup check', () => {
     return JSON.parse(res.body)
   }
 
+  const savedEnabled = process.env.BACKUP_ENABLED
+  beforeAll(() => {
+    process.env.BACKUP_ENABLED = 'true'
+  })
+  afterAll(() => {
+    if (savedEnabled === undefined) delete process.env.BACKUP_ENABLED
+    else process.env.BACKUP_ENABLED = savedEnabled
+  })
+
+  it('is disabled by default when BACKUP_ENABLED is unset', async () => {
+    delete process.env.BACKUP_ENABLED
+    try {
+      const body = await backupCheck()
+      expect(body.checks.backup.status).toBe('ok')
+      expect(body.checks.backup.enabled).toBe(false)
+    } finally {
+      process.env.BACKUP_ENABLED = 'true'
+    }
+  })
+
   it('is ok with no backup yet (enabled, nothing recorded)', async () => {
     await withClient((c) => c.query('delete from backup_runs'))
     const body = await backupCheck()

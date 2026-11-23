@@ -8,7 +8,7 @@
 # builds the Dockerfile — minutes per run). That stays CI-only; putting it here
 # would just train everyone to reach for --no-verify.
 #
-# Enable once per clone:  git config core.hooksPath .githooks   (or: just setup)
+# Enable once per clone:  git config core.hooksPath .githooks 
 # Bypass in a pinch:      git push --no-verify
 #
 set -uo pipefail

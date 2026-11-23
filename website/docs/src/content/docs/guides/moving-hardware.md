@@ -4,120 +4,90 @@ description: Migrate your household to a new machine without losing data.
 ---
 
 You'll end up with Waffled running on a **new machine** with all your data and
-connected accounts intact — clients re-sync automatically once it's up.
+connected accounts intact.
 
-:::danger[Carry over your `.env` — this is the one that bites]
-The single most important thing to migrate is **`infra/compose/.env`**. It holds
-your secrets, including **`TOKEN_ENCRYPTION_KEY`**. Without that *exact* key, the
-encrypted Google / OIDC refresh tokens in your database are **unrecoverable** —
-you'd have to re-consent every connected account. Copy the file; don't
-regenerate it.
+:::danger[Carry over your secrets — this is the one that bites]
+The single most important thing to migrate is your **`TOKEN_ENCRYPTION_KEY`**. It lives in
+`/data/secrets.json` (the `waffled_data` volume) unless you set it in `.env`. Without that
+*exact* key, the encrypted Google / Outlook / OIDC tokens in your database are
+**unrecoverable**: you'd have to re-consent every connected account. Copy the key (and
+`LOCAL_JWT_SECRET`); don't regenerate them.
 :::
 
 ## 1. On the OLD machine — back up + copy secrets
 
-Take a fresh backup. If you rely on uploaded photos, set
-`BACKUP_INCLUDE_MEDIA=true` first and re-run so media travels too:
+Turn backups on if they aren't already (`docker compose --profile backup up -d`). If you rely
+on uploaded photos, set `BACKUP_INCLUDE_MEDIA=true` in `.env` first and recreate the backup
+service so media travels too. Then take a fresh backup and read the secrets:
 
 ```bash
-./waffled backup
-./waffled backup list   # note the dump filename
+docker compose exec -u postgres backup waffled-backup
+docker compose exec backup ls -lh /backups                 # note the dump filename
+docker compose exec waffled cat /data/secrets.json          # your two keys
 ```
 
-Copy **both** off the machine to somewhere safe:
+Copy these off the machine to somewhere safe:
 
-- the dump from `./waffled backup list`
-- a copy of **`infra/compose/.env`**
+- the dump (and the media archive, if you made one) from `/backups`, for example with
+  `docker compose cp backup:/backups/<file> .`
+- the contents of `secrets.json`, plus your `.env` if you have one
 
 See [Backup & restore](/operations/backup/) for what's in a dump.
 
-## 2. On the NEW machine — clone + restore your secrets
+## 2. On the NEW machine — compose file + secrets
 
-Install Docker + the Compose v2 plugin, then clone the repo:
+Install Docker with Compose v2.24+, then:
 
 ```bash
-git clone https://github.com/kevinpsites/waffled.git waffled && cd waffled
+mkdir waffled && cd waffled
+curl -fsSLO https://raw.githubusercontent.com/evan-ribbey/waffled-remix/main/compose.yaml
 ```
 
-Put your saved **`infra/compose/.env`** in place. This keeps the **same
-secrets** (same `TOKEN_ENCRYPTION_KEY`) and the **same `WAFFLED_VERSION`**, so
-the schema matches the dump you're about to restore. Full var reference:
-[Environment variables](/install/environment-variables/).
+Put your saved `.env` beside it (if you had one), and add the two keys from `secrets.json`:
+
+```bash
+LOCAL_JWT_SECRET=...
+TOKEN_ENCRYPTION_KEY=...
+```
+
+Values in `.env` win over generated ones, so this keeps the **same** keys. Set
+`WAFFLED_VERSION` to the version you ran before, so the schema matches the dump you're about to
+restore. Full var reference: [Environment variables](/install/environment-variables/).
 
 ## 3. Bring it up, then restore your data
 
 ```bash
-./waffled up                       # builds the stack, creates fresh volumes
-./waffled restore <your-dump>.sql.gz   # loads your data over the empty DB
+docker compose --profile backup up -d        # creates fresh volumes; the app starts on an empty DB
+docker compose cp ./waffled-<timestamp>.sql.gz backup:/backups/
+docker compose stop waffled
+docker compose run --rm --no-deps backup restore waffled-<timestamp>.sql.gz
+docker compose start waffled
 ```
 
-If you restored an **older** dump, the one-shot `migrate` service catches its
-schema up to the pinned version automatically. See
-[Upgrading](/operations/upgrading/) for how versions and migrations line up.
+If you restored an **older** dump, the app catches its schema up automatically when it starts.
+See [Upgrading](/operations/upgrading/) for how versions and migrations line up.
 
-## 4. Fix device reachability for the new address
-
-The new machine has a new IP/hostname, so update the public address:
+If you took a media archive, unpack it into the media volume:
 
 ```bash
-./waffled setup   # new LAN IP or hostname
-./waffled up      # apply it
+docker run --rm -v waffled_waffled_media:/media -v "$PWD":/in alpine \
+  tar -xzf /in/waffled-media-<timestamp>.tar.gz -C /media
 ```
 
-Sync itself needs no help — a device is told to sync at whatever address it used
-to reach the server, so pointing the tablet and the iOS app at the new host is
-enough. `setup` fixes `PUBLIC_BASE_URL`, which calendar and sign-in redirects
-depend on. Hostname/HTTPS details:
-[Reverse proxy & TLS](/install/reverse-proxy/).
+## 4. Update the public address
+
+The new machine has a new IP or hostname. Point the tablet and phones at it, and if you use a
+hostname behind a [reverse proxy](/install/reverse-proxy/), set `PUBLIC_BASE_URL` (calendar and
+sign-in redirects depend on it), then `docker compose up -d`.
 
 ## Verify
 
 ```bash
-./waffled doctor   # should be all green
+docker compose ps    # waffled and postgres healthy
 ```
 
-Then open the app and confirm your data is there. Connected clients **re-sync
-from PowerSync automatically** and reconnect — no per-device reset needed. See
+Then open the app, confirm your data is there, and check **Settings → System Health**. See
 [System health](/administration/system-health/).
-
-## Moving Waffled for Mac to another Mac
-
-The steps above are for Docker. With [Waffled for Mac](/install/mac/) the idea is the same —
-a backup, your photos, and the one secret that matters — just without `./waffled`. Waffled's
-folder is `~/Library/Application Support/Waffled` unless you moved it.
-
-On the **old** Mac:
-
-1. **Back up now** from the menu. The newest `waffled-….dump` in `backups/` is the one to take.
-2. **Quit Waffled**, which stops the server. Copy three things from Waffled's folder to a
-   drive or the new Mac: that `.dump`, the `media/` folder, and `config.env`.
-
-On the **new** Mac:
-
-3. [Install Waffled](/install/mac/#download-and-install) — the same version or newer, since a
-   restore refuses a backup from a newer Waffled — and let **Set up Waffled** finish. Don't
-   bother creating a household in the browser; the restore replaces it.
-4. **Quit Waffled.** Carry the old encryption key across — the value of the
-   `TOKEN_ENCRYPTION_KEY=` line in the old `config.env` — and your photos:
-
-   ```sh
-   R=/Applications/Waffled.app/Contents/Resources/runtime/bin/waffled-runtime
-   $R config set 'TOKEN_ENCRYPTION_KEY=<the old value>'
-   cp -R /path/to/old/media/ ~/Library/Application\ Support/Waffled/media/
-   ```
-
-5. Restore the database. It asks you to type `restore`, then starts the server:
-
-   ```sh
-   $R restore /path/to/waffled-20260901-030000.dump
-   ```
-
-6. Open Waffled, and point the tablet and phones at the new **Server address** in its menu.
-
-AI keys and calendar OAuth settings live in `config.env`, not in the backup — enter them
-again in **Settings…**. Coming from a **Docker** install instead? The same steps work with
-the `.sql.gz` from `./waffled backup`, the `TOKEN_ENCRYPTION_KEY` from `infra/compose/.env`,
-and your photos from a `BACKUP_INCLUDE_MEDIA` archive unpacked into `media/`.
 
 ## Notes
 
@@ -125,5 +95,5 @@ and your photos from a `BACKUP_INCLUDE_MEDIA` archive unpacked into `media/`.
   confirmed the new one is healthy — and **never as a "reset"** at all.
 - If you moved to a **new hostname/IP**, your connected Google Calendar **redirect
   URIs** may need updating at Google (and `GOOGLE_CALENDAR_REDIRECT_URI` /
-  `PUBLIC_BASE_URL` in the env). See
+  `PUBLIC_BASE_URL` in `.env`). See
   [Environment variables](/install/environment-variables/).

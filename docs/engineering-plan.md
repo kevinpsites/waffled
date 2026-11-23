@@ -1,5 +1,7 @@
 # Engineering plan
 
+> **Note (0.16):** the iOS and Mac apps, PowerSync and the `./waffled` CLI referenced here were removed. The web/kiosk behaviour described is still current; iOS/offline details are historical.
+
 > **This is the detailed, historical engineering plan** — the original milestone-by-milestone
 > build sequence (M0–M7), backlog, and design rationale, kept for the "why" and the
 > commit-level history. For the **canonical, living status view** (what's done / partial /

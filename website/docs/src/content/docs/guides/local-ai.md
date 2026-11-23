@@ -23,7 +23,7 @@ ollama pull llama3.1
 
 ## 3. Point Waffled at Ollama
 
-In `infra/compose/.env`, set the host and model. The right host depends on where
+In `.env` (beside `compose.yaml`), set the host and model. The right host depends on where
 Docker is running:
 
 ```bash
@@ -39,15 +39,8 @@ OLLAMA_MODEL=llama3.1
 Then apply it:
 
 ```bash
-./waffled up
+docker compose up -d
 ```
-
-**On Waffled for Mac** there is no `.env` to edit. With Ollama on the same Mac, choose
-**Ollama** in the **AI settings** row — on the first run's setup screen, or later in
-**Settings… → Basic** — and keep the address it suggests, `http://localhost:11434`. Waffled
-checks that Ollama answers there and lists the models it has. The model goes under
-**Settings… → Advanced → AI model and limits** (`llama3.1` unless you change it). Apply, and
-restart Waffled when it asks. See [Mac install](/install/mac/#changing-settings-later).
 
 Full variable reference: [Environment variables](/install/environment-variables/)
 and [AI providers](/administration/ai-providers/).

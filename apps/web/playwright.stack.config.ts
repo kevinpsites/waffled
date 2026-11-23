@@ -4,17 +4,13 @@ import { defineConfig, devices } from '@playwright/test'
 // server: `npx playwright test -c playwright.stack.config.ts`.
 //
 // Worth having as its own config because the two servers differ in ways this app
-// is sensitive to. Caddy serves the SPA with `try_files {path} /index.html`, so a
-// missing chunk comes back as 200 + HTML rather than a 404; it stamps assets
-// `Cache-Control: immutable`; and it does not send the `Vary: Origin` that Vite's
-// preview server does. Passing under preview therefore says little about what a
-// kitchen display actually runs.
+// is sensitive to: the real server serves the SPA fallback and cache headers
+// differently from Vite's preview server, so passing under preview says little
+// about what a kitchen display actually runs.
 //
 // Assumes the stack is already up and rebuilt — the web app is baked into the
-// caddy image, so `:8080` serves whatever was last built into it:
-//   docker build -f infra/compose/caddy/Dockerfile -t waffled-caddy:local-main .
-//   docker compose -p waffled -f infra/compose/docker-compose.yml \
-//     --project-directory infra/compose up -d --force-recreate --no-deps caddy
+// waffled image, so `:8080` serves whatever was last built into it:
+//   docker compose up -d --build
 //
 // The specs mock /api/** at the browser, so this needs no real credentials and
 // writes nothing to the household database.

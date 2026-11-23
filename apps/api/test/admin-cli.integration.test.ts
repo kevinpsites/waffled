@@ -52,7 +52,6 @@ async function run(...cliArgs: string[]): Promise<void> {
     if (name === 'password-login') return await cmds.passwordLogin()
     if (name === 'clear-calendar-error') return await cmds.clearCalendarError()
     if (name === 'prune-sessions') return await cmds.pruneSessions()
-    if (name === 'regenerate-powersync-key') return cmds.regeneratePowerSyncKey()
     if (name === 'list-households') return await cmds.listHouseholds()
     if (name === 'delete-household') return await cmds.deleteHousehold()
     throw new Error(`unknown test command ${name}`)
@@ -210,16 +209,5 @@ describe('admin CLI', () => {
     expect((await query(`select 1 from lists where household_id = $1`, [hh])).rowCount).toBe(0)
     // The real household is untouched.
     expect((await query(`select 1 from persons where id = $1`, [memberId])).rowCount).toBe(1)
-  })
-
-  it('regenerate-powersync-key prints a base64 PEM env line', async () => {
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
-    await run('regenerate-powersync-key')
-    const out = spy.mock.calls.map((c) => c.join(' ')).join('\n')
-    spy.mockRestore()
-    const m = out.match(/POWERSYNC_JWT_PRIVATE_KEY=([A-Za-z0-9+/=]+)/)
-    expect(m).toBeTruthy()
-    const pem = Buffer.from(m![1], 'base64').toString('utf8')
-    expect(pem).toContain('BEGIN PRIVATE KEY')
   })
 })

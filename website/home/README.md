@@ -43,8 +43,7 @@ public/                favicon + logo/icon (copied from the app brand)
 
 The hero and "three surfaces" section currently use **CSS placeholder mockups**
 (the `.device` / `.surface .art` blocks). Swap each for a real `<img>` once we
-have product screenshots — capture the kiosk via Playwright and the iOS app via
-the simulator. The mockups are self-contained so replacing them is a local edit.
+have product screenshots — capture the kiosk and the phone PWA via Playwright. The mockups are self-contained so replacing them is a local edit.
 
 ## Hosting
 

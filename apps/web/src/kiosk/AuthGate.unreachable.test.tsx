@@ -3,6 +3,7 @@ import { render, screen, act, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { AuthGate } from './AuthGate'
 import { SERVER_PROBE_EVENT, resetReachability } from '../lib/api/reachability'
+import { UNREACHABLE_HINT } from './components/ServerUnreachableBanner'
 
 // With the server stopped, /api/auth/status never answers. Rendering the login form
 // then would offer a sign-in nobody can complete, with nothing saying why.
@@ -35,7 +36,7 @@ describe('AuthGate when the server does not answer', () => {
     // The banner above this card owns the Retry and the how-to-start-it hint; the
     // card telling the same story twice was the whole problem.
     expect(screen.queryByRole('button', { name: /Retry|Checking/ })).toBeNull()
-    expect(screen.queryByText(/menu bar and choose Start Waffled/)).toBeNull()
+    expect(screen.queryByText(UNREACHABLE_HINT)).toBeNull()
   })
 
   it('blames the device, not the server, when the device itself is offline', async () => {
@@ -47,7 +48,7 @@ describe('AuthGate when the server does not answer', () => {
     render(gate())
 
     expect(await screen.findByText(/Your device is offline/)).toBeInTheDocument()
-    expect(screen.queryByText(/menu bar and choose Start Waffled/)).toBeNull()
+    expect(screen.queryByText(UNREACHABLE_HINT)).toBeNull()
   })
 
   it('falls back to the login screen when the server answers with an error', async () => {

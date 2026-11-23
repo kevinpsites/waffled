@@ -10,58 +10,50 @@ Short answers to the questions that come up most. Deeper answers link out to the
 ### What is Waffled?
 A **self-hosted family hub** — one household, one source of truth for your calendar, chores &
 stars, goals, meals & recipes, lists & groceries, pantry, and photos. It runs on your own
-hardware and drives three surfaces: an always-on kitchen **kiosk**, a full **web** dashboard,
-and a native **iOS** app. See the [overview](/getting-started/overview/).
+hardware and drives two surfaces: an always-on kitchen **kiosk** and a full **web** dashboard (which
+installs to a phone as a PWA). See the [overview](/getting-started/overview/).
 
 ### Is it really free? What's the catch?
-Yes — free and open source ([AGPL-3.0](https://github.com/kevinpsites/waffled/blob/main/LICENSE)).
+Yes — free and open source ([AGPL-3.0](https://github.com/evan-ribbey/waffled-remix/blob/main/LICENSE)).
 The "catch" is that **you host it**: you provide an always-on machine and own your backups.
 There's no subscription and no hosted version to sign up for. See the
 [comparison](/overview/comparison/).
 
 ### Do I need to be technical?
-Less than you might think. On a Mac with Apple silicon, [Waffled for Mac](/install/mac/) is a
-download: drag it to Applications, open it, and a setup window does the rest — no Docker, no
-Terminal. Anywhere else you need to be comfortable running two or three terminal commands
-(`git clone`, `./waffled up`) and keeping a machine on; if you've ever run any Docker app,
-you're overqualified. The [quick start](/getting-started/quick-start/) is the whole install.
+Less than you might think. You need to be comfortable running a few terminal commands
+(download `compose.yaml`, `docker compose up -d`) and keeping a machine on; if you've ever run
+any Docker app, you're overqualified. The [quick start](/getting-started/quick-start/) is the
+whole install.
 
 ### Does my data leave my house?
 Only if you opt in. Everything lives in your Postgres database on your machine. Outbound
 connections happen **only** for features you enable: AI providers (if you set a key), Google
 Calendar sync (if you connect it), offsite S3 backups (if you configure them), and a once-a-day
-check for a newer version — on a Docker install a GitHub check you can turn off with
-`UPDATE_CHECK_ENABLED=false`; on the Mac app, the updater's daily check.
+check for a newer version on GitHub, which you can turn off with
+`UPDATE_CHECK_ENABLED=false`.
 
 ## Installing & running
 
 ### What are the requirements?
-A machine that's on when you want to use it, and one of two things:
-
-- **A Mac with Apple silicon and macOS 14 or later** — [Waffled for Mac](/install/mac/) needs
-  nothing else, not even Docker.
-- **Docker with the Compose v2 plugin** anywhere else. ~4 GB RAM is comfortable. Images are
-  multi-arch, so x86 or ARM (a Raspberry Pi works). Full list:
-  [Requirements](/install/requirements/).
+A machine that's on when you want to use it, running **Docker with the Compose v2.24+
+plugin**. ~2 GB RAM is comfortable. Images are multi-arch, so x86 or ARM (a Raspberry Pi works).
+Full list: [Requirements](/install/requirements/).
 
 ### Can I run it on a Raspberry Pi / old laptop / NAS?
-Yes — anything that runs Docker and stays on. The images are built for both `amd64` and `arm64`.
-An Intel Mac runs it through Docker too; the Mac app is Apple silicon only for now.
+Yes — anything that runs Docker and stays on. The images are built for both `amd64` and `arm64`,
+so Intel and Apple silicon Macs work through Docker too.
 
 ### How do I access it from a tablet or phone?
-Open `http://<your-machine-ip>:8080` on the device — sync works from there, because Waffled tells
-each device to sync at the address it used to reach the server. Run `./waffled setup` (it
-auto-detects your LAN IP) as well, so calendar and sign-in redirects point at the right address.
-On the Mac app there's nothing to run: its menu shows the **Server address** to type in.
+Open `http://<your-machine-ip>:8080` on the device. For a hostname or HTTPS, put a reverse
+proxy in front and set `PUBLIC_BASE_URL` (and `TRUST_PROXY=true` behind a proxy you control).
 Details: [Reverse proxy & TLS](/install/reverse-proxy/) and the quick start's
 ["Accessing it from other devices"](/getting-started/quick-start/#accessing-it-from-other-devices).
 
 ### How do I upgrade?
-On the Mac app, **Check for updates…** in the menu — it also checks daily, and asks before it
-installs. See [Mac install → Updating](/install/mac/#updating). On Docker, `./waffled upgrade` —
-it fast-forwards the repo, bumps the pinned version, snapshots the DB, pulls the new images,
-and re-runs migrations in one step; the app also flags "Update available" in Settings → System
-Health. See [Upgrading](/operations/upgrading/).
+`docker compose pull && docker compose up -d`. Migrations run on start; there is no automatic
+backup first. The app also flags "Update available" in Settings → System Health. See
+[Upgrading](/operations/upgrading/). Coming from the old `./waffled` install? See
+[Migrating from the ./waffled CLI](/install/migrating-from-waffled-cli/).
 
 ## Accounts & family
 
@@ -81,8 +73,8 @@ open (and attributed). Roles (adult / teen / kid) carry a per-capability grid th
 See [Permissions & roles](/concepts/permissions/).
 
 ### I'm locked out / forgot the admin password.
-Break-glass from the host: `./waffled admin reset-password` (also `make-admin`, `list-members`).
-On [Waffled for Mac](/install/mac/) the same commands are `waffled-runtime admin reset-password`, and the server doesn't have to be running. See [Troubleshooting → Locked out](/operations/troubleshooting/#locked-out--forgot-admin-password).
+Break-glass from the host: `docker compose exec -u node waffled node dist/admin.js reset-password`
+(also `make-admin`, `list-members`). See [Troubleshooting → Locked out](/operations/troubleshooting/#locked-out--forgot-admin-password).
 
 ## Features & integrations
 
@@ -110,32 +102,23 @@ Optional features ship **off by default** and are toggled per household in Setti
 Pantry, Family Night and [Rhythms](/features/rhythms/) are opt-in; Calendar and Today are
 always on. See [Modules](/administration/modules/).
 
-### Does the iOS app work offline?
-The **calendar** does — it mirrors to on-device SQLite via PowerSync and queues writes. Other
-areas (chores, lists, meals…) are online REST for now. See [Mobile app](/features/mobile/).
+### Is there a Mac or iOS app?
+No. The native apps and offline sync were removed in 0.16. The web app works on a phone and can
+be installed to the home screen. See [Phone & PWA](/features/mobile/).
 
 ## Data & safety
 
 ### How are backups handled?
-Nightly, out of the box, either way. On Docker a backup sidecar dumps Postgres; point it at a
-host folder and/or an S3-compatible bucket, and optionally include media. Restore is
-`./waffled restore <file>`. See [Backup & restore](/operations/backup/). The Mac app backs up
-at 3:00 AM into its own folder (or on demand with **Back up now**) and restores with one
-command; copying backups off the Mac is up to you. See
-[Mac install → Backups](/install/mac/#backups).
+Backups are optional and off by default. Start the backup service with
+`docker compose --profile backup up -d` (and set `BACKUP_ENABLED=true`) and a sidecar dumps
+Postgres nightly; point it at a host folder and/or an S3-compatible bucket, and optionally
+include media. Restore uses `docker compose run --rm --no-deps backup restore <file>`. See
+[Backup & restore](/operations/backup/).
 
 ### ⚠️ Can I ever delete a Docker volume to "start fresh"?
-**No — never `docker volume rm` or `down -v`.** `pgdata` and `waffled_media` are irreplaceable,
-and the database holds *encrypted* Google/OIDC refresh tokens that can't be recovered, only
+**No — never `docker volume rm` or `down -v`.** `waffled_pgdata`, `waffled_waffled_media` and `waffled_waffled_data` are irreplaceable,
+and the database holds *encrypted* Google/Outlook/OIDC refresh tokens that can't be recovered, only
 re-consented. If any guide tells you to wipe a volume, stop. Restore from a backup instead.
-
-### Everything shows "Offline" — what's wrong?
-Almost always one of two things: a missing `POWERSYNC_JWT_PRIVATE_KEY` on an older/manual
-installation, or a `POWERSYNC_PUBLIC_URL` pinned to something clients can't actually reach
-(e.g. `localhost`, or a LAN IP the machine no longer has) — on a home network, clearing it lets
-Waffled derive the right address per device. The next `./waffled up` or `./waffled upgrade`
-clears a pinned address Waffled generated itself, so upgrading is usually enough.
-See [Troubleshooting → PowerSync offline](/operations/troubleshooting/#powersync-offline-banner).
 
 ## Contributing & project
 

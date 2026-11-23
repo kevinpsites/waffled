@@ -218,9 +218,8 @@ marking one handled, pushing it out a week, editing and pausing — lives in the
 there is nothing to push away from, and a control that does nothing you can feel just teaches
 you the menu is noise.
 
-**Retire** is in that menu on iPhone and iPad; on the web it sits inside the edit dialog,
-one step further from the tap that would end a rhythm for good. (On iPhone and iPad,
-editing, pausing and pushing out are on a swipe as well.)
+**Retire** sits inside the edit dialog, one step further from the tap that would end a
+rhythm for good.
 
 A rhythm set to **put itself on the calendar automatically** should never have an empty
 period, and there are two different ways one ends up empty. If the series is still there
@@ -254,8 +253,8 @@ primary button on every row would make none of them mean anything; the filled bu
 kept for what is actually late, or a booking window with a day left in it.
 
 Each row gets the verb its shape deserves: an I-mark-it-done rhythm offers **I did it**, a
-scheduled one offers **Book** — with **Mark handled** beside it on the web and in the row's **⋯**
-menu on iPhone and iPad, where there isn't width for two. There is no "done" on a scheduled
+scheduled one offers **Book** — with **Mark handled** beside it on wide screens and in the row's **⋯**
+menu on narrow ones, where there isn't width for two. There is no "done" on a scheduled
 rhythm, because that isn't a question rhythms ask.
 
 ### Booking a period
@@ -328,8 +327,8 @@ commoner one.)
 
 ### Pushing one out a week
 
-It's asking, and today isn't the day. **Push it out a week** (in the row's **⋯** menu on
-every surface, and on a swipe on iPhone and iPad) moves the clock without recording a
+It's asking, and today isn't the day. **Push it out a week** (in the row's **⋯** menu
+on every surface) moves the clock without recording a
 completion — claiming you did it would restart the cadence from today and quietly erase the
 fact that it's still outstanding.
 
@@ -368,17 +367,15 @@ register exists.
 | Surface | Support |
 |---|---|
 | Web / Kiosk | ✅ |
-| iPhone | ✅ |
-| iPad | ✅ |
 
 Rhythms works on every surface, including the 🔁 marker on a booked event.
 
 The **regrouped register** described above — Needs you now / Coming up / Steady — the
 **Today card**, and the **creation form as an editable sentence** are all on every surface.
-What differs is mostly room rather than features. On the web a row's verb lives in a column
-at the right; on iPhone and iPad it sits on its own line beneath the row, because a title, a
+What differs is mostly room rather than features. On a wide screen a row's verb lives in a column
+at the right; on a phone it sits on its own line beneath the row, because a title, a
 countdown and a verb don't fit across one phone line. For the same reason the Today card's
-**Handled** is a button beside **Book** on the web and an item in the row's **⋯** menu on the
+**Handled** is a button beside **Book** on wide screens and an item in the row's **⋯** menu on the
 phone, and that card shows its first four rows there with a **+N more** line rather than the
 full list.
 
@@ -386,7 +383,7 @@ The editor is the same on every surface, including the day pickers for an auto-s
 series — see [Put it on the calendar automatically](#its-on-the-calendar) above.
 
 The events a scheduled rhythm books are ordinary calendar events, so they show up
-**everywhere** — including on your phone, and including offline — the moment they're booked.
+**everywhere** — including on your phone — the moment they're booked.
 
 ## Settings
 
@@ -419,8 +416,7 @@ Rhythms is an **optional module** (`rhythms`, default **OFF** — opt-in), toggl
   bookings at periods that no longer exist. The editor says so and points you at retiring
   it and making a new one, which is the honest fix.
 - 🌐 **Rhythms themselves need a connection.** The register and the Today card are
-  online-only, like chores. The events a rhythm books are fully offline, like every other
-  calendar event.
+  online-only, like chores.
 
 ## See also
 

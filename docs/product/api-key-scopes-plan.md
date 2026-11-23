@@ -1,5 +1,7 @@
 # API-key scopes: findings, corrections, and the plan
 
+> **Note (0.16):** the iOS and Mac apps, PowerSync and the `./waffled` CLI referenced here were removed. The web/kiosk behaviour described is still current; iOS/offline details are historical.
+
 **Status:** work item 2 built (PR below); work item 3 specified, not built.
 **Written:** 2026-09-08, alongside the Weekly Planning work that became PR #184 (merged).
 **Why it exists:** PR #184 added 29 routes that tripped a guard test from #185, and pulling

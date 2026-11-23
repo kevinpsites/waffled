@@ -218,8 +218,8 @@ describe('service worker offline precache', () => {
   })
 
   it('refuses to cache the SPA fallback page as a chunk', async () => {
-    // A missing chunk does not 404 in production: infra/compose/caddy/Caddyfile
-    // serves the SPA with `try_files {path} /index.html`, so a stale manifest entry
+    // A missing chunk does not 404 in production: the server
+    // falls back to index.html, so a stale manifest entry
     // comes back as 200 + text/html. Cached under a .js URL that is exactly as
     // permanent as a real chunk — cacheFirst never revalidates — the screen fails
     // its module load on MIME type every time, offline or on, until someone clears

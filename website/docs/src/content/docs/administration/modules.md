@@ -31,18 +31,10 @@ gated**.
 not a standalone module. It can **never** be on without Chores — turn Chores off and
 rewards goes with it.
 
-## One flag, both clients
+## One flag for everyone
 
-The on/off flag is **server-side and shared**, so **both web and iOS** honor it. Each
-client renders its own **native UI**, though — a module that has no iOS screen simply
-**doesn't appear on iOS**, gracefully, rather than showing a broken entry.
-
-## Data note: offline vs online-only on iOS
-
-A module that must work **offline on iOS** needs its tables in the **PowerSync sync
-rules**. Without that, it's **online-only REST** (this is how **Chores** works today —
-it's REST-only on iOS). Keep this in mind when deciding whether a module is truly
-usable offline on the phone.
+The on/off flag is **server-side and shared**: every client of the household honors it, and a
+disabled module simply doesn't appear, rather than showing a broken entry.
 
 ## Building a new module
 

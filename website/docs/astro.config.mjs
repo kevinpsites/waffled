@@ -15,9 +15,9 @@ export default defineConfig({
 			logo: { src: './src/assets/waffled-logo.png', alt: 'Waffled' },
 			favicon: '/favicon.png',
 			customCss: ['./src/styles/docs.css'],
-			// Custom hero: adds the official App Store badge to the homepage action row.
+			// Custom hero for the homepage action row.
 			components: { Hero: './src/components/Hero.astro' },
-			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/kevinpsites/waffled' }],
+			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/evan-ribbey/waffled-remix' }],
 			sidebar: [
 				{
 					label: 'Overview',
@@ -33,8 +33,8 @@ export default defineConfig({
 					label: 'Install',
 					items: [
 						{ label: 'Requirements', slug: 'install/requirements' },
-						{ label: 'Mac install', slug: 'install/mac' },
 						{ label: 'Docker install', slug: 'install/docker' },
+						{ label: 'Migrating from ./waffled', slug: 'install/migrating-from-waffled-cli' },
 						{ label: 'Environment variables', slug: 'install/environment-variables' },
 						{ label: 'Reverse proxy & TLS', slug: 'install/reverse-proxy' },
 						{ label: 'Upgrading', slug: 'operations/upgrading' },
@@ -50,7 +50,6 @@ export default defineConfig({
 						{ label: 'Chores & tasks', slug: 'features/chores' },
 						{ label: 'Rewards & economy', slug: 'features/rewards' },
 						{ label: 'Goals', slug: 'features/goals' },
-						{ label: 'Apple Health → goals', slug: 'features/apple-health' },
 						{ label: 'Meals & recipes', slug: 'features/meals' },
 						{ label: 'Lists & groceries', slug: 'features/lists' },
 						{ label: 'Pantry', slug: 'features/pantry' },
@@ -62,7 +61,7 @@ export default defineConfig({
 						{ label: 'Kiosk & display', slug: 'features/kiosk' },
 						{ label: 'Waffled-Bites', slug: 'features/waffled-bites' },
 						{ label: 'Appearance & dark mode', slug: 'features/appearance' },
-						{ label: 'Mobile app (iOS)', slug: 'features/mobile' },
+						{ label: 'Phone & PWA', slug: 'features/mobile' },
 					],
 				},
 				{
@@ -88,7 +87,6 @@ export default defineConfig({
 						{ label: 'Local development', slug: 'developer/local-development' },
 						{ label: 'Database & migrations', slug: 'developer/database' },
 						{ label: 'Building a module', slug: 'concepts/extensibility' },
-						{ label: 'iOS development', slug: 'developer/ios' },
 						{ label: 'Contributing', slug: 'developer/contributing' },
 					],
 				},
@@ -99,7 +97,6 @@ export default defineConfig({
 						{ label: 'Add a recipe from a photo or voice', slug: 'guides/ai-recipe-import' },
 						{ label: 'Run AI locally with Ollama', slug: 'guides/local-ai' },
 						{ label: 'Offsite backups (3-2-1)', slug: 'guides/offsite-backups' },
-						{ label: 'Deploy to Oracle Cloud (free)', slug: 'guides/oracle-cloud-terraform' },
 						{ label: 'Move to new hardware', slug: 'guides/moving-hardware' },
 					],
 				},

@@ -4,7 +4,7 @@ description: The Postgres schema, migration conventions, and how multi-tenancy w
 ---
 
 Waffled's source of truth is a single **Postgres 16** database. Schema changes are plain SQL
-migrations, forward-only and idempotent, applied automatically on `up` and `upgrade`.
+migrations, forward-only and idempotent, applied automatically every time the app starts.
 
 ## Migrations
 
@@ -20,40 +20,36 @@ Migrations live in **`apps/api/migrations/`** as flat `.sql` files.
 ### Running them
 
 ```bash
-./waffled migrate        # apply from the host (cd apps/api && npm run migrate)
+docker compose up -d       # the waffled container migrates on start
+cd apps/api && npm run migrate   # or apply from the host against DATABASE_URL
 ```
 
-On `./waffled up` a one-shot **`migrate`** compose service runs first, so the schema — including
-the PowerSync publication — exists before the api and PowerSync start. Migrations are effectively
-**forward-only** in operation: `./waffled upgrade` re-runs `up`, and a database backup is the
-rollback point (see [Upgrading](/operations/upgrading/)). Re-running is always safe.
+The app takes an advisory lock and applies pending migrations before it serves traffic.
+Migrations are effectively **forward-only** in operation: a database backup is the rollback
+point (see [Upgrading](/operations/upgrading/)). Re-running is always safe.
 
 ### Adding a migration
 
 1. Create `apps/api/migrations/NNNN_your_change.sql` with the `-- Up Migration` /
    `-- Down Migration` markers. Keep the up SQL idempotent.
-2. If the new tables must **sync offline to iOS**, also `ALTER PUBLICATION powersync ADD TABLE …`
-   and add a matching `data:` query to `infra/compose/powersync/sync-config.yaml`.
-3. `./waffled migrate` (or `./waffled up`) to apply. Tests provision a throwaway Postgres from
+2. Never edit an applied migration; fix forward with a new number.
+3. `npm run migrate` (or restart the stack) to apply. Tests provision a throwaway Postgres from
    migrations alone, so a broken migration fails CI fast.
 
-Notable migrations for orientation: `0001_base` (the shared spine + `set_updated_at()` trigger),
-`0003_powersync_publication` (replica identity + `create publication powersync`), and later
-domain migrations that `ALTER PUBLICATION powersync ADD TABLE …` as each offline domain lands.
+Notable migration for orientation: `0001_base` (the shared spine + `set_updated_at()` trigger).
+Historical PowerSync migrations stay in the folder; a later one drops the publication and any
+replication slots.
 
 ## Table conventions
 
-Every tenant-scoped table shares a common spine (see the [full schema reference](https://github.com/kevinpsites/waffled/blob/main/docs/DATA_MODEL.md)):
+Every tenant-scoped table shares a common spine (see the [full schema reference](https://github.com/evan-ribbey/waffled-remix/blob/main/docs/DATA_MODEL.md)):
 
 | Column | Purpose |
 |---|---|
-| `id uuid` | Primary key, `default gen_random_uuid()` — **but usually client-generated** (offline-mintable, required by PowerSync). |
+| `id uuid` | Primary key, `default gen_random_uuid()` — **clients may supply their own**. |
 | `household_id uuid` | The tenant scope — `not null references households(id)`. |
 | `created_at` / `updated_at` | Timestamps; `updated_at` maintained by a trigger. |
 | `deleted_at` | Soft-delete tombstone — rows are never hard-deleted; queries filter `WHERE deleted_at IS NULL` (with partial indexes). |
-
-Because IDs are client-generated UUIDs, an offline client can mint a row and sync it later without
-a round-trip — the key requirement PowerSync imposes.
 
 ## The domains
 
@@ -68,15 +64,11 @@ The schema is organized by feature domain, each roughly one migration family:
 
 ## Multi-tenancy
 
-Isolation is enforced at three layers so a bug in one is caught by the others:
+Isolation is enforced at two layers so a bug in one is caught by the other:
 
 1. **API:** the auth gate (`src/app.ts`) resolves a tenant (household + person) from the JWT
    `household_id` claim; [route guards](/concepts/permissions/) re-assert it per handler.
-2. **PowerSync:** the sync rules (`infra/compose/powersync/sync-config.yaml`) define **one bucket
-   per household** — `parameters: SELECT request.jwt() ->> 'household_id'`, and each `data:` query
-   is `WHERE household_id = bucket.household_id AND deleted_at IS NULL`. A client physically only
-   receives its own household's rows.
-3. **Postgres:** every reference to a person is a **composite foreign key** —
+2. **Postgres:** every reference to a person is a **composite foreign key** —
    `foreign key (household_id, person_id) references persons (household_id, id)`, backed by a
    `unique (household_id, id)` key on `persons` (migration `0104`). A single-column FK proves only
    that the person exists; the composite one proves they are in the *same household as the row*,
@@ -107,9 +99,9 @@ authenticated person, never client-supplied) and `meal_recipes.cook_person_id` (
 ## Direct access
 
 ```bash
-./waffled psql          # interactive psql on the database
-./waffled backup        # dump now (see Backup & restore)
+docker compose exec postgres psql -U waffled waffled   # interactive psql on the database
+docker compose exec -u postgres backup waffled-backup  # dump now (see Backup & restore)
 ```
 
-`./waffled psql` and the break-glass `./waffled admin` commands run inside the container with full
-DB access — the security model is that host/SSH access equals trust.
+`psql` and the break-glass admin commands run inside the containers with full DB access — the
+security model is that host/SSH access equals trust.

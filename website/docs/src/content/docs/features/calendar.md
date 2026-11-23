@@ -18,14 +18,11 @@ gated off**.
 - 📅 **Native events** — create / edit / delete, with **multiple participants per
   event** (stacked avatars, each in the person's color) and a **per-person filter**.
 - 🧳 **Multi-day events** — an all-day event that runs several days (a trip synced from
-  Google, say) draws as one bar across its days in the month view on iPhone, iPad and web, and
-  across the web week view's all-day strip; a trip that runs into the next week continues as a
-  bar on that row. On iPhone and iPad it also
-  shows on each day of the week cards, day view, agenda and Today, and only fades as past once its
-  last day is over; on web it shows in Day view and Agenda on each of its days, and picking any of
-  its days lists it in the month's day panel. On web,
-  iPhone and iPad the event editor's **When** card holds **All day**, **Starts** and **Ends**: a
-  last day for an all-day event, or an end date and time for a timed one. Tap a date or time to
+  Google, say) draws as one bar across its days in the month view and the week view's all-day
+  strip; a trip that runs into the next week continues as a bar on that row. It shows in Day
+  view and Agenda on each of its days, and picking any of its days lists it in the month's day
+  panel. The event editor's **When** card holds **All day**, **Starts** and **Ends**: a last
+  day for an all-day event, or an end date and time for a timed one. Tap a date or time to
   pick it from a calendar or a list of times.
 - 🎨 **Color you control** — solid or tinted event chips, any custom hex per person,
   and a **family color** for events that involve everyone. See
@@ -34,16 +31,12 @@ gated off**.
   - a live red **"now" line** on Week & Day
   - month cells show **event titles** (tap a day for times)
   - agenda **dims past events** so today reads first
-- 📱 **On iPhone: Month → Week → Day** — Month is home: a full-height grid with week
-  numbers down the side and up to four event titles a day (a countdown takes one of those
-  slots; the rest reads "+N more"). Tap a day to open its **Day** timeline — "‹ September"
-  or a swipe from the screen edge brings you back. **Week** is a row of day cards: swipe
-  through the days, keep swiping past the last one (or swipe the day strip above) to reach
-  the next week's first day, and tap an event to edit it. With **Meals** on, planned dinners
-  show as amber chips, thaw reminders as faint grey ones, and each week card ends with that
-  night's dinner. Switch views from the header's view button — its icon shows the view
-  you're on — or pinch to zoom between Month, Week and Day. **Agenda** (with the "Add an
-  event…" bar) and the **per-person filter** are in the same menu.
+- 📱 **Phone layout: Month → Week → Day** — on a small screen Month is home: a grid with up
+  to four event titles a day (a countdown takes one of those slots; the rest reads "+N more").
+  Tap a day to open its **Day** timeline. **Week** is a row of day cards. With **Meals** on,
+  planned dinners show as amber chips and thaw reminders as faint grey ones. Switch views
+  from the header's view button; **Agenda** (with the "Add an event…" bar) and the
+  **per-person filter** are in the same menu.
 - **Full-screen event detail** — location with **Directions**, repeats, notes, and
   an activity timeline.
 - 🔁 **Recurring events** — full RRULE support:
@@ -60,8 +53,6 @@ gated off**.
   calendar. An event you saved as **Waffled only** on purpose stays there.
 - 📡 **Calendar feeds (ICS)** — subscribe to any published `.ics` / `webcal://` link, no
   sign-in needed; refreshed every 15 minutes. See [below](#calendar-feeds-ics).
-- 📶 **Fully offline via PowerSync** — the calendar is the *one* fully-offline domain:
-  local reads and **queued writes** that drain on reconnect.
 - ✨ **AI "Heads up this week"** digest plus a per-event insight.
 - 🎯 **"Counts toward a goal"** tag on an event — feeds goal auto-counting (see
   [Goals](/features/goals/)).
@@ -73,11 +64,6 @@ gated off**.
 | Surface | Support |
 |---|---|
 | Web / Kiosk | ✅ |
-| iPhone | ✅ |
-| iPad | ✅ |
-
-iPad uses distinct wide grids and lays the event detail out in **two columns**;
-everything else is shared and adapts by size.
 
 ## Colors on the calendar
 
@@ -116,8 +102,7 @@ bolder than it used to. Switch **Event style** to *Tinted* to get the old look b
 Every member has a color (**Settings → Family & People →** tap a person **→ Color**).
 Beyond the eight presets there's a ninth **custom** swatch that opens your device's
 color picker, so you're not stuck with the palette. To change **your own** color
-without being an admin, use **My Profile** on the web, or **Settings → Households**
-on iPhone/iPad.
+without being an admin, use **My Profile**.
 
 An event is colored by **who it belongs to**:
 
@@ -145,8 +130,7 @@ and its events appear on the family calendar. Feeds are read-only and need **no
 sign-in or OAuth setup**; the URL is the whole credential, which makes them the
 plan B when a workplace won't approve calendar OAuth access.
 
-- **Add one in Settings → Calendars → Calendar feeds** (admins), on **web, iPhone or
-  iPad**: paste an `.ics`
+- **Add one in Settings → Calendars → Calendar feeds** (admins): paste an `.ics`
   or `webcal://` URL (webcal links are fetched over HTTPS) and optionally name it.
   The first refresh runs as soon as you add the feed; after that every feed is
   polled **every 15 minutes** (`ICS_SYNC_INTERVAL_MS`, `0` disables), and each
@@ -159,9 +143,9 @@ plan B when a workplace won't approve calendar OAuth access.
   back with the family.
 - **Feed events are read-only, everywhere.** A feed is a mirror of someone else's
   calendar and there's no way to write back to it, so Waffled won't let you edit or
-  delete an imported event. Web and the iPhone/iPad apps hide the Edit and Delete
-  actions and say where the event comes from; the API refuses the change whichever
-  route it arrives by — the REST endpoints, an offline edit queued on a phone, or
+  delete an imported event. The web app hides the Edit and Delete
+  actions and says where the event comes from; the API refuses the change whichever
+  route it arrives by — the REST endpoints or
   quick-add ("move the dentist appointment to Friday"). (Allowing it would be a lie:
   the next refresh restamps the event from the feed.) Change it at the source, or
   remove the feed. You *can* still set a local **reminder** on a feed event.
@@ -189,8 +173,7 @@ for what can be toggled.
 
 ## Notes
 - Calendar sync executes **on the server**, not on the device — for Google, Outlook and
-  feeds alike — so a device with no network still reads and queues writes through
-  PowerSync, and the server reconciles when it next polls.
-- The **events** domain is the only one with offline write queueing; every other
-  domain (chores, lists, rewards, goals, meals, photos) is REST-backed and needs a
-  connection.
+  feeds alike — so events show up on every device regardless of where you set the
+  connection up.
+- Every domain (events, chores, lists, rewards, goals, meals, photos) is REST-backed and
+  needs a connection to the server; there is no offline mode.

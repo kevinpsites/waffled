@@ -4,7 +4,6 @@ import { Rail } from './components/Rail'
 import { ScreenBoundary } from './components/ScreenBoundary'
 import { Topbar } from './components/Topbar'
 import { OfflineBanner } from './components/OfflineBanner'
-import { SyncHealthBanner } from './components/SyncHealthBanner'
 import { UpdateModal } from './components/UpdateModal'
 import { TopbarSlotProvider } from './topbar-slot'
 import { Icon } from './icons'
@@ -65,7 +64,6 @@ export function KioskLayout() {
         <Rail mobileOpen={navOpen} onNavigate={() => setNavOpen(false)} />
         <div className="kiosk-main">
           <OfflineBanner />
-          <SyncHealthBanner />
           <Topbar />
           {/* Screens are code-split (see ./routes), so navigating can suspend while the
               chunk loads. Keep the boundary here, inside the chrome — a boundary around

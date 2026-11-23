@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, renderHook } from '@testing-library/react'
 import { OFFLINE_BANNER_GRACE_MS, useSustainedOffline } from './pwa'
 
-// The kiosk's Offline banner must not flash on every blip (PowerSync reconnects,
-// network transitions): it only shows after the device has been *continuously*
+// The kiosk's Offline banner must not flash on every blip (network transitions):
+// it only shows after the device has been *continuously*
 // offline for the full grace period, and hides immediately on reconnect.
 
 const goOffline = () => window.dispatchEvent(new Event('offline'))

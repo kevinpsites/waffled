@@ -6,14 +6,9 @@ description: Push nightly database dumps to S3-compatible storage.
 You'll end up with nightly database dumps kept **locally AND copied offsite** to
 an S3-compatible bucket — the "1 offsite" leg of a 3-2-1 backup strategy.
 
-Waffled already backs up the database nightly, out of the box, with no setup — see
-[Backup & restore](/operations/backup/). This guide adds the **offsite copy** on
-top of that.
-
-> **On Waffled for Mac?** This guide is for Docker installs. The Mac app does not upload
-> backups — it ignores the `BACKUP_S3_*` settings — so copy the `backups/` folder in
-> Waffled's folder to another disk, or into a folder your cloud drive syncs, yourself. See
-> the Mac page's [Backups](/install/mac/#backups).
+Waffled's optional backup service dumps the database nightly — see
+[Backup & restore](/operations/backup/) (start it with `docker compose --profile backup up -d`).
+This guide adds the **offsite copy** on top of that.
 
 ## 1. Create a bucket + access key
 
@@ -26,7 +21,7 @@ Create a bucket at any **S3-compatible** provider and generate an access key:
 
 ## 2. Configure the offsite copy
 
-In `infra/compose/.env`, set the S3 vars. Each nightly dump is uploaded **in
+In `.env` (beside `compose.yaml`), set the S3 vars. Each nightly dump is uploaded **in
 addition to** the local copy:
 
 ```bash
@@ -44,7 +39,7 @@ BACKUP_HOST_PATH=/mnt/backups   # also write local dumps to a mounted drive
 Then recreate the backup service:
 
 ```bash
-./waffled up
+docker compose --profile backup up -d
 ```
 
 Full variable reference: [Environment variables](/install/environment-variables/).
@@ -60,19 +55,21 @@ so the bucket doesn't grow forever.
 Run a backup out of band and check it landed:
 
 ```bash
-./waffled backup        # run one now
-./waffled backup list   # confirm the new dump is listed
+docker compose exec -u postgres backup waffled-backup   # run one now
+docker compose exec backup ls -lh /backups              # confirm the new dump is listed
 ```
 
-Then check the **backup line** in `./waffled doctor` or **Settings → System
-Health** — it goes **degraded** if the last backup failed or is more than ~48h
+Then check the **backup line** in **Settings → System
+Health** (set `BACKUP_ENABLED=true` so it's tracked) — it goes **degraded** if the last backup failed or is more than ~48h
 old. See [System health](/administration/system-health/).
 
 Periodically do a **test restore** of a recent dump into a throwaway
 environment, so you know it works before you need it:
 
 ```bash
-./waffled restore <a-recent-dump>.sql.gz
+docker compose stop waffled
+docker compose run --rm --no-deps backup restore <a-recent-dump>.sql.gz
+docker compose start waffled
 ```
 
 ## Why 3-2-1

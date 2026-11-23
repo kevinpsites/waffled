@@ -25,7 +25,7 @@ Lists is where "things to buy or do" live — shared custom lists you build by h
 ## Taking a list with you
 
 Every list can be handed to the phone of whoever is actually going, from **any** surface —
-web, iPhone or iPad. The grocery board has a **📤 Share list** button in its top bar, and a
+web, kiosk or the phone PWA. The grocery board has a **📤 Share list** button in its top bar, and a
 custom list offers **Share list** in its **⋯** menu, beside Rename and Delete. It turns the unchecked
 items into a clean plain-text list with quantities, grouped by aisle on the grocery board and by
 section on a custom list:
@@ -56,9 +56,7 @@ list, the smaller each square in the code becomes — past roughly 30–35 items
 for a phone camera to read. Rather than show a code that can't be scanned, Waffled says the list
 is too long and points you at **Copy** or **Share**, which work at any length.
 
-**On iPhone and iPad** there's no QR code, because there's nothing to hand it to — the QR exists
-to get a list *onto* a phone, and you're already holding one. Share list opens the **system share
-sheet** instead, so the list goes straight to Messages, Mail, Notes or AirDrop.
+**On a phone** you can skip the QR: your browser's share sheet (where it offers one) or **Copy** gets the list straight to Messages, Mail or Notes.
 
 ## Pantry-aware shopping
 
@@ -100,10 +98,8 @@ which never reach the auto-built list in the first place.
 | Surface | Support |
 |---|---|
 | Web / Kiosk | ✅ |
-| iPhone | ✅ |
-| iPad | ✅ |
 
-Every surface builds, checks, and edits lists; **iPad** uses a master/detail layout with the list rail beside the items. The pantry badge and the picker's pre-uncheck work on all three.
+Every surface builds, checks, and edits lists (a wide screen shows the list rail beside the items). The pantry badge and the picker's pre-uncheck work everywhere.
 
 ## Settings
 
@@ -116,5 +112,5 @@ Lists is an **optional module** (`lists`, default **on**), toggled in **Settings
 ## Notes
 
 - 🧼 **Applying a template is a clean start** — it drops provenance and `source_recipe_ids`, so an applied template is a fresh starting point rather than a copy of the original's history.
-- 📡 **REST-only, not offline** — Lists talks to the server directly; it doesn't sync through PowerSync, so it needs a connection.
+- 📡 **Needs a connection** — Lists talks to the server directly, so it needs a connection.
 - 🌉 **Meals feed the board** — planned dinners flow in as "🍽 from meal plan" items with substitutions applied. See [Meals & recipes](/features/meals/).

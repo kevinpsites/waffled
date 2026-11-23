@@ -22,8 +22,6 @@ Rewards is the *spend* half of the family economy: an append-only stars ledger, 
 | Surface | Support |
 |---|---|
 | Web / Kiosk | ✅ |
-| iPhone | ✅ |
-| iPad | ✅ |
 
 The **Rewards tab *is* the shop** on every surface — a person-tab strip picks whose shop and balance you're looking at.
 

@@ -1,5 +1,7 @@
 # Rhythms — the things that should keep happening
 
+> **Note (0.16):** the iOS and Mac apps, PowerSync and the `./waffled` CLI referenced here were removed. The web/kiosk behaviour described is still current; iOS/offline details are historical.
+
 **Status:** shipping. Decided 2026-08-13, rescoped and renamed from "Upkeep" 2026-08-18
 after checking the original design against real household cases. **Phases 1 and 2 are
 built** — migration `0098_rhythms.sql`, the service, `GET /rhythms/attention`, module and

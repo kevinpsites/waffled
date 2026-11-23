@@ -6,10 +6,7 @@ more than once; keep it terse.
 
 **Folder-scoped conventions load lazily** — app-specific gotchas live next to the
 code and load only when you work under that folder: `apps/api/CLAUDE.md` (database
-migrations), `apps/ios/CLAUDE.md` (SwiftUI reuse, perf traps, XcodeGen, capability
-gates), `apps/mac/CLAUDE.md` (the menu-bar app: XcodeGen, the macOS destination, and the
-rules for talking to `waffled-runtime`), `apps/web/CLAUDE.md` (design-system reuse). The
-rules below are repo-wide.
+migrations) and `apps/web/CLAUDE.md` (design-system reuse). The rules below are repo-wide.
 
 ## How we start any new work — isolate first (repo-wide)
 
@@ -19,16 +16,15 @@ from an up-to-date `main` (e.g. via the EnterWorktree tool, or
 `git worktree add .claude/worktrees/<slug> -b <slug> origin/main`), and do all edits,
 builds, and commits there. This keeps `main` and other parallel work clean.
 
-**Ask which server the task uses before starting: `:8080` or `:8081`.** `:8080` is the main
-local stack (`./waffled`); `:8081` is the isolated demo stack (`./waffled-demo`, "The
-Seinfelds"). Confirm it up front — it decides which stack you rebuild or seed and what the
-apps and tests point at. iOS work also gets its own simulators (see `apps/ios/CLAUDE.md`).
+**The stack is `docker compose up -d`** (root `compose.yaml`: `waffled` + Postgres; add
+`--build` to build from source). It listens on `${HTTP_PORT:-8080}`; use `HTTP_PORT` and a
+different compose project directory for a second isolated stack. Demo data:
+`docker compose exec -u node -e WAFFLED_ALLOW_DEMO_SEED=1 waffled node dist/seed-demo.js <phase>`, run in sequence for `base`, `meals`, then `goals` (it refuses without `WAFFLED_ALLOW_DEMO_SEED=1`).
 
 **Work is not done until it is TDD'd and green.** Follow the TDD flow below (failing test
 first), and before opening a PR **all tests and typechecking must pass** — run the full
 test suite (`npm test`) *and* typecheck/build for every app you touched (web: `npm run
-build` / `tsc`; api: `npm test` + `tsc`; iOS: `xcodegen generate` then a clean
-`xcodebuild`). A red test or a type error means the work isn't finished — do not open the
+build` / `tsc`; api: `npm test` + `tsc`). A red test or a type error means the work isn't finished — do not open the
 PR.
 
 ## How we develop — TDD is not optional (repo-wide)
@@ -69,9 +65,9 @@ most of the excess was one category: source files re-narrating a user report or 
   level, an ordering that looks arbitrary and isn't.
 
 **Reuse before you define — and CHECK before you conclude nothing fits.** The same PR
-hand-rolled an avatar chip while `DesignSystem/Components.swift` already exported `Avatar`,
+hand-rolled an avatar chip while the design system already exported `Avatar`,
 which did the identical job. Before writing a view/component, grep the design system and the
-feature that owns the concept (`Components.swift`, `FieldStyles.swift`, `apps/web/src/kiosk/components/`).
+feature that owns the concept (`apps/web/src/kiosk/components/`).
 
 - If something close exists, use it. If it exists but is `private`/`fileprivate`, **widen it
   rather than copy it** — and say in a comment why it is internal, or the next merge that
@@ -114,7 +110,7 @@ be consolidated back into one.)
    (`website/docs/src/content/docs/reference/features.md`), the **product roadmap**
    (`docs/product/roadmap.md` — move the item from *Planned* to *Done*, or trim it to the part
    still outstanding), and a **how-to page** under the docs site when the feature needs
-   explaining (setup, permissions, gotchas — e.g. an iPhone-only capability with an OS
+   explaining (setup, permissions, gotchas — e.g. a capability behind a browser
    permission prompt). Match the existing pages' Starlight frontmatter + voice. Ask "if a user
    went looking for this, would they find and understand it?" — if not, the feature isn't done.
    Skip only when nothing user-facing changed (pure internal churn).
@@ -123,16 +119,13 @@ be consolidated back into one.)
    "remains open", "web-only", …) and fix every hit — including internal plan/status docs under
    `docs/` (e.g. `docs/product/*-plan.md`), not just the user-facing pages. This has bitten
    three times now (three doc-only fast-follow PRs that should have been part of the original).
-3. **Cut a release ONLY with `./waffled release X.Y.Z`** — never hand-bump versions or
-   hand-edit the changelog heading, and never move a published tag. That one command is the
-   source of truth: it reviews the `[Unreleased]` notes (and **requires ≥1 entry**), dates
-   them `## [X.Y.Z]` + opens a fresh `[Unreleased]` + adds the compare link, bumps **every**
-   version site (`apps/api` + `apps/web` package.json + lockfiles, `WAFFLED_VERSION` in
-   `infra/compose/.env.example`, iOS `MARKETING_VERSION`), commits `release: vX.Y.Z`, tags,
-   and prompts to push. Run it **locally on `main`** — the pushed `v*` tag is what triggers
-   the GHCR publish workflow (+ Xcode Cloud). Miss one version site by hand and repo/images/
-   `.env` silently disagree. The GitHub Release notes are set **automatically** by the
-   `release` job in `publish-images.yml`, which lifts the `## [X.Y.Z]` section out of the
-   tagged `CHANGELOG.md` (so the notes you approved during `./waffled release` *are* the
-   release body) — no manual `gh release edit` needed. It only falls back to GitHub's
+3. **Cut a release ONLY with `scripts/release.sh X.Y.Z`** — never hand-bump versions or
+   hand-edit the changelog heading, and never move a published tag. It requires **≥1 entry**
+   under `[Unreleased]`, dates them `## [X.Y.Z]` + opens a fresh `[Unreleased]` + adds the
+   compare link, bumps `apps/api` + `apps/web` package.json + lockfiles, commits
+   `release: vX.Y.Z` and tags. It never pushes: it prints the push command. Run it
+   **locally on `main`** — the pushed `v*` tag is what triggers the GHCR publish workflow.
+   The GitHub Release notes are set **automatically** by the `release` job in
+   `publish-images.yml`, which lifts the `## [X.Y.Z]` section out of the tagged
+   `CHANGELOG.md` — no manual `gh release edit` needed. It only falls back to GitHub's
    auto-generated notes if that section is missing/empty.

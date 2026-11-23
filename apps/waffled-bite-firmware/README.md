@@ -76,7 +76,8 @@ pio run -e esp32-p4 -t upload
 ## Networking + pairing (native dev)
 
 The `native` build defaults to `WB_API_BASE_URL=http://localhost:8081` (set in
-`platformio.ini`), matching the local `./waffled-demo` stack. On first launch with
+`platformio.ini`); point it at your server's `HTTP_PORT` (default 8080), seeded with
+`docker compose exec -u node -e WAFFLED_ALLOW_DEMO_SEED=1 waffled node dist/seed-demo.js base` (then `meals`, `goals`). On first launch with
 no stored pairing, it shows the onboarding screen — enter a server address and a
 pairing code minted from the parent web app (Family → tap a kid → Waffled-Bite →
 Pair). A successful pair is cached in `.wb_pairing.json` next to the binary (dev
@@ -117,7 +118,7 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
 ## What's not done
 
 > **Status summary:** the app itself is now code-complete — every screen described below
-> is wired to the real API and has been run against the real `./waffled-demo` backend.
+> is wired to the real API and has been run against a real demo-seeded backend.
 > Most of that verification happened in the `native` desktop simulator; the board itself is
 > in hand and has been bring-up tested (WiFi provisioning, reboot reliability), but the
 > individual screens below have not each been re-verified on real silicon. Treat everything

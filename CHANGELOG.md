@@ -7,17 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!--
   RELEASING: add bullets under [Unreleased] as work lands, then cut a release with
-  `./waffled release X.Y.Z` — it dates this section, bumps every version, commits, tags,
-  and pushes (see "Release process" at the bottom). The `v*` tag publishes the GHCR images.
+  `scripts/release.sh X.Y.Z` — it dates this section, bumps the versions, commits and tags,
+  then prints the push command. Pushing the `v*` tag publishes the GHCR images.
 -->
 
 ## [Unreleased]
 
-### Added
-
 ### Changed
 
+- **New home: `evan-ribbey/waffled-remix`.** The project moved to
+  github.com/evan-ribbey/waffled-remix. Install links, release downloads and the in-app update
+  check all point there now.
+- **Two-container install.** Waffled now runs as one `waffled` app container plus Postgres:
+  download `compose.yaml`, run `docker compose up -d`, and open port 8080. The app serves the
+  web app and uploaded media itself and creates its own secrets on first start, so there is no
+  setup script, `.env`, or reverse proxy to configure. Upgrading is `docker compose pull && docker
+  compose up -d`; existing installs switch with the new migration guide. Requires Docker Compose
+  v2.24 or newer.
+- **Nightly backups are opt-in.** The backup service no longer runs by default. Add
+  `BACKUP_ENABLED=true` to `.env` and start with `docker compose --profile backup up -d` to keep
+  nightly dumps; the migration guide covers this.
+
+### Removed
+
+- **Mac app, iOS app, PowerSync offline sync, `./waffled` CLI.** The native apps, the offline
+  sync service, the Caddy proxy, the Oracle Terraform recipe and the `./waffled` helper are gone.
+  Waffled is the web app and installable PWA; the admin tools run as
+  `docker compose exec -u node waffled node dist/admin.js`.
+
 ### Fixed
+
+- **Calendar picks up changes from other devices.** The kiosk calendar, Today card and event
+  details now refresh every 20 seconds and when the tab regains focus, so an event added or edited
+  on another device appears without a reload.
+- **Outlook calendar callback reachable.** Connecting an Outlook calendar no longer ends on a
+  page-not-found after Microsoft sign-in, because the callback is now served on the same port as
+  the rest of the app.
+
+### Security
+
+- **Forwarded headers trusted only with `TRUST_PROXY`.** Waffled used to believe
+  `X-Forwarded-For`, `-Proto` and `-Host` from anyone; now it ignores them unless you set
+  `TRUST_PROXY=true` behind a proxy you control, so clients cannot spoof their address past the
+  rate limiter. Even then, only the last `X-Forwarded-For` entry (the one your proxy added) is
+  used. Set `PUBLIC_BASE_URL` to pin the origin used for sign-in redirects.
+- **SSO no longer hands sessions to app deep links.** The `waffled://` sign-in callback for the
+  removed native apps is gone, along with `OIDC_NATIVE_REDIRECT_URI`. Any app on a phone can claim
+  a custom URL scheme, so a sign-in could otherwise be handed to the wrong app; SSO now returns
+  only to the Waffled web origin.
 
 ## [0.15.3] - 2026-10-07
 
@@ -3088,7 +3125,7 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.15.3...HEAD
+[Unreleased]: https://github.com/evan-ribbey/waffled-remix/compare/v0.15.3...HEAD
 [0.15.3]: https://github.com/kevinpsites/waffled/compare/v0.15.2...v0.15.3
 [0.15.2]: https://github.com/kevinpsites/waffled/compare/v0.15.1...v0.15.2
 [0.15.1]: https://github.com/kevinpsites/waffled/compare/v0.15.0...v0.15.1

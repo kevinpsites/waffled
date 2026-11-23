@@ -1,21 +1,22 @@
 // Seed a rich demo household ("The Seinfelds") for screenshots / docs / app-store.
 // DEV / SEED TOOL ONLY. Two phases so recipes can be copied in between.
 //
-// This file is an esbuild entrypoint (see esbuild.config.mjs), so it also ships in
-// the runtime image as `dist/seed-demo.js`. Prefer running it IN the api container —
+// Its entrypoint is scripts/bin/seed-demo.ts (bundled to `dist/seed-demo.js` in the runtime
+// image); this module only exports main(). Prefer running it IN the waffled container —
 // no host Node/tsx, no node_modules, and DATABASE_URL is already the stack's DB.
 // It is GATED: it refuses to run unless WAFFLED_ALLOW_DEMO_SEED is set, so a
 // self-hoster can't seed a fake household by accident.
 //
-//   docker compose exec -e WAFFLED_ALLOW_DEMO_SEED=1 api node dist/seed-demo.js base
+//   docker compose exec -e WAFFLED_ALLOW_DEMO_SEED=1 -u node waffled node dist/seed-demo.js base
 //   # …copy recipes into the DB (see ./scripts, or the pg_dump|sed|psql step)…
-//   docker compose exec -e WAFFLED_ALLOW_DEMO_SEED=1 api node dist/seed-demo.js meals
+//   docker compose exec -e WAFFLED_ALLOW_DEMO_SEED=1 -u node waffled node dist/seed-demo.js meals
 //
-// Or run it on the host against any stack's DATABASE_URL (like import-recipes.ts):
+// Or run it on the host against any stack's DATABASE_URL (DATA_DIR: where the bin wrapper
+// keeps secrets.json, /data by default):
 //
 //   cd apps/api
-//   WAFFLED_ALLOW_DEMO_SEED=1 DATABASE_URL=postgres://waffled:<pw>@localhost:5532/waffled npx tsx scripts/seed-demo.ts base
-//   WAFFLED_ALLOW_DEMO_SEED=1 DATABASE_URL=… npx tsx scripts/seed-demo.ts meals
+//   WAFFLED_ALLOW_DEMO_SEED=1 DATA_DIR=/tmp/waffled-seed DATABASE_URL=postgres://waffled:<pw>@localhost:5532/waffled npx tsx scripts/bin/seed-demo.ts base
+//   WAFFLED_ALLOW_DEMO_SEED=1 DATA_DIR=/tmp/waffled-seed DATABASE_URL=… npx tsx scripts/bin/seed-demo.ts meals
 //
 // `base`  — household, 4 people (Jerry+Kramer adults, George+Elaine kids), modules,
 //           currencies, rewards + kid jars, chores + star ledger, goals + logs,
@@ -91,7 +92,7 @@ async function allDayEvent(hh: string, o: {
 }
 
 // Goals live in lists; a list's members make it individual (1) or a group (many).
-// The iOS Goals page fetches goals PER LIST, so a list-less goal is invisible on iPad.
+// The Goals page fetches goals PER LIST, so a list-less goal would be invisible.
 // Model: one "Family Goals" group (all 4 members, 2 shared goals) + one individual list
 // per person (1 member, their own goal). Idempotent — clears existing goal data first.
 async function seedGoals(ids: Ids) {
@@ -147,7 +148,7 @@ async function seedGoals(ids: Ids) {
 
 export async function seedBase() {
   const exists = await query(`select 1 from households where name = 'The Seinfelds' and deleted_at is null`)
-  if (exists.rowCount) throw new Error('A "The Seinfelds" household already exists — run ./waffled-demo nuke first for a clean seed.')
+  if (exists.rowCount) throw new Error('A "The Seinfelds" household already exists — reset the demo database first for a clean seed.')
 
   // ── Household + Jerry (owner/admin, with a login) ────────────────────────────
   const { household } = await provisionHousehold({
@@ -420,7 +421,7 @@ async function seedMeals() {
   console.log(`✅ meals seeded — 1 active plan, ${7 + 3} entries, ${favs.length} favorites, cooked history on ~16 recipes`)
 }
 
-// This entrypoint ships in the runtime image (`dist/seed-demo.js`) so it can be run
+// This tool ships in the runtime image (`dist/seed-demo.js`) so it can be run
 // in-container, but it injects a fake "The Seinfelds" household and is a dev/screenshot
 // tool — not something a self-hoster should ever hit by accident. Gate it: it refuses
 // to do anything unless WAFFLED_ALLOW_DEMO_SEED is explicitly set (e.g. on the demo stack).
@@ -434,7 +435,7 @@ export async function main() {
     console.error(
       'demo seed is disabled. This is a dev/screenshot tool that injects a fake "The Seinfelds"\n' +
       'household — set WAFFLED_ALLOW_DEMO_SEED=1 to enable it (e.g. `docker compose exec -e\n' +
-      'WAFFLED_ALLOW_DEMO_SEED=1 api node dist/seed-demo.js base`).')
+      'WAFFLED_ALLOW_DEMO_SEED=1 -u node waffled node dist/seed-demo.js base`).')
     process.exit(1)
   }
   const phase = process.argv[2]
@@ -445,13 +446,8 @@ export async function main() {
     console.log('✅ goals reseeded — 1 family group (2 shared goals) + 4 individual lists')
   }
   else {
-    console.error('usage: seed-demo <base|meals|goals>  (e.g. `node dist/seed-demo.js base` in-container, or `npx tsx scripts/seed-demo.ts base` on the host)')
+    console.error('usage: seed-demo <base|meals|goals>  (e.g. `node dist/seed-demo.js base` in-container, or `npx tsx scripts/bin/seed-demo.ts base` on the host)')
     process.exit(1)
   }
   await closePool()
 }
-
-// Only auto-run when executed as the entrypoint (`node dist/seed-demo.js …`), not when
-// imported (e.g. by the integration test, which drives seedBase against a testcontainer).
-if (typeof require !== 'undefined' && require.main === module)
-  main().catch(async (e) => { console.error(e); await closePool(); process.exit(1) })

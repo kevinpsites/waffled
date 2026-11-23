@@ -1,5 +1,5 @@
 // Deep health report for self-host operators. `GET /api/health` (admin) returns a
-// per-component status the in-app System Health panel and `./waffled doctor` render;
+// per-component status the in-app System Health panel and `docker compose exec waffled node dist/health-cli.js` render;
 // buildHealthReport() is exported so the doctor CLI can call it directly in-process
 // (no HTTP/token). Every check is independent and best-effort — a failing check is
 // captured, never thrown, so the report always renders.
@@ -48,7 +48,7 @@ async function checkDb(): Promise<{ status: Status } & Record<string, unknown>> 
     return {
       status: 'down',
       error: err instanceof Error ? err.message : String(err),
-      hint: 'Postgres is unreachable. Check it is running: `./waffled logs postgres` (and that DATABASE_URL is set).',
+      hint: 'Postgres is unreachable. Check it is running: `docker compose logs postgres` (and that DATABASE_URL is set).',
     }
   }
 }
@@ -60,7 +60,7 @@ async function checkMigrations(): Promise<{ status: Status } & Record<string, un
     const available = availableMigrations()
     const behind = available != null && applied < available
     const status: Status = behind ? 'degraded' : 'ok'
-    return { status, applied, available, ...(behind ? { hint: 'Schema is behind. Apply pending migrations: `./waffled migrate` (or `./waffled up`).' } : {}) }
+    return { status, applied, available, ...(behind ? { hint: 'Schema is behind. Migrations run on start; restart waffled: `docker compose restart waffled`.' } : {}) }
   } catch (err) {
     return { status: 'down', error: err instanceof Error ? err.message : String(err) }
   }
@@ -74,9 +74,9 @@ function checkSchedulers(): { status: Status } & Record<string, unknown> {
   const out: { status: Status } & Record<string, unknown> = { status: anyError ? 'degraded' : 'ok', jobs }
   if (anyError) {
     const failed = jobs.filter((j) => j.lastError).map((j) => j.name).join(', ')
-    out.hint = `Background job(s) erroring: ${failed}. See the job's lastError above and \`./waffled logs api\`.`
+    out.hint = `Background job(s) erroring: ${failed}. See the job's lastError above and \`docker compose logs waffled\`.`
   }
-  // Job state is in-memory per process. `./waffled doctor` runs a separate process so
+  // Job state is in-memory per process. `health-cli` runs a separate process so
   // it sees none; the live server (this same report via GET /api/health, shown in
   // Settings → System Health) has the real run history.
   if (jobs.length === 0) out.note = 'no run history in this process (see Settings → System Health for live jobs)'
@@ -138,11 +138,11 @@ function checkStorage(): { status: Status } & Record<string, unknown> {
 }
 
 // Last automatic backup — degraded if the most recent run failed, or if the newest
-// successful dump is older than ~2 daily cycles (48h). Off cleanly when BACKUP_ENABLED
-// is false, or before the first run / migration (never a false alarm).
+// successful dump is older than ~2 daily cycles (48h). Off unless BACKUP_ENABLED
+// is true, or before the first run / migration (never a false alarm).
 async function checkBackup(): Promise<{ status: Status } & Record<string, unknown>> {
-  if ((process.env.BACKUP_ENABLED ?? 'true') === 'false') {
-    return { status: 'ok', enabled: false, note: 'Automatic backups are disabled (BACKUP_ENABLED=false).' }
+  if ((process.env.BACKUP_ENABLED ?? 'false') !== 'true') {
+    return { status: 'ok', enabled: false, note: 'Automatic backups are off. Start the backup service (docker compose --profile backup up -d) and set BACKUP_ENABLED=true.' }
   }
   try {
     const { rows } = await query<{
@@ -165,7 +165,7 @@ async function checkBackup(): Promise<{ status: Status } & Record<string, unknow
         status: 'ok',
         enabled: true,
         lastBackupAt: null,
-        note: 'No backup has run yet — the first runs on schedule (BACKUP_TIME). Run one now: `./waffled backup`.',
+        note: 'No backup has run yet — the first runs on schedule (BACKUP_TIME). Run one now: `docker compose exec backup waffled-backup`.',
       }
     }
     const last = rows[0]
@@ -176,7 +176,7 @@ async function checkBackup(): Promise<{ status: Status } & Record<string, unknow
         lastStatus: 'failed',
         lastBackupAt: last.finished_at,
         error: last.error ?? undefined,
-        hint: 'The last backup failed. Check `./waffled logs backup` (disk space, or BACKUP_S3_* credentials/endpoint).',
+        hint: 'The last backup failed. Check `docker compose logs backup` (disk space, or BACKUP_S3_* credentials/endpoint).',
       }
     }
     const ageHours = last.age_hours == null ? null : Math.round(last.age_hours)
@@ -188,11 +188,11 @@ async function checkBackup(): Promise<{ status: Status } & Record<string, unknow
       lastBackupAt: last.finished_at,
       lastFile: last.file_name ?? undefined,
       lastSizeBytes: last.size_bytes != null ? Number(last.size_bytes) : undefined,
-      ...(stale ? { hint: `Last successful backup was ${ageHours}h ago (a daily backup is expected). Check \`./waffled logs backup\`.` } : {}),
+      ...(stale ? { hint: `Last successful backup was ${ageHours}h ago (a daily backup is expected). Check \`docker compose logs backup\`.` } : {}),
     }
   } catch {
     // backup_runs missing (pre-0071) or unreadable — don't false-alarm the operator.
-    return { status: 'ok', enabled: true, note: 'backup_runs not found yet — run `./waffled migrate`.' }
+    return { status: 'ok', enabled: true, note: 'backup_runs not found yet — restart waffled: `docker compose restart waffled`.' }
   }
 }
 

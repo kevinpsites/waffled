@@ -1,25 +1,17 @@
 # Build & publish the Waffled runtime images to GitHub Container Registry (GHCR).
 #
-# Produces three multi-arch (amd64 + arm64) images that the compose stack can pull
-# instead of building from source:
-#   ghcr.io/kevinpsites/waffled-api     (apps/api/Dockerfile)
-#   ghcr.io/kevinpsites/waffled-caddy   (infra/compose/caddy/Dockerfile — bakes the web SPA)
-#   ghcr.io/kevinpsites/waffled-backup  (infra/compose/backup/Dockerfile — backup sidecar)
+# Produces two multi-arch (amd64 + arm64) images that compose.yaml pulls:
+#   ghcr.io/evan-ribbey/waffled         (root Dockerfile — API + the baked web SPA)
+#   ghcr.io/evan-ribbey/waffled-backup  (infra/backup/Dockerfile — backup sidecar)
 #
-# To run from these instead of building locally, set in infra/compose/.env:
-#   WAFFLED_API_IMAGE=ghcr.io/kevinpsites/waffled-api:latest
-#   WAFFLED_CADDY_IMAGE=ghcr.io/kevinpsites/waffled-caddy:latest
-#   WAFFLED_BACKUP_IMAGE=ghcr.io/kevinpsites/waffled-backup:latest
-# then `docker compose pull && ./waffled up`.
-#
-# Runs ONLY on a version tag pushed by `./waffled release X.Y.Z` or a manual
+# Runs ONLY on a version tag (vX.Y.Z) or a manual
 # dispatch — NOT on every push to main, to conserve Actions minutes.
 #
 # ── Why this is a build-per-arch + merge, not one QEMU job ─────────────────────────
 # Each architecture builds on its OWN native runner (amd64 on ubuntu-latest, arm64 on
 # ubuntu-24.04-arm — free for public repos) and pushes the image BY DIGEST (no tag).
 # A final `merge` job stitches the two per-arch digests into one multi-arch manifest
-# carrying the real tags. This avoids QEMU emulation, which made the arm64 `api` build
+# carrying the real tags. This avoids QEMU emulation, which made the arm64 `waffled` build
 # take ~40 min and intermittently crash Node ("illegal arguments") mid-`npm`. Native
 # builds run in parallel in a few minutes each. (Docker's "distribute build across
 # multiple runners" pattern.)
@@ -27,7 +19,7 @@ name: Publish images
 
 on:
   push:
-    tags: ['v*']            # cut a release locally: `./waffled release X.Y.Z`
+    tags: ['v*']          
   workflow_dispatch:        # manual "Run workflow" button (builds an sha-tagged image)
 
 # Least-privilege: read the repo, write packages (GHCR).
@@ -43,15 +35,14 @@ jobs:
       fail-fast: false
       matrix:
         image:
-          - name: api
-            context: apps/api
-            dockerfile: apps/api/Dockerfile
-          - name: caddy
-            context: .                     # repo root: the caddy image needs apps/web in context
-            dockerfile: infra/compose/caddy/Dockerfile
+          - name: waffled
+            repo: waffled
+            context: .
+            dockerfile: Dockerfile
           - name: backup
-            context: infra/compose/backup
-            dockerfile: infra/compose/backup/Dockerfile
+            repo: waffled-backup
+            context: infra/backup
+            dockerfile: infra/backup/Dockerfile
         platform:
           - { name: linux/amd64, runner: ubuntu-latest }
           - { name: linux/arm64, runner: ubuntu-24.04-arm }
@@ -78,7 +69,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/waffled-${{ matrix.image.name }}
+          images: ghcr.io/evan-ribbey/${{ matrix.image.repo }}
 
       - name: Build provenance (baked into the image → /healthz + /api/health)
         id: prov
@@ -94,14 +85,14 @@ jobs:
           file: ${{ matrix.image.dockerfile }}
           platforms: ${{ matrix.platform.name }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Only apps/api/Dockerfile declares these ARGs; caddy/backup ignore them
+          # Only the root Dockerfile declares these ARGs; backup ignores them
           # (a harmless "unused build arg" warning). Without this, published images
           # report the ARG defaults (sha=dev, empty build time).
           build-args: |
             GIT_SHA=${{ steps.prov.outputs.sha }}
             BUILD_TIME=${{ steps.prov.outputs.time }}
           # Push a tagless, digest-addressed image; the merge job attaches the tags.
-          outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/waffled-${{ matrix.image.name }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=ghcr.io/evan-ribbey/${{ matrix.image.repo }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ matrix.image.name }}-${{ env.PLATFORM_PAIR }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}-${{ env.PLATFORM_PAIR }}
 
@@ -126,13 +117,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [api, caddy, backup]
+        image:
+          - { name: waffled, repo: waffled }
+          - { name: backup, repo: waffled-backup }
     steps:
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
           path: ${{ runner.temp }}/digests
-          pattern: digests-${{ matrix.image }}-*
+          pattern: digests-${{ matrix.image.name }}-*
           merge-multiple: true
 
       - name: Set up Buildx
@@ -149,7 +142,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/waffled-${{ matrix.image }}
+          images: ghcr.io/evan-ribbey/${{ matrix.image.repo }}
           # Releases (v* tags) get semver tags + `latest`; manual dispatches get only
           # an sha tag, so a test build never clobbers `latest`.
           tags: |
@@ -163,21 +156,18 @@ jobs:
         run: |
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf 'ghcr.io/${{ github.repository_owner }}/waffled-${{ matrix.image }}@sha256:%s ' *)
+            $(printf 'ghcr.io/evan-ribbey/${{ matrix.image.repo }}@sha256:%s ' *)
 
       - name: Inspect
         run: |
           docker buildx imagetools inspect \
-            ghcr.io/${{ github.repository_owner }}/waffled-${{ matrix.image }}:${{ steps.meta.outputs.version }}
+            ghcr.io/evan-ribbey/${{ matrix.image.repo }}:${{ steps.meta.outputs.version }}
 
   # On a version tag, cut a GitHub Release: the CHANGELOG section for this version as the
-  # notes + the env template so operators have a canonical, version-matched starting point.
+  # notes + compose.yaml and the env template, a version-matched pair for operators.
   # The tagged commit already carries the finalized `## [X.Y.Z]` section (the notes reviewed
-  # and approved during `./waffled release`), so we lift it verbatim instead of GitHub's
-  # auto-generated commit list. Waffled mounts host config (Caddyfile, powersync,
-  # postgres/init), so the runnable "matched pair" is the tagged repo itself
-  # (`git checkout <tag>` → the compose, configs, and ./waffled that match these images) —
-  # hence we attach example.env, not a standalone compose.
+  # and approved at release time), so we lift it verbatim instead of GitHub's
+  # auto-generated commit list.
   release:
     needs: merge
     if: startsWith(github.ref, 'refs/tags/v')
@@ -189,7 +179,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Stage release assets
-        run: cp infra/compose/.env.example example.env
+        run: cp .env.example example.env
 
       # Extract this version's CHANGELOG section into RELEASE_NOTES.md. Falls back to
       # GitHub's auto-generated notes only if the section is missing/empty (see below).
@@ -234,4 +224,6 @@ jobs:
           # Prefer the approved CHANGELOG section; if it was empty, let GitHub auto-generate.
           body_path: ${{ steps.notes.outputs.found == 'true' && 'RELEASE_NOTES.md' || '' }}
           generate_release_notes: ${{ steps.notes.outputs.found != 'true' }}
-          files: example.env
+          files: |
+            example.env
+            compose.yaml

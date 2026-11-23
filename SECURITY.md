@@ -26,12 +26,11 @@ If you can't use GitHub advisories, email the maintainer at
 
 ### What to report
 
-- Auth / session / token handling flaws (API auth guards, kiosk pairing, OIDC,
-  PowerSync JWTs).
+- Auth / session / token handling flaws (API auth guards, kiosk pairing, OIDC).
 - Injection, SSRF, path traversal, or data-exposure bugs in `apps/api`.
 - XSS or client-side auth issues in `apps/web`.
-- Insecure defaults in `infra/compose` (docker compose, Caddy, generated
-  secrets) that affect a default install.
+- Insecure defaults in `compose.yaml` or the `waffled` image (generated
+  secrets, forwarded-header handling) that affect a default install.
 
 ## What NOT to do
 
@@ -59,11 +58,12 @@ should track the latest release and keep their images up to date.
 Waffled is self-hosted, so **you** — the operator — are responsible for the security
 of your deployment. At minimum:
 
-- **Serve over HTTPS.** The bundled Caddy config terminates TLS; don't expose the
-  API/web over plain HTTP on an untrusted network.
-- **Manage your secrets.** `./waffled up` generates secrets into
-  `infra/compose/.env` on first run. Keep that file private, back it up, and
-  never commit it. Some secrets (e.g. an OIDC client secret) are unrecoverable if
+- **Serve over HTTPS.** Waffled speaks plain HTTP; put a reverse proxy you control
+  in front for TLS, set `PUBLIC_BASE_URL`, and set `TRUST_PROXY=true` only behind it.
+  Don't expose the app over plain HTTP on an untrusted network.
+- **Manage your secrets.** The app generates its signing and encryption keys into
+  `/data/secrets.json` (the `waffled_data` volume) on first start. Back that volume
+  up, keep any `.env` private, and never commit it. Some secrets (e.g. an OIDC client secret) are unrecoverable if
   lost.
 - **Keep images updated.** Pull and redeploy new releases promptly to pick up
   security fixes.

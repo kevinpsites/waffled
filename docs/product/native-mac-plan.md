@@ -1,5 +1,7 @@
 # Waffled for Mac — native server runtime plan
 
+> **Removed in 0.16 — the fork no longer ships the Mac/iOS apps, PowerSync, Caddy or the `./waffled` CLI.** This document is kept as history; its commands and screens no longer apply.
+
 Authoritative plan for shipping Waffled as a **downloadable Mac app that runs the family
 server natively, with no Docker**. Companion to `roadmap.md` (Planned → "Waffled for Mac").
 Grounded in the current stack as of `a506c352` (v0.14.3).

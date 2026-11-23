@@ -1,5 +1,7 @@
 # Fork evaluation — `dispencer17/waffled`
 
+> **Note (0.16):** the iOS and Mac apps, PowerSync and the `./waffled` CLI referenced here were removed. The web/kiosk behaviour described is still current; iOS/offline details are historical.
+
 Assessment of the downstream personal fork at
 [dispencer17/waffled](https://github.com/dispencer17/waffled), written while porting
 three of its features upstream (Outlook/M365 sync, ICS feeds, Share list).

@@ -10,7 +10,7 @@ Photos is your family's shared wall of memories — and the visual identity of a
 ## Highlights
 
 - 🧱 **Family wall** — an aspect-preserving grid of everyone's photos, one shared surface for the whole household.
-- ⬆️ **Upload anything** — downscaled JPEG with a 10 MB cap; multi-upload with a per-photo **caption · album · favorite**; the native PHPicker on iOS and a **drag-and-drop zone** on web.
+- ⬆️ **Upload anything** — downscaled JPEG with a 10 MB cap; multi-upload with a per-photo **caption · album · favorite** and a **drag-and-drop zone** on web.
 - 🗂️ **Albums** — filter chips built from each photo's album, so you can jump straight to "Cabin 2025" or "Birthdays".
 - ✏️ **Edit a photo** — caption, album, date (→ `takenAt`), and favorite, all in place.
 - ✅ **Multi-select** — bulk **move-to-album** or **delete**, plus a per-tile delete with a confirm.
@@ -22,10 +22,8 @@ Photos is your family's shared wall of memories — and the visual identity of a
 | Surface | Support |
 |---|---|
 | Web / Kiosk | ✅ |
-| iPhone | ⚠️ |
-| iPad | ✅ |
 
-Drag-and-drop upload is **web-only** — iPhone and iPad use the native picker instead. The screensaver's ambient **chrome** (clock · date · weather · next event · album name) shows on Web and iPad; iPhone offers only a bare manual **"Play"** with no chrome. Slow-zoom (Ken-Burns) motion is **iOS-only**.
+The screensaver's ambient **chrome** (clock · date · weather · next event · album name) shows on the kiosk and web.
 
 ## Settings
 
@@ -44,6 +42,5 @@ Photos and the screensaver are **core — never gated**. There's no module toggl
 ## Notes
 
 - 🌤️ **Weather in the chrome** comes from Open-Meteo — no API key required.
-- 📱 **iPhone is deliberately lean** — it gets the wall, upload, and a chrome-free "Play", but not the ambient clock/weather/event overlay. Reach for [Kiosk & display](/features/kiosk/) on a tablet for the full frame.
-- 🎞️ **Ken-Burns slow-zoom is iOS-only** — the web screensaver crossfades without the zoom.
+- 🎞️ **Crossfade, no slow-zoom** — the web screensaver crossfades between photos.
 - 🚧 **Shared-album import** (Google Photos / iCloud) is planned — for now, upload lands photos directly.

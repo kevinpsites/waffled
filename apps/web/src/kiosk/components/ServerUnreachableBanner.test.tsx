@@ -33,7 +33,7 @@ describe('ServerUnreachableBanner', () => {
     render(<ServerUnreachableBanner />)
     goUnreachable()
     expect(screen.getByRole('status')).toHaveTextContent(/Can’t reach the Waffled server/)
-    expect(screen.getByRole('status')).toHaveTextContent(/menu bar and choose Start Waffled/)
+    expect(screen.getByRole('status')).toHaveTextContent(/run docker compose ps/)
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
   })
 
@@ -67,7 +67,7 @@ describe('ServerUnreachableBanner', () => {
     goUnreachable()
     expect(screen.getByRole('status')).toHaveTextContent(/offline — reconnecting/)
     expect(screen.queryByRole('button', { name: /Retry|Checking/ })).toBeNull()
-    expect(screen.queryByText(/menu bar and choose Start Waffled/)).toBeNull()
+    expect(screen.queryByText(/run docker compose ps/)).toBeNull()
   })
 
   it('stands down once the offline banner takes over', () => {

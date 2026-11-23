@@ -1,8 +1,7 @@
 # Waffled — brand & voice
 
 The source of truth for how Waffled sounds and positions itself, across the
-marketing site (`website/home`), the docs (`website/docs`), in-app copy, and the
-iOS App Store. If you're writing a headline, a button, a changelog line, or a
+marketing site (`website/home`), the docs (`website/docs`), and in-app copy. If you're writing a headline, a button, a changelog line, or a
 feature blurb, start here.
 
 > This was distilled from the product's existing tagline, license, and design
@@ -54,9 +53,9 @@ sound like the lesser option.
 
 2. **Warm, but technical.** The reader is a capable person setting up software for
    people they love. Respect both halves: friendly and domestic, but never
-   dumbed-down or cutesy. `./waffled up` and "pin a tablet to the fridge" belong
+   dumbed-down or cutesy. `docker compose up -d` and "pin a tablet to the fridge" belong
    in the same paragraph.
-   - ✅ "A native SwiftUI app with offline sync and Apple Health goals."
+   - ✅ "Two containers, one command: the whole app and its database."
    - ❌ "Your magical family command center in the cloud!"
 
 3. **Privacy is the emotional hook.** The reason to care is ownership: your
@@ -86,7 +85,7 @@ sound like the lesser option.
   "Waffled" alone reads fine.
 - Domains: **waffled.app** (marketing home), **docs.waffled.app** (docs), and a
   future **api.waffled.app**. Lowercase in prose.
-- The CLI/command is `./waffled` (lowercase, monospace).
+- The install command is `docker compose up -d` (lowercase, monospace).
 - License: **AGPL-3.0**. Say "open source," not "free software."
 
 ## Look & feel (pointers, not the source)

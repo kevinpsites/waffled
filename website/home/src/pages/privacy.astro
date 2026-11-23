@@ -6,12 +6,12 @@ import { LINKS } from '../consts';
 // OAuth brand verification wants the policy on the same host as the home page it
 // was given. Keep the "Google user data" section in sync with the scopes in
 // apps/api/src/platform/config.ts — a reviewer compares them line for line.
-const updated = 'September 1, 2026';
+const updated = 'November 22, 2026';
 ---
 
 <Base
 	title="Privacy policy — Waffled"
-	description="How Waffled handles your data: what a self-hosted install stores, what the iOS app collects, and exactly what Google account data the calendar integration accesses and why."
+	description="How Waffled handles your data: what a self-hosted install stores, and exactly what Google account data the calendar integration accesses and why."
 >
 	<section class="legal">
 		<div class="wrap">
@@ -33,8 +33,7 @@ const updated = 'September 1, 2026';
 
 				<h2>Who this policy covers</h2>
 				<p>This policy is published by the maintainers of <strong>Waffled</strong>, the open-source family
-				hub distributed at <a href={LINKS.github} rel="noopener">github.com/kevinpsites/waffled</a> and as
-				the <a href={LINKS.appStore} rel="noopener">Waffled iOS app</a>. It explains how the Waffled
+				hub distributed at <a href={LINKS.github} rel="noopener">github.com/evan-ribbey/waffled-remix</a>. It explains how the Waffled
 				software handles personal data, including data obtained from Google APIs.</p>
 
 				<p>Because Waffled is self-hosted, there are two distinct roles:</p>
@@ -132,10 +131,6 @@ const updated = 'September 1, 2026';
 				<ul>
 					<li><strong>Microsoft / Outlook calendar</strong> — works the same way as Google Calendar, with
 					the same storage, encryption and deletion behaviour, against Microsoft's APIs.</li>
-					<li><strong>Apple Health (iPhone only)</strong> — if you link a goal to a Health metric, the iOS
-					app reads that metric on your device and sends only the resulting progress number (for example
-					"7,340 steps") to your own server. Raw health records never leave your iPhone and are never sent
-					to us.</li>
 					<li><strong>Open Food Facts</strong> — scanning a barcode in the pantry sends that barcode to
 					the public <a href="https://world.openfoodfacts.org/" rel="noopener">Open Food Facts</a>
 					database to look up the product. No personal or household information is included.</li>
@@ -144,11 +139,6 @@ const updated = 'September 1, 2026';
 					configured, under that provider's privacy policy. Running a local model keeps it on your own
 					hardware.</li>
 				</ul>
-
-				<h2>The iOS app</h2>
-				<p>The Waffled iOS app talks only to the server address you enter when you sign in. It contains no
-				analytics SDKs, no advertising SDKs and no third-party trackers, and it sends no data to the
-				maintainers. Authentication tokens are stored in the iOS Keychain on your device.</p>
 
 				<h2>This website</h2>
 				<p>waffled.app and docs.waffled.app are static sites. They set no tracking cookies and run no
@@ -184,7 +174,7 @@ const updated = 'September 1, 2026';
 
 				<h2>Contact</h2>
 				<p>Questions about this policy, or about how Waffled handles Google user data, can be raised as an
-				issue at <a href={LINKS.issues} rel="noopener">github.com/kevinpsites/waffled/issues</a>, which is
+				issue at <a href={LINKS.issues} rel="noopener">github.com/evan-ribbey/waffled-remix/issues</a>, which is
 				the maintainers' monitored contact channel for the project.</p>
 			</div>
 		</div>

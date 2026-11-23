@@ -109,10 +109,6 @@ async function mockApi(page: Page) {
     else if (path === '/api/rhythms/attention') body = attention
     else if (path === '/api/rhythms') body = { rhythms }
     else if (path === '/api/events') body = { events: [recurringOuting] }
-    else if (path === '/api/powersync/token') {
-      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'disabled' }) })
-      return
-    }
 
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
   })

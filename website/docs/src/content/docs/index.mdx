@@ -14,10 +14,6 @@ hero:
       link: /getting-started/quick-start/
       icon: rocket
       variant: minimal
-    - text: Install on a Mac
-      link: /install/mac/
-      icon: apple
-      variant: minimal
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
@@ -26,13 +22,10 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
 <CardGrid stagger>
 	<Card title="Overview" icon="open-book">
-		[What Waffled is, the three surfaces, and the core ideas behind it.](/getting-started/overview/)
-	</Card>
-	<Card title="Mac install" icon="apple">
-		[Download the Mac app and run the whole server natively — no Docker, no Terminal.](/install/mac/)
+		[What Waffled is, the two surfaces, and the core ideas behind it.](/getting-started/overview/)
 	</Card>
 	<Card title="Quick start" icon="rocket">
-		[Anywhere Docker runs: `git clone` + `./waffled up` — the whole install in one command.](/getting-started/quick-start/)
+		[Anywhere Docker runs: download `compose.yaml`, then `docker compose up -d`.](/getting-started/quick-start/)
 	</Card>
 	<Card title="Features" icon="puzzle">
 		[Calendar, chores & stars, meals, lists, pantry, photos, and more — page by page.](/reference/features/)
@@ -41,7 +34,7 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 		[Users, modules, SSO, Google Calendar, AI providers, kiosk, and health.](/administration/users/)
 	</Card>
 	<Card title="Developer" icon="laptop">
-		[Architecture, local dev, the database, iOS, and how to build a module.](/developer/architecture/)
+		[Architecture, local dev, the database, and how to build a module.](/developer/architecture/)
 	</Card>
 	<Card title="API reference" icon="seti:json">
 		[Authentication, API keys, and every endpoint grouped by module.](/reference/api/)

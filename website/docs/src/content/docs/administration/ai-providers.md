@@ -6,7 +6,7 @@ description: Configure the AI behind the capture bar and meal/recipe features �
 Waffled's AI features — the ["Add anything" capture bar](/features/capture/), meal/recipe
 planning, and calendar heads-ups — run through **one pluggable provider interface**. You can use
 a hosted model, a local one, or none at all. **Keys live only on the server**, and the app always
-degrades gracefully to an on-device heuristic when no provider is set or you're offline.
+degrades gracefully to an on-device heuristic when no provider is set.
 
 ## The three provider options
 
@@ -22,7 +22,7 @@ You can set **more than one** — the active provider and model are chosen **per
 
 ## Set it up
 
-1. Add the key(s) for whichever provider you want in `infra/compose/.env`, then `./waffled up`.
+1. Add the key(s) for whichever provider you want in `.env` (beside `compose.yaml`), then run `docker compose up -d`.
    Examples:
 
    ```bash
@@ -40,13 +40,6 @@ You can set **more than one** — the active provider and model are chosen **per
    OLLAMA_MODEL=llama3.1
    ```
 
-   **On Waffled for Mac**, use the app's **Settings…** instead: the key (or Ollama's address,
-   or an OpenAI-compatible server's address) goes in the **AI settings** row on the **Basic**
-   tab, and the models, timeout and retries under **Advanced → AI model and limits**. Then
-   restart Waffled when it asks. Choosing another provider there later adds it alongside the
-   first; **Not now** removes every saved key. See
-   [Changing settings later](/install/mac/#changing-settings-later).
-
 2. In the app, open **Settings → AI & Capture** and pick the **provider** and **model** for your
    household.
 
@@ -58,8 +51,7 @@ Point `OLLAMA_HOST` at an Ollama instance on your network:
 
 - **Docker Desktop (Mac/Windows):** `OLLAMA_HOST=http://host.docker.internal:11434`.
 - **Bare Linux:** use the Docker bridge address, e.g. `OLLAMA_HOST=http://172.17.0.1:11434`.
-- **Waffled for Mac, Ollama on the same Mac:** `http://localhost:11434` — the address the
-  **AI settings** row already suggests. No Docker in between, so `localhost` is right.
+- **Ollama on another machine:** use that machine's LAN address, e.g. `http://192.168.1.50:11434`.
 
 Ollama models are **cold** until first use — Waffled warms the model on demand (hosted providers
 are always warm), so the first parse after a while may take a beat.
@@ -72,7 +64,7 @@ are always warm), so the first parse after a while may take a beat.
 
 - **Keys never leave the server** — clients call your api, which calls the provider. The app
   doesn't ship keys to the device.
-- **Always works offline.** With no provider configured, or on a timeout (`AI_TIMEOUT_MS`,
+- **Always works without a provider.** With no provider configured, or on a timeout (`AI_TIMEOUT_MS`,
   default 30 s), the capture route signals `fallback` and clients parse with the built-in
   heuristic. You never get a dead input box.
 - **Outbound only when you opt in.** Hosted providers are the only path that sends text off your

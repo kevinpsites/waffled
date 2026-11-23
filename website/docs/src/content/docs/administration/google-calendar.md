@@ -17,9 +17,8 @@ Prefer Outlook? The same sync works with
 - **Outbound:** events Waffled authors are pushed to that person's **write-target** calendar
   (their primary or an explicitly chosen writable calendar; read-only calendars are never
   targets). The push moves `pending_push → synced`, or `push_failed` and retries next cycle.
-- **Server-side:** sync runs in the api, not on a device — so a phone with no signal still reads
-  and queues via [PowerSync](/features/calendar/), and Google reconciliation happens on the
-  server.
+- **Server-side:** sync runs in the app server, not on a device, so Google reconciliation
+  happens on the server whichever device you use.
 
 ## One-time: create Google OAuth credentials
 
@@ -35,7 +34,7 @@ project):
    `https://your.host/auth/google/calendar/callback` (or
    `http://localhost:8080/auth/google/calendar/callback` locally). Note this path has **no
    `/api`** prefix.
-5. Copy the **Client ID** and **Client secret** into `infra/compose/.env`:
+5. Copy the **Client ID** and **Client secret** into `.env` (beside `compose.yaml`):
 
    ```bash
    GOOGLE_CLIENT_ID=...apps.googleusercontent.com
@@ -44,21 +43,15 @@ project):
    ```
 
    Make sure `TOKEN_ENCRYPTION_KEY` is set too — the stored Google **refresh token is encrypted
-   at rest** with it. Then `./waffled up`.
+   at rest** with it. Then `docker compose up -d`.
 
-   **On Waffled for Mac**, enter the three in the app's **Settings… → Advanced → Calendar
-   sync** and restart Waffled when it asks. `TOKEN_ENCRYPTION_KEY` is generated for you —
-   nothing to set. `GOOGLE_CALENDAR_SCOPES` has no field; set it with `waffled-runtime config
-   set` only if you need to.
-
-   ⚠️ **The address a Mac hands out on your LAN cannot be used here.** Google takes a redirect
-   URI only over `https`, never a raw IP address, and only on a domain in the public suffix
-   list — so `http://192.168.1.5:8080/…` and a `.local` name are all refused. Either sign in
-   from the Mac itself with `http://localhost:8080/auth/google/calendar/callback`, or give
-   Waffled a real domain with HTTPS in front of it
-   ([Reverse proxy & TLS](/install/reverse-proxy/)). The rest of Waffled works fine on the
-   LAN address either way — this limit is Google's, and applies to a Docker install on a LAN
-   address just the same.
+   ⚠️ **A LAN address cannot be used here.** Google takes a redirect URI only over `https`,
+   never a raw IP address, and only on a domain in the public suffix list — so
+   `http://192.168.1.5:8080/…` and a `.local` name are all refused. Either sign in from the
+   host itself with `http://localhost:8080/auth/google/calendar/callback`, or give Waffled a
+   real domain with HTTPS in front of it ([Reverse proxy & TLS](/install/reverse-proxy/)) and
+   set `PUBLIC_BASE_URL`. The rest of Waffled works fine on the LAN address either way — this
+   limit is Google's.
 
 > **⚠️ Publish your consent screen.** While the OAuth app is in **"Testing"**, Google **expires
 > refresh tokens after 7 days**, so sync silently breaks about once a week. Moving the consent
@@ -91,7 +84,7 @@ itself depends on it.
 ## Connect a person
 
 Once the credentials are set, each person connects in **Settings → Calendars** — on the web
-app, or on iPhone/iPad, whichever is to hand:
+app (including the installed PWA on a phone):
 
 1. Tap **Connect Google Calendar** and complete the Google consent flow.
 2. Choose which of their Google calendars to sync, and which is the **write-target** for events

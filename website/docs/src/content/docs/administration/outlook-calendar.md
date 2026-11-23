@@ -42,7 +42,7 @@ no paid Azure services involved:
 4. Under **Certificates & secrets**, create a **client secret** and copy its *Value*
    right away (it's shown only once). Client secrets **expire** on the lifetime you pick at
    creation — when one lapses, sync stops until you create a new secret and update the env.
-5. Copy the **Application (client) ID** and the secret value into `infra/compose/.env`:
+5. Copy the **Application (client) ID** and the secret value into `.env` (beside `compose.yaml`):
 
    ```bash
    MS_CLIENT_ID=...
@@ -51,21 +51,17 @@ no paid Azure services involved:
    ```
 
    Make sure `TOKEN_ENCRYPTION_KEY` is set too — the stored Microsoft **refresh token is
-   encrypted at rest** with it. Then `./waffled up`.
-
-   **On Waffled for Mac**, enter the three in the app's **Settings… → Advanced → Calendar
-   sync** and restart Waffled when it asks. `TOKEN_ENCRYPTION_KEY` is generated for you —
-   nothing to set.
+   encrypted at rest** with it. Then `docker compose up -d`.
 
    ⚠️ Microsoft takes a redirect URI only over `https`, with `localhost` the one exception —
-   so the LAN address a Mac hands out (`http://192.168.1.5:8080/…`) is refused. Sign in from
-   the Mac itself with `http://localhost:8080/auth/microsoft/calendar/callback`, or put a real
-   domain with HTTPS in front of Waffled ([Reverse proxy & TLS](/install/reverse-proxy/)).
+   so a LAN address (`http://192.168.1.5:8080/…`) is refused. Sign in from
+   the host itself with `http://localhost:8080/auth/microsoft/calendar/callback`, or put a real
+   domain with HTTPS in front of Waffled ([Reverse proxy & TLS](/install/reverse-proxy/)) and
+   set `PUBLIC_BASE_URL`.
 
 The default scopes are `openid email offline_access User.Read Calendars.ReadWrite` (identity +
 calendar read/write + a refresh token). Override with `MS_CALENDAR_SCOPES` only if you know you
-need to — leave it unset otherwise. (On a Mac it has no Settings field; it's
-`waffled-runtime config set MS_CALENDAR_SCOPES=…`.)
+need to — leave it unset otherwise.
 
 ## Work & school accounts: admin consent
 
@@ -83,7 +79,7 @@ approval needed.
 ## Connect a person
 
 Once the credentials are set, each person connects in **Settings → Calendars** — on the web
-app, or on iPhone/iPad, whichever is to hand:
+app (including the installed PWA on a phone):
 
 1. Tap **Connect Outlook Calendar** and complete the Microsoft sign-in and consent flow.
 2. Choose which calendars to sync, and which is the **write-target** for events Waffled pushes.

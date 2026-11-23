@@ -1,78 +1,45 @@
 ---
 title: Quick start
-description: Install Waffled — the Mac app on an Apple silicon Mac, or a small Docker Compose stack anywhere else.
+description: Install Waffled with two containers and one command, then open it in your browser.
 ---
 
-There are two ways to run Waffled, and they are the same server — same api, same data,
-same web app. Pick by machine:
-
-| You have | Install | Docker? |
-|---|---|---|
-| A Mac with Apple silicon, macOS 14+ | **[Waffled for Mac](/install/mac/)** — download it, drag it to Applications, open it | No |
-| Linux, a NAS, a Raspberry Pi, a VPS — or a Mac you'd rather run Docker on | **This page** — `git clone` + `./waffled up` | Yes |
-
-On a Mac, [Mac install](/install/mac/) is the whole walkthrough; the rest of this page is
-the Docker path.
-
-Waffled runs as a small Docker Compose stack — **Postgres · PowerSync · api · Caddy**. Auth
-is built in; no Auth0 or external identity provider is required. You can attach your own
-SSO later (optional).
+Waffled runs as two Docker containers, the `waffled` app and Postgres, started from a single
+`compose.yaml`. Auth is built in; no Auth0 or external identity provider is required. You can
+attach your own SSO later (optional).
 
 ## Requirements
 
-- **Docker** with the **Compose v2** plugin (`docker compose`, not the legacy
-  `docker-compose`). ~4 GB RAM is comfortable.
-- That's it — no host toolchain (Node, etc.). Migrations and builds run in containers.
-- `./waffled up` runs a **preflight** first and tells you (with fix links) if Docker is
-  missing, the daemon is off, Compose v2 isn't installed, or a required port is busy.
+- **Docker** with the **Compose v2.24 or newer** plugin (`docker compose`, not the legacy
+  `docker-compose`). ~2 GB RAM is comfortable.
+- That's it: no host toolchain, no `.env`, no API keys, no domain.
 
 New to self-hosting? Install **Docker Desktop**, open it, and wait until it says Docker is
-running. Then open **Terminal** on macOS/Linux, or **Git Bash/WSL** on Windows. You do not need
-to create an `.env` file, buy a domain, or obtain any API keys for the core app.
+running. Then open **Terminal** on macOS/Linux, or **Git Bash/WSL** on Windows.
 
 ## Install
 
-> **Setting this up for a tablet, phone, or another computer?** That's the whole point —
-> an always-on kiosk tablet + the iOS app. Sync now finds its own way: a device is told to
-> sync at whatever address it used to reach the server, so a tablet on `192.168.1.20:8080`
-> syncs against that same machine rather than itself. Still run **`./waffled setup`** (one
-> question, auto-detects your LAN IP) so calendar and sign-in redirects point at the right
-> address — before installing, or any time later followed by `./waffled up`. Details:
-> [Accessing it from other devices](#accessing-it-from-other-devices).
-
 ```bash
-git clone https://github.com/kevinpsites/waffled.git
-cd waffled
-./waffled setup   # recommended if other devices will connect (skip for localhost-only)
-./waffled up      # checks prereqs, creates .env (generated secrets), pulls images, migrates, starts
+mkdir waffled && cd waffled
+curl -fsSLO https://raw.githubusercontent.com/evan-ribbey/waffled-remix/main/compose.yaml
+docker compose up -d
 ```
 
-That's the whole install. On first run, `./waffled up`:
-
-1. Creates `infra/compose/.env` from `.env.example`, generating `LOCAL_JWT_SECRET`,
-   `TOKEN_ENCRYPTION_KEY`, `POWERSYNC_JWT_PRIVATE_KEY`, and `POSTGRES_PASSWORD` for you.
-   Missing secrets are also filled during upgrades; existing values are preserved.
-2. Pulls the prebuilt `api` / `caddy` / `backup` images from GHCR (plus Postgres +
-   PowerSync). Prefer to build from source? Use `./waffled up --build`.
-3. Runs a one-shot **migrate** service to apply the database schema (so PowerSync's
-   replication publication exists before it starts).
-4. Starts everything, prints a health table, and tells you **which URL to open**.
-
-Open the kiosk/web app at the URL it prints — **http://localhost:8080** by default.
-
-## Check that it worked
-
-The final table should show `postgres`, `api`, `powersync`, `caddy`, and `backup` as healthy or
-running. You can check again at any time:
+That's the whole install. On first start the app creates its own signing and encryption keys,
+applies the database schema, and begins serving. Open **http://localhost:8080** and check it
+worked with:
 
 ```bash
-./waffled status
-./waffled doctor
+docker compose ps
 ```
 
-If the browser does not open the app, copy the last error from `./waffled up` and check the
+Both `waffled` and `postgres` should show as running (healthy). If the browser doesn't open
+the app, look at `docker compose logs waffled` and the
 [troubleshooting guide](/operations/troubleshooting/). Do not delete Docker volumes to retry;
-`./waffled down` safely stops the app without deleting data.
+`docker compose down` safely stops the app without deleting data.
+
+> **Coming from the old `./waffled` install?** Follow
+> [Migrating from the ./waffled CLI](/install/migrating-from-waffled-cli/) instead; your data
+> comes along.
 
 ## First-run setup
 
@@ -97,7 +64,7 @@ The owner login is protected; removing a login revokes that person's sessions.
 
 ## Optional: AI "Add anything" + meal/recipe AI
 
-Set one of these in `infra/compose/.env` (keys live only on the server):
+Set one of these in `.env` beside `compose.yaml`, then run `docker compose up -d` (keys live only on the server):
 
 - `ANTHROPIC_API_KEY` — Claude
 - `OPENAI_API_KEY` (+ optional `OPENAI_BASE_URL`) — OpenAI-compatible
@@ -138,57 +105,22 @@ matches a family member's login email.
 
 ## Accessing it from other devices
 
-The easiest path is **`./waffled setup`** — it asks how devices will reach the server and
-writes the address settings for you:
-
-- **Just this computer (localhost)** — the default; nothing to do.
-- **Other devices on my network** — a tablet/phone/laptop on your LAN. `setup` detects
-  this machine's IP and sets `PUBLIC_BASE_URL` to it. The sync address is worked out per
-  device from the address it dialled, so the kiosk and [iOS app](/features/mobile/) sync
-  without any further configuration. Open `http://<ip>:8080` on the device. *(Reserve a
-  static IP for this machine in your router so redirects and bookmarks don't drift.)*
-- **A hostname with automatic HTTPS** — `setup` sets `CADDY_SITE_ADDRESS` (Caddy
-  auto-TLS), its PowerSync listener, and the public URLs. Enable the `443` mapping in
-  `infra/compose/docker-compose.yml` and point DNS at the machine; Caddy also provides
-  TLS for PowerSync on port `8090`.
-
-Prefer to edit by hand? The same four vars in `infra/compose/.env` do it:
-`PUBLIC_BASE_URL` (public origin for calendar/OIDC redirects), `CADDY_SITE_ADDRESS`
-(hostname for auto-TLS), `POWERSYNC_CADDY_ADDRESS` (the sync listener), and
-`POWERSYNC_PUBLIC_URL` — leave that one **empty** unless PowerSync has its own
-hostname/TLS, since an empty value means "derive it from the address each device used."
-Run `./waffled up` after changing them.
+On the same network, open `http://<host-ip>:8080` on the tablet or phone. (Reserve a static IP
+for the host in your router so bookmarks don't drift.) For a hostname or HTTPS, put a reverse
+proxy in front and set `PUBLIC_BASE_URL` and `TRUST_PROXY=true` in `.env`; see
+[Reverse proxy & TLS](/install/reverse-proxy/). Installing the web app to a phone's home
+screen is covered in [Phone & PWA](/features/mobile/).
 
 ## Health, backups, and upgrades
 
-- **Check it's healthy:** `./waffled doctor` (db, migrations, jobs, calendar, storage,
-  backup) — or **Settings → System Health** in the app. Both show the same report.
-- **Backups** run nightly out of the box; see [Backup & restore](/operations/backup/) to
-  point them at a folder or S3, and to restore.
-- **Upgrading:** run **`./waffled upgrade`** — it fast-forwards the repo, bumps the pinned
-  version, snapshots the DB, pulls the new images, and applies migrations in one step. The
+- **Check it's healthy:** `docker compose ps`, or **Settings → System Health** in the app.
+- **Backups** are opt-in: `docker compose --profile backup up -d` and `BACKUP_ENABLED=true`
+  in `.env`. See [Backup & restore](/operations/backup/) to point them at a folder or S3, and
+  to restore.
+- **Upgrading:** `docker compose pull && docker compose up -d`. Migrations run on start. The
   app also flags **"Update available"** in Settings → System Health when you're behind. Full
   details: the [upgrading guide](/operations/upgrading/). **Stuck?**
   [Troubleshooting](/operations/troubleshooting/).
-
-## Image source (optional)
-
-By default `./waffled up` **pulls** the prebuilt multi-arch `api` / `caddy` / `backup`
-images from GHCR, pinned to `WAFFLED_VERSION` in `infra/compose/.env`. Two alternatives:
-
-- **Build from source** (dev / bleeding-edge): `./waffled up --build`.
-- **Pin a custom registry/tag**: set the overrides in `infra/compose/.env` (these win over
-  `WAFFLED_VERSION`):
-
-  ```bash
-  WAFFLED_API_IMAGE=ghcr.io/kevinpsites/waffled-api:latest
-  WAFFLED_CADDY_IMAGE=ghcr.io/kevinpsites/waffled-caddy:latest
-  WAFFLED_BACKUP_IMAGE=ghcr.io/kevinpsites/waffled-backup:latest
-  ```
-
-Images are multi-arch (amd64 + arm64), so they run on x86 or an ARM SBC (e.g. Raspberry
-Pi). They're published by `.github/workflows/publish-images.yml` when a maintainer cuts
-and pushes a release with `./waffled release X.Y.Z`.
 
 ## Kiosk mode (the always-on tablet)
 

@@ -1,18 +1,12 @@
 // Shared outbound links for the landing page. Docs live on their own subdomain
 // (deployed from ../docs); GitHub is the canonical repo.
 export const DOCS = 'https://docs.waffled.app';
-export const GITHUB = 'https://github.com/kevinpsites/waffled';
-export const APP_STORE = 'https://apps.apple.com/app/waffled/id6787621452';
+export const GITHUB = 'https://github.com/evan-ribbey/waffled-remix';
 
 export const LINKS = {
 	docs: DOCS,
-	appStore: APP_STORE,
 	quickStart: `${DOCS}/getting-started/quick-start/`,
 	overview: `${DOCS}/getting-started/overview/`,
-	mac: `${DOCS}/install/mac/`,
-	// release-mac.sh uploads a fixed-name Waffled.dmg to every release, and GitHub
-	// serves the Latest release's assets here — so this never changes per version.
-	macDownload: `${GITHUB}/releases/latest/download/Waffled.dmg`,
 	docker: `${DOCS}/install/docker/`,
 	requirements: `${DOCS}/install/requirements/`,
 	features: `${DOCS}/reference/features/`,
@@ -36,9 +30,9 @@ export const HOSTED_FORM_URL = 'https://forms.gle/KuNXkooDKzZivwim8';
 export const FEATURES = [
 	{ icon: '📅', title: 'Calendar & countdowns', slug: 'features/calendar', blurb: 'One shared family calendar with recurring events, Google sync, and “N days until” countdowns.' },
 	{ icon: '✅', title: 'Chores & stars', slug: 'features/chores', blurb: 'Assign chores, earn stars, and fund a rewards economy the whole household can see.' },
-	{ icon: '🎯', title: 'Goals & Apple Health', slug: 'features/goals', blurb: 'Track personal goals — and let Apple Health steps and workouts move them automatically.' },
+	{ icon: '🎯', title: 'Goals', slug: 'features/goals', blurb: 'Track personal and shared goals — counts, totals, habits and checklists — with milestones and streaks.' },
 	{ icon: '🍽️', title: 'Meals & recipes', slug: 'features/meals', blurb: 'Plan the week, keep recipes with cook-mode timers, and roll ingredients into the grocery list.' },
-	{ icon: '🛒', title: 'Lists & groceries', slug: 'features/lists', blurb: 'Shared shopping and to-do lists that stay in sync across the kiosk and every phone.' },
+	{ icon: '🛒', title: 'Lists & groceries', slug: 'features/lists', blurb: 'Shared shopping and to-do lists that stay current across the kiosk and every phone.' },
 	{ icon: '🥫', title: 'Pantry', slug: 'features/pantry', blurb: 'Scan barcodes, track what’s in stock, get low-stock and expiry nudges with allergen warnings.' },
 	{ icon: '🖼️', title: 'Photos & screensaver', slug: 'features/photos', blurb: 'Turn the kitchen display into a family photo frame when no one’s tapping.' },
 	{ icon: '🌙', title: 'Family Night', slug: 'features/family-night', blurb: 'A customizable, auto-rotating agenda for your weekly family time.' },

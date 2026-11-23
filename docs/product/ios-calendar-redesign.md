@@ -1,5 +1,7 @@
 # iPhone calendar — Month → Week → Day
 
+> **Removed in 0.16 — the fork no longer ships the Mac/iOS apps, PowerSync, Caddy or the `./waffled` CLI.** This document is kept as history; its commands and screens no longer apply.
+
 The iPhone Calendar tab, rebuilt from the Claude Design handoff "iOS Calendar – Handoff Build".
 The iPad keeps its own wide grids (`KioskCalendarView`); nothing here changes them except that
 both now share one overlap-lane implementation (`TimeLanes`).

@@ -121,9 +121,8 @@ function Face({ person }: { person: Person }) {
 
 // How long to keep asking the server after a save.
 //
-// THE WRITE IS LOCAL-FIRST; THIS BOARD IS A SERVER READ. `EventModal` saves through PowerSync and
-// uploads afterwards, so when `onSaved` fires the server has not been told yet and re-reading once
-// looks exactly like a lost save. So ask again on a widening ladder, stopping when the credit
+// The board is a server read. `onSaved` fires once the REST write has returned, but the board's
+// credit count can still lag behind it, so ask again on a widening ladder, stopping when the credit
 // count goes UP. Deliberately NOT a second source of truth: this step's contract is that the
 // SERVER composes the row's sentence.
 const CATCHUP_MS = [250, 500, 1000, 2000, 3000]

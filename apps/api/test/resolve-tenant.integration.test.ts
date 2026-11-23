@@ -150,12 +150,4 @@ describe('P2.1 resolveTenant — account-aware', () => {
     const b = await call('GET', '/api/household', mintAccount(accountId, householdB))
     expect(JSON.parse(b.body).household.name).toBe('B')
   })
-
-  it('PowerSync token carries the claimed household, not just the default', async () => {
-    const res = await call('GET', '/api/powersync/token', mintAccount(accountId, householdB))
-    expect(res.statusCode).toBe(200)
-    const token = JSON.parse(res.body).token as string
-    const decoded = jwt.decode(token) as { household_id: string }
-    expect(decoded.household_id).toBe(householdB)
-  })
 })

@@ -254,11 +254,8 @@ describe('Weekly planning · step 5 · Connection', () => {
   })
 
   it('keeps asking until the board has caught up with the event just saved', async () => {
-    // THE WRITE IS LOCAL-FIRST and this board is a SERVER read. `EventModal` saves
-    // through PowerSync (`createEventLocal`) and uploads afterwards, so at the instant
-    // `onSaved` fires the server has not been told yet — asking once, immediately, asks
-    // too early, and the event is on the calendar (the local mirror) while the pairing
-    // still reads "Nothing on the calendar with just the two of you".
+    // The board is a SERVER read that can lag the save — asking once, immediately,
+    // can still read "Nothing on the calendar with just the two of you".
     let reads = 0
     const caughtUp = {
       ...BOARD,

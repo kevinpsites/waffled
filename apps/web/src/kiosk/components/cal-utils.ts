@@ -4,7 +4,28 @@
 // clock (new Date().getHours()), matching the rest of the app's assumption that
 // the kiosk runs in the household's zone.
 import type { AgendaEvent } from '../../lib/api'
-export { localDate } from '../../lib/powersync/events-local'
+
+// Intl gives tz-correct local dates without a tz library; cache per zone.
+const fmtCache = new Map<string, Intl.DateTimeFormat>()
+function dayFormatter(tz: string): Intl.DateTimeFormat {
+  let f = fmtCache.get(tz)
+  if (!f) {
+    // en-CA renders YYYY-MM-DD; an invalid zone falls back to UTC.
+    try {
+      f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' })
+    } catch {
+      f = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' })
+    }
+    fmtCache.set(tz, f)
+  }
+  return f
+}
+
+// The local calendar date (YYYY-MM-DD, in tz) an instant falls on.
+export function localDate(iso: string, tz: string): string {
+  const d = new Date(iso)
+  return dayFormatter(tz).format(Number.isNaN(d.getTime()) ? new Date(iso.replace(' ', 'T')) : d)
+}
 
 export const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 export const DOW_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']

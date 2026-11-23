@@ -3,12 +3,6 @@
 // Device-authed calls use deviceFetch (the device bearer); admin calls use the
 // normal authFetch-backed apiSend.
 //
-// ⚠️ KEEP IN SYNC with the iOS shared-kiosk port — endpoints, request bodies, and
-// status codes (401 triesLeft / 429 retryAfter) must match:
-//   apps/ios/Sources/Nook/Sync/KioskDevice.swift   (device-secret + token exchange)
-//   apps/ios/Sources/Nook/Sync/KioskMode.swift     (gate state machine)
-//   apps/ios/Sources/Nook/Sync/NookAPI.swift        (kiosk endpoints)
-//   apps/ios/Sources/Nook/Features/Kiosk/KioskProfilePickerView.swift  (picker + PIN pad)
 import { apiGet, apiSend, apiDelete, deviceFetch, getAccessToken, setKioskDevice, enterKioskMode, setSession, trackedFetch } from './client'
 
 export interface DisplayConfig {

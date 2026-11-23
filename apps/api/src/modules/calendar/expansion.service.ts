@@ -1,7 +1,7 @@
 // Materializes Waffled-native recurring masters into event_occurrences — the read
 // model clients render. Calls the pure expand() engine over a rolling window and
 // upserts the result, keyed by (event_id, original_start) so row ids stay stable
-// (PowerSync doesn't re-stream the whole series each run). Runs on a dedicated,
+// (clients don't re-fetch the whole series each run). Runs on a dedicated,
 // Google-independent tick (a self-hosted family with no Google still needs this)
 // plus on-demand right after a master is created/edited so it appears immediately.
 //

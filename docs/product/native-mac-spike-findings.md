@@ -1,5 +1,7 @@
 # Native macOS spike — the whole Waffled stack on one Mac, no Docker
 
+> **Removed in 0.16 — the fork no longer ships the Mac/iOS apps, PowerSync, Caddy or the `./waffled` CLI.** This document is kept as history; its commands and screens no longer apply.
+
 *This is the retired Phase 1 spike's write-up, kept for the reasoning behind the bundle
 (`infra/native/bundle/`) and runtime (`apps/runtime/`) choices in
 `docs/product/native-mac-plan.md`. The spike's throwaway scripts (`infra/native/spike/`)

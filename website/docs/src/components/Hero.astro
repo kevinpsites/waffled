@@ -1,11 +1,7 @@
 ---
-// Override of Starlight's default Hero (registered in astro.config.mjs) — same
-// markup + styles, plus the official "Download on the App Store" badge in the
-// action row, matching the badge on the waffled.app landing page.
+// Override of Starlight's default Hero (registered in astro.config.mjs).
 import { Image } from 'astro:assets';
 import { LinkButton } from '@astrojs/starlight/components';
-
-const APP_STORE = 'https://apps.apple.com/app/waffled/id6787621452';
 
 const { data } = Astro.locals.starlightRoute.entry;
 const { title = data.title, tagline, image, actions = [] } = data.hero || {};
@@ -61,9 +57,6 @@ if (image) {
 					)
 				)
 			}
-			<a class="store-badge" href={APP_STORE} rel="noopener">
-				<img src="/app-store-badge.svg" alt="Download on the App Store" width="144" height="48" />
-			</a>
 		</div>
 	</div>
 </div>
@@ -120,10 +113,6 @@ if (image) {
 			justify-content: center;
 			align-items: center;
 		}
-
-		.store-badge { display: inline-flex; transition: transform 0.15s ease; }
-		.store-badge:hover { transform: translateY(-1px); }
-		.store-badge img { width: 144px; height: 48px; }
 
 		@media (min-width: 50rem) {
 			.hero {

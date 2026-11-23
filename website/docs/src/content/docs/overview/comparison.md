@@ -12,16 +12,15 @@ suit you better.
 
 ## What makes Waffled different
 
-- **Self-hosted, no subscription.** Runs on any always-on machine — as a
-  [Mac app](/install/mac/) on a Mac mini with no Docker, or as a small Docker stack on an old
-  laptop, a NUC or a Raspberry Pi. No monthly fee, no per-seat pricing, no account with a
+- **Self-hosted, no subscription.** Runs on any always-on machine — a small
+  two-container Docker stack on an old laptop, a Mac mini, a NUC or a Raspberry Pi. No monthly fee, no per-seat pricing, no account with a
   third party.
 - **Your data stays yours.** One Postgres database you control. No ads, no analytics selling,
   no vendor that can change the terms or shut the product down.
 - **One hub, many things.** Calendar *and* chores *and* meals *and* lists *and* goals *and*
   photos *and* a kitchen kiosk — not a single-purpose app you glue to five others. And each
   one goes deep: chores with **photo proof**, streaks and parent approvals; goals that track
-  habits and auto-fill from **Apple Health**; recipes with a full **cook mode** (step-by-step,
+  habits and totals; recipes with a full **cook mode** (step-by-step,
   per-step timers); lists you can save as reusable **templates**; a pantry with a real
   **barcode scanner**.
 - **The week itself, not just the items in it.** A guided
@@ -38,8 +37,8 @@ suit you better.
 - **Turn a tablet you already own into the display.** Any spare iPad or Android tablet becomes
   the always-on kitchen kiosk — no dedicated hardware to buy, no screen locked to a
   subscription.
-- **Three surfaces, one source of truth.** The same data drives that always-on kitchen
-  **kiosk**, a full **web** dashboard, and a native **iOS** app that works offline.
+- **Two surfaces, one source of truth.** The same data drives that always-on kitchen
+  **kiosk** and a full **web** dashboard that installs to a phone's home screen.
 - **AI that stays yours.** The capture bar, meal planning and recipe import all use AI — but it
   runs on a provider *you* choose (a local model, or your own API key). Your family's data is
   never sent to our servers, or to any vendor you didn't pick.
@@ -50,8 +49,7 @@ suit you better.
 ## The trade-off, stated plainly
 
 Self-hosting means **you run the server**. That's the whole point — and the whole cost. You
-need a machine that stays on, a few minutes to install (the [Mac app](/install/mac/) or
-`./waffled up`), and the willingness to own your backups. If you'd rather someone else keep the lights on and you're comfortable renting that,
+need a machine that stays on, a few minutes to install (`docker compose up -d`), and the willingness to own your backups. If you'd rather someone else keep the lights on and you're comfortable renting that,
 a hosted product is a reasonable choice. Waffled is for people who want the opposite.
 
 ## Where each alternative fits
@@ -64,7 +62,7 @@ a hosted product is a reasonable choice. Waffled is for people who want the oppo
 | Kitchen display | ✅ **Any tablet you own**, no hardware to buy | 📱 App only | ✅ Their screen (buy it) | 📱 App only | ❌ |
 | Calendar | ✅ Its own, **+ two-way Google / Outlook sync** and ICS feeds (adds on, doesn't replace) | ✅ | ✅ | ✅ (it *is* Google) | ⚠️ Manual |
 | Chores + reward economy | ✅ Stars, approvals, a **shop** kids spend in, **photo proof**, streaks | ⚠️ Basic lists | ⚠️ Chore charts with stars & streaks (paid plan) | ❌ | ⚠️ DIY |
-| Goals + habit tracking | ✅ Count / total / habit / checklist, **Apple Health** auto-fill | ❌ | ❌ | ❌ | ⚠️ DIY |
+| Goals + habit tracking | ✅ Count / total / habit / checklist | ❌ | ❌ | ❌ | ⚠️ DIY |
 | Meals → auto grocery list | ✅ | ⚠️ Recipe box + lists | ⚠️ Meal planner | ❌ | ⚠️ DIY |
 | Recipes + **cook mode** | ✅ In-app recipes, AI import, step-by-step + per-step timers | ⚠️ Recipe box | ⚠️ Meal planner | ❌ | ⚠️ DIY |
 | Lists | ✅ Custom multi-lists + reusable **templates** | ✅ Lists | ⚠️ Basic | ⚠️ Keep | ⚠️ DIY |
@@ -77,7 +75,7 @@ a hosted product is a reasonable choice. Waffled is for people who want the oppo
 | Photos + screensaver | ✅ | ❌ | ✅ (photo frame) | 📱 Google Photos | ❌ |
 | AI features | ✅ **Your model / key, or fully local** — never our cloud, and never an extra fee | ❌ | ⚠️ Sidekick — AI import, meal ideas, fridge scan (**paid plan**, their cloud) | ⚠️ Gemini (their cloud) | ⚠️ Their cloud |
 | Build on it / open API | ✅ Public scoped API + toggleable modules | ❌ | ❌ | ❌ | ⚠️ API only |
-| Native offline app | ✅ iOS (PowerSync) | ✅ | ⚠️ | ✅ | ⚠️ |
+| Native offline app | ❌ Web / PWA only | ✅ | ⚠️ | ✅ | ⚠️ |
 | Ads / tracking | None | Ads (free tier) | — | Ads elsewhere in ecosystem | — |
 | Open source | ✅ AGPL-3.0 | ❌ | ❌ | ❌ | ❌ |
 

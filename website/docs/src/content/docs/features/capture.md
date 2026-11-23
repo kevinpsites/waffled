@@ -8,15 +8,15 @@ The "Add anything" bar is the fast front door to the whole app — one natural-l
 ## Highlights
 
 - 🧭 **Routes a phrase** → event · task · grocery · meal · list · unsupported, resolving your household-local "now" and family names as it goes.
-- ✅ **Acts on existing things too** — mark a chore done, log progress on a goal, cross an item off a list, move or cancel an event, redeem a reward, straight from the bar; you confirm the exact match before anything commits. Works on every surface, iPhone and iPad included. See [Acting on existing things](#acting-on-existing-things).
+- ✅ **Acts on existing things too** — mark a chore done, log progress on a goal, cross an item off a list, move or cancel an event, redeem a reward, straight from the bar; you confirm the exact match before anything commits. Works on every surface. See [Acting on existing things](#acting-on-existing-things).
 - 🔁 **Understands recurrence** — "lunch every Thursday for a month" parses into an **RRULE**, editable via **Repeats / Ends** right in the preview.
 - 🔌 **Pluggable provider per household** — Anthropic · OpenAI-compatible · Ollama, with a configurable model; the active provider/model is stored per household. See [AI providers](/administration/ai-providers/).
 - ⚡ **Instant, then better** — an on-device parse shows immediately, then upgrades to the LLM with a provider tag (**"improving…"**); on a kind-disagreement you can pick the other take, and it **backfills recurrence** when a weak model drops it.
-- 🛟 **Creating always works** — a heuristic fallback keeps new captures functioning offline, with no provider, or when the provider defers. Acting on existing things talks to your server to find the real item, so it needs a connection.
+- 🛟 **Creating always works** — a heuristic fallback keeps new captures functioning with no provider, or when the provider defers. Acting on existing things talks to your server to find the real item, so it needs a connection.
 
 ## Acting on existing things
 
-The bar isn't just for adding — it can change what's already there, on **every surface (Web, Kiosk, iPhone, and iPad)**.
+The bar isn't just for adding — it can change what's already there, on **every surface (Web, Kiosk and the phone PWA)**.
 
 - "mark set the table done for Elaine"
 - "give the dishes to Wally"
@@ -38,10 +38,8 @@ The parser (your AI provider if configured, otherwise the on-device fallback) pr
 | Surface | Add new things | Act on existing things |
 |---|---|---|
 | Web / Kiosk | ✅ | ✅ |
-| iPhone | ✅ | ✅ |
-| iPad | ✅ | ✅ |
 
-Both **adding** new things and **acting on existing things** (the mutate verbs above — complete, log, reschedule, reassign, redeem, delete) behave the same across every surface. The instant on-device parse, the LLM upgrade, the editable recurrence preview, and the pick-one candidate list all show up on Web/Kiosk, iPhone, and iPad alike. On iPhone/iPad the mutate flow shows the same confirm-a-candidate step before anything changes.
+Both **adding** new things and **acting on existing things** (the mutate verbs above — complete, log, reschedule, reassign, redeem, delete) behave the same across every surface. The instant on-device parse, the LLM upgrade, the editable recurrence preview, and the pick-one candidate list all show up on Web, Kiosk and the phone PWA alike, including the confirm-a-candidate step before anything changes.
 
 ## Settings
 
@@ -53,6 +51,6 @@ The capture bar is **core — never gated**. It routes into whichever surfaces e
 
 ## Notes
 
-- 🛟 **Creates are offline-safe by design** — with no provider configured (or on a timeout) the route signals fallback and clients use the on-device heuristic, so *creating* always works, even offline. Changing an existing thing needs a connection to your server, because the server does the matching.
+- 🛟 **Creates always work** — with no provider configured (or on a timeout) the route signals fallback and clients use the on-device heuristic, so *creating* keeps working. Changing an existing thing needs a connection to your server, because the server does the matching.
 - 🧠 **The on-device fallback handles simple phrasings** ("mark the dishes done") — for reliable "do anything" parsing of the trickier ones, add an AI provider in **Settings → AI & Capture**. Either way, the parse never leaves your infrastructure unless you point it at a hosted provider.
 - 🚧 **Server-side fuzzy person resolution** (nicknames / aliases) is planned — for now, name matching resolves the family names it knows.

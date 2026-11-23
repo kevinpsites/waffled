@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import type { AddressInfo } from 'node:net'
 import { runMigrations } from '../src/migrate'
 
 let pg: StartedPostgreSqlContainer
@@ -111,6 +112,36 @@ describe('sensitive route throttling', () => {
     expectLimited(await call('POST', '/api/auth/refresh', refresh, undefined, {
       'x-forwarded-for': '198.51.100.3',
     }))
+  })
+
+  describe('over real HTTP with spoofed X-Forwarded-For', () => {
+    async function refreshStatuses(trustProxy: boolean, ips: string[]): Promise<number[]> {
+      const { createHttpServer, listen } = await import('../src/platform/http-server')
+      const server = createHttpServer(app, { trustProxy })
+      const { port } = (await listen(server, { port: 0, host: '127.0.0.1' })) as AddressInfo
+      try {
+        const statuses: number[] = []
+        for (const ip of ips) {
+          const res = await fetch(`http://127.0.0.1:${port}/api/auth/refresh`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-forwarded-for': ip },
+            body: JSON.stringify({ refreshToken: 'not-a-valid-refresh-token' }),
+          })
+          statuses.push(res.status)
+        }
+        return statuses
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()))
+      }
+    }
+
+    it('ignores X-Forwarded-For when TRUST_PROXY is unset', async () => {
+      expect(await refreshStatuses(false, ['198.51.100.21', '198.51.100.22', '198.51.100.23'])).toEqual([401, 401, 429])
+    })
+
+    it('honours X-Forwarded-For when TRUST_PROXY=true', async () => {
+      expect(await refreshStatuses(true, ['198.51.100.31', '198.51.100.32', '198.51.100.33'])).toEqual([401, 401, 401])
+    })
   })
 
   it('throttles kiosk pairing-code guesses', async () => {

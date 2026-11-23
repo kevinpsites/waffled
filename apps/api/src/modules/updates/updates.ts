@@ -27,7 +27,8 @@ let cache: Cache | null = null
 const TTL_MS = 6 * 60 * 60 * 1000 // 6h
 
 const envEnabled = (): boolean => (process.env.UPDATE_CHECK_ENABLED ?? 'true') !== 'false'
-const repo = (): string => (process.env.UPDATE_CHECK_REPO || '').trim() // "owner/name"
+const DEFAULT_REPO = 'evan-ribbey/waffled-remix'
+const repo = (): string => (process.env.UPDATE_CHECK_REPO || DEFAULT_REPO).trim() // "owner/name"
 
 async function householdEnabled(householdId: string): Promise<boolean> {
   const { rows } = await query<{ enabled: boolean | null }>(

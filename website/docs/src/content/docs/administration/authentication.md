@@ -16,10 +16,8 @@ gets a login on their card in **Settings → Family & People** — see
 - **Access tokens** last `ACCESS_TOKEN_TTL_SECONDS` (default 1 h); **refresh tokens** last
   `REFRESH_TOKEN_TTL_DAYS` (default 60). Clients refresh silently.
 - Passwords are a minimum of 8 characters. The owner login is protected from removal.
-- Locked out? Break-glass from the host: `./waffled admin reset-password` (also `make-admin`,
+- Locked out? Break-glass from the host: `docker compose exec -u node waffled node dist/admin.js reset-password` (also `make-admin`,
   `prune-sessions`) — see [Troubleshooting](/operations/troubleshooting/#locked-out--forgot-admin-password).
-  On [Waffled for Mac](/install/mac/) the same commands are `waffled-runtime admin
-  reset-password` — see [Users & members](/administration/users/#break-glass-from-the-host).
 
 ## Single sign-on (OIDC)
 
@@ -35,9 +33,9 @@ configured **in the app**, stored in your database, not via environment variable
 
 Configure in **Settings → Login & security** (admin only):
 
-1. **Set `TOKEN_ENCRYPTION_KEY`** in `infra/compose/.env` first — the OIDC **client secret is
-   encrypted at rest** with it. (It's auto-generated on first run; just make sure it's present.
-   [Waffled for Mac](/install/mac/) generates it for you — nothing to set.)
+1. **Set `TOKEN_ENCRYPTION_KEY`** in `.env` first — the OIDC **client secret is
+   encrypted at rest** with it. (It's generated on first start and kept in `/data/secrets.json`; just make sure it's
+   present, and keep it if you migrate.)
 2. Create an **OIDC application** at your provider and note its **Client ID** and **Client
    secret**.
 3. In Waffled, enter the **Issuer URL** and click **Test** — this validates the provider's
@@ -53,13 +51,7 @@ Configure in **Settings → Login & security** (admin only):
 
 Once SSO works, you can **disable password login** to require it. This is guarded so you can't
 lock yourself out. If you ever do need the password form back in an SSO-only setup, the
-break-glass override is `AUTH_FORCE_PASSWORD=1` in `infra/compose/.env` — on the Mac app,
-**Settings… → Advanced → Always show the password form**, then restart Waffled.
-
-### On iOS
-
-The native app signs in with the same providers — password or SSO. OIDC on iOS uses a system web
-auth session and returns to the app via its `waffled://` deep link. Tokens live in the Keychain.
+break-glass override is `AUTH_FORCE_PASSWORD=1` in `.env`, then `docker compose up -d`.
 
 ## Auth0 mode (advanced)
 

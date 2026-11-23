@@ -1,5 +1,7 @@
 # Apple Health → Goals (iPhone) — staged plan
 
+> **Removed in 0.16 — the fork no longer ships the Mac/iOS apps, PowerSync, Caddy or the `./waffled` CLI.** This document is kept as history; its commands and screens no longer apply.
+
 **Status:** planned 🚧 · spike doc for the [roadmap](../product/roadmap.md) entry
 "Apple Health → goals (iPhone)".
 

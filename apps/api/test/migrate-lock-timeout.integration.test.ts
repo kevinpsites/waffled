@@ -112,7 +112,7 @@ describe('runMigrations — lock_timeout', () => {
           expect(err.message).toMatch(/lock timeout/i)
           expect(err.message).toContain('contended')
           expect(err.message).toContain(`pid ${blocker.pid}`)
-          expect(err.message).toMatch(/powersync/)
+          expect(err.message).toMatch(/Stop the app services/)
           expect(logs.some((m) => /retrying/i.test(m))).toBe(true)
         } finally {
           await blocker.release()

@@ -6,14 +6,14 @@
 //
 // Usage:
 //   node website/scripts/capture-screenshots.mjs [outDir]
-// Env (defaults target the local Seinfelds demo stack on :8081):
-//   BASE=http://localhost:8081  EMAIL=jerry@seinfeld.demo  PASSWORD=seinfeld123
+// Env (defaults target the local Seinfelds demo stack on :8080):
+//   BASE=http://localhost:8080  EMAIL=jerry@seinfeld.demo  PASSWORD=seinfeld123
 //
 // Requires playwright-core and a Chromium/headless-shell (set CHROME to override).
 
 import { chromium } from 'playwright-core';
 
-const BASE = process.env.BASE || 'http://localhost:8081';
+const BASE = process.env.BASE || 'http://localhost:8080';
 const EMAIL = process.env.EMAIL || 'jerry@seinfeld.demo';
 const PASSWORD = process.env.PASSWORD || 'seinfeld123';
 const OUT = process.argv[2] || 'website/scripts/.out';
@@ -50,7 +50,7 @@ await ctx.addInitScript(([a, r]) => {
 const page = await ctx.newPage();
 for (const v of VIEWS) {
   try { await page.goto(BASE + v.route, { waitUntil: 'networkidle', timeout: 15000 }); }
-  catch { /* PowerSync holds a connection open → networkidle times out; fine */ }
+  catch { /* networkidle can time out on long-lived connections; fine */ }
   await page.waitForTimeout(3000);
   await page.screenshot({ path: `${OUT}/${v.name}.png` });
   console.log(`  ${v.name}.png`);

@@ -15,17 +15,17 @@ OpenAPI/Swagger document** — this page is the reference.
 
 Every non-public request is authenticated at a single global gate. There are four ways in:
 
-1. **Bearer JWT (default).** `Authorization: Bearer <token>` — how the web and iOS clients
-   authenticate. The token carries a `household_id` claim; the api resolves it to a person +
+1. **Bearer JWT (default).** `Authorization: Bearer <token>` — how the web client
+   authenticates. The token carries a `household_id` claim; the api resolves it to a person +
    household (`sub → identity → person → household`) and re-checks per route. Get one from the
-   login flow, or `./waffled token` for a dev token.
+   login flow, or `npm run token` in `apps/api` for a dev token.
 2. **API key.** `x-api-key: waffled_…` — for external tools and scripts. See below.
 3. **Kiosk device token.** A paired tablet exchanges a device secret for a short-lived device
    token; tapping a profile mints a real person session. See [Kiosk & devices](/administration/kiosk/).
 4. **Waffled-Bite device token.** A kid's paired Bite does the same exchange for its own token,
    which works only on the [Bite's device routes](#waffled-bites--modulewaffledbites).
 
-**Public endpoints** (no auth): `/healthz`, `/api/auth/keys` (JWKS), the auth
+**Public endpoints** (no auth): `/healthz`, the auth
 status/setup/login/refresh/logout and OIDC start/callback/exchange routes, `/api/kiosk/pair`,
 `/api/kiosk/device/token`, `/api/waffled-bites/pair`, `/api/waffled-bites/device/token`, and
 the Google and Microsoft calendar OAuth callbacks.
@@ -72,7 +72,7 @@ part of the grocery board and the route sits behind the `lists` module gate.
 
 Everything else always 403s for a key — auth and self-service account, household creation and
 invites, api-keys, `/api/kiosk`, `/api/waffled-bites`, permissions,
-powersync, capture, media, countdowns, family-night, goal-calendar, the rest of `/api/calendar`
+capture, media, countdowns, family-night, goal-calendar, the rest of `/api/calendar`
 (Google, Outlook and ICS feeds), today-layout, rhythms, weekly-planning, health and updates. Writes under a read-only
 resource are refused too, so `POST /api/persons/:id/award` and
 `/saving-toward` stay session-only even though they belong to the rewards feature. In-route
@@ -347,13 +347,11 @@ that token alone. A kid can have one paired Bite at a
 time; pairing a second returns 409. The device can start and end a timer but not pause it, add
 time, or touch quiet time — those stay with the parent routes.
 
-### Layout, sync, health, updates
+### Layout, health, updates
 
 | Method | Path | Purpose | Auth |
 |---|---|---|---|
-| GET · PUT · DELETE | `/api/today-layout` · `/today-layout/mobile` | Today card layout (web / mobile) | tenant |
-| GET | `/api/auth/keys` | JWKS (PowerSync token validation) | public |
-| GET · POST | `/api/powersync/token` · `/powersync/crud` | Sync token / offline write sink | tenant |
+| GET · PUT · DELETE | `/api/today-layout` · `/today-layout/mobile` | Today card layout (web / phone) | tenant |
 | GET | `/api/health` | Deep per-component health | admin |
 | GET · PUT | `/api/updates` · `/updates/settings` | Update check / toggle | admin |
 

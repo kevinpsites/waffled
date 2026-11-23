@@ -29,15 +29,14 @@ keep `deleted_at` for sync but are never updated — corrections are new rows.
 
 ### Conventions
 
-- **UUID PKs are client-generated.** The default is a fallback; clients (incl. offline iOS)
-  mint the id so rows created offline have stable identity. Required by PowerSync.
+- **UUID PKs may be client-generated.** The default is a fallback; a client may mint the
+  id so a row has stable identity before the server responds.
 - **Soft-delete everywhere.** Queries filter `WHERE deleted_at IS NULL` (partial indexes do
   too). A maintenance job hard-purges old tombstones after clients have synced.
 - **`household_id` on everything**, indexed — the multi-tenant boundary.
 - **Enums as `text` + documented values** (migration-friendly vs PG enums); tighten with
   `CHECK` constraints as values stabilize.
-- **RLS is off in v1.** The `api` enforces `household_id` scoping and PowerSync sync rules
-  enforce read isolation. RLS is the later defense-in-depth layer.
+- **RLS is off in v1.** The `api` enforces `household_id` scoping. RLS is the later defense-in-depth layer.
 - **`updated_at` trigger** applied to all mutable tables:
 
 ```sql
@@ -610,8 +609,8 @@ alter table albums add constraint fk_cover foreign key (cover_photo_id) referenc
 create index ix_photos_album on photos (household_id, album_id) where deleted_at is null;
 ```
 
-**Out-of-band media:** PowerSync syncs `albums`/`photos` **rows only**; the image bytes are
-stored server-side and served on demand by **Caddy under `/media`**, then cached on-device.
+**Out-of-band media:** `albums`/`photos` are **rows only**; the image bytes are
+stored server-side and served on demand by the `waffled` app under `/media`.
 Uploads go through the `api` (real blob upload, single + multi). Auto-grouping + screensaver
 are services/UI.
 
@@ -619,16 +618,16 @@ are services/UI.
 
 ## 8. Sync & conflict model (cross-cutting)
 
-**PowerSync buckets**
-- **Household bucket** — almost everything: rows where `household_id = token.household_id`.
-- **Private-goals bucket (per-person)** — `goal_lists` (and their goals/logs/milestones/items)
-  that are `is_private` sync only to persons in `goal_list_members`. The one per-person condition.
+**Read scoping** (the PowerSync buckets this replaced were removed in 0.16)
+- **Household scope** — almost everything: rows where `household_id = token.household_id`.
+- **Private goals (per-person)** — `goal_lists` (and their goals/logs/milestones/items)
+  that are `is_private` are returned only to persons in `goal_list_members`. The one per-person condition.
 - **Read models, not masters, drive the UI** — clients query `event_occurrences` and
   `chore_instances`; the worker maintains them.
 - **Photos** — metadata rows only; bytes out-of-band.
 
-**Write path** — clients write local SQLite → upload queue → `api` (validation + business rules)
-→ Postgres → replicates back. The `api` owns conflict logic.
+**Write path** — clients call the REST API (validation + business rules) → Postgres.
+The `api` owns conflict logic.
 
 **Conflict policy**
 - **Calendar:** Google authoritative for **google-origin** events on the *Google-owned* columns

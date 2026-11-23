@@ -7,7 +7,7 @@ export const UNREACHABLE_HEADLINE = 'Can’t reach the Waffled server'
 /** Two lines of copy at the kiosk's font sizes; used until the strip has been laid out. */
 const FALLBACK_HEIGHT_PX = 56
 export const UNREACHABLE_HINT =
-  'On the Mac that runs Waffled, click the waffle icon in the menu bar and choose Start Waffled. On a Docker install, run ./waffled status.'
+  'On the server that runs Waffled, run docker compose ps to check the stack is up.'
 
 export const DEVICE_OFFLINE_LINE = 'You’re offline — reconnecting…'
 

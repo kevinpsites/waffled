@@ -1,5 +1,7 @@
 # Meal Builder — plan
 
+> **Note (0.16):** the iOS and Mac apps, PowerSync and the `./waffled` CLI referenced here were removed. The web/kiosk behaviour described is still current; iOS/offline details are historical.
+
 Status: **done** — PR1 (server + web) and PR2 (iOS parity) both landed
 Design source: Claude Design project “Waffled” → `Meal Builder - Prototype.html`, plus an
 iPhone mock (builder + meal detail) supplied 2026-07-23.

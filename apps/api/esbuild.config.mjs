@@ -5,13 +5,14 @@ import { build } from 'esbuild'
 await build({
   entryPoints: {
     server: 'src/server.ts', // container HTTP entrypoint
+    start: 'src/start.ts', // single-image entrypoint: secrets bootstrap -> migrate -> server
     lambda: 'src/lambda.ts', // AWS Lambda handler
     'mint-token': 'scripts/mint-token.ts', // dev token CLI
-    migrate: 'scripts/migrate-cli.ts', // in-container migration runner (compose one-shot)
+    migrate: 'scripts/bin/migrate.ts', // in-container migration runner
     otel: 'src/otel.ts', // OTEL preload (NODE_OPTIONS=--require) — see Dockerfile
-    'health-cli': 'scripts/health-cli.ts', // `./waffled doctor` runs this in-container
-    admin: 'scripts/admin.ts', // `./waffled admin <cmd>` operator/break-glass CLI
-    'seed-demo': 'scripts/seed-demo.ts', // `docker compose exec api node dist/seed-demo.js <base|meals|goals>` — demo/screenshot seed
+    'health-cli': 'scripts/bin/health-cli.ts', // run in-container via docker compose exec
+    admin: 'scripts/bin/admin.ts', // operator/break-glass CLI
+    'seed-demo': 'scripts/bin/seed-demo.ts', // demo/screenshot seed; scripts/bin/* load /data/secrets.json first
   },
   outdir: 'dist',
   bundle: true,

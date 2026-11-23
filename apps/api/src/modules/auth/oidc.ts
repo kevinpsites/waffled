@@ -2,7 +2,7 @@
 // edited by the installation owner in Settings — see the operator routes below). We run the
 // authorization-code + PKCE flow server-side, verify the IdP's ID token, then mint
 // our OWN session via the same mintAccess/issueRefresh password login uses — so
-// every downstream consumer (requireAuth, the PowerSync token exchange) is
+// every downstream consumer (requireAuth) is
 // unchanged. Provisioning is invite-gated: the verified email must already belong
 // to a person on file. Mirrors the Google-calendar OAuth pattern (one-time state
 // row → public callback → code exchange); tokens never ride the redirect URL —
@@ -32,7 +32,6 @@ type Api = ReturnType<typeof createAPI>
 
 const STATE_TTL_MIN = 10
 const HANDOFF_TTL_MIN = 5
-const DEFAULT_NATIVE_REDIRECT = 'waffled://auth/callback'
 const base64url = (b: Buffer) => b.toString('base64url')
 const sha256b64url = (s: string) => base64url(createHash('sha256').update(s).digest())
 
@@ -152,35 +151,27 @@ function oidcSubject(issuer: string, sub: string): string {
 
 // ── flow helpers ───────────────────────────────────────────────────────────────
 // Absolute base URL for building the redirect_uri the IdP calls back. Honors
-// PUBLIC_BASE_URL (set it when behind a proxy that rewrites host), else derives
-// from the forwarded request headers (Caddy sets x-forwarded-proto/host).
+// PUBLIC_BASE_URL, else the Host header; x-forwarded-* only when TRUST_PROXY is set.
 function baseUrl(req: Request): string {
   const env = process.env.PUBLIC_BASE_URL?.replace(/\/$/, '')
   if (env) return env
   const h = req.headers as Record<string, string | undefined>
-  const proto = h['x-forwarded-proto'] ?? 'http'
-  const host = h['x-forwarded-host'] ?? h.host ?? 'localhost:8080'
+  const proto = (config.trustProxy && h['x-forwarded-proto']) || 'http'
+  const host = (config.trustProxy && h['x-forwarded-host']) || h.host || 'localhost:8080'
   return `${proto}://${host}`
 }
 function callbackUri(req: Request): string {
   return `${baseUrl(req)}/api/auth/oidc/callback`
 }
 
-function nativeRedirectUri(): string {
-  return process.env.OIDC_NATIVE_REDIRECT_URI?.trim() || DEFAULT_NATIVE_REDIRECT
-}
-
 // Redirect destinations carry a one-time session handoff, so they are an
-// allowlist rather than a general return URL. Web callers may return only to this
-// Waffled origin; the native app has one registered callback URI.
+// allowlist rather than a general return URL: only this Waffled origin.
 function allowedRedirect(req: Request, raw: string | null): string | null {
   if (!raw) return null
   try {
     const u = new URL(raw)
-    if (u.protocol === 'http:' || u.protocol === 'https:') {
-      return u.origin === new URL(baseUrl(req)).origin ? `${u.origin}/` : null
-    }
-    return u.toString() === new URL(nativeRedirectUri()).toString() ? nativeRedirectUri() : null
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null
+    return u.origin === new URL(baseUrl(req)).origin ? `${u.origin}/` : null
   } catch {
     return null
   }
@@ -253,7 +244,7 @@ export function registerOidcRoutes(api: Api): void {
 
     try {
       const cfg = await getAuthConfig()
-      if (!oidcReady(cfg)) return failSignIn(req, res, redirectTo, 404, 'Sign-in failed', 'OIDC is not enabled.', 'oidc_disabled')
+      if (!oidcReady(cfg)) return failSignIn(req, res, redirectTo, 404, 'Sign-in failed', 'OIDC is not enabled.')
       const disco = await discover(cfg.issuerUrl!)
       const claims = await exchangeAndVerify(disco, cfg, code, st.code_verifier, st.nonce, callbackUri(req))
 
@@ -266,7 +257,7 @@ export function registerOidcRoutes(api: Api): void {
       if (!tenant) {
         // First SSO login: invite-gated. Require a verified email that's on file.
         if (!email || !emailVerified) {
-          return failSignIn(req, res, redirectTo, 403, 'Sign-in blocked', 'Your identity provider did not supply a verified email.', 'no_verified_email')
+          return failSignIn(req, res, redirectTo, 403, 'Sign-in blocked', 'Your identity provider did not supply a verified email.')
         }
         // Match the verified email to an ACCOUNT (not just a person). The account is
         // the global login; we link the OIDC identity to it and land on its active
@@ -297,7 +288,7 @@ export function registerOidcRoutes(api: Api): void {
             householdId = m.householdId
             await linkIdentity({ householdId, personId, provider: 'oidc', subject, email, emailVerified, accountId: acctId })
           } else {
-            return failSignIn(req, res, redirectTo, 403, 'Not invited', `No Waffled account uses ${email}. Ask an admin to add you first.`, 'not_invited')
+            return failSignIn(req, res, redirectTo, 403, 'Not invited', `No Waffled account uses ${email}. Ask an admin to add you first.`)
           }
         }
         tenant = { sub: subject, personId, householdId, isAdmin: false, memberType: 'adult' }
@@ -309,7 +300,7 @@ export function registerOidcRoutes(api: Api): void {
       res.redirect(dest)
     } catch (err) {
       console.error('oidc callback failed', err)
-      return failSignIn(req, res, redirectTo, 502, 'Sign-in failed', 'Could not complete sign-in. Please try again.', 'sign_in_failed')
+      return failSignIn(req, res, redirectTo, 502, 'Sign-in failed', 'Could not complete sign-in. Please try again.')
     }
   })
 
@@ -465,48 +456,20 @@ async function exchangeAndVerify(
 
 // Where to send the browser after a successful callback: the SPA's /auth/callback,
 // which exchanges the handoff code and lands the user in the app.
-//
-// Web passes an http(s) origin (e.g. https://host/) → we append /auth/callback.
-// A native app passes a custom-scheme deep link (e.g. waffled://auth/callback) whose
-// `.origin` is the string "null", so we use the deep link itself as the base and
-// just append the handoff code — that's the URL the app's ASWebAuthenticationSession
-// is waiting to intercept.
 function appCallbackUrl(req: Request, redirectTo: string | null, handoff: string): string {
-  if (redirectTo) {
-    const u = new URL(redirectTo)
-    if (redirectTo === nativeRedirectUri()) {
-      u.searchParams.set('code', handoff)
-      return u.toString()
-    }
-    return `${u.origin}/auth/callback?code=${encodeURIComponent(handoff)}`
-  }
-  return `${baseUrl(req)}/auth/callback?code=${encodeURIComponent(handoff)}`
+  const origin = redirectTo ? new URL(redirectTo).origin : baseUrl(req)
+  return `${origin}/auth/callback?code=${encodeURIComponent(handoff)}`
 }
 
-// True for a native deep-link redirect (custom scheme like waffled://), false for a
-// web origin (http/https) or no redirect.
-function isNativeRedirect(redirectTo: string | null): boolean {
-  return redirectTo === nativeRedirectUri()
-}
-
-// End a failed sign-in. A native client gets the error bounced back through its
-// deep link (so ASWebAuthenticationSession dismisses and the app renders a real,
-// in-app message) — exactly mirroring the success path. A browser gets the
-// self-contained result page with a working "Back to Waffled" link.
+// End a failed sign-in with a self-contained result page that links back to Waffled.
 function failSignIn(
   req: Request,
   res: Response,
   redirectTo: string | null,
   status: number,
   title: string,
-  message: string,
-  errorCode: string
+  message: string
 ): void {
-  if (isNativeRedirect(redirectTo)) {
-    const sep = redirectTo!.includes('?') ? '&' : '?'
-    res.redirect(`${redirectTo}${sep}error=${encodeURIComponent(errorCode)}&error_description=${encodeURIComponent(message)}`)
-    return
-  }
   res.status(status).html(resultPage(title, message, appOrigin(req, redirectTo)))
 }
 
