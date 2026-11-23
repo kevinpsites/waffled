@@ -1,6 +1,7 @@
 import http from 'node:http'
 import { isIP, type AddressInfo } from 'node:net'
 import { log } from './logger'
+import { serveStatic, type StaticOptions } from './static'
 
 export const DEFAULT_BODY_LIMIT_BYTES = 1024 * 1024
 export const MEDIA_BODY_LIMIT_BYTES = 14 * 1024 * 1024
@@ -52,8 +53,18 @@ function clientAddress(req: http.IncomingMessage): string {
 
 // Adapt Node requests to the API Gateway REST-v1 event shape used by lambda-api.
 // Limits are enforced while streaming, before any Buffer.concat or JSON parsing.
-export function createHttpServer(api: ApiRunner): http.Server {
-  return http.createServer((req, res) => {
+export function createHttpServer(api: ApiRunner, opts: StaticOptions = {}): http.Server {
+  return http.createServer(async (req, res) => {
+    if (opts.webRoot || opts.mediaRoot) {
+      try {
+        if (await serveStatic(req, res, opts)) return
+      } catch (err) {
+        log.error('static serve error', { err })
+        if (!res.headersSent) res.writeHead(500)
+        res.end()
+        return
+      }
+    }
     const url = new URL(req.url ?? '/', 'http://localhost')
     const limit = bodyLimit(url.pathname)
     const declaredLength = Number(req.headers['content-length'])

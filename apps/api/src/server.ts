@@ -3,6 +3,7 @@ import api from './app'
 import { config } from './platform/config'
 import { log } from './platform/logger'
 import { createHttpServer, listen } from './platform/http-server'
+import { mediaDir } from './platform/storage'
 import { version } from './platform/version'
 import { startSyncScheduler } from './modules/calendar/calendar-sync.service'
 import { startExpansionScheduler } from './modules/calendar/expansion.service'
@@ -10,7 +11,10 @@ import { startIcsSyncScheduler } from './modules/calendar/ics-feeds'
 import { startProofCleanupScheduler } from './modules/chores/chore-proof-cleanup.service'
 import { startRecipeIngestCleanupScheduler } from './modules/meals/recipe-ingest.service'
 
-const server = createHttpServer(api)
+const server = createHttpServer(api, {
+  webRoot: process.env.WEB_ROOT ?? '/app/web',
+  mediaRoot: mediaDir(),
+})
 
 // HOST unset → all interfaces (Compose/demo). The native desktop runtime sets
 // HOST=127.0.0.1 so the API is reachable only via loopback.
