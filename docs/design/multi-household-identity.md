@@ -1,5 +1,7 @@
 # Design spike — multi-household identity (account + membership)
 
+> **Note (0.16):** the iOS and Mac apps, PowerSync and the `./waffled` CLI referenced here were removed. The web/kiosk behaviour described is still current; iOS/offline details are historical.
+
 **Status:** proposal / not built · **Raised:** 2026-06-25 · **Owner:** TBD
 
 ## 1. Problem

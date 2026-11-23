@@ -76,22 +76,13 @@ household has its own people, modules, and permission grid.
 If no one can sign in as an admin, you don't need a login — run these on the host:
 
 ```bash
-./waffled admin reset-password     # reset a member's password
-./waffled admin make-admin         # grant admin to a member
-./waffled admin list-members       # see who exists
-./waffled admin prune-sessions     # invalidate active sessions
+A="docker compose exec -u node waffled node dist/admin.js"
+$A reset-password --email you@example.com   # reset a member's password
+$A make-admin --email you@example.com       # grant admin to a member
+$A list-members                             # see who exists
+$A prune-sessions                           # invalidate active sessions
+$A help                                     # the full command list
 ```
-
-On [Waffled for Mac](/install/mac/) the same commands are `waffled-runtime admin`:
-
-```bash
-R=/Applications/Waffled.app/Contents/Resources/runtime/bin/waffled-runtime
-$R admin reset-password --email you@example.com
-$R admin help                      # the full command list
-```
-
-Waffled doesn't have to be running — if it's stopped, the database is started for the
-command and shut down again afterwards.
 
 Full walkthrough in [Troubleshooting → Locked out](/operations/troubleshooting/).
 

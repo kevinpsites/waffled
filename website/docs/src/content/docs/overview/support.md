@@ -9,7 +9,7 @@ them cost money; all of them matter.
 
 ## Star the repo ⭐
 
-The single easiest thing: [star Waffled on GitHub](https://github.com/kevinpsites/waffled).
+The single easiest thing: [star Waffled on GitHub](https://github.com/evan-ribbey/waffled-ng).
 Stars are how other families find the project and how it earns a place in "self-hosted family
 hub" lists. It takes five seconds and genuinely helps.
 
@@ -25,10 +25,10 @@ hub" lists. It takes five seconds and genuinely helps.
 
 Found something broken or missing?
 
-- **Bugs & feature requests:** open a [GitHub issue](https://github.com/kevinpsites/waffled/issues).
-  Include your version (Settings → System Health), the surface (kiosk / web / iOS), and steps
-  to reproduce. `./waffled doctor` output is gold for anything ops-related.
-- **Security issues:** please report privately per [`SECURITY.md`](https://github.com/kevinpsites/waffled/blob/main/SECURITY.md)
+- **Bugs & feature requests:** open a [GitHub issue](https://github.com/evan-ribbey/waffled-ng/issues).
+  Include your version (Settings → System Health), the surface (kiosk / web / phone PWA), and steps
+  to reproduce. `docker compose logs waffled` output is gold for anything ops-related.
+- **Security issues:** please report privately per [`SECURITY.md`](https://github.com/evan-ribbey/waffled-ng/blob/main/SECURITY.md)
   — not a public issue.
 - **Questions & discussion:** GitHub Issues / Discussions.
 
@@ -36,11 +36,11 @@ Good bug reports are a real contribution — they're often the hardest part of f
 
 ## Contribute code or docs
 
-Waffled is [AGPL-3.0](https://github.com/kevinpsites/waffled/blob/main/LICENSE) and built to be
+Waffled is [AGPL-3.0](https://github.com/evan-ribbey/waffled-ng/blob/main/LICENSE) and built to be
 extended. The [Developer](/developer/architecture/) section walks through the architecture,
 [local setup](/developer/local-development/), and [how to build a new module](/concepts/extensibility/).
 
-- **Code:** see [`CONTRIBUTING.md`](https://github.com/kevinpsites/waffled/blob/main/CONTRIBUTING.md)
+- **Code:** see [`CONTRIBUTING.md`](https://github.com/evan-ribbey/waffled-ng/blob/main/CONTRIBUTING.md)
   for setup, the conventional-commit style, and how to run the tests. Keep PRs focused, add a
   test, update the `CHANGELOG.md`.
 - **Docs:** the site you're reading is in `website/` (Astro Starlight). Fixing a typo, clarifying
@@ -57,7 +57,7 @@ surface real edge cases. Two things that pay you back and help everyone:
 
 - **Keep [backups](/operations/backup/) real** (offsite, tested). It's the one piece of ops that's
   entirely on you.
-- **Stay current** with `./waffled upgrade` and report anything that breaks on the way — upgrade
+- **Stay current** with `docker compose pull && docker compose up -d` and report anything that breaks on the way — upgrade
   paths only get smooth when people run them.
 
 ## The license, briefly

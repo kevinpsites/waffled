@@ -1,5 +1,7 @@
 # Rebrand tracker — → Waffled (waffled.app)
 
+> **Note (0.16):** the iOS and Mac apps, PowerSync and the `./waffled` CLI referenced here were removed. The web/kiosk behaviour described is still current; iOS/offline details are historical.
+
 History: **Nook → Kinnook** (display only, 2026-07-02) → **Kinnook/Nook → Waffled**
 (full shift incl. server-side, 2026-07-02). This file stays the single source of truth so
 any future rename is a mechanical sweep, not archaeology.

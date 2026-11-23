@@ -20,16 +20,15 @@ always there, whatever modules you've turned on.
   rather than an empty card. See [Rhythms](/features/rhythms/).
 - 🎯 **Goals card** — shows one goal's progress; pick **My spotlight**, **Family
   spotlight**, or a **specific goal** from a grouped picker. See [Goals](/features/goals/).
-- 🎛️ **Customize mode** (web / iPhone):
+- 🎛️ **Customize mode** (web):
   - **drag** a card by its bar to reorder; each card also has an **× to hide it** —
     hidden cards drop into a tray below the board where a tap adds them back
   - save the layout **"for me"** (per-user) or **"for everyone"** (family default);
     both your arrangement **and** which cards you've hidden save per person
   - a hidden card **stays hidden** — including module cards (Chores, Meals, Grocery,
     Pantry, Goals, Family Night) that would otherwise reappear when their module is on
-  - iPhone keeps a separate mobile `{order, hidden}` config
-- 📐 **iPad layout presets** — Balanced / Agenda / Meals / **Goal-focused**; the iPad
-  layout is **device-local**.
+  - the phone layout keeps a separate mobile `{order, hidden}` config
+- 📐 **Layout presets** — Balanced / Agenda / Meals / **Goal-focused** for the kiosk wall display; this layout is **device-local**.
 - ✅ **"Did these happen?"** — the goal recap queue surfaces here.
 - 👀 **"Needs your OK"** — the approvals banner surfaces here too.
 
@@ -37,10 +36,8 @@ always there, whatever modules you've turned on.
 | Surface | Support |
 |---|---|
 | Web / Kiosk | ✅ |
-| iPhone | ✅ |
-| iPad | ✅ |
 
-iPad shows a distinct **3-column dashboard**, and its customization is
+On a wide screen the dashboard is a distinct **3-column** layout, and its customization is
 **preset-based** rather than drag-to-reorder — the fixed shape suits the wall display.
 
 ## Settings
@@ -55,6 +52,5 @@ module — enable the module and its card shows up; disable it and the card quie
 drops off the dashboard.
 
 ## Notes
-- The agenda, chores, and grocery cards reflect live data, but only the
-  [calendar](/features/calendar/) domain is offline-capable — the other cards need a
-  connection to refresh.
+- The agenda, chores, and grocery cards reflect live data, but they all need a
+  connection to the server to refresh.

@@ -20,7 +20,7 @@ everyone sees it.
     "sleeps") · remove a standalone item · **+ Add**
   - **month-grid badges** on the calendar
 - **In-editor toggle** — the event editor's **"⏳ Show a countdown"** switch rides
-  the full offline `is_countdown` path (PowerSync schema + local/REST writes).
+  the `is_countdown` path through the REST event endpoints.
 - 🎂 **Birthdays roll forward** — once a birthday passes it re-targets next year,
   and a **birthday horizon** (`settings.countdowns.birthdayHorizonDays`, default
   **183 days**) hides birthdays that are still too far out to be exciting.
@@ -29,8 +29,6 @@ everyone sees it.
 | Surface | Support |
 |---|---|
 | Web / Kiosk | ✅ |
-| iPhone | ✅ |
-| iPad | ✅ |
 
 The Today card and month-grid badges render on every surface; there are no notable
 per-surface differences.

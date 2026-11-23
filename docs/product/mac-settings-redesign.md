@@ -1,5 +1,7 @@
 # Waffled for Mac — the Settings redesign, and what has to exist first
 
+> **Removed in 0.16 — the fork no longer ships the Mac/iOS apps, PowerSync, Caddy or the `./waffled` CLI.** This document is kept as history; its commands and screens no longer apply.
+
 Follow-up plan. **Status (2026-09-10): §4 items 1–4 are built** — retention through the
 schedule, the widened allowlist, logging from `config.env`, and the tabbed Settings — on
 branch `worktree-mac-settings-redesign`. The re-audit that preceded them corrected §3 in

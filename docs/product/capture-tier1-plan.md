@@ -1,5 +1,7 @@
 # Capture Tier 1 — implementation plan (TDD-first)
 
+> **Note (0.16):** the iOS and Mac apps, PowerSync and the `./waffled` CLI referenced here were removed. The web/kiosk behaviour described is still current; iOS/offline details are historical.
+
 **Scope:** the five remaining *create* intents — `goal`, `pantry`, `countdown`, `reward`, `person`.
 No new backend: every create endpoint and web API-client method already exists. Tier 1 is
 **parser + dispatch wiring**, done test-first.

@@ -10,49 +10,23 @@ Auth0, a separate `worker` service) was superseded by the self-host pivot — se
 | Surface | Tech | Role | Network |
 |---|---|---|---|
 | Kiosk | React web app, fullscreen/PWA | always-on ambient display, full read/write | home LAN (+ tailnet) |
-| iOS | native Swift/SwiftUI | capture companion, **offline read + write** | anywhere |
-| Web | React SPA (served by Caddy) | management/setup dashboard | anywhere via ingress |
+| Web / PWA | React SPA (served by the `waffled` app) | management/setup dashboard, phone capture | anywhere via ingress |
 
-Kiosk and web share the same React codebase (kiosk = a layout/PWA mode); Caddy bakes and
-serves the built SPA.
+Kiosk and web share the same React codebase (kiosk = a layout/PWA mode); the `waffled`
+image bakes in the built SPA and the api serves it (and `/media`) directly.
 
-## Data & sync
+## Data
 
 - **Postgres is the system of record.** The data is relational and aggregation-heavy
   (grocery dedup from meal plans, goal leaderboards, star ledgers) — Postgres fits; a
   key-value store (DynamoDB) does not (would force hand-maintained materialized counters +
   a custom realtime layer). This is the pivotal call: **Postgres over key-value**,
   independent of host.
-- **PowerSync** provides the iOS offline layer: on-device SQLite mirror, queued offline
-  writes, upload via our own API. Chosen for its first-class Swift SDK and because it
-  works against any Postgres. Writes go through our `api` (we keep validation + conflict logic).
-- **Multi-tenant isolation** keys off `household_id`, carried as a JWT claim and used by
-  PowerSync sync rules (and optionally Postgres RLS).
-- UUID primary keys everywhere (client-generatable so the phone can mint ids offline).
-
-## iOS REST read states
-
-`RestDomain` separates loading, confirmed empty/ready, failed refresh with saved data,
-unreachable server, expired authentication, and initial failure. Today and Family on
-both phone and kiosk, Approvals, and Photos use this contract. Only a successful empty
-response permits definitive empty copy; a failed approvals fetch keeps its entry point
-visible. Retry reloads the affected read domain and preserves confirmed values.
-
-A failed domain owns its saved-data timestamp. A sibling's newer successful read never
-supplies a timestamp to an error or an offline domain with no confirmed data. Combined
-states prioritize expired authentication, connectivity failure, initial error, and stale
-data ahead of pending-write states. `queued` and `conflict` are deliberately ahead of the
-feature: no production call site constructs either state. They do not claim that REST
-writes are queued today; real queue/conflict producers must be added before wiring them.
-
-REST data is scoped to server, household, session and active profile. Serialized account
-transitions clear the old local data before applying a server change and rotating the
-scope. If teardown fails, the new server and scope are not applied. PowerSync mirror
-isolation and notification cleanup are separate follow-up concerns.
-
-Remaining migration batches cover person detail, goal detail, recipes and settings, plus
-other REST-backed kiosk cards. See [visual review evidence](review/pr141/README.md) for
-both device layouts and the four read-state scenarios.
+- **No offline sync layer.** PowerSync and the native iOS/Mac apps were removed in 0.16;
+  every client reads and writes through the REST API.
+- **Multi-tenant isolation** keys off `household_id`, carried as a JWT claim and enforced
+  by the `api` (optionally Postgres RLS).
+- UUID primary keys everywhere (client-generatable).
 
 ## Calendar (a core tenet)
 
@@ -69,8 +43,8 @@ both device layouts and the four read-state scenarios.
 - Each Waffled person has one **home calendar** (write-back target) + zero or more
   **subscribed** (read) calendars. Write-back needs a stored token per connected adult.
 - Store events as `timestamptz` + `RRULE` + timezone — never the prototype's human strings.
-- **The phone never talks to Google.** It syncs to Postgres; the `api` owns the Google
-  relationship (in-process). Reduces a 3-way converge to two pairwise syncs.
+- **Clients never talk to Google.** The `api` owns the Google
+  relationship (in-process). Only two parties converge: Postgres and Google.
 
 ## Identity
 
@@ -92,27 +66,26 @@ both device layouts and the four read-state scenarios.
 
 - Ride **native calendar reminders** by exporting events to Google — no notification system
   to build for calendar events.
-- On iOS, app reminders are delivered as **local notifications** off the on-device events
-  mirror (no push service). Remote push (APNs / web-push) for cross-device nudges is a
-  planned follow-on, deferred on a self-host key/relay decision.
+- Remote push (web-push) for cross-device nudges is a planned follow-on, deferred on a
+  self-host key/relay decision.
 - Kiosk banners ("leave by 3:35") are just rendered data, not notifications.
 
 ## Hosting
 
-- **Self-hosted Docker Compose:** Postgres, self-hosted PowerSync, the `api`, **Caddy**
-  ingress (serves the SPA + `/media`, auto-TLS), and a nightly **pg_dump backup sidecar**
-  (local, with an optional off-site copy). Can run entirely behind **Tailscale** — nothing
-  public, CGNAT/dynamic-IP irrelevant — and the kiosk on the LAN keeps working during
-  internet outages.
-- **Public ingress is the operator's choice** and env-driven, not app code: Caddy auto-TLS
-  or a Cloudflare Tunnel, selected by config (`WAFFLED_HOSTNAME` + ingress settings). Keep
-  the DB/admin on the tailnet.
+- **Self-hosted Docker Compose, two containers:** the single `waffled` image (serves the
+  SPA, `/api`, `/auth` and `/media`, runs migrations and the schedulers on start) and
+  Postgres, plus an optional nightly **pg_dump backup service** (`--profile backup`, local,
+  with an optional off-site copy). Secrets live in `/data/secrets.json` unless the
+  environment sets them. Can run entirely behind **Tailscale** — nothing public — and the
+  kiosk on the LAN keeps working during internet outages.
+- **Public ingress is the operator's choice**, not app code: any reverse proxy or a
+  Cloudflare Tunnel in front of port 8080, with `PUBLIC_BASE_URL` set and `TRUST_PROXY=true`
+  (forwarded headers are ignored otherwise). Keep the DB/admin on the tailnet.
 - The only console-only setup is the **Google OAuth client** (for Calendar) — walkthrough in
   the [Google Calendar admin guide](https://waffled.app/administration/google-calendar/).
   There is no Terraform / AWS / Auth0 infrastructure to provision.
 
 ## Known open details
 
-- PowerSync bucket storage: reuse Postgres vs add MongoDB (depends on version).
-- Tailnet TLS method: `tailscale serve` in front of Caddy vs the Caddy-Tailscale plugin.
+- Tailnet TLS method: `tailscale serve` in front of the app vs a proxy with the Tailscale plugin.
 - Per-module schema grows as each feature lands.

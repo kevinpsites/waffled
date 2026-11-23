@@ -5,21 +5,19 @@ description: Symptom → diagnosis → fix for common self-hosted Waffled issues
 
 Practical fixes for a self-hosted Waffled. Each entry is **symptom → diagnosis → fix**.
 
-> **On Waffled for Mac?** The symptoms are the same, but the commands here are Docker's. On a
-> Mac, `waffled-runtime doctor`, `status` and `logs` stand in for them, and **Settings… →
-> Diagnostics → Show logs** opens the logs folder — see
-> [When something is wrong](/install/mac/#when-something-is-wrong).
+## Start with System Health and the logs
 
-## Run `./waffled doctor` first
+**Settings → System Health** (and `GET /api/health`, admin) is a deep health report: db,
+migrations, jobs, calendar, storage, backup. It almost always tells you which component is
+unhappy before you start guessing. For a quick liveness check without auth, `GET /healthz`
+(public: db ping + version).
 
-`./waffled doctor` is a deep, in-container health report (db, migrations, jobs,
-calendar, storage, backup) and **exits non-zero when anything is degraded or down**.
-It almost always tells you which component is unhappy before you start guessing. The
-same data is in **Settings → System Health** and `GET /api/health` (admin). For a
-quick liveness check without auth, `GET /healthz` (public: db ping + version).
+Then check the containers and their logs:
 
-Then dig into logs for the flagged service: `./waffled logs <svc>` (`postgres`, `api`,
-`powersync`, `caddy`, `backup`).
+```bash
+docker compose ps
+docker compose logs --tail 100 waffled     # or: postgres, backup
+```
 
 ## Quick index
 
@@ -27,9 +25,7 @@ Then dig into logs for the flagged service: `./waffled logs <svc>` (`postgres`, 
 |---|---|
 | DB check down / can't connect | [Postgres unreachable](#postgres-unreachable) |
 | "schema behind" / migrations pending | [Migrations pending](#migrations-pending) |
-| Upgrade stuck on `waffled-migrate` / `lock timeout` | [Upgrade stuck on migrate](#upgrade-stuck-on-migrate) |
-| All clients show an **Offline** banner | [PowerSync offline](#powersync-offline-banner) |
-| One browser shows "Live sync is reconnecting" | [Live sync stalled](#live-sync-stalled-in-one-browser) |
+| Upgrade stuck on migrations / `lock timeout` | [Upgrade stuck on migrate](#upgrade-stuck-on-migrate) |
 | Calendars stale / sync failing / `push_failed` | [Calendar sync](#calendar-sync-failing-google-or-outlook) |
 | A subscribed ICS feed shows an error or never updates | [Calendar feeds](#calendar-feed-ics-not-updating) |
 | Photo/recipe uploads fail / storage degraded | [Media uploads failing](#media-uploads-failing) |
@@ -41,111 +37,55 @@ Then dig into logs for the flagged service: `./waffled logs <svc>` (`postgres`, 
 
 ### Postgres unreachable
 
-**Symptom:** `./waffled doctor` db check is **down**; api won't start or 500s
-everywhere; `/healthz` fails.
+**Symptom:** the System Health db check is **down**, the app won't start or 500s
+everywhere, or `/healthz` fails.
 
-**Diagnose:** `./waffled logs postgres` and `./waffled status` — is the `postgres`
+**Diagnose:** `docker compose ps` and `docker compose logs postgres`. Is the `postgres`
 container up and **healthy**? Common causes: container still starting, out of disk,
 or a bad shutdown.
 
 **Fix:** wait for the health check to pass; if it's crash-looping, read the postgres
-logs. `./waffled restart postgres` (then `api`, `powersync`). **Never** `docker volume
-rm pgdata` — that destroys all data (see the never-wipe warning in the
+logs. `docker compose restart postgres waffled`. **Never** `docker volume
+rm waffled_pgdata`, which destroys all data (see the never-wipe warning in the
 [upgrading guide](/operations/upgrading/)). If the volume is genuinely corrupt, restore from a
 backup (see [Backup & restore](/operations/backup/)).
 
 ### Migrations pending
 
-**Symptom:** health report flags **"schema behind"** (applied migration count <
+**Symptom:** the health report flags **"schema behind"** (applied migration count <
 available count); new features missing or erroring after an upgrade.
 
-**Diagnose:** `./waffled doctor` shows applied vs available migration counts.
+**Diagnose:** `docker compose logs waffled` shows whether migrations ran or failed on start.
 
-**Fix:**
+**Fix:** the app applies migrations every time it starts, so fix what the log shows and
+restart:
 
 ```bash
-./waffled migrate      # re-run migrations (idempotent); or ./waffled up
+docker compose up -d      # or: docker compose restart waffled
 ```
-
-Migrations normally auto-run on `up` via the one-shot `migrate` service; run
-`./waffled migrate` directly if you only need to apply them without a full restart.
 
 ### Upgrade stuck on migrate
 
-**Symptom:** `./waffled upgrade` (or `up`) sits on `waffled-migrate` for a long time, or
-`migrate` exits with `lock timeout: … was not granted within 10000ms; gave up after 4 attempt(s)`
-followed by a list of **Blocking sessions**.
+**Symptom:** after `docker compose up -d` the `waffled` container keeps restarting or sits
+unhealthy, and its log shows
+`lock timeout: … was not granted within 10000ms; gave up after 4 attempt(s)` followed by a
+list of **Blocking sessions**.
 
 **Diagnose:** a migration needs a table lock that another database session is holding,
-usually the previous `api` or `powersync`, which keep running while `migrate` applies the new
-schema. `./waffled logs migrate` shows the retries and each blocker's pid, user, application,
+usually the previous version of the app still running while the new one applies the schema.
+`docker compose logs waffled` shows the retries and each blocker's pid, user, application,
 state and query.
 
-**Fix:** stop the app services so nothing holds the tables, then bring the stack back up
-(pass your `--override` file to `up` too if you use one):
+**Fix:** stop the app so nothing holds the tables, then bring it back up:
 
 ```bash
-docker stop waffled-api waffled-powersync
-./waffled up        # migrate runs alone, then api and powersync start
+docker compose stop waffled
+docker compose up -d        # migrations run alone, then the app serves
 ```
 
 If the blocker is something else, such as a `psql` session left inside a transaction, end it
 or terminate it by pid with `select pg_terminate_backend(<pid>);`. On a very busy database you
-can give each lock longer with `MIGRATE_LOCK_TIMEOUT=30s` in `infra/compose/.env` (`0` waits
-indefinitely).
-
-### PowerSync "Offline" banner
-
-**Symptom:** **every** client (iOS + kiosk web) shows an **Offline** banner; logs
-show `PSYNC_S2101` signature failures.
-
-**Diagnose:** on an older or manually managed install, `POWERSYNC_JWT_PRIVATE_KEY`
-may be empty in `infra/compose/.env`. Older api versions generated a fresh signing key
-on every restart, causing PowerSync to reject api-issued JWTs (`PSYNC_S2101`). Check
-`./waffled logs powersync` for the signature error.
-
-**Fix:** run the installer again; it fills a missing key without rotating an existing one:
-
-```bash
-./waffled up
-```
-
-If you manage Compose without `./waffled`, generate a stable RSA-2048 private key and
-set its base64-encoded PEM as `POWERSYNC_JWT_PRIVATE_KEY`. Do not rotate it casually.
-Then restart PowerSync to re-validate:
-
-```bash
-./waffled restart powersync     # unstick waffled-powersync
-```
-
-**Also check `POWERSYNC_PUBLIC_URL`** — if it's set, it must be the address clients
-actually use to reach PowerSync, and a stale value (an old LAN IP, or `localhost`)
-shows up as clients that can't sync. On a home LAN, **clearing it** is the fix: Waffled
-then derives the sync address from whatever address each device used to reach the
-server. `./waffled up` and `./waffled upgrade` now clear it for you when it's one
-Waffled generated (plain HTTP to `localhost` or a LAN IP on the sync port) — a sync
-hostname you chose yourself is never touched. Keep it set only when PowerSync has its
-own hostname/TLS, or set it to `off` if you run the API without PowerSync at all.
-
-### Live sync stalled in one browser
-
-**Symptom:** a **⟳ Live sync is reconnecting** strip across the top of the web app, and
-**Settings → System Health → Live Sync (this browser)** reading **stalled**. Usually one
-device, not all of them.
-
-**Diagnose:** the sync engine in *that browser* is online and signed in but hasn't reached
-a synced state for three minutes. Waffled is already restarting it on its own — reconnect,
-then rebuild, then wipe and re-download this browser's local copy — so the usual answer is
-to wait. Meanwhile the calendar reads straight from the server, so **the data on screen is
-current**; only live push updates lag.
-
-**Fix:** if it doesn't clear, use **⟳ Restart sync** on the Live Sync card, then **🧹 Reset
-local copy** (offered while stalled; it's skipped automatically if unsent changes are still
-queued). A reload also works.
-
-If the **watchdog restarts** count keeps climbing, or *every* device is stalled rather than
-one, the problem is the service, not the browser — see
-[PowerSync "Offline" banner](#powersync-offline-banner) above and `./waffled logs powersync`.
+can give each lock longer with `MIGRATE_LOCK_TIMEOUT=30s` in `.env` (`0` waits indefinitely).
 
 ### Calendar sync failing (Google or Outlook)
 
@@ -189,7 +129,7 @@ the source.
 degraded; images 404 or won't save.
 
 **Diagnose:** the `waffled_media` volume isn't writable, or `MEDIA_DIR` points
-somewhere the api can't write. `./waffled logs api` will show the write error.
+somewhere the api can't write. `docker compose logs waffled` will show the write error.
 
 **Fix:** confirm the `waffled_media` volume is mounted and writable and that
 `MEDIA_DIR` is correct; check host disk space. **Do not** delete or recreate
@@ -198,28 +138,34 @@ somewhere the api can't write. `./waffled logs api` will show the write error.
 ### Backups failing or stale
 
 **Symptom:** health **`backup`** line is **degraded** (last backup failed, or newest
-success is older than ~48 h).
+success is older than ~48 h). If it says automatic backups are off, you haven't started
+the backup profile yet; see [Backup & restore](/operations/backup/).
 
-**Diagnose:** `./waffled logs backup`. Usual causes: out of disk space, or bad
+**Diagnose:** `docker compose logs backup`. Usual causes: out of disk space, or bad
 `BACKUP_S3_*` credentials / endpoint when offsite copy is enabled.
 
-**Fix:** free disk space, or fix the S3 creds/endpoint in `infra/compose/.env`, then
-`./waffled up` to recreate the backup service. Run `./waffled backup` to confirm a manual
-run succeeds. Full config in [Backup & restore](/operations/backup/).
+**Fix:** free disk space, or fix the S3 creds/endpoint in `.env`, then
+`docker compose --profile backup up -d` to recreate the backup service. Run
+`docker compose exec -u postgres backup waffled-backup` to confirm a manual run succeeds.
+Full config in [Backup & restore](/operations/backup/).
 
 ### Can't reach the app / TLS
 
 **Symptom:** browser can't connect, or TLS/certificate errors.
 
-**Diagnose:** this is the **Caddy** layer. `./waffled logs caddy`.
+**Diagnose:** `docker compose ps` (is `waffled` healthy, and is the port published?), then
+`docker compose logs waffled`. The app itself speaks plain HTTP; any TLS comes from your own
+reverse proxy.
 
 **Fix:**
 
-- **Local access is plain HTTP** on the mapped port — use `http://<host>:<port>`, not
-  `https://`. Don't expect a valid cert locally.
-- **For a real hostname:** set `CADDY_SITE_ADDRESS` to your domain in
-  `infra/compose/.env` and enable the **443** port mapping so Caddy can serve HTTPS
-  (and, for public domains, provision a cert). Then `./waffled up`.
+- **Direct access is plain HTTP** on the mapped port: use `http://<host>:8080`, not
+  `https://`. Don't expect a valid cert there.
+- **Port already in use:** set `HTTP_PORT` in `.env` and run `docker compose up -d`.
+- **Behind a reverse proxy:** check the proxy's own logs, and that `PUBLIC_BASE_URL` and
+  `TRUST_PROXY` are set; see [Reverse proxy & TLS](/install/reverse-proxy/).
+- **Sign-in or calendar redirects land on the wrong address:** set `PUBLIC_BASE_URL` to the
+  origin you actually use.
 
 ### Locked out / forgot admin password
 
@@ -228,23 +174,13 @@ run succeeds. Full config in [Backup & restore](/operations/backup/).
 **Fix (break-glass, from the host):**
 
 ```bash
-./waffled admin reset-password        # reset a member's password
-./waffled admin make-admin            # grant admin to a member
-./waffled admin list-members          # see who exists
-./waffled admin prune-sessions        # invalidate active sessions if needed
+A="docker compose exec -u node waffled node dist/admin.js"
+$A list-members                      # see who exists
+$A reset-password --email you@example.com
+$A make-admin --email you@example.com
+$A prune-sessions                    # invalidate active sessions if needed
+$A help                              # the full command list
 ```
-
-**On [Waffled for Mac](/install/mac/)**, the same commands are `waffled-runtime admin`:
-
-```bash
-R=/Applications/Waffled.app/Contents/Resources/runtime/bin/waffled-runtime
-$R admin reset-password --email you@example.com
-$R admin make-admin --email you@example.com
-$R admin help                         # the full command list
-```
-
-Waffled doesn't have to be running: with the server stopped, the database is started for
-the command and shut down again afterwards.
 
 ---
 
@@ -252,14 +188,11 @@ the command and shut down again afterwards.
 
 | Tool | What it gives you |
 |---|---|
-| `./waffled doctor` | deep per-component health; non-zero exit when degraded/down |
-| `./waffled status` | which services are up / healthy |
-| `./waffled logs <svc>` | logs for `postgres` / `api` / `powersync` / `caddy` / `backup` |
-| **Settings → System Health** | same report as `doctor`, in the UI |
+| **Settings → System Health** | deep per-component health, in the UI |
+| `docker compose ps` | which services are up / healthy |
+| `docker compose logs <svc>` | logs for `waffled` / `postgres` / `backup` |
 | `GET /healthz` | public shallow check (db ping + version) |
 | `GET /api/health` | admin deep report (per component) |
 
-Tune log verbosity with `LOG_LEVEL` / `LOG_FORMAT` in `infra/compose/.env`. For
-metrics/traces, `./waffled observability up` brings up local Grafana (optional
-`observability` profile); set `OTEL_EXPORTER_OTLP_ENDPOINT` to export traces (off by
-default).
+Tune log verbosity with `LOG_LEVEL` / `LOG_FORMAT` in `.env`. To export traces to your own
+collector, set `OTEL_EXPORTER_OTLP_ENDPOINT` (off by default).

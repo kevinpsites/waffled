@@ -1,5 +1,7 @@
 # Capture-bar expansion — "Add anything" → "Do anything"
 
+> **Note (0.16):** the iOS and Mac apps, PowerSync and the `./waffled` CLI referenced here were removed. The web/kiosk behaviour described is still current; iOS/offline details are historical.
+
 **Status:** Design brief (pre-implementation). Extends roadmap item 6.6.
 **Owner:** TBD
 **Related code:** `apps/api/src/modules/capture/capture.ts`, `apps/web/src/lib/capture/parse.ts`, `apps/web/src/kiosk/components/CaptureBar.tsx`, `apps/ios/Sources/Waffled/Sync/CaptureHeuristic.swift`

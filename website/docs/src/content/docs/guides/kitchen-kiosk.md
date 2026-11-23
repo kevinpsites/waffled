@@ -12,23 +12,10 @@ cross-link out for the deep detail.
 
 ## 1. Make the server reachable from the tablet
 
-A kiosk tablet syncs over your network, so the server has to be reachable at a
-real address — not `localhost`. Run setup, then bring the stack up:
-
-```bash
-./waffled setup   # choose your LAN IP, or a hostname for automatic HTTPS
-./waffled up
-```
-
-The **#1 gotcha** is a `localhost` sync URL the tablet can't reach — the kiosk
-loads but everything shows **"Offline."** `./waffled setup` writes the right
-address for you. For hostnames and HTTPS, see
-[Reverse proxy & TLS](/install/reverse-proxy/).
-
-> **On Waffled for Mac?** Skip this step — there is no `./waffled setup`. The app picked the
-> address during its first run: it is on the **Ready** screen (with a QR code) and in the
-> menu's **Server address**, which copies it when clicked. Use that in step 2 instead of
-> `<your-host>:8080`. See [Mac install → Ready](/install/mac/#4-ready).
+A kiosk tablet talks to the server over your network, so the server has to be reachable at a
+real address — not `localhost`. On a home network that is just the host's LAN IP on the
+published port (`http://192.168.1.20:8080`); reserve that IP in your router so it doesn't
+change. For a hostname and HTTPS, see [Reverse proxy & TLS](/install/reverse-proxy/).
 
 ## 2. Open the app on the tablet
 
@@ -71,16 +58,14 @@ Details and album setup: [Photos & screensaver](/features/photos/).
 
 ## 6. Pick the right device
 
-- **iPad** — the native app gives the best kiosk: keep-awake and a Ken-Burns
-  slow-zoom screensaver.
-- **Any other tablet** — the web PWA works great.
-- **iPhone is never a kiosk** — it's a personal device, not a shared display.
+- **Any tablet** — the web PWA works great: iPad, Android, or a Fire tablet.
+- **A phone is never a kiosk** — it's a personal device, not a shared display.
 
 ## Verify
 
 You're done when, on the tablet:
 
-- The hub loads with real data (**not "Offline"**).
+- The hub loads with real data (not an empty screen or a connection error).
 - The **profile picker** appears (if you paired).
 - The **screensaver** kicks in after the idle timeout.
 

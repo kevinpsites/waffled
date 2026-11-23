@@ -53,15 +53,13 @@ the room was already quiet, it stays quiet.
 | Surface | Support |
 |---|---|
 | Web / Kiosk | ✅ |
-| iPhone | ✅ |
-| iPad | ✅ |
 
-The parent control panel is available on web, iPhone, and iPad — pair once from any of them, control from any of them.
+The parent control panel is available in the web app, including the installed PWA on a phone.
 
 ## How pairing works
 
 1. Turn the Waffled-Bite device on and connect it to Wi-Fi — the device scans for nearby networks and lets you pick one and enter the password right on its own screen. Picked the wrong network, or moving the device somewhere new? A "Change Wi-Fi network" option on the next screen takes you back to the picker — no reflash needed.
-2. On web, iPhone, or iPad, open **Family → the kid → Waffled-Bite → Pair a Waffled-Bite**. This mints a short, one-time code (10-minute window).
+2. In the web app, open **Family → the kid → Waffled-Bite → Pair a Waffled-Bite**. This mints a short, one-time code (10-minute window).
 3. Enter the code on the device. Once it claims the code, the control panel appears automatically — no refresh needed.
 
 > This flow is proven end-to-end against the real backend, including on the physical touchscreen device. See the status note at the top of this page for what's still rough around the edges.
@@ -83,4 +81,4 @@ Waffled-Bites is an **optional module** (`waffledBites`, default **OFF**), toggl
 - 👶 Devices pair to a specific child, not the household — there's no shared profile picker like [Kiosk](/features/kiosk/) uses for a communal tablet.
 - 🔓 **Unpairing works from either side.** Unpair from the parent panel as usual, or right on the device: tap "For a grown-up" on its Settings screen 5 times fast to open a confirmation screen that clears the device's pairing *and* tells the parent panel it's gone — not just a local reset the panel wouldn't know about.
 - ⭐ Task completion on the device is just a chore completion under the hood, so it shows up in the same stars ledger, streaks, and rewards as chores completed anywhere else — see [Chores & tasks](/features/chores/) and [Rewards & economy](/features/rewards/).
-- 🔨 **Real-hardware bring-up is underway.** The on-device app (ESP32-P4 + LVGL) is code-complete and verified against the real backend, and has been bring-up tested on the actual board — display, touch, and on-board Wi-Fi all confirmed working on real silicon, including dozens of reboot tests. Remaining gaps: no over-the-air updates yet, and no on-device camera for photo-required chores (completed from a parent's phone/web instead). See the [product roadmap](https://github.com/kevinpsites/waffled/blob/main/docs/product/roadmap.md) for status.
+- 🔨 **Real-hardware bring-up is underway.** The on-device app (ESP32-P4 + LVGL) is code-complete and verified against the real backend, and has been bring-up tested on the actual board — display, touch, and on-board Wi-Fi all confirmed working on real silicon, including dozens of reboot tests. Remaining gaps: no over-the-air updates yet, and no on-device camera for photo-required chores (completed from a parent's phone/web instead). See the [product roadmap](https://github.com/evan-ribbey/waffled-ng/blob/main/docs/product/roadmap.md) for status.

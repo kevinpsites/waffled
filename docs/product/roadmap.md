@@ -9,11 +9,16 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 ## The big picture
 
 > **Feature surface complete + self-host packaging shipped + extensibility layer opened.**
-> A fresh `git clone` + `./waffled up` comes up with real auth (built-in password / OIDC) and
+> A fresh `docker compose up -d` (two containers) comes up with real auth (built-in password / OIDC) and
 > runs with zero external dependencies. Every feature domain (Today, Calendar, Chores,
 > Rewards, Goals, Lists, Meals, Photos, AI capture) is built and usable on the Web/Kiosk,
 > with a **pluggable optional-module framework** (first module: Pantry) and a **public,
 > scoped API** for external integrations now layered on top.
+
+> **0.16 simplified the stack.** The Mac app, the iOS app, the PowerSync offline layer, Caddy,
+> Bonjour discovery and the `./waffled` CLI were removed (see **Removed in 0.16** at the bottom).
+> Older entries below that mention iOS, iPhone/iPad, PowerSync or the Mac app record what shipped
+> before then; the web/kiosk behaviour they describe is still current.
 
 ## Done ✅
 
@@ -72,16 +77,17 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   `[data-theme="dark"]` override; iOS: dark-aware `Color(light:dark:)` tokens re-resolved by UIKit
   on the appearance change), with a shared palette and semantic success/danger/warn/info tokens so
   the two platforms read identically with the lights off.
-- **Self-host packaging** — one-command `./waffled up` (pulls multi-arch GHCR images by
-  default; `--build` for source), in-container migrations, and one-command `./waffled
-  upgrade` (repo fast-forward + version bump + DB snapshot + pull + migrate).
+- **Self-host packaging** — two containers from one `compose.yaml` (`docker compose up -d`; a
+  multi-arch `waffled` GHCR image plus Postgres, `--build` for source), secrets generated on
+  first start, migrations on start, and `docker compose pull && docker compose up -d` to upgrade.
+  Optional backups (`--profile backup`) with a `restore` command.
 - **Observability** — structured JSON logging, a deep `/api/health` + **Settings → System
-  Health** panel, **`./waffled doctor`**, baked build provenance, and **OpenTelemetry**
-  (off by default) with an all-local **`./waffled observability up`** Grafana stack. Restore
-  drills still to come (7.4).
-- **Operator CLI** — Immich-style **`./waffled admin`** break-glass commands (reset a member's
+  Health** panel, baked build provenance, and **OpenTelemetry** (off by default, pointed at your
+  own collector). Restore drills still to come (7.4).
+- **Operator CLI** — Immich-style break-glass commands
+  (`docker compose exec -u node waffled node dist/admin.js <command>`: reset a member's
   password, list members, grant/revoke admin, toggle password login, clear a stuck calendar,
-  prune sessions, regenerate the PowerSync key) that run in-container with no login required.
+  prune sessions) that run in-container with no login required.
 - **Identity** — built-in email/password auth (rotating refresh), backend-mediated **OIDC
   SSO** (invite-gated, admin-configured), member management (grant logins), **role-based
   permissions** (per-role capability grid for managing/approving chores, rewards & goals —
@@ -108,28 +114,6 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   consistency calendar) matched to goal type + timeframe. The Log sheet's **note chips
   now suggest a goal's own most-logged notes** (scoped per participant, blended with the
   defaults) instead of a fixed list — **Tier 1**; smarter ranking is Tier 2 under *Planned*.
-- **Apple Health → goals (iPhone)** — link a goal to an Apple Health / Apple Watch metric
-  (steps, flights climbed, exercise minutes, active energy, **distance** — walking + running,
-  cycling, swimming, wheelchair; fractional, mi/km per device region — **workouts by type** —
-  running / cycling / swimming / yoga / strength training, or any workout — plus **mindful
-  minutes**, **activity rings** — Move/Exercise/Stand or all three — and **mood**, iOS 17+) and
-  its progress auto-fills: numeric goals accumulate each day's total, a **habit** counts a day
-  whenever it clears a daily threshold ("2,000 steps a day, 5×/week"), and rings/mood count a
-  day when the ring closes or a mood is logged. Ring/mood links also work on a **count** goal —
-  each met day adds one, so "close my Exercise ring 15× this month" or "log my mood 20 days"
-  accumulate toward the target (open days add nothing; a later correction self-adjusts).
-  **Workout metrics read your actual `HKWorkout` sessions** (a different query shape from the
-  cumulative totals) and pick the measure that fits the goal — **minutes** on a total, **sessions**
-  on a count, and for a habit either "any workout counts the day" or an at-least-N-minutes bar.
-  The **"Track from Apple Health" picker** is grouped by goal shape (adds-up metrics for
-  total/count vs qualifying-day habits, rings first), searchable, and shows your
-  live value per metric so you pick something real. Opening the app **catches up every missed
-  day** since the last sync (bounded at the goal's creation date, so it never back-fills from
-  before the goal existed). Opt-in per goal in the editor's **Extras** (next to calendar
-  auto-count), plus a **Settings → Permissions** screen for managing device access. iPhone-only
-  by nature (HealthKit); iPad/web just display the synced number. *(Tiers 0–2 of the
-  [staged plan](../design/healthkit-goals.md); background sync + a rewards tie-in remain — see
-  below.)*
 - **Lists & groceries** — multi-lists, auto-built aisle board, quantity merge, pantry
   staples, live cross-surface refresh **plus cross-device refresh** (foreground + ~20s poll,
   since lists aren't on PowerSync), **item attribution** ("added by …" / from a meal plan
@@ -190,29 +174,6 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   supported patterns (built-in toggle module · external integration via API keys) and the one
   we don't build (in-process plugins) are written up in
   [`extensibility.md`](./extensibility.md).
-- **iOS** (mobile) — a **universal app**: the iPhone *personal planner* and the iPad
-  *family hub* (nav rail + every page) in one binary. Near-complete feature parity with the
-  Web/Kiosk — Today, Calendar (incl. **recurring events** — create, per-occurrence edit/
-  delete scope, end condition, and a live "now" line on the time grids), Chores (incl.
-  **photo-proof**), Rewards, Goals, Lists, Meals, Photos, AI capture, **role-based permission
-  gating** + the permissions matrix editor, native sign-in (password + OIDC), offline-first
-  calendar over PowerSync, and local event notifications (Snooze/View). The iPad also has the
-  **family-display screensaver** (idle
-  photo slideshow · clock · weather · next event · night-dim). The newer modules reached
-  parity too — **Pantry** (Open Food Facts lookup, cook→decrement, Cook-from-pantry, and a
-  Settings → Pantry editor), **Calendar Countdowns**, and **Family Night** — plus a
-  **customizable iPad nav rail** (a per-device pick + a "More" overflow hub) and a
-  three-tier **Settings** reorg (Account · Family · System). The **July 2026 family-hub batch**
-  reached iOS parity too — **list templates** (+ swipe/detail list edit & delete), **on-the-spot
-  cook timer**, **Try New Recipe**, the **never-cooked 🆕 tag**, and **spot-award stars** (person
-  profile + Rewards page) — plus **owner-first family ordering** and a **kid-facing Reward Shop
-  redesign** (wallet hero · category chips/sections off `reward.category` · redeem + confetti
-  celebration) whose **tab now shows the shop with person tabs on top** (web-style; iPhone + iPad).
-  Reward **categories** are settable on iOS (editor chip-picker), and the **Countdown tweaks**
-  `birthdayHorizonDays` control shipped in Settings → Calendars — so the July-batch iOS parity is
-  now **complete**. Per-surface (iPhone / iPad)
-  status — and the remaining mobile gaps — live in the [feature matrix](../../website/docs/src/content/docs/reference/features.md).
-
 - **Rhythms — the things that should keep happening.** A new optional module (`rhythms`,
   default **off**) for the standing intentions with a cadence: "trash out weekly", "air
   filter every 3 months", "book a temple visit each quarter", "a self-care day every other
@@ -260,31 +221,6 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   a **browsable completion history** — today the record and the real average appear when you
   edit a rhythm, which is where you already go to ask about one, but it is not a record you
   can page through.
-
-- **Waffled for Mac — a downloadable app that runs the family server natively, no Docker.**
-  Plex-style: the web app stays the UI, the Mac app is a menu-bar icon (running / starting /
-  error) whose menu opens the web UI, copies the server address, toggles start-at-login, and
-  backs up. Same api, migrations, PowerSync, Caddy and web build as Compose — only packaging
-  and supervision differ, via a Go runtime supervisor (`apps/runtime`) that is a CLI first
-  (`waffled-runtime start|status|backup|config|move|doctor`). The app carries the whole 669 MB
-  runtime inside it, verifies it against a manifest before starting anything, walks a
-  household through its first run — a **Where things go** screen settles the data folder,
-  the nightly backup and its hour, the address other devices use (this Mac's name, its IP,
-  or a name the household points at it) and the port, all before anything is created. The
-  same screen comes back as **Settings…** afterwards, applying only what changed, with a
-  **Move…** that takes the whole household to another folder when the startup disk fills
-  up. Both screens have three tabs, so anything Settings changes can be chosen before the
-  first start too: **Basic** (those rows as drawers, plus how many nightly
-  backups to keep and a provider segment — Not now, Claude, OpenAI-compatible, or Ollama
-  detected on the Mac), **Advanced** (AI model and limits, calendar sync, sessions and
-  sign-in, rate limits) and **Diagnostics** (log level and format) — every control one the
-  runtime really forwards ([`mac-settings-redesign.md`](./mac-settings-redesign.md)). It **updates itself** via Sparkle — one download that swaps the
-  app, the runtime and the schema together, snapshotting and rolling back if the new version
-  cannot come up healthy. Signed with a Developer ID, **notarized and stapled**, and shipped
-  as a DMG built by `apps/mac/Scripts/release-mac.sh`, so Gatekeeper opens it with no
-  warning. Apple silicon and macOS 14+ only for now; Windows follows from the same runtime
-  later. Plan, risks and phases in [`native-mac-plan.md`](./native-mac-plan.md); how to use
-  it: [docs → Mac install](https://docs.waffled.app/install/mac/).
 
 - **Weekly Planning** — a guided session that walks the family through deciding the week
   ahead in ten steps (loose ends · calendar · horizon scan · family night · connection ·
@@ -364,28 +300,6 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Planned 🚧
 
-- **The rest of the Mac Settings design** — each its own piece of runtime work before a
-  control can appear: photos in a folder of their own (media relocation), backups in a
-  folder of their own, backups that include photos, keeping every backup ("Forever"), an
-  offsite copy to S3/B2/R2, a hostname Caddy actually serves with a certificate, and a beta
-  update channel. Listed with the reason each is not a setting yet in §3d of
-  [`mac-settings-redesign.md`](./mac-settings-redesign.md).
-- **Observability on the Mac — a gap today.** Docker installs can export OpenTelemetry
-  traces and metrics to a collector (`./waffled observability up`, or your own). A Mac
-  install cannot: the bundle ships neither the `otel.js` preload nor the ~100 MB of
-  `@opentelemetry/*` packages, so `OTEL_*` in `config.env` reaches nothing and Diagnostics
-  offers only log level and format. What a Mac has instead is per-service logs, `waffled-runtime
-  doctor` and Settings → System Health — point-in-time, nothing continuous, nothing that
-  leaves the machine. Deferred on purpose (2026-09-11); the work and its forced order are
-  §3d item 8 of [`mac-settings-redesign.md`](./mac-settings-redesign.md).
-- **Waffled for Windows** — the same Go runtime, a different wrapper (a tray app rather
-  than a menu-bar one), and a bundle of Windows binaries instead of Mach-O ones. Nothing in
-  the Mac work forecloses it; §9 of [`native-mac-plan.md`](./native-mac-plan.md) records
-  what would have to change. Not started.
-- **iOS "find your Waffled server"** — Bonjour discovery in the app, so a phone on the same
-  network offers the household's Mac instead of asking for an address. The runtime already
-  advertises `_waffled._tcp`; the phone half is Phase 4 of
-  [`native-mac-plan.md`](./native-mac-plan.md).
 - **Chore due-dates on the calendar.** The last piece of "the calendar as the all-in-one
   dated view": overlay `chore_instances.due_on` onto the calendar as read-only all-day chips,
   tapping through to the chore rather than the event editor. Deliberately chips, not
@@ -569,50 +483,6 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   stays correct, just no longer belt-and-braces. Bounding it to future weeks needs a
   "has this night been touched" flag; one rule is better than two.
 
-- **Apple Health → goals — remaining follow-ons (iPhone).** Tiers 0–2 shipped (see **Done** —
-  the full metric set incl. rings/mindful/mood, the **four distance metrics** (walk + run,
-  cycling, swimming, wheelchair — fractional, mi/km per device region), **workout-type metrics**
-  (`HKWorkout` by activity; minutes / sessions / workout-day habits), habit thresholds,
-  ring/mood **count** goals ("close the ring 15×"), the grouped + searchable "Track from Apple
-  Health" picker, and gap catch-up). What's left is deliberately deferred:
-  - **Graduated ring goals ("I hit 75% of my Move ring").** Apple's `HKActivitySummary`
-    exposes each ring's **value *and* the user's personal goal**, not just closed/not — so the
-    ring is really a numerator/denominator we currently collapse to a boolean at 100%. We could
-    expose a **numeric "ring %"** metric (`value / goal × 100`) that a habit counts at a
-    threshold you set (default 100 = fully closed, e.g. ≥75% for an easier bar, or ≥150% to
-    require overachievement). **Where we landed:** don't build the full per-ring % set — most
-    of it is redundant (the Exercise ring's value *is* our Exercise-minutes metric; the Move
-    ring's value *is* Active energy). The one non-redundant, compelling case is a **"Move ring %"**
-    habit that rides your *personalized, auto-adjusting* calorie goal ("hit 80% of my Move goal,
-    whatever it is this month") — hard to express otherwise. So this is scoped to *maybe just
-    Move ring %*, a fast-follow only if graduated goals are wanted. Wrinkles to handle if we do:
-    % can exceed 100 (don't cap the UI), the denominator moves with the user's Watch goal, and
-    "all rings %" is ambiguous (three denominators) so it'd be per-ring only.
-  - **Background sync** (`enableBackgroundDelivery` / `HKObserverQuery`) to keep the family iPad
-    fresh on days the phone-owner never opens the app — a *freshness* nicety, not correctness,
-    since the next app-open already reconciles.
-  - A **rewards tie-in** ("hit your step goal → earn a marble"), which waits on goals touching
-    the currency ledger; and **write-back** into HealthKit (out of scope — the read-only pull is
-    ~95% of the value).
-
-  Full plan in [`docs/design/healthkit-goals.md`](../design/healthkit-goals.md).
-
-- **iOS widgets, Siri & Shortcuts (iPhone).** Bring Waffled onto the iPhone's *glanceable +
-  quick-add* surfaces — Home/Lock-Screen **widgets**, **App Intents** (Siri/Shortcuts), and iOS 18
-  **Controls** — as a **personal** experience (the device is signed in as one person, so the widget
-  *is you*; no per-person picker). Planned tiles: an **offline Agenda** ("my day", reads the
-  PowerSync events with no network/token), a **Grocery** tile (snapshot display + iOS 17 inline
-  check-off via `PATCH /list-items/:id` + a `+` deep-link to add), and a **type-aware Goal nudge**
-  (`+` for count/total, checkmark for habit, ring-only for health-sourced goals → `POST
-  /goals/:id/log`). Plus **voice quick-add** (a reliable "add to grocery" intent + a freeform
-  "capture" intent that parses via `/api/capture` then commits + speaks a client-built summary), which
-  also shines on the family iPad at the table. The **key plumbing**: today there's no extension
-  target, App Group, or shared Keychain — reads use an app-written **App Group snapshot** (no token),
-  writes need a **shared Keychain access group**. Staged **Tier 0** (foundation + Agenda) → **Tier 1**
-  (Grocery) → **Tier 2** (Goal nudge) → **Tier 3** (voice + Controls); full plan in
-  [`docs/design/ios-widgets-intents.md`](../design/ios-widgets-intents.md). Needs a Siri/Intents
-  capability + App Group + Keychain-access-group (App Store review).
-
 - **Multi-household identity** — one email/account that belongs to many households (separate
   profile + role per household, switch after login). Design spike written + product decisions
   aligned: [`docs/design/multi-household-identity.md`](../design/multi-household-identity.md).
@@ -699,6 +569,25 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **Restore drills** (7.4) — pairs with the parked S3 backup.
 - **App store verification** (7.2) — Apple/Google production review.
 
+## Removed in 0.16 ⛔ (the two-container simplification)
+
+Waffled now runs as `docker compose up -d`: one `waffled` image plus Postgres. The following were
+shipped earlier and removed, or planned and dropped, with the native clients and offline layer:
+
+- **Waffled for Mac** (native menu-bar app and the `waffled-runtime` Go supervisor) and the
+  planned follow-ons: Mac Settings redesign items, Mac observability, **Waffled for Windows**.
+  Run Docker Desktop on a Mac instead.
+- **iOS app** (iPhone planner and iPad family hub), including **offline-first calendar**, local
+  notifications, native sign-in, **Apple Health → goals** (and its follow-ons), **iOS widgets,
+  Siri & Shortcuts**, and **Bonjour "find your Waffled server"**. The web app and installable PWA
+  replace it; goals are logged in Waffled.
+- **PowerSync** offline sync and the sync-health/watchdog UI. Every client reads and writes
+  through REST.
+- **Caddy**, the `./waffled` CLI, `./waffled-demo` and the `:8081` demo stack, the Oracle Cloud
+  Terraform recipe, and the observability (Grafana) compose profile. Use `compose.yaml`,
+  `docker compose exec -u node waffled node dist/seed-demo.js`, your own reverse proxy and your
+  own OpenTelemetry collector.
+
 ## Dropped ⛔ (superseded by the self-host pivot, 2026-06-20)
 
 The original cloud plan (Terraform/AWS, Auth0, GCP project provisioning, a separate
@@ -712,5 +601,5 @@ The original cloud plan (Terraform/AWS, Auth0, GCP project provisioning, a separ
 > and SSO panel label). The old `BOOTSTRAP.md` (Auth0/AWS/Terraform-era console setup) has
 > been **removed**; the still-relevant Google OAuth-client walkthrough lives in the **Google
 > Calendar** admin guide on the docs site. The **self-host model in
-> [`quick-start.md`](./quick-start.md)** and the `Self-hosted (Immich-style)` section of the
+> the [quick start](../../website/docs/src/content/docs/getting-started/quick-start.md)** and the `Self-hosted (Immich-style)` section of the
 > [engineering plan](../engineering-plan.md) are the current source of truth.

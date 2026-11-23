@@ -41,7 +41,7 @@ cd apps/api && npm run test:watch
   an RSA keypair, publish the public half as a JWK via wiremock, point the API at it with `AUTH0_JWKS_URI`,
   and assert published-key tokens pass while unpublished-key / wrong-audience tokens fail.
 - **Shipped-artifact e2e** (`test/api.e2e.test.ts`): Testcontainers builds the Dockerfile,
-  runs the container, and drives it over HTTP exactly as Caddy / iOS will.
+  runs the container, and drives it over HTTP exactly as a real client will.
 - **Config is env-injectable** so tests can redirect external endpoints (`AUTH0_JWKS_URI`,
   `AUTH0_ISSUER`) at a local mock — design new code the same way.
 

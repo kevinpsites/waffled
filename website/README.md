@@ -85,7 +85,6 @@ Where the source of truth lives:
 | Kind | Source of truth | Vendored copies (what actually ships) |
 | --- | --- | --- |
 | **Web / kiosk** shots | Regenerate with `scripts/capture-screenshots.mjs` against a running demo stack (the UI is the truth) | `home/public/screenshots`, `docs/public/screenshots`, `../docs/product/screenshots` (README `demo.gif`) |
-| **iOS / iPad** shots | `../apps/ios/app-store/screenshots` (the App Store assets) | copied into `home/public/screenshots` / `docs/public/screenshots` where used |
 
 So to refresh a screenshot: re-capture (or re-export) it at the source, then
 **copy it into every `public/screenshots` that references it** and, if it's in
@@ -93,7 +92,7 @@ the README montage, rebuild `demo.gif`. Grep the repo for the filename first to
 find every copy.
 
 Regenerate the web set (needs `playwright-core` + a Chromium, and a demo stack —
-see the [Demo seed](../docs/product/) notes for the `:8081` stack):
+see the [Demo seed](../docs/product/) notes; seed with `docker compose exec -u node waffled node dist/seed-demo.js`):
 
 ```bash
 cd website && node scripts/capture-screenshots.mjs .out   # writes today.png, calendar.png, …

@@ -29,10 +29,8 @@ Meals is your recipe library and your planner in one — pick what's for dinner 
 | Surface | Support |
 |---|---|
 | Web / Kiosk | ✅ |
-| iPhone | ✅ |
-| iPad | ✅ |
 
-Recipe delete and paste-markdown import are web-forward; mobile edits most fields and cooks fine. On **iPad**, tapping tonight's dinner from the Today view opens it full-screen — the recipe, or the whole meal when a plate is planned.
+Recipe delete and paste-markdown import are web-forward; mobile edits most fields and cooks fine. Tapping tonight's dinner from the Today view opens it full-screen — the recipe, or the whole meal when a plate is planned.
 
 ## Building a meal
 
@@ -45,7 +43,7 @@ this** (which seeds the plate with that recipe). Then:
 
 - **Add dishes** — on web, drag a recipe from the library panel onto Main, Sides or
   Dessert; everywhere, tap **＋ Add a main / side / dessert** on a slot and pick one.
-  Once a dish is on the plate you can **drag it between roles** — on iPhone and iPad,
+  Once a dish is on the plate you can **drag it between roles** — on a touch screen,
   press and hold it and drop it under another heading (an empty role shows a
   "Drag a dish here" slot to aim at, once there's something to drag). The library's
   Sides / Mains / Desserts tabs sort recipes by their `mealType` and `category`
@@ -85,7 +83,7 @@ steps, and each dish remembers its own place, so moving between them never loses
 you were. Timers are named for their dish, so the dock — and the alarm on your lock
 screen — tells you which pan is beeping.
 
-Tapping a timer takes you to that dish and that step. On iPhone and iPad it also leaves a
+Tapping a timer takes you to that dish and that step. It also leaves a
 **"Back to step 6 · Roast Chicken"** pill under the tabs, which puts you back exactly
 where the timer pulled you from. It stays until you use it or dismiss it with its ×,
 because a timer going off is precisely when you get distracted — and it covers the case
@@ -117,7 +115,7 @@ Paste-markdown import (**Use template** / **See example** in the editor) reads a
    **Timer:** 4 minutes
 ```
 
-Durations accept minutes / hours / seconds and compound or short forms — `20 minutes`, `1 hour 30 min`, `1.5 hrs`, `90s`. You can also drop a timer **inline** anywhere in the step text as `{timer: 20 minutes}` (equivalent, also stripped). Parsed timers become the per-step timer in [cook mode](#highlights), and the in-editor **Use template** / **See example** both include a `**Timer:**` line to copy. This works the same on web and iOS (iOS uses the same server-side parser).
+Durations accept minutes / hours / seconds and compound or short forms — `20 minutes`, `1 hour 30 min`, `1.5 hrs`, `90s`. You can also drop a timer **inline** anywhere in the step text as `{timer: 20 minutes}` (equivalent, also stripped). Parsed timers become the per-step timer in [cook mode](#highlights), and the in-editor **Use template** / **See example** both include a `**Timer:**` line to copy.
 
 ## Which day your week starts on
 

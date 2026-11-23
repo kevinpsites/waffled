@@ -19,9 +19,6 @@ Weekly Planning is an **optional module and it's OFF by default**. An owner or a
 on in **Settings → [Modules](/administration/modules/)**. Once it's on you get:
 
 - a **Planning** page in the web app's nav
-- a **Weekly Planning** tile at the top of the **Family** tab on iPhone
-- a **Planning** page on iPad — pin it to the side rail, or find it under **More**
-- a Weekly Planning card on the iPad's Today dashboard (see [Where it works](#where-it-works))
 
 Turn the module back off and all of that disappears. Nothing the session decided is
 touched — it lives in your calendar, chores, goals and meal plan, not in the module.
@@ -43,7 +40,7 @@ Inside the session, every step looks the same:
 - **Skip this step** on the left of the footer, and the step's answer on the right —
   **All handled**, **Looks right**, **Accept**, **Handed out** — with the next step's name
   beside it
-- **📌 Park a note** in the footer (a pin on iPhone), so a thought that comes up mid-step
+- **📌 Park a note** in the footer (a pin on a phone), so a thought that comes up mid-step
   gets written down without leaving it. Tag it for a step still ahead and that step opens with
   it; with no tag it waits in the Recap and at next week's Loose ends. Loose ends and Horizon
   scan have their own bar, so the footer leaves it out there.
@@ -206,33 +203,21 @@ here too.
 | Surface | Support |
 |---|---|
 | Web / Kiosk | ✅ |
-| iPhone | ✅ |
-| iPad | ✅ |
 
 The whole session — the lobby, all ten steps, the agenda, parked notes, the Recap and the
-saved week — works on every surface. What differs is how you get to it:
-
-- **Web / Kiosk** — **Planning** in the nav. Every step has its own address, so a refresh,
-  the back button or a pasted link lands you on the step you were on.
-- **iPhone** — the **Weekly Planning** tile in the **Family** tab. The bottom bar is full, so
-  there's no planning tab, and the iPhone's Today has no planning card.
-- **iPad** — a **Planning** page: pin it to the rail, or open it from **More**. The iPad's
-  Today dashboard also gets a card: on the session day it says the session is due, while a
-  week is part-planned it shows how many steps are decided with a progress bar, and once the
-  week is saved it says so. Tap it to open the session.
+saved week — works on web and kiosk. **Planning** is in the nav, and every step has its own
+address, so a refresh, the back button or a pasted link lands you on the step you were on.
 
 The web app's Today page has no planning card.
 
 ## Settings
 
-On the web the settings sit under the module's switch in **Settings → Modules → Weekly
-Planning**. On iPhone and iPad they're under **Settings → Weekly Planning**, which configures
-the session but doesn't start one.
+The settings sit under the module's switch in **Settings → Modules → Weekly
+Planning**. They configure the session but don't start one.
 
 - **Session happens on** — a day and a time, default **Sunday, 5:00 PM**. This is when to
   nudge the family to sit down. It doesn't change which week gets planned: that always follows
   your household's first day of the week (**Settings → Family & People → Week starts on**).
-- **Show on the family display's Today** — the iPad Today card above (default **on**).
 - **Steps** — a switch per step. Turn off anything your family doesn't do; the session skips
   it and never counts it. Steps whose module is off aren't offered, and are named instead.
 - **Lists it asks about** — the same per-list switches as **Which lists?** in Loose ends.
@@ -256,7 +241,7 @@ Permissions** — see [Permissions & roles](/concepts/permissions/).
 - 🧒 **Kids are members with the kid type.** With no kids in the household, the Kids step has
   nothing to ask — skip it, or switch it off in Settings.
 - 🌐 **Needs a connection.** The session reads and writes through your server, like Chores and
-  Rhythms; it doesn't work offline on the phone.
+  Rhythms.
 
 ## See also
 

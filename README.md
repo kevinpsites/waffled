@@ -7,18 +7,17 @@
 <p align="center">
   <strong><a href="https://docs.waffled.app">📖 Documentation</a></strong>
   &nbsp;·&nbsp; <a href="#self-hosting-quickstart">Quickstart</a>
-  &nbsp;·&nbsp; <a href="https://github.com/kevinpsites/waffled/releases">Releases</a>
+  &nbsp;·&nbsp; <a href="https://github.com/evan-ribbey/waffled-ng/releases">Releases</a>
 </p>
 
 <p align="center">
   <img src="docs/product/screenshots/demo.gif" alt="Waffled across the Today dashboard, calendar, chores, meal planner and pantry" width="820">
 </p>
 
-A shared family operating system rendered across three surfaces:
+A shared family operating system you open in any browser:
 
 - **Counter Kiosk** — always-on tablet (1280×800), full read/write, ambient display. Runs as the web app in fullscreen/PWA mode.
-- **iOS app** — native Swift/SwiftUI capture companion. Offline-first (read + write).
-- **Web app** — full management/setup dashboard. Static SPA served by Caddy (same build as the kiosk).
+- **Web app / PWA** — the full management and setup dashboard (same build as the kiosk). Install it to a phone's home screen for quick capture.
 
 One household, one source of truth: calendar (2-way Google **or** Outlook sync, plus
 read-only ICS feeds), chores & stars,
@@ -27,150 +26,110 @@ goals & rewards, meals & recipes, lists, photos, and an AI "Add anything" captur
 ## Repo layout
 
 ```
-infra/
-  compose/     self-hosted runtime (Postgres, PowerSync, api, Caddy)
-  native/      builds the self-contained runtime bundle Waffled for Mac ships
+compose.yaml   the whole install: waffled + Postgres (+ optional backup)
+Dockerfile     builds the single waffled image (web SPA + api)
 apps/
-  api/         backend (lambda-api); calendar sync runs in-process (5-min scheduler)
+  api/         backend (lambda-api); serves the SPA and /media too; calendar sync runs in-process
   web/         React SPA — also the kiosk layout (same build, fullscreen/PWA mode)
-  ios/         native Swift app
-  mac/         Waffled for Mac — the SwiftUI menu-bar app that drives waffled-runtime
-  runtime/     waffled-runtime — Go supervisor that runs the server natively, no Docker
+infra/backup/  the optional backup image
+scripts/       release.sh (maintainers), smoke-compose.sh (CI)
 docs/          ARCHITECTURE.md, DATA_MODEL.md, TESTING.md, product/ (user docs)
 ```
 
 ## Self-hosting (quickstart)
 
-**On an Apple silicon Mac, there is nothing to build.** Download
-`Waffled-<version>.dmg` from the
-[latest release](https://github.com/kevinpsites/waffled/releases/latest), drag it to
-Applications, and open it: a menu-bar app runs the whole server natively — no Docker, no
-Terminal — and updates itself. macOS 14+. See
-[Mac install](https://docs.waffled.app/install/mac/).
+Waffled runs as two containers: one `waffled` app image (it serves the web app, the API and
+uploaded media) and Postgres. Auth is **built in** — no Auth0 or external identity provider
+required. You can optionally attach your own SSO later (see below).
 
-Everywhere else — Linux, a NAS, a Raspberry Pi, a VPS — Waffled runs as a small Docker
-Compose stack (Postgres · PowerSync · api · Caddy). Auth
-is **built in** — no Auth0 or external identity provider required. You can optionally
-attach your own SSO later (see below).
-
-Before starting, install **Docker Desktop** (or Docker Engine with Compose v2), open it,
-and wait until Docker reports that it is running. Use Terminal on macOS/Linux or Git Bash/WSL
-on Windows; the `waffled` helper is a Bash script.
+You need **Docker with Compose v2.24 or newer** (Docker Desktop, or Docker Engine plus the
+Compose plugin). Then:
 
 ```bash
-git clone https://github.com/kevinpsites/waffled.git
-cd waffled
-./waffled setup  # optional: pick how devices reach the server (skip for localhost-only)
-./waffled up     # creates .env (generated secrets), pulls prebuilt images, migrates, starts
+mkdir waffled && cd waffled
+curl -fsSLO https://raw.githubusercontent.com/evan-ribbey/waffled-ng/main/compose.yaml
+docker compose up -d
 ```
 
-You do **not** need to create an `.env` file or obtain API keys for the core app. A successful
-start ends with all five services healthy and prints the exact browser address to open. If it
-does not, run `./waffled doctor` for a plain-language diagnosis.
+Open `http://localhost:8080`. On first load you'll get a **setup wizard**: enter a household
+name + timezone and create your **admin account** (name, email, password). That's it.
 
-That single command is the whole install — no host toolchain, no separate migrate
-step. On first run `./waffled up`:
+No `.env`, no API keys, no generated secrets to manage: on first start the app creates its
+signing and encryption keys in the `waffled_data` volume and reuses them. (To build from a
+clone instead, run `docker compose up -d --build`.)
 
-1. creates `infra/compose/.env` from `.env.example`, generating `LOCAL_JWT_SECRET`,
-   `TOKEN_ENCRYPTION_KEY`, `POWERSYNC_JWT_PRIVATE_KEY`, and `POSTGRES_PASSWORD` for you
-   (missing secrets are also filled during upgrades),
-2. pulls the prebuilt `api` / `caddy` / `backup` images from GHCR (plus Postgres +
-   PowerSync); use `./waffled up --build` to build from source instead,
-3. runs the one-shot **migrate** service to apply the database schema (so PowerSync's
-   replication publication exists before it starts), then
-4. starts everything and prints a health table.
+> **Using it from a tablet or phone?** Open `http://<your-ip>:8080` on the device. For a
+> hostname or HTTPS, see [Behind a reverse proxy](#behind-a-reverse-proxy).
 
-`./waffled up` runs a **preflight** first (Docker present + running, Compose v2, free ports)
-and, once up, prints the exact URL to open. Open the kiosk at `http://localhost:8080`. On
-first load you'll get a **setup wizard**: enter a household name + timezone and create
-your **admin account** (name, email, password). That's it — you're in.
+### Settings (`.env`)
 
-> **Using it from a tablet or the iOS app?** Point the device at `http://<your-ip>:8080`
-> and sync just works: each device is told to sync at the address it used to reach the
-> server, so it never gets handed a `localhost` it would resolve to itself (the old
-> "shows Offline on the tablet" trap). Run `./waffled setup` too — one question
-> (localhost / your LAN IP / a hostname) — so calendar and sign-in redirects point at the
-> right address. Run it before `./waffled up`, or any time later and re-run `./waffled up`
-> to apply it (a bare `./waffled restart` won't pick up the change).
+Every setting is optional. To change one, copy [`.env.example`](.env.example) to `.env`
+**beside `compose.yaml`**, uncomment what you need, and run `docker compose up -d` again.
+Settings must live in that file: variables exported in your shell do not reach the
+containers. Common ones: `HTTP_PORT`, `POSTGRES_*` (set before the first start),
+`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OLLAMA_HOST` for the AI capture bar, and
+`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_CALENDAR_REDIRECT_URI` (or the
+matching `MS_*` values) for 2-way Google / Outlook calendar sync. ICS calendar feeds need
+no credentials at all.
 
-### `.env`
+### Behind a reverse proxy
 
-`./waffled up` writes a working `infra/compose/.env` for you; you only edit it to enable
-optional integrations or to run somewhere other than `localhost`. The required values
-are the four generated secrets and the remaining `POSTGRES_*` settings. Optional (leave blank
-to skip): `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OLLAMA_HOST` for the AI capture
-bar, and `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_CALENDAR_REDIRECT_URI`
-(or the matching `MS_*` values) for 2-way Google / Outlook calendar sync. ICS calendar
-feeds need no credentials at all. See the comments in `.env.example` for the full list
-(session lifetimes, ports, published-image overrides).
+Waffled speaks plain HTTP on the published port. To serve it at `https://waffled.example.com`,
+put any reverse proxy you control (Caddy, nginx, Traefik, a Cloudflare Tunnel) in front of
+`localhost:8080` and add to `.env`:
+
+```bash
+PUBLIC_BASE_URL=https://waffled.example.com   # origin used for OAuth/OIDC redirect URLs
+TRUST_PROXY=true                              # honour X-Forwarded-* headers
+```
+
+Set `TRUST_PROXY=true` **only** behind a proxy you control; with it on, a client that can
+reach the port directly can spoof its address past the rate limiter. Leave it unset when
+you expose the port straight to your LAN.
 
 ### Upgrading
 
-To move to a newer release, run:
-
 ```bash
-./waffled upgrade
+docker compose pull && docker compose up -d
 ```
 
-One command does the whole update: it fast-forwards the repo (so the compose file,
-configs, and `./waffled` match the new images), bumps the pinned `WAFFLED_VERSION` in
-your `.env`, **snapshots the database** as a rollback point, pulls the new images, and
-runs the one-shot **migrate** service to apply any new migrations — then restarts and
-prints a health table. Migrations are idempotent, so it's safe to re-run.
+Migrations run automatically on start. There is no automatic backup before an upgrade, so
+turn on backups first if you want a rollback point. Pin a release with `WAFFLED_VERSION`
+in `.env`. Waffled also checks GitHub for new releases and shows **Settings → System Health
+→ "Update available"** (disable with `UPDATE_CHECK_ENABLED=false`). More in the
+[upgrading guide](website/docs/src/content/docs/operations/upgrading.md).
 
-Waffled also checks GitHub for new releases and shows **Settings → System Health →
-"Update available"** when you're behind (on by default; disable with
-`UPDATE_CHECK_ENABLED=false`). Full details, including pinning a specific version and
-rolling back: the [upgrading guide](website/docs/src/content/docs/operations/upgrading.md).
+**Coming from the old `./waffled` install?** See the
+[migration guide](website/docs/src/content/docs/install/migrating-from-waffled-cli.md).
 
-### Image source (optional)
-
-By default `./waffled up` **pulls** the prebuilt `api` / `caddy` / `backup` images from
-GHCR, pinned to `WAFFLED_VERSION`. To build from source instead (dev / bleeding-edge)
-use `./waffled up --build`. To pin a custom registry/tag, point the image overrides at
-the tags you want (these win over `WAFFLED_VERSION`) and pull:
+### Backups and restore
 
 ```bash
-# in infra/compose/.env
-WAFFLED_API_IMAGE=ghcr.io/kevinpsites/waffled-api:latest
-WAFFLED_CADDY_IMAGE=ghcr.io/kevinpsites/waffled-caddy:latest
+docker compose --profile backup up -d                 # nightly dumps; also set BACKUP_ENABLED=true in .env
+docker compose exec -u postgres backup waffled-backup # run one now
+docker compose stop waffled && docker compose run --rm --no-deps backup restore <file>
+docker compose start waffled
 ```
+
+Set `BACKUP_ENABLED=true` in `.env` so System Health tracks them. Keep `--no-deps` on
+restore: it refuses to run while the app is connected to the database. Details:
+[Backup & restore](website/docs/src/content/docs/operations/backup.md).
+
+### Demo data
 
 ```bash
-docker compose -f infra/compose/docker-compose.yml --env-file infra/compose/.env pull
-./waffled up
+docker compose exec -u node waffled node dist/seed-demo.js
 ```
-
-All three images are multi-arch (amd64 + arm64), so they run on a regular x86 box or an
-ARM SBC (e.g. a Raspberry Pi). They're published by the
-`.github/workflows/publish-images.yml` GitHub Action **when you cut a release** (see
-[Cutting a release](#cutting-a-release-maintainers) below), which builds the `X.Y.Z` /
-`X.Y` / `latest` tags (or trigger it manually from the Actions tab for an `sha-…` test
-build). No extra setup beyond the repo's default `GITHUB_TOKEN`.
 
 ### Cutting a release (maintainers)
 
-One command bumps **every** place a version lives and tags it:
-
 ```bash
-./waffled release 0.3.0
+scripts/release.sh 0.17.0
 ```
 
-It bumps `apps/api` + `apps/web` `package.json` (and lockfiles), `WAFFLED_VERSION` in
-`infra/compose/.env.example`, and iOS `MARKETING_VERSION` in `apps/ios/project.yml` — all
-in one commit — then creates the `v0.3.0` tag and (after a `y` prompt) pushes. The iOS
-**build number** is left alone; Xcode Cloud auto-increments that.
-
-Run it **locally**, on `main`, with a clean tree. Because the tag is pushed with *your*
-credentials it triggers the right CI on its own — no bot token or PAT: the `main` push
-starts the **Xcode Cloud** iOS build (new marketing version + fresh build number →
-TestFlight), and the `vX.Y.Z` tag starts **publish-images.yml** (the GHCR server images +
-GitHub Release). The push is the only privileged step, so it needs **write access** to the
-repo — cloning the public repo lets anyone run the local bump/commit/tag, but the push
-(and therefore any real release) is rejected without collaborator access.
-
-> For anything other than `localhost`, set `PUBLIC_BASE_URL=https://your.host` so
-> redirect URLs (calendar + OIDC callbacks) are generated correctly.
+It bumps the `apps/api` and `apps/web` versions (and lockfiles), dates the `[Unreleased]`
+changelog section, commits `release: v0.17.0` and tags it. It never pushes: it prints the
+push command, and pushing the `v*` tag is what triggers the image publish workflow.
 
 ### Adding family members
 
@@ -202,35 +161,25 @@ client's *Authorized redirect URIs* (alongside the calendar one), set the issuer
 `https://accounts.google.com`, and reuse the same client ID/secret. The sign-in scopes
 (`openid email profile`) are non-sensitive, so no extra Google verification is needed.
 
-**iOS app (native SSO):** the same SSO config drives the mobile app — there's
-**nothing extra to register at the provider**. The flow is backend-mediated, so Google
-(or any IdP) only ever sees your backend's `/api/auth/oidc/callback`, never the app's
-`waffled://auth/callback` deep link (the backend appends the one-time handoff code to that
-deep link itself; the app intercepts it via `ASWebAuthenticationSession`). The "Sign in
-with …" button appears in the app automatically whenever `GET /api/auth/status` reports
-OIDC is ready. Two things to get right:
-- The redirect URI Waffled sends to the IdP is derived from the host the request arrives
-  on, so the address your **device** uses to reach the API must have a matching
-  `/api/auth/oidc/callback` in the provider's *Authorized redirect URIs*. The simulator
-  reaches `localhost:8080` (already covered); a physical phone reaches your LAN IP or
-  public host. **Set `PUBLIC_BASE_URL`** to pin one stable callback regardless of how the
-  device connects, then register just that one.
-- Point the app at the right server on the login screen's **Server address** field if it
-  isn't the default.
+The redirect URI Waffled sends to the IdP is derived from the host the request arrives
+on, so behind a hostname set **`PUBLIC_BASE_URL`** to pin one stable callback, then register
+just that one.
 
-### Operator commands (`./waffled admin`)
+### Operator commands (admin CLI)
 
 Break-glass / recovery commands for when the web UI can't help — e.g. the only admin
-is locked out, SSO is misconfigured, or a Google token died. They run **inside the api
-container** (`docker exec waffled-api node dist/admin.js …`), so they reach the database
+is locked out, SSO is misconfigured, or a Google token died. They run **inside the waffled
+container**, so they reach the database
 and the encryption key directly with **no login or admin token required** — physical/SSH
 access to the host *is* the authorization. Auth writes go through the same scrypt hashing
 and credential→identity wiring the API uses, so there's one source of truth.
 
 ```bash
-./waffled admin help                      # list every command
-./waffled admin list-members              # people, login email, admin/owner, password/SSO
+docker compose exec -u node waffled node dist/admin.js help           # list every command
+docker compose exec -u node waffled node dist/admin.js list-members   # people, login email, admin/owner, password/SSO
 ```
+
+Use `-u node` so any files the command writes under `/data` stay owned by the app user.
 
 | Command | What it does |
 | --- | --- |
@@ -244,7 +193,6 @@ and credential→identity wiring the API uses, so there's one source of truth.
 | `password-login <on\|off>` | Enable/disable email+password login (the DB toggle mirrored in Settings → Login & security). |
 | `clear-calendar-error (--email <e> \| --all)` | Clear a stuck Google account's "sync failing" flag. (The token itself is fixed by **Reconnect** in Settings → Calendars — a browser OAuth step the CLI can't do.) |
 | `prune-sessions [--email <e>]` | Revoke refresh tokens for one member (**across all of their households**), or everyone — forces re-login. |
-| `regenerate-powersync-key` | Print a fresh `POWERSYNC_JWT_PRIVATE_KEY` (RSA-2048) to paste into `.env`, then `./waffled restart api powersync`. |
 | `list-households` | List every household with its member + login counts, created date, and id. |
 | `delete-household --id <uuid> [--force]` | Permanently delete a household and **all** of its data (handy for clearing test debris). Refuses a household that has logins unless you add `--force`. |
 
@@ -254,11 +202,11 @@ non-interactively (e.g. over plain SSH).
 
 > **Hard lockout, no admin at all?** If password login is off and SSO is broken, set
 > `AUTH_FORCE_PASSWORD=1` in the api env and restart — that forces the password form
-> back on regardless of the DB toggle — then `./waffled admin reset-password …` to get in.
+> back on regardless of the DB toggle — then `the `reset-password` command` to get in.
 
 ## Start here
 
-1. Run it — the [Self-hosting quickstart](#self-hosting-quickstart) above (`./waffled up`).
+1. Run it — the [Self-hosting quickstart](#self-hosting-quickstart) above (`docker compose up -d`).
 2. Read `docs/ARCHITECTURE.md` — the decisions and why.
 3. Read the docs site (built from `website/docs/`, Astro Starlight) — the user-facing docs and the feature matrix (source: `website/docs/src/content/docs/reference/features.md`).
 4. Follow `docs/engineering-plan.md` — the milestone plan in bite-sized, committable chunks.
@@ -269,12 +217,11 @@ non-interactively (e.g. over plain SSH).
 
 ## The stack in one breath
 
-Self-hosted Docker Compose · Postgres system-of-record · PowerSync for iOS (and the
-kiosk's calendar) offline · **built-in email/password auth + optional OIDC SSO** (no
+Self-hosted Docker Compose, two containers · Postgres system-of-record · one `waffled` image
+serving the SPA, API and `/media` · **built-in email/password auth + optional OIDC SSO** (no
 Auth0) · Google Calendar authoritative for Google-origin events, Waffled authoritative for
-native fields · ~5-min in-process calendar sync (no separate worker) · Caddy serves the
-SPA + `/media` and can do public ingress (auto-TLS or a Cloudflare Tunnel) · everything
-in this one repo.
+native fields · ~5-min in-process calendar sync (no separate worker) · put your own reverse
+proxy in front for HTTPS · everything in this one repo.
 
 ## License
 

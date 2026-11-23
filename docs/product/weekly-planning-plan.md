@@ -1,5 +1,7 @@
 # Weekly Planning — implementation plan
 
+> **Note (0.16):** the iOS and Mac apps, PowerSync and the `./waffled` CLI referenced here were removed. The web/kiosk behaviour described is still current; iOS/offline details are historical.
+
 Status: **built** — the module shell, settings and all ten steps, on web and on iPhone/iPad
 (listed under `[Unreleased]` in CHANGELOG.md until the next release). User docs:
 `website/docs/src/content/docs/features/weekly-planning.md`.

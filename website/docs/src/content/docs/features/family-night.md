@@ -18,10 +18,8 @@ Family Night is a lightweight weekly ritual — a recurring gathering (Monday by
 | Surface | Support |
 |---|---|
 | Web / Kiosk | ✅ |
-| iPhone | ✅ |
-| iPad | ✅ |
 
-Family Night is **entirely REST**, so every surface behaves the same — the Today card, the person-pickers, and the agenda editor all work identically on Web/Kiosk, iPhone, and iPad.
+Family Night is **entirely REST**, so every surface behaves the same — the Today card, the person-pickers, and the agenda editor all work identically on Web and Kiosk.
 
 ## Settings
 

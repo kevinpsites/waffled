@@ -12,8 +12,8 @@ Chores are the assignable Tasks board: recurring or one-off jobs that award star
 - ✅ **Recurring or one-off** — weekly/custom schedules pick specific weekdays (RRULE under the hood), or mark a task **"Just once"** with a due date.
 - 🔁 **Carry-over** — an unfinished one-off rolls forward with an **overdue·since** badge; per-chore rollover toggle, default **on**.
 - 🙋 **Up-for-grabs** — leave a chore unassigned and anyone can **claim** it; drag between columns to reassign.
-- 🧒 **Family rings on Today** plus a full Tasks board (on iPad it's a wrapping Kanban).
-- 📱 **Your own chores on the iPhone's Today** — the chores card opens on the person signed in, with a tick beside each chore. Tap the card's title to switch to anyone else in the family, or back to the family summary; the phone remembers the pick. A chore that needs a photo opens the Tasks board to take it.
+- 🧒 **Family rings on Today** plus a full Tasks board (a wrapping Kanban on a wide screen).
+- 📱 **Your own chores on the phone's Today** — the chores card opens on the person signed in, with a tick beside each chore. Tap the card's title to switch to anyone else in the family, or back to the family summary; the phone remembers the pick. A chore that needs a photo opens the Tasks board to take it.
 - ✅ **Complete → award** — daily instances flip done and pay out the chore's currency/amount.
 - 🔥 **Streaks** — N consecutive days, shown right on the chore.
 - ✔️ **Parent approval** — flag a chore `requires_approval` and completion goes *awaiting* → approve/reject (gated by `chore.approve`).
@@ -25,10 +25,8 @@ Chores are the assignable Tasks board: recurring or one-off jobs that award star
 | Surface | Support |
 |---|---|
 | Web / Kiosk | ✅ |
-| iPhone | ✅ |
-| iPad | ✅ |
 
-Same board everywhere — on iPad the Tasks board becomes a wrapping **Kanban** with drag-to-reassign between columns.
+Same board everywhere — on a wide screen the Tasks board becomes a wrapping **Kanban** with drag-to-reassign between columns.
 
 ## Settings
 
@@ -44,5 +42,5 @@ Optional module `chores`, default **on** — toggle it in **Settings → Modules
 
 - 🔒 **Capability-gated where it has stakes** — `chore.manage` (create for others, edit/delete) and `chore.approve` (approve/reject). Anyone may add a chore **for themselves** or **up-for-grabs**, and anyone may complete or claim. See [Permissions](/concepts/permissions/) for the full capability model.
 - 🕰️ **Finished work stays historical** — edits and deletes never rewrite completed or awaiting-approval rows. When you open one of those rows, **This and future chores** uses it only as the boundary and starts changing with future pending work; **This chore only** is available only for a pending occurrence.
-- 📶 **REST-only, not offline** — chores don't ride PowerSync; they're kept fresh by the in-app refresh bus, so they need a live connection.
+- 📶 **Needs a connection** — chores are kept fresh by the in-app refresh bus, so they need a live connection to the server.
 - 🗑️ **Proof photos are throwaway** — they're verification, not memories, and are meant to be deleted after review.

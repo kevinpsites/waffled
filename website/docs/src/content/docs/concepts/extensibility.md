@@ -48,18 +48,13 @@ a family hub — and Immich itself doesn't attempt it. A + B cover the same grou
    with — build their own integrations. Built-in modules should also expose their data over
    the API so external tools can *feed* them.
 
-### Web vs iOS
-The on/off flag is **server-side and shared** (`households.settings.modules`), so both
-clients know which modules are enabled — no duplicate config. But **each platform renders
-its own native UI**: a module's web card is React; its iOS card is Swift. Enabling a module
-surfaces it on whichever client has implemented it (a module with no iOS screen simply
-doesn't show on iOS — graceful). Data: a module that needs to work **offline on iOS** must
-add its tables to the **PowerSync** sync rules; otherwise iOS uses the **REST** endpoints
-(online-only), like chores do today.
+### One toggle, one API
+The on/off flag is **server-side and shared** (`households.settings.modules`), so every
+client knows which modules are enabled — no duplicate config. A module's web card is React;
+its data comes from the **REST** endpoints, like chores do.
 
-So the framework gives: **one shared toggle + shared API/data + per-client native UI** —
-which matches how Waffled is already built (the API is the contract; web and iOS are
-independent consumers).
+So the framework gives: **one shared toggle + shared API/data + the web UI** — which matches
+how Waffled is built (the API is the contract; the web app is its consumer).
 
 ## First modules (Kevin's use cases)
 All three want to live *inside* Waffled (Today card / tabs / meal-plan integration), so all

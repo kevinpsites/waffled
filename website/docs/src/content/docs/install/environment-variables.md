@@ -3,55 +3,43 @@ title: Environment variables
 description: Every environment variable Waffled reads, what it does, and its default.
 ---
 
-All configuration lives in **`infra/compose/.env`** (created from `.env.example` on first run).
-Change a value, then `./waffled up` to apply it. Defaults below come from the compose file and
-the api's config; "auto" means `./waffled` generates it for you when missing.
+Every setting is optional: `docker compose up -d` works with no `.env` at all. To change one,
+copy [`.env.example`](https://github.com/evan-ribbey/waffled-ng/blob/main/.env.example) to
+**`.env` in the same folder as `compose.yaml`**, uncomment the line, and run
+`docker compose up -d` again. Settings must live in that file: variables exported in your shell
+do not reach the containers (this needs Docker Compose v2.24+). Defaults below come from the
+compose file and the app's config.
 
-> **On Waffled for Mac** these settings live in `~/Library/Application Support/Waffled/config.env`,
-> set from the app's **Settings…** or with `waffled-runtime config set KEY=VALUE`, and each
-> change takes effect after a restart. Only some reach the server: the ones **Settings…**
-> offers (the AI settings row, Advanced and Diagnostics), plus `GOOGLE_CALENDAR_SCOPES`,
-> `MS_CALENDAR_SCOPES` and `TZ`. The secrets are generated into `config.env` for you; the
-> database, ports, storage and sync address are set by the app itself; anything else in the
-> file is ignored. See [Changing settings later](/install/mac/#changing-settings-later).
+> **Secrets are generated for you.** On first start the app writes `LOCAL_JWT_SECRET` and
+> `TOKEN_ENCRYPTION_KEY` to `/data/secrets.json` in the `waffled_data` volume and reuses them.
+> A value set in `.env` always wins. They are never rotated automatically: rotating
+> `TOKEN_ENCRYPTION_KEY` orphans stored calendar and SSO tokens.
 
-> **Secrets are generated for you.** `LOCAL_JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`,
-> `POWERSYNC_JWT_PRIVATE_KEY`, and `POSTGRES_PASSWORD` are auto-filled when missing (if
-> `openssl` is present). Existing values are preserved.
-
-## Core / required
+## Core
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `POSTGRES_USER` | Database user | set in `.env` |
-| `POSTGRES_PASSWORD` | Database password | auto |
-| `POSTGRES_DB` | Database name | set in `.env` |
-| `POSTGRES_PORT` | Loopback-only host port for local Postgres tools | `5432` |
+| `HTTP_PORT` | Host port the app is published on (maps to container port 3000) | `8080` |
+| `TZ` | Container timezone (also the backup schedule's) | `UTC` |
+| `WAFFLED_VERSION` | Image tag to run (pin a release, e.g. `0.16.0`) | `latest` |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Database credentials. Postgres is never published to the host. Set before the first start; changing them later does not change an existing database. Use URL-safe characters | `waffled` / `waffled` / `waffled` |
 | `MIGRATE_LOCK_TIMEOUT` | How long a migration waits for a table lock before retrying; milliseconds or a duration like `30s`, `0` waits indefinitely. See [Upgrade stuck on migrate](/operations/troubleshooting/#upgrade-stuck-on-migrate) | `10s` |
-| `DATABASE_URL` | Built by compose (`postgres://…@postgres:5432/…`) for api/migrate/backup | derived |
-| `LOCAL_JWT_SECRET` | HS256 secret for built-in auth + dev tokens | auto |
-| `TOKEN_ENCRYPTION_KEY` | AES key that encrypts Google **and** OIDC secrets at rest | auto |
-| `POWERSYNC_JWT_PRIVATE_KEY` | Stable RS256 key that signs PowerSync tokens | auto |
-| `POWERSYNC_JWT_KID` | Key ID for the PowerSync signing key | `waffled-powersync-1` |
-| `HTTP_PORT` / `API_PORT` / `POWERSYNC_PORT` | Host ports (Caddy / loopback API diagnostics / Caddy-fronted sync) | `8080` / `3000` / `8090` |
-| `HOST` | Interface the api process binds. Leave unset under Compose (Docker's private network isolates it); the native/desktop runtime sets `127.0.0.1` to pin the API to loopback | unset (all interfaces) |
+| `DATABASE_URL` | Built by compose (`postgres://…@postgres:5432/…`) | derived |
+| `LOCAL_JWT_SECRET` | HS256 secret for built-in auth (`openssl rand -base64 48`) | generated |
+| `TOKEN_ENCRYPTION_KEY` | AES key that encrypts Google, Outlook **and** OIDC secrets at rest (`openssl rand -base64 32`) | generated |
 | `NODE_ENV` | Node environment | `production` |
 
-Production startup refuses missing or malformed required secrets. Run `./waffled up` instead of
-calling Compose directly so newly required values can be generated before validation.
+Production startup refuses missing or malformed required secrets; with no `.env` the app
+generates valid ones.
 
-## URLs & access (set by `./waffled setup`)
+## URLs & reverse proxy
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `POWERSYNC_PUBLIC_URL` | The sync URL clients connect to. **Leave empty on a LAN** — Waffled derives it from the address each device used. Set it only when PowerSync has its own public hostname/TLS, or to `off` when you run the API without PowerSync at all (clients then stay on REST instead of retrying an endpoint that isn't there) | empty (derived) |
-| `PUBLIC_BASE_URL` | Public origin for OIDC + Google redirect URLs; empty = derived from request | empty |
-| `CADDY_SITE_ADDRESS` | `:80` (plain HTTP) or a hostname (triggers Caddy auto-TLS) | `:80` |
-| `POWERSYNC_CADDY_ADDRESS` | Caddy's dedicated sync listener (`./waffled setup` manages it) | `:8090` |
+| `PUBLIC_BASE_URL` | Public origin for OIDC and calendar redirect URLs; empty = derived from the request | empty |
+| `TRUST_PROXY` | Honour `X-Forwarded-For`, `-Proto` and `-Host`. Set `true` **only** behind a reverse proxy you control; otherwise clients could spoof their address past the rate limiter | off |
 
-See [Reverse proxy & TLS](/install/reverse-proxy/) for the full remote-access story. On a
-Mac, `PUBLIC_BASE_URL` is **Settings… → Advanced → Sign-in return address**; the app sets the
-other three itself.
+See [Reverse proxy & TLS](/install/reverse-proxy/) for the full remote-access story.
 
 ## Auth & sessions
 
@@ -60,16 +48,10 @@ other three itself.
 | `ACCESS_TOKEN_TTL_SECONDS` | Access-token lifetime | `3600` (1h) |
 | `REFRESH_TOKEN_TTL_DAYS` | Refresh-token lifetime | `60` |
 | `AUTH_FORCE_PASSWORD` | Break-glass: always show the password form, even in SSO-only mode (`=1`) | unset |
-| `OIDC_NATIVE_REDIRECT_URI` | Exact native-app callback accepted by the OIDC redirect allowlist | `waffled://auth/callback` |
 | `LOCAL_JWT_ISSUER` / `LOCAL_JWT_AUDIENCE` | Local JWT issuer / audience | `waffled-local` / `waffled-api` |
 | `HOUSEHOLD_CLAIM` | Token claim carrying the household id | `https://waffled.app/household_id` |
 | `KIOSK_PIN_MAX_ATTEMPTS` | Kiosk PIN attempts before lockout | `5` |
 | `KIOSK_PIN_LOCKOUT_SECONDS` | Kiosk PIN lockout window | `30` |
-
-On a Mac, `ACCESS_TOKEN_TTL_SECONDS`, `REFRESH_TOKEN_TTL_DAYS`, `AUTH_FORCE_PASSWORD` and
-`OIDC_NATIVE_REDIRECT_URI` are on **Settings… → Advanced → Sessions and sign-in**; the
-`KIOSK_PIN_*`, `LOCAL_JWT_*` and `HOUSEHOLD_CLAIM` rows aren't passed on, so a Mac keeps
-their defaults.
 
 **OIDC/SSO is configured in-app** (Settings → Login & security), *not* via env — the encrypted
 client secret lives in the database. See [Authentication & SSO](/administration/authentication/).
@@ -89,9 +71,7 @@ self-hosters never touch these (built-in auth + in-app OIDC covers SSO).
 ## AI providers (optional)
 
 Set any subset; choose the active provider/model **per household** in Settings → AI & Capture.
-Keys never leave the server. See [AI providers](/administration/ai-providers/). On a Mac, the
-keys and addresses are the **AI settings** row on **Settings… → Basic**, and the models and
-timeout are on **Advanced → AI model and limits**; `CAPTURE_TIMEOUT_MS` isn't passed on.
+Keys never leave the server. See [AI providers](/administration/ai-providers/).
 
 | Variable | Purpose | Default |
 |---|---|---|
@@ -122,29 +102,22 @@ Independent of login. See [Google Calendar](/administration/google-calendar/) an
 | `CALENDAR_SYNC_INTERVAL_MS` | Inbound sync poll interval (Google + Outlook) | `300000` (5m) |
 | `ICS_SYNC_INTERVAL_MS` | Calendar-feed (ICS) refresh interval; `0` disables | `900000` (15m) |
 
-On a Mac, the client IDs, secrets and redirects are on **Settings… → Advanced → Calendar
-sync**, and the two `*_SCOPES` go in with `waffled-runtime config set`.
-`CALENDAR_SYNC_INTERVAL_MS` and `ICS_SYNC_INTERVAL_MS` aren't passed on, so a Mac syncs on
-the defaults.
-
 ## Media / storage
 
 | Variable | Purpose | Default |
 |---|---|---|
 | `STORAGE_DRIVER` | Blob storage backend | `local` |
 | `MEDIA_DIR` | Where the api writes blobs (the `waffled_media` volume) | `/data/media` |
-| `MEDIA_BASE_URL` | Public path Caddy serves blobs at | `/media` |
+| `MEDIA_BASE_URL` | Public path blobs are served at (the app serves `/media` itself) | `/media` |
 
 ## Backups & S3
 
-Full guide: [Backup & restore](/operations/backup/). Docker installs only, apart from `TZ` —
-Waffled for Mac ignores the `BACKUP_*` rows. It has its own nightly backup (time and how many
-to keep on **Settings… → Basic**), into `backups/` in Waffled's folder, with no S3 upload.
-See [Backups](/install/mac/#backups).
+Full guide: [Backup & restore](/operations/backup/). Backups are **off by default**: start the
+service with `docker compose --profile backup up -d` and set `BACKUP_ENABLED=true`.
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `BACKUP_ENABLED` | Lets health expect a recent backup (set `false` only if you remove the service) | `true` |
+| `BACKUP_ENABLED` | Lets System Health expect (and warn about) a recent backup. Set `true` when you run the backup profile | `false` |
 | `BACKUP_TIME` | Daily HH:MM (container TZ) | `02:00` |
 | `TZ` | Container timezone | `UTC` |
 | `BACKUP_ON_START` | Also back up right after start | `false` |
@@ -160,36 +133,28 @@ See [Backups](/install/mac/#backups).
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `WAFFLED_VERSION` | The single version knob — resolves all three GHCR tags | current release |
-| `WAFFLED_API_IMAGE` / `WAFFLED_CADDY_IMAGE` / `WAFFLED_BACKUP_IMAGE` | Explicit image overrides (win over `WAFFLED_VERSION`) | GHCR `:${WAFFLED_VERSION}` |
-| `GIT_SHA` / `BUILD_TIME` | Build provenance (set by `./waffled`) | `dev` / empty |
+| `WAFFLED_VERSION` | Tag for both the `waffled` and `waffled-backup` GHCR images | `latest` |
 
 ## Update notifier
 
 | Variable | Purpose | Default |
 |---|---|---|
 | `UPDATE_CHECK_ENABLED` | In-app "update available" check (`false` = no outbound call) | `true` |
-| `UPDATE_CHECK_REPO` | GitHub repo to check | `kevinpsites/waffled` |
-
-Docker installs only — Waffled for Mac turns this check off and ignores both; the app's own
-**Check for updates…** replaces it. See [Updating](/install/mac/#updating).
+| `UPDATE_CHECK_REPO` | GitHub repo to check | `evan-ribbey/waffled-ng` |
 
 ## Observability (optional, off by default)
 
-Bring up with `./waffled observability up`. See [System health](/administration/system-health/).
-Docker installs only — Waffled for Mac doesn't include OpenTelemetry yet, and ignores the
-`OTEL_*`, Grafana and OTLP rows. `LOG_FORMAT` and `LOG_LEVEL` do work there, on
-**Settings… → Diagnostics**.
+The bundled Grafana stack was removed in 0.16, but the app still exports OpenTelemetry to any
+collector you point it at. See [System health](/administration/system-health/).
 
 | Variable | Purpose | Default |
 |---|---|---|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP backend; empty = OTEL disabled | empty |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | OTLP protocol | `http/protobuf` |
-| `OTEL_SERVICE_NAME` | Service name in traces | `waffled-api` |
+| `OTEL_SERVICE_NAME` | Service name in traces | `waffled` |
 | `OTEL_SDK_DISABLED` | Kill switch | unset |
 | `LOG_FORMAT` | `json` or `pretty` | `json` |
 | `LOG_LEVEL` | Log verbosity | `info` |
-| `GRAFANA_PORT` / `OTLP_GRPC_PORT` / `OTLP_HTTP_PORT` | lgtm host ports | `3001` / `4317` / `4318` |
 
 ## Background jobs & external APIs
 
