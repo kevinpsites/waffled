@@ -2,8 +2,6 @@
 // no AUTH0_DOMAIN → local HS256 mode (self-minted dev tokens, zero external deps).
 // Set AUTH0_DOMAIN → Auth0 RS256 mode (validates against Auth0's JWKS).
 
-import { createPrivateKey } from 'node:crypto'
-
 export type AuthMode = 'local' | 'auth0'
 
 const auth0Domain = process.env.AUTH0_DOMAIN ?? null
@@ -41,19 +39,8 @@ export function assertProductionSecrets(source: NodeJS.ProcessEnv = process.env)
     errors.push('TOKEN_ENCRYPTION_KEY must be a base64-encoded 32-byte key')
   }
 
-  const signingKey = source.POWERSYNC_JWT_PRIVATE_KEY?.trim()
-  try {
-    const pem = signingKey?.startsWith('-----BEGIN')
-      ? signingKey
-      : signingKey && decodeBase64(signingKey)?.toString('utf8')
-    const privateKey = pem ? createPrivateKey(pem) : null
-    if (!privateKey || privateKey.asymmetricKeyType !== 'rsa') throw new Error('not an RSA key')
-  } catch {
-    errors.push('POWERSYNC_JWT_PRIVATE_KEY must be an RSA private key (PEM or base64 PEM)')
-  }
-
   if (errors.length > 0) {
-    throw new Error(`Invalid production secrets:\n- ${errors.join('\n- ')}\nRun ./waffled up to generate missing values.`)
+    throw new Error(`Invalid production secrets:\n- ${errors.join('\n- ')}\nSet them in the environment, or let the server generate them on first boot.`)
   }
 }
 

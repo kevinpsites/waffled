@@ -5,6 +5,7 @@ import { build } from 'esbuild'
 await build({
   entryPoints: {
     server: 'src/server.ts', // container HTTP entrypoint
+    start: 'src/start.ts', // single-image entrypoint: secrets bootstrap -> migrate -> server
     lambda: 'src/lambda.ts', // AWS Lambda handler
     'mint-token': 'scripts/mint-token.ts', // dev token CLI
     migrate: 'scripts/migrate-cli.ts', // in-container migration runner (compose one-shot)
