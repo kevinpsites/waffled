@@ -13,10 +13,12 @@ RUN apt-get update \
 COPY backup.sh     /usr/local/bin/waffled-backup
 COPY entrypoint.sh /usr/local/bin/waffled-backup-entrypoint
 COPY restore.sh    /usr/local/bin/waffled-restore
+COPY docker-entrypoint.sh /usr/local/bin/waffled-backup-docker-entrypoint
 RUN chmod +x /usr/local/bin/waffled-backup /usr/local/bin/waffled-backup-entrypoint /usr/local/bin/waffled-restore \
+       /usr/local/bin/waffled-backup-docker-entrypoint \
     && mkdir -p /backups \
     && chown postgres:postgres /backups
 
-# Runs the scheduler loop; `docker compose exec backup waffled-backup` triggers one on demand.
-USER postgres
-ENTRYPOINT ["/usr/local/bin/waffled-backup-entrypoint"]
+# Starts as root only to repair /backups ownership, then drops to postgres and runs the
+# scheduler loop; `docker compose exec backup waffled-backup` triggers one on demand.
+ENTRYPOINT ["/usr/local/bin/waffled-backup-docker-entrypoint"]
