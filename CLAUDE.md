@@ -19,7 +19,7 @@ builds, and commits there. This keeps `main` and other parallel work clean.
 **The stack is `docker compose up -d`** (root `compose.yaml`: `waffled` + Postgres; add
 `--build` to build from source). It listens on `${HTTP_PORT:-8080}`; use `HTTP_PORT` and a
 different compose project directory for a second isolated stack. Demo data:
-`docker compose exec -u node waffled node dist/seed-demo.js`.
+`docker compose exec -u node -e WAFFLED_ALLOW_DEMO_SEED=1 waffled node dist/seed-demo.js <phase>`, run in sequence for `base`, `meals`, then `goals` (it refuses without `WAFFLED_ALLOW_DEMO_SEED=1`).
 
 **Work is not done until it is TDD'd and green.** Follow the TDD flow below (failing test
 first), and before opening a PR **all tests and typechecking must pass** — run the full

@@ -92,7 +92,7 @@ the README montage, rebuild `demo.gif`. Grep the repo for the filename first to
 find every copy.
 
 Regenerate the web set (needs `playwright-core` + a Chromium, and a demo stack —
-see the [Demo seed](../docs/product/) notes; seed with `docker compose exec -u node waffled node dist/seed-demo.js`):
+see the [Demo seed](../docs/product/) notes; seed with `docker compose exec -u node -e WAFFLED_ALLOW_DEMO_SEED=1 waffled node dist/seed-demo.js base` (then `meals`, `goals`)):
 
 ```bash
 cd website && node scripts/capture-screenshots.mjs .out   # writes today.png, calendar.png, …

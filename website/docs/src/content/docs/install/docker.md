@@ -61,7 +61,7 @@ Run these from the folder holding `compose.yaml`.
 | Upgrade | `docker compose pull && docker compose up -d` (see [Upgrading](/operations/upgrading/)) |
 | Database shell | `docker compose exec postgres psql -U waffled waffled` |
 | Admin commands | `docker compose exec -u node waffled node dist/admin.js <command>` |
-| Demo data | `docker compose exec -u node waffled node dist/seed-demo.js` |
+| Demo data | `docker compose exec -u node -e WAFFLED_ALLOW_DEMO_SEED=1 waffled node dist/seed-demo.js base` (then `meals`, `goals`) |
 | Start backups | `docker compose --profile backup up -d` |
 
 The admin commands (reset a password, grant admin, list members, and so on) run *inside* the

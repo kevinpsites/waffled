@@ -118,8 +118,12 @@ restore: it refuses to run while the app is connected to the database. Details:
 ### Demo data
 
 ```bash
-docker compose exec -u node waffled node dist/seed-demo.js
+for phase in base meals goals; do
+  docker compose exec -u node -e WAFFLED_ALLOW_DEMO_SEED=1 waffled node dist/seed-demo.js $phase
+done
 ```
+
+The seed refuses to run without `WAFFLED_ALLOW_DEMO_SEED=1`, and takes the phases in order.
 
 ### Cutting a release (maintainers)
 

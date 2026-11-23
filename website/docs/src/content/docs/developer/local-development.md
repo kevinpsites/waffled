@@ -34,7 +34,7 @@ Other useful commands:
 ```bash
 docker compose exec postgres psql -U waffled waffled          # psql shell on the database
 docker compose exec -u node waffled node dist/admin.js <cmd>  # admin subcommands
-docker compose exec -u node waffled node dist/seed-demo.js    # load demo data
+docker compose exec -u node -e WAFFLED_ALLOW_DEMO_SEED=1 waffled node dist/seed-demo.js base   # then: meals, goals
 ```
 
 ### 2. Run an app directly

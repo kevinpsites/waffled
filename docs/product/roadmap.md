@@ -308,10 +308,7 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   *are* events, so they render natively with real recurrence, Google sync and visibility,
   and completion-shape rhythms flow in as a `source: 'rhythm'` countdown (month-grid badge +
   week/day chip). `list_items` stays out — it has no due column and lists shouldn't become a
-  half-built task manager. Two seams to settle first: chores have no visibility concept under
-  `0074_calendar_visibility` (simplest rule: treat them as `family`), and on iOS events come
-  from PowerSync while chores are REST-only, so an offline phone renders events and silently
-  drops the overlay. See
+  half-built task manager.  See
   [Rhythms plan](./rhythms-plan.md#how-this-lands-on-the-calendar).
 
 - **Smarter goal-note suggestions (Tier 2).** Tier 1 shipped (see **Done**): the Log
@@ -329,10 +326,7 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   auto-save**, **layout presets** to start from, **density modes**, **hide-empty-cards**,
   a full-width band, and per-card "quiet" settings (e.g. cap a card at N items so a long
   list doesn't swallow the screen), with today's flat order migrated in automatically.
-  Two things make this a deliberate decision rather than a straight port: it **changes the
-  `/api/today-layout` contract** every surface reads, and it has **no iOS counterpart** —
-  the iPhone/iPad Today boards use their own layout config, so shipping web-only would
-  widen the mobile gap rather than close it. Prior art in the
+   Prior art in the
   [dispencer17 fork](fork-evaluation-dispencer17.md) (`zone-layout.ts`, `today-presets.ts`,
   `today-card-slot.tsx`).
 
@@ -406,26 +400,20 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   a code itself, so that stays the on-device network picker it is today.
 
 - **Recurring-edit scope — chore scopes shipped; two calendar gaps remain.**
-  Repeating chores now offer **this chore / this-and-following / whole series** on web,
-  iPhone, and iPad. Occurrence snapshots keep completed and awaiting-approval history
+  Repeating chores now offer **this chore / this-and-following / whole series** on web.
+  Occurrence snapshots keep completed and awaiting-approval history
   immutable; a settled occurrence can anchor a following edit or delete without itself
   changing. Remaining calendar work:
-  1. **Fix a calendar edit bug:** under "this" / "this-and-following", the iOS sheet still lets you
+  1. **Fix a calendar edit bug:** under "this" / "this-and-following", the editor still lets you
      change **assignee, goal link, and the countdown flag**, but the server silently drops them
-     (they're master-only / absent from `OVERRIDE_FIELDS`) — a save the UI implies but never
-     persists. Either store them as per-occurrence overrides or disable those fields for non-"all"
-     scope. (Also clean up the stale `CalendarView.swift` comment claiming iOS has no scope dialog —
-     it does.)
+     (master-only / absent from `OVERRIDE_FIELDS`). Either store them as per-occurrence overrides
+     or disable those fields for non-"all" scope.
   2. **Decide** whether calendar "all" should keep retroactively rewriting the recent past (it re-materializes
      the past ~3 months today) or leave already-passed occurrences untouched, the way delete already
      is deliberately guarded against wiping history.
 
 - **Goal tier polish (following the Spotlight redesign).** The Spotlight / Pinned / More
-  hierarchy shipped (one Spotlight hero per list, a Pinned band, then A–Z rows). One piece is
-  still deferred: **manual drag-to-reorder for the Pinned band** — needs a `sort_order` column +
-  a reorder endpoint + drag gestures on web & iOS (today the Pinned band is A–Z like More). (The
-  three tiers, the tier picker, one-tap pin/unpin, the Today→Spotlight default, and the iPhone
-  Today card's "pin a specific goal" chooser all shipped on web + iOS. Internally the Pinned tier
+  hierarchy shipped (one Spotlight hero per list, a Pinned band, then A–Z rows).   Internally the Pinned tier
   is still the `is_featured` column; a clean rename to `is_pinned` is optional cleanup.)
 
 - **Pantry ↔ meal-planning loop.** The pantry redesign + Open Food Facts integration
@@ -438,23 +426,18 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   Used some / Used it up / Didn't use; staples skipped) that decrements or uses-up on-hand
   stock; leftover items get an "Ate it" action; cooking also flips today's planned slot to
   cooked. We deliberately confirm rather than subtract exact amounts (units don't reconcile
-  cleanly). Putting the shopping away also got out of the way of itself: the "Where" picker
-  creates a **section on the fly** (`POST /api/pantry/locations`), scanned amounts take
-  **fractions** (½ a bag; the ¼/½/¾ shortcut chips are iOS), and the iOS scan sheet now shows the same
-  **allergen warning** the web one does — badges, "may contain" traces, and who it affects.
+  cleanly). 
   **The grocery half now landed too:** the board badges any row the pantry covers
   (🥫 + the matched item and its own amount) and the recipe "Add to grocery" picker starts
   those ingredients unchecked. It **flags, never filters** — matching is presence-only, so
   we can say you have chicken but not that you have enough, and an extra item in the cart
   beats a second trip. Matched at read time rather than stamped during the weekly rebuild,
-  so it can't go stale when you cook or scan. **iPhone/iPad have both now too** — the same
-  badge under the item name and the same pre-unchecked picker (which says how many it
-  unchecked). **Later:** true unit/quantity *comparison* for genuinely countable items
+  so it can't go stale when you cook or scan.  **Later:** true unit/quantity *comparison* for genuinely countable items
   (eggs, limes, cans — `lists/quantity.ts` already parses the amounts, and bulk goods like
   rice/pasta/flour are staples that never reach the list anyway, so this is a smaller job
   than it looks); vegetable-based "mains" + recipe filter.
 
-- **Assign & show a cook per *slot* (web + iPad + iPhone).** Half of this shipped with the
+- **Assign & show a cook per *slot*.** Half of this shipped with the
   Meal Builder: a plate assigns **a cook per dish** (`meal_recipes.cook_person_id`) with a
   cook badge on each dish row, which is the right grain for a multi-dish meal. What's still
   missing is the single-recipe case — `meal_plan_entries.cook_person_id` and the API's `cook`
@@ -498,36 +481,21 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   an account's households, plus `add-member` (attach an existing account to a household) and
   `list-accounts`. The only remaining server-side item is the optional, deferred cleanup of the
   legacy `credentials` table (login still verifies against it; `accounts` mirrors it).
-- **Multi-household identity — iOS switcher** (P3 iOS, *mobile owner*) — **SHIPPED.** Settings →
-  Accounts now surfaces the account's memberships + pending invites (from `GET /api/household`):
-  a **"Your households"** switcher (shown only when >1) that calls **`POST /api/auth/switch`**,
-  and an **"Invitations"** card whose **Accept** calls **`POST /api/auth/invites/:id/accept`**.
-  Single-membership accounts see no change. The iOS-specific touch point — re-exchanging the
-  PowerSync token after a switch — reuses the kiosk's `enterClaimedSession` + `reauthenticate`
-  path, but with **`clearLocal: true`** so the previous household's rows can't linger in the
-  shared SQLite mirror (and the switch is blocked while writes are still queued). DTOs decode
-  defensively (`decodeIfPresent`) and were validated against the live payloads.
 - **Notifications tail** — kiosk "due soon" local banner (table not built yet); remote push
-  (APNs / web-push) is blocked on a self-host key/relay decision. Recurring-event reminders
-  on iOS (only single events fire today) ride along here.
+  (web-push) is blocked on a self-host key/relay decision. 
 - **Recurring-chore rollover** — the shipped `rollover` flag defaults on for *one-offs*;
   opt-in carry-forward for **recurring** chores still needs collapse-duplicates-to-one +
   streak handling before it can ship.
 - **More optional modules** (on the new framework) — **Family Night SHIPPED (web) 2026-07-01**
   (generic customizable auto-rotating agenda + Today card + optional weekly calendar event);
   next up a **daily quote/snippet** card (the cleanest "built-in card also writable via the
-  public API" demo). Plus **iOS native
-  module cards** (the toggle is already server-shared; Pantry et al. need Swift screens), and
-  API-key follow-ups: per-user (non-admin) issuance, an OpenAPI/published contract, and a CORS
-  posture for cross-origin integrations.
+  public API" demo), and API-key follow-ups: per-user (non-admin) issuance, an OpenAPI/published
+  contract, and a CORS posture for cross-origin integrations. 
 - **Conversational recipe AI** — **photo → recipe and describe-it (speech/free-form → recipe)
-  SHIPPED (web + iOS)** in the "New recipe" editor: photos of a physical recipe are read by a
+  SHIPPED** in the "New recipe" editor: photos of a physical recipe are read by a
   vision model, and a rambly spoken/typed description is organized into ingredients + steps;
   both prefill the editor for review before saving, and source photos auto-delete after a
-  short window. iOS reached parity using the native camera / photo library and on-device
-  Apple-Speech dictation against the same `/api/recipes/ingest/*` endpoints, with the two
-  import buttons gated on the household's provider. Still planned: **instruction-driven edits**
-  ("make it vegetarian", "double it").
+  short window.
 - **API-key scopes declared per route, not by path prefix.** Findings, measurements and
   the plan in [`api-key-scopes-plan.md`](./api-key-scopes-plan.md). Today `API_SCOPES` maps a
   path *prefix* to a resource and one global gate enforces it (`scopeForRequest` +
@@ -559,15 +527,13 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **Server-side fuzzy person resolution** for capture (nicknames/aliases).
 - **Milestone reward payouts** — deferred by design (needs idempotency + attribution rules).
 - **Goal weekly check-in (Sunday recap)** — the goal-editor mock shows a "🔔 Weekly check-in"
-  toggle, but there's no backend for it (it's a decorative, unpersisted toggle in the web
-  editor and is intentionally omitted from the iOS goal editor). Needs a persisted per-goal
+  toggle, but there's no backend for it. Needs a persisted per-goal
   flag + the actual Sunday recap surface on the kiosk before the toggle should reappear.
 - **Soft "kids' list additions need an OK" toggle** — floated, *not committed*. Attribution
   already covers the real need; a per-role lists matrix is more machinery than a family hub
   wants. Recorded so the rationale isn't lost (see [permission model](./permissions.md)).
 - **Optional S3 backup** (Phase 4) — parked.
 - **Restore drills** (7.4) — pairs with the parked S3 backup.
-- **App store verification** (7.2) — Apple/Google production review.
 
 ## Removed in 0.16 ⛔ (the two-container simplification)
 
@@ -581,11 +547,12 @@ shipped earlier and removed, or planned and dropped, with the native clients and
   notifications, native sign-in, **Apple Health → goals** (and its follow-ons), **iOS widgets,
   Siri & Shortcuts**, and **Bonjour "find your Waffled server"**. The web app and installable PWA
   replace it; goals are logged in Waffled.
+- **iOS-only planned work**: the multi-household iOS switcher, App Store verification and the iOS halves of the planned items below.
 - **PowerSync** offline sync and the sync-health/watchdog UI. Every client reads and writes
   through REST.
 - **Caddy**, the `./waffled` CLI, `./waffled-demo` and the `:8081` demo stack, the Oracle Cloud
   Terraform recipe, and the observability (Grafana) compose profile. Use `compose.yaml`,
-  `docker compose exec -u node waffled node dist/seed-demo.js`, your own reverse proxy and your
+  `docker compose exec -u node -e WAFFLED_ALLOW_DEMO_SEED=1 waffled node dist/seed-demo.js base|meals|goals`, your own reverse proxy and your
   own OpenTelemetry collector.
 
 ## Dropped ⛔ (superseded by the self-host pivot, 2026-06-20)
