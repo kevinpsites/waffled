@@ -46,8 +46,9 @@ function clientAddress(req: http.IncomingMessage, trustProxy: boolean): string {
   if (trustProxy) {
     const forwarded = req.headers['x-forwarded-for']
     if (typeof forwarded === 'string') {
-      const address = forwarded.trim()
-      if (isIP(address)) return address
+      // Each proxy appends the peer it saw; the rightmost valid entry is what ours appended.
+      const address = forwarded.split(',').map((a) => a.trim()).reverse().find((a) => isIP(a))
+      if (address) return address
     }
   }
   return req.socket.remoteAddress ?? 'unknown'

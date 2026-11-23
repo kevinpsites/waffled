@@ -46,6 +46,10 @@ export function assertProductionSecrets(source: NodeJS.ProcessEnv = process.env)
 
 if (process.env.NODE_ENV === 'production') assertProductionSecrets()
 
+export function parseTrustProxy(value: string | undefined): boolean {
+  return ['true', '1', 'yes'].includes((value ?? '').trim().toLowerCase())
+}
+
 /** A capture-parsing provider is "available" only if its secret/host is in the
  *  environment. Keys live here (server-side) and are NEVER exposed to clients;
  *  the *selection* of which provider to use lives in households.settings.ai. */
@@ -112,7 +116,7 @@ export const config: AppConfig = {
   env: process.env.NODE_ENV ?? 'development',
   port: parseInt(process.env.PORT ?? '3000', 10),
   host: env('HOST'),
-  trustProxy: env('TRUST_PROXY') === 'true',
+  trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
 
   // Capture-bar (6.6) LLM providers. Set any subset; the active one is chosen
   // per-household in Settings. An OpenAI-compatible OPENAI_BASE_URL lets a local

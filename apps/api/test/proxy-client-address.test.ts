@@ -2,6 +2,7 @@ import type { AddressInfo } from 'node:net'
 import type http from 'node:http'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createHttpServer, listen } from '../src/platform/http-server'
+import { parseTrustProxy } from '../src/platform/config'
 
 let server: http.Server | undefined
 
@@ -36,5 +37,19 @@ describe('client address behind a proxy', () => {
 
   it('falls back to the socket address when the forwarded value is not an IP', async () => {
     expect(await sourceIpSeenByApi(true, 'not-an-ip')).not.toBe('not-an-ip')
+  })
+
+  it('takes the rightmost entry of a proxy chain (the one our proxy appended)', async () => {
+    expect(await sourceIpSeenByApi(true, '1.2.3.4, 198.51.100.7')).toBe('198.51.100.7')
+  })
+})
+
+describe('TRUST_PROXY parsing', () => {
+  it.each(['true', 'TRUE', 'True', '1', 'yes', ' yes '])('%j enables it', (v) => {
+    expect(parseTrustProxy(v)).toBe(true)
+  })
+
+  it.each([undefined, '', 'false', '0', 'no', 'off'])('%j leaves it off', (v) => {
+    expect(parseTrustProxy(v)).toBe(false)
   })
 })
