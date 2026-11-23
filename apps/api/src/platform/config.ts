@@ -88,8 +88,8 @@ export interface MicrosoftConfig {
 export interface AppConfig {
   env: string
   port: number
-  /** Bind address. Unset → all interfaces (Compose/demo rely on Docker's network for
-   *  isolation); the native desktop runtime sets HOST=127.0.0.1 to pin it to loopback. */
+  /** Bind address. Unset → all interfaces (inside the container, Docker's port mapping
+   *  decides what is exposed). */
   host: string | undefined
   /** Trust X-Forwarded-* from a reverse proxy in front of Waffled. Off by default. */
   trustProxy: boolean

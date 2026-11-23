@@ -327,7 +327,7 @@ const CD_TO = /\bcountdown\s+(?:to|until|til|till|for)\s+(.+)$/i
 
 // ── Holidays ──────────────────────────────────────────────────────────────────
 // Resolve a known holiday name to its NEXT occurrence on/after startOfDay(now).
-// KEEP IN SYNC with the Swift `findHoliday` and the server `resolveDayFromText`.
+// KEEP IN SYNC with the server `resolveDayFromText`.
 interface HolidayHit { date: Date; label: string; span: Span }
 
 function nthWeekdayOfMonth(year: number, month0: number, weekday: number, n: number): Date {
@@ -502,16 +502,16 @@ function detectPerson(text: string): Extract<ParsedIntent, { kind: 'person' }> |
 // the article/pronoun and "goal" — "set a personal goal", "set a new goal", "set
 // myself a big goal", "set our family goal", "set a weekly goal" — so the anchor is
 // "goal", not "a goal". The offline heuristic then infers the target/unit/deadline
-// (below). Mirrors `detectGoal` in CaptureHeuristic.swift.
+// (below).
 const GOAL_TRIGGER = /^\s*(?:set(?:ting)?\s+(?:a\s+|an\s+|the\s+|our\s+|my\s+|myself\s+a\s+|myself\s+|us\s+a\s+|us\s+)?(?:[a-z]+\s+){0,3}?goal\s+(?:to|of|:)\s+|add\s+(?:a\s+|an\s+|the\s+|our\s+|my\s+)?(?:[a-z]+\s+){0,3}?goal\s+(?:to\s+|of\s+)?|(?:i|we)\s+want\s+to\s+|(?:i|we)['’]d\s+like\s+to\s+|my\s+goal\s+is\s+(?:to\s+)?|our\s+goal\s+is\s+(?:to\s+)?|new\s+goal\s*[:-]\s*)(.+)$/i
 
 // Units that ACCUMULATE (a measured/split amount) → a `total` goal; anything else
-// countable ("books", "workouts", "glasses") → a `count` goal. Mirrors the Swift set.
+// countable ("books", "workouts", "glasses") → a `count` goal.
 const GOAL_TOTAL_UNIT = /^(?:miles?|mi|kilometers?|km|meters?|m|lbs?|pounds?|kgs?|kilograms?|kilos?|ounces?|oz|grams?|g|hours?|hrs?|hr|minutes?|mins?|min|seconds?|secs?|days?|weeks?|dollars?|usd|bucks?|cents?|gallons?|gal|liters?|litres?|l|calories?|cals?|cal|steps?|reps?|points?|pts?)$/i
 
 // Pull a numeric target + its unit out of a goal phrase. A currency symbol before the
 // number ("$500") → dollars/total; otherwise "<number> <word>" where the word decides
-// count vs total. Returns the span to strip from the title. Mirrors the Swift helper.
+// count vs total. Returns the span to strip from the title.
 function goalMeasure(text: string): { targetValue: number; unit: string; goalType: string; span: Span } | null {
   const cur = /(\$)\s?(\d+(?:\.\d+)?)/.exec(text)
   if (cur) return { targetValue: parseFloat(cur[2]), unit: 'dollars', goalType: 'total', span: { start: cur.index, end: cur.index + cur[0].length } }
@@ -526,7 +526,7 @@ function goalMeasure(text: string): { targetValue: number; unit: string; goalTyp
 
 // Resolve a goal deadline from "by <when>" / "this year|month". "by september" (a bare
 // month) → the last day of that month's next occurrence; "by Friday" / "by Dec 1" /
-// "by 12/1" → the resolved day (via findDay). Returns the span to strip. Mirrors Swift.
+// "by 12/1" → the resolved day (via findDay). Returns the span to strip.
 function goalDeadline(text: string, now: Date): { date: string; start: number; end: number } | null {
   const ty = /\b(?:by\s+|before\s+)?(?:the\s+end\s+of\s+)?this\s+(year|month)\b/i.exec(text)
   if (ty) {
@@ -553,8 +553,7 @@ function goalDeadline(text: string, now: Date): { date: string; start: number; e
 // Infer who the goal is for from the phrasing — the same word-driven inference the rest
 // of the bar does. "family"/"our"/"together"/"we want"/… → the whole household ('everyone');
 // "personal"/"my own"/"i want to"/… → just the author ('me'); no hint → null (defaults to
-// Just me in the picker). The 'everyone' cues win when both are present. Mirrors the Swift
-// `goalAudience`.
+// Just me in the picker). The 'everyone' cues win when both are present.
 function goalAudience(text: string): 'me' | 'everyone' | null {
   if (/\b(family|our|everyone|shared|as a family|together|us|we want)\b/i.test(text)) return 'everyone'
   if (/\b(personal|my own|for myself|my goal|i want to|i['’]d like to)\b/i.test(text)) return 'me'
@@ -600,7 +599,7 @@ function detectGoal(text: string, now: Date): Extract<ParsedIntent, { kind: 'goa
 // "we have X in the pantry". This is what distinguishes it from `grocery` (something
 // to BUY — the shopping list): a bare "add milk" or "add milk to the shopping list"
 // stays grocery; only an explicit pantry/fridge/freezer target routes here. FULL
-// heuristic (plan §5). Mirrors `detectPantry` in CaptureHeuristic.swift.
+// heuristic (plan §5).
 const PANTRY_TARGET = /\b(?:to|in|into|inside)\s+(?:the\s+|my\s+|our\s+)?(pantry|fridge|freezer|refrigerator)\b/i
 const PANTRY_LEAD = /^\s*(?:please\s+|kindly\s+|can you\s+)?(?:we\s+have\s+|i\s+have\s+|there(?:'s|\s+is|\s+are)\s+|add|put|throw|toss|drop|stock|store|stick|need|get|grab)?\s*(.+?)\s+(?:to|in|into|inside)\s+(?:the\s+|my\s+|our\s+)?(?:pantry|fridge|freezer|refrigerator)\b/i
 
@@ -636,8 +635,8 @@ function detectPantry(text: string): Extract<ParsedIntent, { kind: 'pantry' }> |
 
 // REWARD — a reward-shop item kids can spend stars/points on. Triggers on the explicit
 // word "reward": "add a reward: <title> for N stars", "new reward <title> costs N points",
-// "reward: <title>". Pulls the numeric star/point cost. FULL heuristic (plan §5). Mirrors
-// `detectReward` in CaptureHeuristic.swift. The offline path can't know the household's
+// "reward: <title>". Pulls the numeric star/point cost. FULL heuristic (plan §5). The
+// offline path can't know the household's
 // currency/category/approval default, so those stay null (the LLM/route fill them).
 const REWARD_WORD = /\breward\b/i
 const REWARD_LEAD = /^\s*(?:please\s+|kindly\s+|can you\s+)?(?:add|create|make|set\s*up|new|give)?\s*(?:a\s+|an\s+|the\s+)?(?:new\s+)?reward\b[\s:—-]*(?:called\s+|named\s+|for\s+|entitled\s+)?(.*)$/i

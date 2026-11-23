@@ -47,7 +47,6 @@ export function CookMode() {
 // "ice" inside "rice" — so a step chip struck an ingredient the step never named.
 // The END is deliberately left unchecked, which is what keeps a plural matching its
 // singular ("onion" in "2 onions"). Both sides are already lowercased.
-// Mirrored by `namesWordIn` in CookSession.swift — keep the two in step.
 function nameStartsAWord(text: string, name: string): boolean {
   for (let i = text.indexOf(name); i !== -1; i = text.indexOf(name, i + 1)) {
     if (i === 0 || !/[\p{L}\p{N}]/u.test(text[i - 1])) return true
@@ -393,9 +392,8 @@ function CookSession({
       {header}
       <div className="cm-progress"><span style={{ width: `${pct}%` }} /></div>
 
-      {/* The step's ingredients get their own column on the LEFT, as on the iPad
-          (CookModeView.ingredientsSidebar): a full-width row per ingredient whose text wraps,
-          where a pill would cut a long name mid-word. Stacks under the step on a narrow screen. */}
+      {/* The step's ingredients get their own column on the LEFT: a full-width row per
+          ingredient whose text wraps, where a pill would cut a long name mid-word. Stacks under the step on a narrow screen. */}
       <div className={`cm-body${step.ingredients.length > 0 ? ' has-side' : ''}`}>
       {step.ingredients.length > 0 && (
         <aside className="cm-side" aria-label="Ingredients for this step">

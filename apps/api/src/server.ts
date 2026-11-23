@@ -16,8 +16,6 @@ const server = createHttpServer(api, {
   mediaRoot: mediaDir(),
 })
 
-// HOST unset → all interfaces (Compose/demo). The native desktop runtime sets
-// HOST=127.0.0.1 so the API is reachable only via loopback.
 listen(server, { port: config.port, host: config.host }).then((addr) => {
   log.info('waffled-api listening', {
     host: addr.address,

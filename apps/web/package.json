@@ -19,7 +19,6 @@
     "@types/qrcode": "^1.5.6",
     "@zxing/browser": "^0.2.0",
     "@zxing/library": "^0.22.0",
-    "js-logger": "^1.6.1",
     "qrcode": "^1.5.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

@@ -1,8 +1,7 @@
 import type { ListItem } from '../../lib/api'
 
 // Free-text search over list rows, shared by the custom-list view and the grocery
-// board so "search this list" means one thing everywhere — including on iOS, whose
-// `ListDetailModel.matches` (ListDetailView.swift) matches the same way.
+// board so "search this list" means one thing everywhere.
 //
 // The fields matched are the ones the row CARRIES and the user authored: its name,
 // whatever header it sits under (a custom list's section, a grocery row's aisle), its

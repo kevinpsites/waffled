@@ -1,13 +1,10 @@
-// In-container migration runner. The lean runtime image carries no node_modules,
-// so the `node-pg-migrate` CLI isn't available there — this entry is bundled to
-// dist/migrate.js (esbuild) and run by the compose `migrate` one-shot service:
+// Manual in-container migration runner (start.ts already migrates on boot). The runtime
+// image carries no node_modules, so the node-pg-migrate CLI isn't there; this is bundled
+// to dist/migrate.js via scripts/bin/migrate.ts:
 //
-//   node dist/migrate.js
+//   docker compose exec -u node waffled node dist/migrate.js
 //
-// It applies every pending migration against DATABASE_URL, then exits 0 (so a
-// `service_completed_successfully` dependency lets the api start only
-// after the schema exists). Idempotent: already
-// applied migrations are skipped, so it's safe to run on every `compose up`.
+// Idempotent: already-applied migrations are skipped.
 //
 // MIGRATE_LOCK_TIMEOUT (ms, or e.g. 30s / 2min; 0 waits forever) bounds each lock
 // wait — see src/migrate.ts.

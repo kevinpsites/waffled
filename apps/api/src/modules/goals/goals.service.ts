@@ -21,8 +21,7 @@ export const TARGET_BASES = new Set(['family', 'per_person'])
 // Interpolated into date_trunc() in the progress query, so it must be a Postgres field
 // name — an unconstrained value 500s the goals list.
 export const HABIT_PERIODS = new Set(['day', 'week', 'month'])
-// Apple Health metrics a goal can auto-fill from. Keep in sync with the iOS
-// HealthKitBridge.Metric keys. Quantity metrics send a raw daily total; boolean metrics
+// Apple Health metrics a goal can auto-fill from. Quantity metrics send a raw daily total; boolean metrics
 // (rings, mood) send 1/0 and ride the habit daily-threshold path (threshold 1), so the
 // server stays metric-agnostic. Fractional quantities (walk_run_distance) ride the same
 // numeric columns unchanged — no counting rule cares whether the total is whole.
@@ -40,8 +39,7 @@ export const HEALTH_METRICS = new Set([
 const BOOLEAN_HEALTH_METRICS = new Set(['move_ring', 'exercise_ring', 'stand_ring', 'rings_all', 'mood'])
 
 /**
- * Whether a health metric can drive a goal of this type — mirrors the iOS
- * `Metric.applies(toGoalType:)` rules the pickers enforce. Without it a raw API call can
+ * Whether a health metric can drive a goal of this type. Without it a raw API call can
  * store e.g. session counts on a total goal, and a later unrelated edit then silently
  * null-patches the link away.
  */
@@ -309,8 +307,8 @@ const PARTICIPANTS_SUBQUERY = `coalesce((
 
 // The first day of the goal's CURRENT habit period, as a household-local DATE.
 //
-// A week follows the HOUSEHOLD's `week_start` — the same rule as `snapToWeekStart` and
-// iOS `Cal.weekStart` — not Postgres's `date_trunc('week')`, which is always Monday. The
+// A week follows the HOUSEHOLD's `week_start` — the same rule as `snapToWeekStart` —
+// not Postgres's `date_trunc('week')`, which is always Monday. The
 // default household is a *sunday* one, so Monday truncation puts Sunday's completion in
 // the week that was ending. `extract(dow)` is 0=Sunday..6=Saturday; subtracting the
 // household's start day (mod 7, kept positive) walks back to it. Day and month fall
@@ -580,7 +578,7 @@ export async function goalMetaFor(
 }
 
 // "Time-measured" purely by the free-text unit. Keep in sync with HOURS in web
-// LogModal.tsx and hourUnits in iOS GoalsView.swift.
+// LogModal.tsx.
 const TIME_UNITS = new Set(['hour', 'hours', 'hr', 'hrs'])
 export function isTimeUnit(unit: string | null | undefined): boolean {
   return unit != null && TIME_UNITS.has(unit.trim().toLowerCase())
