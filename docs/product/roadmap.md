@@ -308,7 +308,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   *are* events, so they render natively with real recurrence, Google sync and visibility,
   and completion-shape rhythms flow in as a `source: 'rhythm'` countdown (month-grid badge +
   week/day chip). `list_items` stays out — it has no due column and lists shouldn't become a
-  half-built task manager.  See
+  half-built task manager. One seam to settle first: chores have no visibility concept under
+  `0074_calendar_visibility` (simplest rule: treat them as `family`). See
   [Rhythms plan](./rhythms-plan.md#how-this-lands-on-the-calendar).
 
 - **Smarter goal-note suggestions (Tier 2).** Tier 1 shipped (see **Done**): the Log
@@ -326,7 +327,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   auto-save**, **layout presets** to start from, **density modes**, **hide-empty-cards**,
   a full-width band, and per-card "quiet" settings (e.g. cap a card at N items so a long
   list doesn't swallow the screen), with today's flat order migrated in automatically.
-   Prior art in the
+  This is a deliberate decision rather than a straight port: it **changes the
+  `/api/today-layout` contract** every surface reads, and it is a big merge. Prior art in the
   [dispencer17 fork](fork-evaluation-dispencer17.md) (`zone-layout.ts`, `today-presets.ts`,
   `today-card-slot.tsx`).
 
@@ -406,15 +408,18 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   changing. Remaining calendar work:
   1. **Fix a calendar edit bug:** under "this" / "this-and-following", the editor still lets you
      change **assignee, goal link, and the countdown flag**, but the server silently drops them
-     (master-only / absent from `OVERRIDE_FIELDS`). Either store them as per-occurrence overrides
+     (master-only / absent from `OVERRIDE_FIELDS`), a save the UI implies but never
+     persists. Either store them as per-occurrence overrides
      or disable those fields for non-"all" scope.
   2. **Decide** whether calendar "all" should keep retroactively rewriting the recent past (it re-materializes
      the past ~3 months today) or leave already-passed occurrences untouched, the way delete already
      is deliberately guarded against wiping history.
 
 - **Goal tier polish (following the Spotlight redesign).** The Spotlight / Pinned / More
-  hierarchy shipped (one Spotlight hero per list, a Pinned band, then A–Z rows).   Internally the Pinned tier
-  is still the `is_featured` column; a clean rename to `is_pinned` is optional cleanup.)
+  hierarchy shipped (one Spotlight hero per list, a Pinned band, then A–Z rows). One piece is
+  still deferred: **manual drag-to-reorder for the Pinned band** — needs a `sort_order` column +
+  a reorder endpoint + drag gestures on web (today the Pinned band is A–Z like More). Internally
+  the Pinned tier is still the `is_featured` column; a clean rename to `is_pinned` is optional cleanup.
 
 - **Pantry ↔ meal-planning loop.** The pantry redesign + Open Food Facts integration
   (cached barcode lookup/scanner, nutrition + colored allergen badges, household∪per-person
@@ -426,13 +431,15 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   Used some / Used it up / Didn't use; staples skipped) that decrements or uses-up on-hand
   stock; leftover items get an "Ate it" action; cooking also flips today's planned slot to
   cooked. We deliberately confirm rather than subtract exact amounts (units don't reconcile
-  cleanly). 
+  cleanly). Putting the shopping away also got out of the way of itself: the "Where" picker
+  creates a **section on the fly** (`POST /api/pantry/locations`), and scanned amounts take
+  **fractions** (½ a bag).
   **The grocery half now landed too:** the board badges any row the pantry covers
   (🥫 + the matched item and its own amount) and the recipe "Add to grocery" picker starts
   those ingredients unchecked. It **flags, never filters** — matching is presence-only, so
   we can say you have chicken but not that you have enough, and an extra item in the cart
   beats a second trip. Matched at read time rather than stamped during the weekly rebuild,
-  so it can't go stale when you cook or scan.  **Later:** true unit/quantity *comparison* for genuinely countable items
+  so it can't go stale when you cook or scan. **Later:** true unit/quantity *comparison* for genuinely countable items
   (eggs, limes, cans — `lists/quantity.ts` already parses the amounts, and bulk goods like
   rice/pasta/flour are staples that never reach the list anyway, so this is a smaller job
   than it looks); vegetable-based "mains" + recipe filter.
@@ -482,7 +489,7 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   `list-accounts`. The only remaining server-side item is the optional, deferred cleanup of the
   legacy `credentials` table (login still verifies against it; `accounts` mirrors it).
 - **Notifications tail** — kiosk "due soon" local banner (table not built yet); remote push
-  (web-push) is blocked on a self-host key/relay decision. 
+  (web-push) is blocked on a self-host key/relay decision.
 - **Recurring-chore rollover** — the shipped `rollover` flag defaults on for *one-offs*;
   opt-in carry-forward for **recurring** chores still needs collapse-duplicates-to-one +
   streak handling before it can ship.
@@ -490,12 +497,13 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   (generic customizable auto-rotating agenda + Today card + optional weekly calendar event);
   next up a **daily quote/snippet** card (the cleanest "built-in card also writable via the
   public API" demo), and API-key follow-ups: per-user (non-admin) issuance, an OpenAPI/published
-  contract, and a CORS posture for cross-origin integrations. 
+  contract, and a CORS posture for cross-origin integrations.
 - **Conversational recipe AI** — **photo → recipe and describe-it (speech/free-form → recipe)
   SHIPPED** in the "New recipe" editor: photos of a physical recipe are read by a
   vision model, and a rambly spoken/typed description is organized into ingredients + steps;
   both prefill the editor for review before saving, and source photos auto-delete after a
-  short window.
+  short window. Still planned: **instruction-driven edits**
+  ("make it vegetarian", "double it").
 - **API-key scopes declared per route, not by path prefix.** Findings, measurements and
   the plan in [`api-key-scopes-plan.md`](./api-key-scopes-plan.md). Today `API_SCOPES` maps a
   path *prefix* to a resource and one global gate enforces it (`scopeForRequest` +
@@ -527,7 +535,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **Server-side fuzzy person resolution** for capture (nicknames/aliases).
 - **Milestone reward payouts** — deferred by design (needs idempotency + attribution rules).
 - **Goal weekly check-in (Sunday recap)** — the goal-editor mock shows a "🔔 Weekly check-in"
-  toggle, but there's no backend for it. Needs a persisted per-goal
+  toggle, but there's no backend for it (it's a decorative, unpersisted toggle in the web
+  editor). Needs a persisted per-goal
   flag + the actual Sunday recap surface on the kiosk before the toggle should reappear.
 - **Soft "kids' list additions need an OK" toggle** — floated, *not committed*. Attribution
   already covers the real need; a per-role lists matrix is more machinery than a family hub
