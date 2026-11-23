@@ -9,10 +9,14 @@ do $$
 declare s record;
 begin
   for s in
-    select slot_name from pg_replication_slots
-    where slot_type = 'logical' and slot_name like 'powersync%' and not active
+    select slot_name, active from pg_replication_slots
+    where slot_type = 'logical' and slot_name like 'powersync%'
   loop
-    perform pg_drop_replication_slot(s.slot_name);
+    if s.active then
+      raise notice 'replication slot % is still in use and was not dropped; stop PowerSync and drop it with pg_drop_replication_slot', s.slot_name;
+    else
+      perform pg_drop_replication_slot(s.slot_name);
+    end if;
   end loop;
 end $$;
 
