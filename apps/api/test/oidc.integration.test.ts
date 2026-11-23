@@ -263,13 +263,22 @@ describe('OIDC login', () => {
     expect(ownerConfig.buttonLabel).toBe('Sign in with Acme')
   })
 
-  it('rejects foreign web origins and unregistered native redirect schemes', async () => {
+  it('rejects foreign web origins and every custom-scheme redirect', async () => {
     expect((await call('GET', '/api/auth/oidc/start', {
       query: { redirect: 'https://attacker.example/' },
     })).statusCode).toBe(400)
     expect((await call('GET', '/api/auth/oidc/start', {
       query: { redirect: 'attacker://auth/callback' },
     })).statusCode).toBe(400)
+    // Any app can claim a custom scheme, so a session handoff is never sent to one.
+    process.env.OIDC_NATIVE_REDIRECT_URI = 'waffled://auth/callback'
+    try {
+      expect((await call('GET', '/api/auth/oidc/start', {
+        query: { redirect: 'waffled://auth/callback' },
+      })).statusCode).toBe(400)
+    } finally {
+      delete process.env.OIDC_NATIVE_REDIRECT_URI
+    }
   })
 
   describe('callback origin', () => {
@@ -351,18 +360,6 @@ describe('OIDC login', () => {
 
     // The handoff code is single-use.
     expect((await call('POST', '/api/auth/oidc/exchange', { body: { code: handoff } })).statusCode).toBe(401)
-  })
-
-  it('returns a custom-scheme deep link for a native (mobile) redirect', async () => {
-    stubUser = { sub: 'idp-sub-1', email: 'kevin@example.com', email_verified: true }
-    const cb = await ssoLogin('waffled://auth/callback')
-    expect(cb.statusCode).toBe(302)
-    // Must be the app's deep link (not "null/auth/callback") so iOS can intercept it.
-    const dest = new URL(loc(cb))
-    expect(dest.protocol).toBe('waffled:')
-    expect(loc(cb)).toMatch(/^waffled:\/\/auth\/callback\?code=/)
-    const handoff = dest.searchParams.get('code')!
-    expect((await call('POST', '/api/auth/oidc/exchange', { body: { code: handoff } })).statusCode).toBe(200)
   })
 
   it('rejects an SSO login whose email is not on file', async () => {

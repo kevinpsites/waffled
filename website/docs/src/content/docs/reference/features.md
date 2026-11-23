@@ -26,7 +26,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Dark mode** + Settings → Appearance (Light / Dark / Match system) | ✅ | ✅ Done |
 | **Email/password** login (built-in) | ✅ | ✅ Done |
 | Rotating refresh tokens + transparent 401-refresh | ✅ | ✅ Done |
-| **OIDC SSO** (backend-mediated, invite-gated) | ✅ | ✅ Done (`ASWebAuthenticationSession`) |
+| **OIDC SSO** (backend-mediated, invite-gated) | ✅ | ✅ Done |
 | Admin-managed OIDC config (Settings, secret encrypted at rest) | ✅ | ✅ Done — web/server-only admin by design |
 | Disable password login / force SSO (break-glass guard) | ✅ | ✅ Done — config is web/server-only admin by design; every client's login screen honors it |
 | **Member management** — grant a person a login (email ± password) + kiosk PIN | ✅ | ✅ Done |
