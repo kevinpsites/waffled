@@ -1,7 +1,7 @@
 // Calendar events domain — client slice, types, and hooks.
 import { useEffect, useRef, useState } from 'react'
 import { apiGet, apiGetCached, apiSend, apiDelete, localToday } from './client'
-import { useRefetchOn, tap } from './bus'
+import { useRefetchOn, useLiveRefresh, tap } from './bus'
 
 export interface Participant {
   id: string
@@ -102,10 +102,13 @@ function useAgendaFeed(
   // Latest closure without re-running the effect (its identity changes every render).
   const fetchRef = useRef(fetchRest)
   fetchRef.current = fetchRest
+  // Background polls never show the spinner, or a mounted calendar would flash every interval.
+  const silentRef = useRef(false)
 
   useEffect(() => {
     let alive = true
-    if (loadingOnRefetch) setState((s) => ({ ...s, loading: true }))
+    if (loadingOnRefetch && !silentRef.current) setState((s) => ({ ...s, loading: true }))
+    silentRef.current = false
     fetchRef
       .current()
       .then((events) => {
@@ -124,6 +127,10 @@ function useAgendaFeed(
 
   const refetch = () => setNonce((n) => n + 1)
   useRefetchOn(['events'], refetch)
+  useLiveRefresh(() => {
+    silentRef.current = true
+    refetch()
+  })
   return { ...state, refetch }
 }
 
@@ -182,6 +189,7 @@ export function useEvent(id: string): { event: AgendaEvent | null; loading: bool
   }, [id, nonce])
 
   useRefetchOn(['meals', 'events'], () => setNonce((n) => n + 1))
+  useLiveRefresh(() => setNonce((n) => n + 1))
 
   return { event, loading, notFound, refetch: () => setNonce((n) => n + 1) }
 }

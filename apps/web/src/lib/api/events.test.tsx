@@ -110,3 +110,34 @@ describe('useEvent', () => {
     expect(result.current.loading).toBe(false)
   })
 })
+
+// The bus only covers this tab; an edit on another device must surface without a reload.
+describe('cross-device refresh', () => {
+  it('useEventsRange refetches on window focus without flashing the spinner', async () => {
+    nextEvents = [restEvent('r1')]
+    const { result } = renderHook(() => useEventsRange('2026-06-01', '2026-07-01'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    nextEvents = [restEvent('r2')]
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    expect(result.current.loading).toBe(false)
+    await waitFor(() => expect(result.current.events.map((e) => e.id)).toEqual(['r2']))
+  })
+
+  it('useEventsToday refetches on window focus', async () => {
+    nextEvents = [restEvent('t1')]
+    const { result } = renderHook(() => useEventsToday())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    nextEvents = [restEvent('t2')]
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    await waitFor(() => expect(result.current.events.map((e) => e.id)).toEqual(['t2']))
+  })
+
+  it('useEvent refetches on window focus', async () => {
+    nextEvents = [restEvent('e1')]
+    const { result } = renderHook(() => useEvent('e1'))
+    await waitFor(() => expect(result.current.event?.title).toBe('rest e1'))
+    nextEvents = [{ ...restEvent('e1'), title: 'edited elsewhere' }]
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    await waitFor(() => expect(result.current.event?.title).toBe('edited elsewhere'))
+  })
+})

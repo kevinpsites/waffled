@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Calendar picks up changes from other devices.** The kiosk calendar, Today card and event
+  details now refresh every 20 seconds and when the tab regains focus, so an event added or edited
+  on another device appears without a reload.
 - **Outlook calendar callback reachable.** Connecting an Outlook calendar no longer ends on a
   page-not-found after Microsoft sign-in, because the callback is now served on the same port as
   the rest of the app.
