@@ -1,10 +1,8 @@
-// Single-image entrypoint. Config validates production secrets at import time, so
-// everything that pulls it in (migrate, server) must be imported after the secrets are set.
-import { loadOrCreateSecrets } from './platform/secrets'
+// Single-image entrypoint: secrets bootstrap -> migrate -> server. Everything after the
+// bootstrap is imported dynamically (see platform/bootstrap-secrets.ts).
+import { withSecrets } from './platform/bootstrap-secrets'
 
-async function main(): Promise<void> {
-  loadOrCreateSecrets(process.env.DATA_DIR ?? '/data', process.env)
-
+withSecrets('start', async () => {
   const databaseUrl = process.env.DATABASE_URL
   if (!databaseUrl) throw new Error('DATABASE_URL is not set')
 
@@ -17,9 +15,4 @@ async function main(): Promise<void> {
   })
 
   await import('./server')
-}
-
-main().catch((err) => {
-  console.error(`start: ${(err as Error).message}`)
-  process.exit(1)
 })
