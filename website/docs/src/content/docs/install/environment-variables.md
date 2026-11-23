@@ -12,7 +12,7 @@ compose file and the app's config.
 
 > **Secrets are generated for you.** On first start the app writes `LOCAL_JWT_SECRET` and
 > `TOKEN_ENCRYPTION_KEY` to `/data/secrets.json` in the `waffled_data` volume and reuses them.
-> A value set in `.env` always wins. They are never rotated automatically: rotating
+> A value set in `.env` always wins, and is saved to the file so removing it later keeps the same key. They are never rotated automatically: rotating
 > `TOKEN_ENCRYPTION_KEY` orphans stored calendar and SSO tokens.
 
 ## Core

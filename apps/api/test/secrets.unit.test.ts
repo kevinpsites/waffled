@@ -34,13 +34,29 @@ describe('loadOrCreateSecrets', () => {
   })
 
   it('env wins over file', () => {
+    loadOrCreateSecrets(dir, {})
     const preset = 'x'.repeat(40)
     const env: NodeJS.ProcessEnv = { LOCAL_JWT_SECRET: preset }
     loadOrCreateSecrets(dir, env)
     expect(env.LOCAL_JWT_SECRET).toBe(preset)
-    const fresh: NodeJS.ProcessEnv = {}
-    loadOrCreateSecrets(dir, fresh)
-    expect(fresh.LOCAL_JWT_SECRET).not.toBe(preset)
+  })
+
+  it('persists env-supplied keys so dropping them from .env later keeps the same key', () => {
+    const preset = 'x'.repeat(40)
+    const key = Buffer.alloc(32, 7).toString('base64')
+    loadOrCreateSecrets(dir, { LOCAL_JWT_SECRET: preset, TOKEN_ENCRYPTION_KEY: key })
+    const later: NodeJS.ProcessEnv = {}
+    loadOrCreateSecrets(dir, later)
+    expect(later.LOCAL_JWT_SECRET).toBe(preset)
+    expect(later.TOKEN_ENCRYPTION_KEY).toBe(key)
+  })
+
+  it('non-string values are treated as corrupt and not overwritten', () => {
+    const file = join(dir, 'secrets.json')
+    const body = JSON.stringify({ LOCAL_JWT_SECRET: 42, TOKEN_ENCRYPTION_KEY: 'k' })
+    writeFileSync(file, body)
+    expect(() => loadOrCreateSecrets(dir, {})).toThrow(/corrupt/)
+    expect(readFileSync(file, 'utf8')).toBe(body)
   })
 
   it('corrupt file throws and is not overwritten', () => {

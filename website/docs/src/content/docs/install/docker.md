@@ -38,7 +38,7 @@ the React SPA, not a separate program.
 
 On first start the app writes `LOCAL_JWT_SECRET` and `TOKEN_ENCRYPTION_KEY` to
 `/data/secrets.json` in the `waffled_data` volume and reuses them. A value you set in `.env`
-always wins.
+always wins, and is saved there too so removing it later keeps the same key.
 
 ## Changing settings
 

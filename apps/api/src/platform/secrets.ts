@@ -21,6 +21,9 @@ function readStored(file: string): Partial<Record<SecretName, string>> | null {
   try {
     const parsed = JSON.parse(raw)
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object')
+    for (const name of NAMES) {
+      if (name in parsed && typeof parsed[name] !== 'string') throw new Error(`${name} is not a string`)
+    }
     return parsed
   } catch (err) {
     // Never regenerate over a corrupt file: that would silently invalidate every session and stored token.
@@ -28,7 +31,7 @@ function readStored(file: string): Partial<Record<SecretName, string>> | null {
   }
 }
 
-/** Fills missing LOCAL_JWT_SECRET / TOKEN_ENCRYPTION_KEY in `env` from `${dataDir}/secrets.json`, generating and persisting any that are absent. Env values always win. */
+/** Fills missing LOCAL_JWT_SECRET / TOKEN_ENCRYPTION_KEY in `env` from `${dataDir}/secrets.json`, generating and persisting any that are absent. Env values always win and are persisted too. */
 export function loadOrCreateSecrets(dataDir: string, env: NodeJS.ProcessEnv): void {
   const file = join(dataDir, 'secrets.json')
   const stored = readStored(file) ?? {}
@@ -36,8 +39,11 @@ export function loadOrCreateSecrets(dataDir: string, env: NodeJS.ProcessEnv): vo
   let changed = false
 
   for (const name of NAMES) {
-    if (!merged[name]) {
-      merged[name] = GENERATORS[name]()
+    // Persist the env value in use, so removing it from .env later keeps the same key
+    // instead of silently switching to a different stored one.
+    const wanted = env[name] || merged[name] || GENERATORS[name]()
+    if (merged[name] !== wanted) {
+      merged[name] = wanted
       changed = true
     }
   }
