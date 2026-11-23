@@ -91,10 +91,6 @@ async function mockApi(page: Page, view: unknown = planningView) {
     else if (path === '/api/calendar/status') body = { connected: false, configured: false }
     else if (path === '/api/weekly-planning') body = view
     else if (path === '/api/weekly-planning/recap') body = recapView
-    else if (path === '/api/powersync/token') {
-      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'disabled' }) })
-      return
-    }
 
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
   })

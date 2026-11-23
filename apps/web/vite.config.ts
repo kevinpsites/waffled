@@ -67,21 +67,16 @@ const apiProxy: Record<string, ProxyOptions> = {
       })
     },
   },
-  // Uploaded media (/media/*) is served by Caddy off the shared waffled_media volume,
-  // NOT by the api — so in dev we forward to the running stack's Caddy (:8080) the
-  // same way it's served in production. Without this, the dev server returns
-  // index.html for /media URLs and uploaded images render broken.
+  // The api serves uploaded media (/media/*); without this proxy the dev server
+  // returns index.html for /media URLs and uploaded images render broken.
   '/media': {
-    target: 'http://localhost:8080',
+    target: 'http://localhost:3000',
     changeOrigin: true,
   },
 }
 
 export default defineConfig({
   plugins: [react(), stampServiceWorkerPlugin()],
-  // @powersync/web ships its own SQLite WASM + worker; pre-bundling breaks them,
-  // so exclude it from Vite's dep optimizer (PowerSync's documented Vite setup).
-  optimizeDeps: { exclude: ['@powersync/web'] },
   worker: { format: 'es' },
   build: {
     // Emit the chunk manifest so the service worker can precache every code-split

@@ -9,7 +9,6 @@ import { AuthGate } from './kiosk/AuthGate'
 import { KioskDisplay } from './kiosk/KioskDisplay'
 import { ServerUnreachableBanner } from './kiosk/components/ServerUnreachableBanner'
 import { registerServiceWorker } from './lib/pwa'
-import { connectPowerSync } from './lib/powersync/db'
 import { initTheme } from './lib/theme'
 import { applyEventStyle } from './lib/display'
 
@@ -35,6 +34,3 @@ createRoot(document.getElementById('root')!).render(
 )
 
 registerServiceWorker()
-
-// Start realtime replication (best-effort; the app works over REST without it).
-void connectPowerSync()

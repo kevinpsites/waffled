@@ -74,10 +74,6 @@ async function mockApi(page: Page) {
     else if (/^\/api\/lists\/[^/]+$/.test(path)) body = { list: lists[0], items: listItems }
     else if (path === '/api/recipes/recent') body = { recipes, scope: url.searchParams.get('scope') ?? 'me' }
     else if (path === '/api/recipes') body = { recipes }
-    else if (path === '/api/powersync/token') {
-      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'disabled' }) })
-      return
-    }
 
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
   })

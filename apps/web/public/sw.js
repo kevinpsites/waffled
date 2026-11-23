@@ -38,21 +38,8 @@ const SHELL_URL = '/index.html'
 // and fall back to scraping the HTML if it is missing (an older build, or a host that
 // won't serve it).
 //
-// This is NOT every file in the build, and it is worth being precise about the gap.
-// Vite's manifest plugin covers the main Rollup build only, so PowerSync's worker
-// output is absent from it: SharedSyncImplementation and WASQLiteDB, plus the VFS
-// modules they load. Nothing here precaches those. They are cached the first time the
-// sync engine loads one, because /assets/* goes through cacheFirst below — so the
-// exposure is narrow but real: a display whose very first boot on a new build happens
-// with no network can open every screen and still fail to start the calendar's local
-// database. Closing it properly means listing the output directory at build time
-// instead of trusting the manifest, which is a build change rather than a worker one.
-//
-// The .wasm files are deliberately skipped. The manifest lists four wa-sqlite builds —
-// sync/async paired with two threading models, ~7 MB together — and a browser loads
-// exactly one pairing, so precaching all four would have every display download ~7 MB
-// it will never ask for, on every single deploy. They are still cached the first time
-// the engine loads one, because /assets/* goes through cacheFirst below.
+// The .wasm files are skipped: nothing the app loads needs them precached, and they
+// would add megabytes to every deploy. /assets/* is cached on first use via cacheFirst below.
 async function manifestAssets() {
   try {
     const res = await fetch('/asset-manifest.json', { cache: 'no-cache' })

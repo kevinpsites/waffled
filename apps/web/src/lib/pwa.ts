@@ -42,7 +42,7 @@ export function reloadOnWorkerTakeover(
 }
 
 // How long the device must be *continuously* offline before the kiosk admits it.
-// Brief blips (PowerSync reconnects, network transitions, tab wake-ups) resolve
+// Brief blips (network transitions, tab wake-ups) resolve
 // well inside this window, so the Offline banner doesn't flash on every hiccup.
 export const OFFLINE_BANNER_GRACE_MS = 10_000
 

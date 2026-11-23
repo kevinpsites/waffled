@@ -816,8 +816,8 @@ export function CaptureBar() {
 
   // After a successful commit, ping the event bus so any open view of that data refetches
   // (the capture bar mutates via REST, so a chore/goal/etc. screen would otherwise stay stale
-  // until a manual refresh — the bug that motivated this). Events/pantry ride PowerSync/their
-  // own refresh and have no bus topic yet.
+  // until a manual refresh — the bug that motivated this). Events/pantry have their own
+  // refresh and no bus topic here yet.
   function emitAfterCommit(i: ParsedIntent): void {
     const CREATE_TOPIC: Partial<Record<ParsedIntent['kind'], Topic>> = { grocery: 'grocery', meal: 'meals', countdown: 'countdowns', goal: 'goals', reward: 'rewards' }
     const MUTATE_TOPIC: Partial<Record<string, Topic>> = { chore: 'chores', goal: 'goals', listItem: 'grocery', reward: 'rewards' }

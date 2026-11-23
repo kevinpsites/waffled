@@ -139,10 +139,6 @@ export async function mockApi(page: Page) {
     else if (path === '/api/pantry-staples') body = { staples: board.staples }
     else if (path === '/api/recipes/r1') body = { recipe, ingredients, steps: [], onHand: { have: 3, total: 5 }, toBuy: 2, toBuyNames: ['Leeks', 'Chicken thighs'] }
     else if (path === '/api/recipes') body = { recipes: [recipe] }
-    else if (path === '/api/powersync/token') {
-      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'disabled' }) })
-      return
-    }
 
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
   })

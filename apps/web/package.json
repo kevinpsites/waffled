@@ -16,8 +16,6 @@
     "test:browser": "playwright test"
   },
   "dependencies": {
-    "@powersync/react": "^1.10.0",
-    "@powersync/web": "^1.38.3",
     "@types/qrcode": "^1.5.6",
     "@zxing/browser": "^0.2.0",
     "@zxing/library": "^0.22.0",

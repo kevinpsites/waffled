@@ -4,7 +4,6 @@ import { EventModal } from './components/EventModal'
 import { useTopbarFull } from './topbar-slot'
 import { api, eventsApi, useEvent, useEventsRange, useHousehold, useGoals, mealsApi, invalidateGetCache, type AgendaEvent } from '../lib/api'
 import { useEventColor } from '../lib/event-color'
-import { deleteEventLocal, tombstoneEvent } from '../lib/powersync/events-local'
 import { suggestGoalForEvent } from '../lib/goal-match'
 import { describeRrule } from './components/recurrence'
 import { DOW_FULL, MONTHS, fmtTime, durationMin, eventPeople, localDate, eventDetailPath } from './components/cal-utils'
@@ -129,9 +128,8 @@ export function EventDetail() {
         // Viewing one occurrence of a series → delete just this one (cancel it).
         // Series-wide deletes go through Edit → the modal's this/following/all chooser.
         await api.deleteEvent(id, { scope: 'this', occurrenceStart: occurrenceOn })
-      } else if (!(await deleteEventLocal(id))) {
+      } else {
         await api.deleteEvent(id)
-        tombstoneEvent(id)
       }
       invalidateGetCache('/api/calendar/heads-up')
       navigate('/calendar')

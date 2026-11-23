@@ -107,8 +107,8 @@ describe('EventModal — linking an event to a rhythm', () => {
   })
 
   it('sends an explicit null to unlink, which is the only thing that clears it', async () => {
-    // The PowerSync PUT sink coalesces rhythm_id precisely so an older client cannot blank
-    // it by omission, so an unlink has to be stated rather than implied.
+    // The server treats an absent rhythmId as "leave it alone", so an unlink has to be
+    // stated rather than implied.
     const patched: Record<string, unknown>[] = []
     mockApi(patched)
     renderModal({ ...sampleEvent, rhythmId: 'rh-1' })
