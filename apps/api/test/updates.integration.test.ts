@@ -1,7 +1,7 @@
 // Update notifier — admin gating, the env + per-household off-switches, and the
-// version compare. No real network: with UPDATE_CHECK_REPO unset, the check returns
-// early (never calls GitHub), so these stay hermetic.
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+// version compare. No real network: global fetch is stubbed, and with UPDATE_CHECK_REPO
+// unset the check must target the fork's releases.
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client } from 'pg'
 import jwt from 'jsonwebtoken'
@@ -15,6 +15,7 @@ let url: string
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let app: any
 let closePool: () => Promise<void>
+const fetchStub = vi.fn(async () => ({ ok: false, status: 404 }) as Response)
 
 function mint(sub: string): string {
   return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
@@ -36,7 +37,8 @@ beforeAll(async () => {
   await runMigrations(url)
   process.env.DATABASE_URL = url
   delete process.env.AUTH0_DOMAIN
-  delete process.env.UPDATE_CHECK_REPO // keep hermetic — no outbound call
+  delete process.env.UPDATE_CHECK_REPO // exercise the built-in default repo
+  vi.stubGlobal('fetch', fetchStub)
   app = (await import('../src/app')).default
   closePool = (await import('../src/platform/db')).closePool
 
@@ -56,6 +58,7 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
+  vi.unstubAllGlobals()
   await closePool?.()
   await pg?.stop()
 })
@@ -76,14 +79,18 @@ describe('GET/PUT /api/updates', () => {
     expect((await call('GET', '/api/updates', mint('dev|kid'))).statusCode).toBe(403)
   })
 
-  it('reports enabled with current version (repo unset → no update, no network)', async () => {
+  it('reports enabled with current version (repo unset → fork default, no update)', async () => {
     const res = await call('GET', '/api/updates', kevin)
     expect(res.statusCode).toBe(200)
     const b = JSON.parse(res.body)
     expect(b.enabled).toBe(true)
     expect(b.current.version).toBeTruthy()
     expect(b.updateAvailable).toBe(false)
-    expect(b.error).toContain('UPDATE_CHECK_REPO')
+    expect(b.error).toBe('GitHub 404')
+    expect(fetchStub).toHaveBeenCalledWith(
+      'https://api.github.com/repos/evan-ribbey/waffled-ng/releases/latest',
+      expect.anything()
+    )
   })
 
   it('honors the per-household toggle', async () => {

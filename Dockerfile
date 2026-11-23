@@ -37,8 +37,7 @@ ENV GIT_SHA=$GIT_SHA \
     PORT=3000 \
     WEB_ROOT=/app/web \
     DATA_DIR=/data \
-    MEDIA_DIR=/data/media \
-    UPDATE_CHECK_REPO=evan-ribbey/waffled-ng
+    MEDIA_DIR=/data/media
 # The preload only starts the SDK when OTEL_EXPORTER_OTLP_ENDPOINT is set.
 COPY --from=api /app/otel-deps/node_modules ./node_modules
 ENV NODE_OPTIONS=--require=/app/dist/otel.js
