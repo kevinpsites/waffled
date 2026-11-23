@@ -260,37 +260,6 @@ describe('outbound write-back', () => {
       expect(writesSince(m)).toEqual([{ method: 'PATCH', calendar: 'work@group.calendar.google.com', eventId: row.google_event_id }])
     })
 
-    it('moves when only person_id changes — the shape an offline edit uploads', async () => {
-      const ev = await localEvent('Book fair')
-      const n = writeCalls.length
-      const res = await call('POST', '/api/powersync/crud', kevin, {
-        ops: [{ op: 'PATCH', table: 'events', id: ev.id, data: { title: 'Book fair', person_id: kevinId } }],
-      })
-      expect(res.statusCode).toBe(200)
-      expect(writesSince(n)).toEqual([expect.objectContaining({ method: 'POST', calendar: 'work@group.calendar.google.com' })])
-      expect((await stored(ev.id)).calendar_id).not.toBeNull()
-    })
-
-    it('moves an event made offline with nobody on it, once an offline edit adds somebody', async () => {
-      // Both halves through the PowerSync upload — how the iPhone and the offline web make and edit events.
-      const id = randomUUID()
-      const made = await call('POST', '/api/powersync/crud', kevin, {
-        ops: [{ op: 'PUT', table: 'events', id, data: {
-          title: 'Swim meet', starts_at: '2026-07-11T15:00:00Z', ends_at: '2026-07-11T16:00:00Z',
-          all_day: 0, timezone: 'America/Chicago', person_id: null,
-        } }],
-      })
-      expect(made.statusCode).toBe(200)
-      expect((await stored(id)).calendar_id).toBeNull()
-
-      const n = writeCalls.length
-      await call('POST', '/api/powersync/crud', kevin, {
-        ops: [{ op: 'PATCH', table: 'events', id, data: { person_id: kevinId } }],
-      })
-      expect(writesSince(n)).toEqual([expect.objectContaining({ method: 'POST', calendar: 'work@group.calendar.google.com' })])
-      expect((await stored(id)).sync_state).toBe('synced')
-    })
-
     it('stays Waffled-only when the new person has no connected calendar', async () => {
       const { query } = await import('../src/platform/db')
       const hh = await query<{ household_id: string }>(`select household_id from persons where id = $1`, [kevinId])

@@ -5,8 +5,8 @@
 //   node dist/migrate.js
 //
 // It applies every pending migration against DATABASE_URL, then exits 0 (so a
-// `service_completed_successfully` dependency lets the api + powersync start only
-// after the schema — and the PowerSync publication — exist). Idempotent: already
+// `service_completed_successfully` dependency lets the api start only
+// after the schema exists). Idempotent: already
 // applied migrations are skipped, so it's safe to run on every `compose up`.
 //
 // MIGRATE_LOCK_TIMEOUT (ms, or e.g. 30s / 2min; 0 waits forever) bounds each lock

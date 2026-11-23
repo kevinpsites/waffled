@@ -15,7 +15,7 @@ function defaultMigrationsDir(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
 }
 
-// Migrations run while the previous api + PowerSync may still hold connections. A
+// Migrations run while the previous api may still hold connections. A
 // queued ACCESS EXCLUSIVE request stalls every later query on that table, so migrate
 // gives up on a lock quickly and retries rather than waiting (and stalling) forever.
 // statement_timeout stays unset: long backfills are legitimate.
@@ -250,7 +250,7 @@ function lockTimeoutError(
   return new Error(
     `${describeWait(wait, lockTimeoutMs)}; gave up after ${attempts} attempt(s).\n` +
       `Blocking sessions:\n${blockers}\n` +
-      'Stop the app services (api, powersync) so migrations can take their locks, then run ' +
+      'Stop the app services (api) so migrations can take their locks, then run ' +
       'migrate again. MIGRATE_LOCK_TIMEOUT raises the per-lock wait.',
     { cause }
   )

@@ -177,64 +177,6 @@ describe('the link is household-scoped', () => {
     expect((await call('PATCH', `/api/events/${id}`, kevin, { rhythmId: outsiderRhythmId })).statusCode).toBe(404)
     expect(await rhythmIdOf(id)).toBeNull()
   })
-
-  it('refuses a foreign rhythm arriving through the PowerSync sink', async () => {
-    const res = await call('POST', '/api/powersync/crud', kevin, {
-      ops: [{ op: 'PUT', table: 'events', id: randomUUID(), data: {
-        title: 'Offline outing', starts_at: '2026-09-19T15:00:00Z', ends_at: '2026-09-19T18:00:00Z',
-        all_day: 0, rhythm_id: outsiderRhythmId,
-      } }],
-    })
-    expect(res.statusCode).toBe(404)
-  })
-})
-
-// The PowerSync sink's events PUT writes the WHOLE row, so every column it overwrites
-// from `excluded` is a column a client can blank by not knowing about it. The web bundle
-// is baked into the caddy image and served through a service worker, so "a client running
-// last week's schema" is a normal condition here, not a hypothetical.
-describe('a rhythm-linked event, written through the PowerSync sink', () => {
-  const eventId = randomUUID()
-
-  it('accepts the link on an offline-authored event', async () => {
-    const res = await call('POST', '/api/powersync/crud', kevin, {
-      ops: [{ op: 'PUT', table: 'events', id: eventId, data: {
-        title: 'Museum', starts_at: '2026-10-17T15:00:00Z', ends_at: '2026-10-17T18:00:00Z',
-        all_day: 0, person_id: kevinId, rhythm_id: outingId,
-      } }],
-    })
-    expect(res.statusCode).toBe(200)
-    expect(await rhythmIdOf(eventId)).toBe(outingId)
-  })
-
-  it('survives a re-PUT from a client whose schema predates the column', async () => {
-    // The whole failure mode in one assertion: an old kiosk renames the event and the
-    // month quietly goes back to "needs scheduling".
-    const res = await call('POST', '/api/powersync/crud', kevin, {
-      ops: [{ op: 'PUT', table: 'events', id: eventId, data: {
-        title: 'Museum (renamed)', starts_at: '2026-10-17T15:00:00Z', ends_at: '2026-10-17T18:00:00Z',
-        all_day: 0, person_id: kevinId,
-      } }],
-    })
-    expect(res.statusCode).toBe(200)
-    expect(await rhythmIdOf(eventId)).toBe(outingId)
-  })
-
-  it('survives a PATCH that touches other columns', async () => {
-    await call('POST', '/api/powersync/crud', kevin, {
-      ops: [{ op: 'PATCH', table: 'events', id: eventId, data: { title: 'Museum (moved)' } }],
-    })
-    expect(await rhythmIdOf(eventId)).toBe(outingId)
-  })
-
-  it('still lets a client that knows the column unlink deliberately', async () => {
-    // Preserving on PUT would otherwise make the link write-once. An explicit null in a
-    // PATCH is the one unambiguous "I mean it" signal a client can send.
-    await call('POST', '/api/powersync/crud', kevin, {
-      ops: [{ op: 'PATCH', table: 'events', id: eventId, data: { rhythm_id: null } }],
-    })
-    expect(await rhythmIdOf(eventId)).toBeNull()
-  })
 })
 
 // The satisfaction rule is derived, so these paths only matter through their effect on

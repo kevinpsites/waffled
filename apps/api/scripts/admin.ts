@@ -17,11 +17,10 @@
 //   password-login   <on|off>
 //   clear-calendar-error  (--email <e> | --all) [--yes]
 //   prune-sessions   [--email <e>] [--yes]
-//   regenerate-powersync-key
 //   list-households
 //   delete-household --id <uuid> [--force] [--yes]
 import { createInterface } from 'node:readline'
-import { generateKeyPairSync, randomBytes } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { query, getPool, closePool } from '../src/platform/db'
 import { setPersonLogin } from '../src/modules/auth/auth'
 
@@ -259,18 +258,6 @@ async function pruneSessions(): Promise<void> {
   console.log(ok(`✓ Revoked ${rowCount ?? 0} active session(s) for all members.`))
 }
 
-function regeneratePowerSyncKey(): void {
-  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
-  const pem = privateKey.export({ format: 'pem', type: 'pkcs8' }).toString()
-  const b64 = Buffer.from(pem).toString('base64')
-  console.log(c.bold + 'New PowerSync signing key (RSA-2048).' + c.reset)
-  console.log('Set this in infra/compose/.env, then restart api + powersync:\n')
-  console.log(`POWERSYNC_JWT_PRIVATE_KEY=${b64}\n`)
-  console.log(warn('Rotating the key signs all NEW PowerSync tokens with it; existing client'))
-  console.log(warn('tokens stay valid until they expire (~5 min), then refresh against the new key.'))
-  console.log(c.dim + '\nApply with:  ./waffled restart api powersync' + c.reset)
-}
-
 async function listHouseholds(): Promise<void> {
   const { rows } = await query<{ id: string; name: string; created_at: string; members: number; logins: number }>(
     `select h.id, h.name, h.created_at,
@@ -432,7 +419,6 @@ ${c.dim}Run as: ./waffled admin <command> [flags]${c.reset}
                                      clear a stuck Google account's sync-error flag
   ${c.bold}prune-sessions${c.reset} [--email <e>] [--yes]  revoke refresh tokens (one member across all
                                      their households, or everyone)
-  ${c.bold}regenerate-powersync-key${c.reset}            print a fresh POWERSYNC_JWT_PRIVATE_KEY
   ${c.bold}list-households${c.reset}                     households with member + login counts
   ${c.bold}delete-household${c.reset} --id <uuid> [--force] [--yes]
                                      permanently delete a household + ALL its data
@@ -441,7 +427,7 @@ ${c.dim}Destructive commands prompt for confirmation (or pass --yes).
 Break-glass: set AUTH_FORCE_PASSWORD=1 in the api env + restart to force password login.${c.reset}`)
 }
 
-export const _cmds = { listMembers, resetPassword, makeAdmin, setInstallationOwner, passwordLogin, clearCalendarError, pruneSessions, regeneratePowerSyncKey, listHouseholds, deleteHousehold, addMember, listAccounts }
+export const _cmds = { listMembers, resetPassword, makeAdmin, setInstallationOwner, passwordLogin, clearCalendarError, pruneSessions, listHouseholds, deleteHousehold, addMember, listAccounts }
 
 async function main(): Promise<void> {
   const command = args()[0] ?? 'help'
@@ -454,7 +440,6 @@ async function main(): Promise<void> {
     case 'password-login': await passwordLogin(); break
     case 'clear-calendar-error': await clearCalendarError(); break
     case 'prune-sessions': await pruneSessions(); break
-    case 'regenerate-powersync-key': regeneratePowerSyncKey(); break
     case 'list-households': await listHouseholds(); break
     case 'delete-household': await deleteHousehold(); break
     case 'add-member': await addMember(); break

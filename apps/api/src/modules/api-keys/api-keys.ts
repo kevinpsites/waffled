@@ -9,7 +9,7 @@
 //   2. Capability — the in-route requireCapability/requireAdmin still run, so a teen's
 //      key can never exceed the teen's rights even with a broad scope.
 // Only paths mapped in API_SCOPES are reachable by a key at all, so auth, kiosk,
-// permissions, key management and PowerSync always 403 for key-authenticated requests.
+// permissions, key management always 403 for key-authenticated requests.
 // Both halves of that decision are declared here: API_SCOPES is the allow list, and
 // NEVER_KEY_REACHABLE / UNSCOPED_YET name the paths held back on purpose. Absence from
 // both still denies, so the deny list adds no gate — it makes a deliberate exclusion
@@ -80,7 +80,6 @@ export const NEVER_KEY_REACHABLE: NeverReachable[] = [
   { why: 'a key can never mint or manage keys', prefixes: ['/api/api-keys'] },
   { why: 'kiosk and Waffled-Bite pairing run on their own device tokens', prefixes: ['/api/kiosk', '/api/waffled-bites'] },
   { why: 'the capability grid is an admin session surface', prefixes: ['/api/permissions'] },
-  { why: 'offline sync is the first-party clients own transport', prefixes: ['/api/powersync'] },
   { why: 'LLM capture and the blob upload sink are first-party client surfaces', prefixes: ['/api/capture', '/api/media'] },
   { why: 'integrations surface — documented as always 403 for a key', prefixes: ['/api/countdowns', '/api/family-night', '/api/goal-calendar', '/api/calendar'] },
   { why: 'per-viewer UI layout, not household data', prefixes: ['/api/today-layout'] },

@@ -55,8 +55,6 @@ import { registerPhotoRoutes } from './modules/photos/photos'
 import { registerMediaRoutes } from './modules/media/media'
 import { registerCaptureRoutes } from './modules/capture/capture'
 import { registerWeatherRoutes } from './integrations/weather'
-import { registerPowerSyncRoutes } from './modules/powersync/powersync'
-import { registerPowerSyncCrudRoutes } from './modules/powersync/powersync-crud'
 
 const api = createAPI()
 
@@ -74,12 +72,11 @@ api.use((req: Request, _res: Response, next: NextFunction) => {
 // attempts consume quota too. Process-local on purpose: the bundled stack runs one API process.
 api.use(sensitiveRouteRateLimit)
 
-// Routes that skip auth. /api/auth/keys is the JWKS PowerSync fetches; the Google calendar
+// Routes that skip auth. The Google calendar
 // callback arrives as a browser redirect (no Authorization header) and authenticates via its
 // one-time OAuth state instead.
 const PUBLIC_PATHS = new Set([
   '/healthz',
-  '/api/auth/keys',
   '/auth/google/calendar/callback',
   // Microsoft's redirect likewise arrives with no Authorization header; the
   // one-time OAuth state row authenticates it (see calendars.ts).
@@ -273,10 +270,6 @@ registerMediaRoutes(api)
 registerCaptureRoutes(api)
 
 registerWeatherRoutes(api)
-
-registerPowerSyncRoutes(api)
-
-registerPowerSyncCrudRoutes(api)
 
 // Per-user API keys (/api/api-keys…) — mint/list/revoke; the keys themselves auth
 // via the x-api-key header in the gate above.
