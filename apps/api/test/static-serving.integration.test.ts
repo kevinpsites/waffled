@@ -55,6 +55,12 @@ describe('static serving', () => {
     expect(await res.text()).toBe(INDEX)
   })
 
+  it('404s a missing hashed asset instead of serving index.html as JS', async () => {
+    const res = await get('/assets/app.old.js')
+    expect(res.status).toBe(404)
+    expect(await res.text()).not.toBe(INDEX)
+  })
+
   it('serves hashed assets as immutable', async () => {
     const res = await get('/assets/app.abc.js')
     expect(res.status).toBe(200)

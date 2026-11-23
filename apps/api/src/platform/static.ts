@@ -102,6 +102,11 @@ export async function serveStatic(
     await send(req, res, file, cache)
     return true
   }
+  // A stale tab asking for an old hashed bundle must get a 404, not index.html served as JS.
+  if (pathname.startsWith('/assets/')) {
+    notFound(res)
+    return true
+  }
   const index = resolve(opts.webRoot, 'index.html')
   if (!(await isFile(index))) return false
   await send(req, res, index, 'no-cache')
