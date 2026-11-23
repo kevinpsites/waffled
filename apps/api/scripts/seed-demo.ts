@@ -147,7 +147,7 @@ async function seedGoals(ids: Ids) {
 
 export async function seedBase() {
   const exists = await query(`select 1 from households where name = 'The Seinfelds' and deleted_at is null`)
-  if (exists.rowCount) throw new Error('A "The Seinfelds" household already exists — run ./waffled-demo nuke first for a clean seed.')
+  if (exists.rowCount) throw new Error('A "The Seinfelds" household already exists — reset the demo database first for a clean seed.')
 
   // ── Household + Jerry (owner/admin, with a login) ────────────────────────────
   const { household } = await provisionHousehold({

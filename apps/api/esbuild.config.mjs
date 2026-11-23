@@ -10,8 +10,8 @@ await build({
     'mint-token': 'scripts/mint-token.ts', // dev token CLI
     migrate: 'scripts/migrate-cli.ts', // in-container migration runner (compose one-shot)
     otel: 'src/otel.ts', // OTEL preload (NODE_OPTIONS=--require) — see Dockerfile
-    'health-cli': 'scripts/health-cli.ts', // `./waffled doctor` runs this in-container
-    admin: 'scripts/admin.ts', // `./waffled admin <cmd>` operator/break-glass CLI
+    'health-cli': 'scripts/health-cli.ts', // run in-container via docker compose exec
+    admin: 'scripts/admin.ts', // operator/break-glass CLI
     'seed-demo': 'scripts/seed-demo.ts', // `docker compose exec api node dist/seed-demo.js <base|meals|goals>` — demo/screenshot seed
   },
   outdir: 'dist',

@@ -2,7 +2,7 @@
 # One backup run: pg_dump the Waffled database (gzipped, plain SQL so restore is a simple
 # `gunzip | psql`), optionally tar the media dir, optionally upload to S3, prune old
 # local files, and record the outcome in the backup_runs table so `/api/health` and
-# `./waffled doctor` can report "last backup: ok/failed, N hours ago".
+# the health check can report "last backup: ok/failed, N hours ago".
 #
 # Intentionally NOT `set -e`: a failure must be recorded in the DB, not crash the loop.
 set -uo pipefail

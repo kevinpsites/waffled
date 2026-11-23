@@ -1,7 +1,7 @@
 // Built-in auth for self-hosted deployments: first-run setup, password login, and
 // rotating refresh tokens. Issues a short-lived HS256 access token that matches the
 // local issuer/audience — so the existing requireAuth verifier validates it with no
-// changes, and PowerSync still exchanges it for its own RS256 token. OIDC (backend-
+// changes. OIDC (backend-
 // mediated) layers on later as another way to mint the same session.
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from 'node:crypto'
 import jwt from 'jsonwebtoken'
@@ -20,9 +20,8 @@ import { HEX_COLOR } from '../persons/persons'
 
 type Api = ReturnType<typeof createAPI>
 
-// Access token is short-lived (online API calls only — offline clients read their
-// local PowerSync DB and need no token); the long refresh token covers reconnects
-// after a long time offline. Both env-tunable.
+// Access token is short-lived; the long refresh token covers reconnects after a
+// long time offline. Both env-tunable.
 const ACCESS_TTL_SECONDS = Number(process.env.ACCESS_TOKEN_TTL_SECONDS) || 60 * 60 // 1h
 const REFRESH_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS) || 60
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
@@ -44,7 +43,7 @@ export function verifyPassword(pw: string, stored: string): boolean {
 // ── tokens ───────────────────────────────────────────────────────────────────
 // Exported so the OIDC module reaches the *same* session path — a verified OIDC
 // login mints an identical access+refresh pair, keeping everything downstream
-// (requireAuth, the PowerSync exchange) unchanged.
+// (requireAuth) unchanged.
 // `extra` carries optional non-identity claims (e.g. a device token's
 // { kind:'device', household_id }). Default empty → password/OIDC callers are unchanged.
 export function mintAccess(sub: string, extra: Record<string, unknown> = {}): { token: string; expiresIn: number } {

@@ -690,7 +690,7 @@ export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Pr
   // rhythm is new and is the only way to honour the promise the toggle just made.
   //
   // Routed through scheduleRhythm rather than a second createEvent call: the events write
-  // path can blank `rhythm_id` (see the PowerSync sink), and a parallel booking path is
+  // path can blank `rhythm_id`, and a parallel booking path is
   // precisely how the two drift apart.
   if (autoSchedule) {
     try {
@@ -1310,7 +1310,7 @@ export interface ScheduleRhythmInput {
 // Book a period: turn "this should happen" into an actual dated event.
 //
 // This is why rhythms generate real events rather than their own kind of calendar chip.
-// A chip would have to reinvent reminders, notifications, the PowerSync mirror, Google
+// A chip would have to reinvent reminders, notifications, Google
 // push and every surface that already renders events — and on iOS, where local
 // notifications are scheduled off the events mirror and nothing else, a chip could not be
 // reminded about at all.

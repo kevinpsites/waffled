@@ -2,7 +2,7 @@
 // edited by the installation owner in Settings — see the operator routes below). We run the
 // authorization-code + PKCE flow server-side, verify the IdP's ID token, then mint
 // our OWN session via the same mintAccess/issueRefresh password login uses — so
-// every downstream consumer (requireAuth, the PowerSync token exchange) is
+// every downstream consumer (requireAuth) is
 // unchanged. Provisioning is invite-gated: the verified email must already belong
 // to a person on file. Mirrors the Google-calendar OAuth pattern (one-time state
 // row → public callback → code exchange); tokens never ride the redirect URL —

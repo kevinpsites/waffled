@@ -63,7 +63,7 @@ export function UpdateModal() {
 
         <div className="upd-cmd">
           <div className="upd-cmd-l">To update, run this on the server that hosts Waffled:</div>
-          <code>./waffled upgrade</code>
+          <code>docker compose pull && docker compose up -d</code>
         </div>
 
         <div className="upd-actions">

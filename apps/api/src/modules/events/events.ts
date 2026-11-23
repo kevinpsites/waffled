@@ -35,7 +35,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // would come back. Refusing the write is the honest answer.
 //
 // Enforced here rather than only in the UI on purpose: the clients each reach
-// events by a different route (REST, the PowerSync upload sink, quick-add's mutate
+// events by a different route (REST, quick-add's mutate
 // verbs), so the API is the one place that covers every surface at once. The apps
 // gate their own controls on top of this, to avoid offering an action that would
 // only fail — but the API is what makes the rule true.
@@ -58,9 +58,9 @@ export async function readOnlyOrigin(householdId: string, eventId: string): Prom
 // An event that ends before it starts is nonsense on every surface: the agenda
 // renders a negative-length block, the duration maths in the goal recap and the
 // capture bar go backwards, and Google rejects the push. Enforced in the SERVICE
-// functions rather than only in the route handlers, because events have three write
-// paths (REST, the PowerSync upload sink, quick-add's mutate verbs) and a guard at
-// one of them is bypassable from the other two — the same mistake the read-only
+// functions rather than only in the route handlers, because events have several write
+// paths (REST, quick-add's mutate verbs) and a guard at
+// one of them is bypassable from the others — the same mistake the read-only
 // -origin rule above was written to avoid.
 export class InvalidEventTimesError extends Error {
   statusCode = 400

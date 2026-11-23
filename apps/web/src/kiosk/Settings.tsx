@@ -493,7 +493,7 @@ function SystemHealthPanel() {
         )}
       </div>
       <div className="tiny muted" style={{ fontWeight: 600, margin: '-6px 2px 14px' }}>
-        Live status of the self-hosted stack. Same data as <code>./waffled doctor</code> in a terminal.
+        Live status of the self-hosted stack. Same data as <code>docker compose ps</code> plus the server logs.
       </div>
       {upd && <UpdateBanner upd={upd} onToggle={toggleUpd} toggling={togglingUpd} />}
       {error ? (
@@ -533,7 +533,7 @@ function UpdateBanner({ upd, onToggle, toggling }: { upd: UpdateInfo; onToggle: 
                 <a href={upd.latest.url} target="_blank" rel="noreferrer">View release ↗</a>
               </div>
               <div className="tiny muted" style={{ fontWeight: 600, marginTop: 2 }}>
-                On the server, run <code>./waffled upgrade</code> to update.
+                On the server, run <code>docker compose pull && docker compose up -d</code> to update.
               </div>
             </>
           ) : upd.enabled && upd.latest ? (

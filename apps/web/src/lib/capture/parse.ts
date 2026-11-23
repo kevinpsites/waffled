@@ -3,12 +3,6 @@
 // commit to the right domain (event / grocery / task / meal). A Claude-backed
 // upgrade can swap in later behind the same ParsedIntent shape.
 //
-// ⚠️ KEEP IN SYNC — this parser is mirrored on iOS at
-//   apps/ios/Sources/Nook/Sync/CaptureHeuristic.swift
-// (tests: apps/ios/Tests/CaptureHeuristicTests.swift ↔ this file's parse.test.ts).
-// If you change a parsing RULE here, port the same change to the Swift file and
-// update BOTH test suites so they stay byte-for-byte equivalent.
-//
 // Routing priority: a date/time → event; otherwise a grocery signal → grocery;
 // otherwise a task signal → task; bare nouns fall back to grocery (the most
 // common quick capture). `now` is injected so the logic is deterministic in tests.
@@ -675,10 +669,6 @@ function detectReward(text: string): Extract<ParsedIntent, { kind: 'reward' }> |
 // SERVER re-parses to the authoritative verb/targetKind/args, and the row is picked by
 // POST /api/capture/resolve. The marker is deliberately NON-committable (looksConfident
 // → false) so a destructive action is never auto-committed offline (plan §2.4/§6).
-//
-// ⚠️ KEEP IN SYNC — this detector is a tracked FAST-FOLLOW on iOS
-//   (apps/ios/Sources/*/Sync/CaptureHeuristic.swift + its CaptureHeuristicTests). Do NOT
-//   edit iOS in this change; port the same verb/target rules there in the follow-up.
 const MUTATE_PATTERNS: { re: RegExp; verb: MutateVerb; group: number }[] = [
   // complete — "mark/set X (as) done/complete/finished/off", and BOTH check-off orders:
   // "check/cross/tick off X" (leading off) and "check/cross/tick X off" (trailing off).

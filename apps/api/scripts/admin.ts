@@ -1,14 +1,14 @@
 // In-container operator CLI for break-glass / recovery without the web UI.
-// Runs inside waffled-api (where DATABASE_URL + TOKEN_ENCRYPTION_KEY are set), so it
+// Runs inside the waffled container (where DATABASE_URL + TOKEN_ENCRYPTION_KEY are set), so it
 // reaches the DB directly — no HTTP, no admin token. Invoked as
-//   ./waffled admin <command> [flags]   →   docker exec waffled-api node dist/admin.js …
+//   docker compose exec -u node waffled node dist/admin.js <command> [flags]
 //
 // All auth-data writes go through the SAME service helpers the API uses
 // (hashPassword / setPersonLogin), so there is one source of truth for hashing and
 // the password→identity wiring. Destructive commands require an interactive "y"
 // confirmation or the --yes flag.
 //
-// Commands (see `./waffled admin help`):
+// Commands (see `admin.js help`):
 //   list-members
 //   reset-password   --email <e> [--password <pw>] [--yes]
 //   make-admin       (--email <e> | --person <uuid>)
@@ -402,7 +402,7 @@ async function listAccounts(): Promise<void> {
 
 function help(): void {
   console.log(`${c.bold}Waffled admin — operator / break-glass commands${c.reset}
-${c.dim}Run as: ./waffled admin <command> [flags]${c.reset}
+${c.dim}Run as: docker compose exec -u node waffled node dist/admin.js <command> [flags]${c.reset}
 
   ${c.bold}list-members${c.reset}                       people, login email, admin/owner, password/SSO
   ${c.bold}reset-password${c.reset} --email <e> [--password <pw>] [--yes]
