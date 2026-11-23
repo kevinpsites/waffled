@@ -7,9 +7,6 @@
 .env.*
 .claude
 .superpowers
-apps/ios
-apps/mac
-apps/runtime
 docs
 website
 resources
