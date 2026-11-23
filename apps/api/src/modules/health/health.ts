@@ -138,11 +138,11 @@ function checkStorage(): { status: Status } & Record<string, unknown> {
 }
 
 // Last automatic backup — degraded if the most recent run failed, or if the newest
-// successful dump is older than ~2 daily cycles (48h). Off cleanly when BACKUP_ENABLED
-// is false, or before the first run / migration (never a false alarm).
+// successful dump is older than ~2 daily cycles (48h). Off unless BACKUP_ENABLED
+// is true, or before the first run / migration (never a false alarm).
 async function checkBackup(): Promise<{ status: Status } & Record<string, unknown>> {
-  if ((process.env.BACKUP_ENABLED ?? 'true') === 'false') {
-    return { status: 'ok', enabled: false, note: 'Automatic backups are disabled (BACKUP_ENABLED=false).' }
+  if ((process.env.BACKUP_ENABLED ?? 'false') !== 'true') {
+    return { status: 'ok', enabled: false, note: 'Automatic backups are off. Start the backup service (docker compose --profile backup up -d) and set BACKUP_ENABLED=true.' }
   }
   try {
     const { rows } = await query<{
@@ -165,7 +165,7 @@ async function checkBackup(): Promise<{ status: Status } & Record<string, unknow
         status: 'ok',
         enabled: true,
         lastBackupAt: null,
-        note: 'No backup has run yet — the first runs on schedule (BACKUP_TIME). Run one now: `./waffled backup`.',
+        note: 'No backup has run yet — the first runs on schedule (BACKUP_TIME). Run one now: `docker compose exec backup waffled-backup`.',
       }
     }
     const last = rows[0]
@@ -176,7 +176,7 @@ async function checkBackup(): Promise<{ status: Status } & Record<string, unknow
         lastStatus: 'failed',
         lastBackupAt: last.finished_at,
         error: last.error ?? undefined,
-        hint: 'The last backup failed. Check `./waffled logs backup` (disk space, or BACKUP_S3_* credentials/endpoint).',
+        hint: 'The last backup failed. Check `docker compose logs backup` (disk space, or BACKUP_S3_* credentials/endpoint).',
       }
     }
     const ageHours = last.age_hours == null ? null : Math.round(last.age_hours)
@@ -188,7 +188,7 @@ async function checkBackup(): Promise<{ status: Status } & Record<string, unknow
       lastBackupAt: last.finished_at,
       lastFile: last.file_name ?? undefined,
       lastSizeBytes: last.size_bytes != null ? Number(last.size_bytes) : undefined,
-      ...(stale ? { hint: `Last successful backup was ${ageHours}h ago (a daily backup is expected). Check \`./waffled logs backup\`.` } : {}),
+      ...(stale ? { hint: `Last successful backup was ${ageHours}h ago (a daily backup is expected). Check \`docker compose logs backup\`.` } : {}),
     }
   } catch {
     // backup_runs missing (pre-0071) or unreadable — don't false-alarm the operator.

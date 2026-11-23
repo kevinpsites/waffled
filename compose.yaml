@@ -1,0 +1,57 @@
+# Waffled: `docker compose up -d`, then open http://localhost:8080.
+# Every setting is optional. To change one, copy .env.example to .env next to this
+# file and uncomment what you need; .env feeds both this file and the app.
+# Optional nightly backups: docker compose --profile backup up -d (see .env.example).
+name: waffled
+services:
+  waffled:
+    image: ghcr.io/evan-ribbey/waffled:${WAFFLED_VERSION:-latest}
+    build: .
+    ports: ["${HTTP_PORT:-8080}:3000"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-waffled}:${POSTGRES_PASSWORD:-waffled}@postgres:5432/${POSTGRES_DB:-waffled}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - waffled_data:/data
+      - waffled_media:/data/media
+    depends_on: { postgres: { condition: service_healthy } }
+    restart: unless-stopped
+  postgres:
+    image: postgres:16
+    # Kept so 0.16.x upgrades can still read existing logical replication state.
+    command: ["postgres", "-c", "wal_level=logical"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-waffled}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-waffled}
+      POSTGRES_DB: ${POSTGRES_DB:-waffled}
+    # Not published to the host: only reachable on the compose network.
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"], interval: 5s, retries: 10 }
+    restart: unless-stopped
+  backup:
+    profiles: ["backup"]
+    image: ghcr.io/evan-ribbey/waffled-backup:${WAFFLED_VERSION:-latest}
+    build: ./infra/backup
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-waffled}:${POSTGRES_PASSWORD:-waffled}@postgres:5432/${POSTGRES_DB:-waffled}
+      BACKUP_DIR: /backups
+      MEDIA_DIR: /data/media
+      TZ: ${TZ:-UTC}
+      AWS_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${BACKUP_S3_REGION:-us-east-1}
+    volumes:
+      - ${BACKUP_HOST_PATH:-waffled_backups}:/backups
+      - waffled_media:/data/media:ro
+    # waffled healthy means migrations ran, so backup_runs exists.
+    depends_on:
+      postgres: { condition: service_healthy }
+      waffled: { condition: service_healthy }
+    restart: unless-stopped
+volumes: { waffled_data: {}, waffled_media: {}, pgdata: {}, waffled_backups: {} }

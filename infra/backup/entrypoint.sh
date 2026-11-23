@@ -2,8 +2,14 @@
 # Scheduler loop for the Waffled backup sidecar. Runs one backup per day at BACKUP_TIME
 # (container timezone — set TZ to change it). Deliberately dependency-free (no cron
 # binary): a plain sleep-until-next-run loop is easy to reason about and survives
-# restarts. `docker exec waffled-backup waffled-backup` runs one immediately, out of band.
+# restarts. `docker compose exec backup waffled-backup` runs one immediately, out of band.
 set -uo pipefail
+
+# One-off commands, e.g. `docker compose run --rm --no-deps backup restore <file>`.
+case "${1:-}" in
+  restore) shift; exec /usr/local/bin/waffled-restore "$@" ;;
+  backup) exec /usr/local/bin/waffled-backup ;;
+esac
 
 BACKUP_TIME="${BACKUP_TIME:-02:00}"          # daily HH:MM (24h)
 BACKUP_ON_START="${BACKUP_ON_START:-false}"  # also run once right after the container starts
