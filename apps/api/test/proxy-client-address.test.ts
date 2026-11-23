@@ -42,6 +42,15 @@ describe('client address behind a proxy', () => {
   it('takes the rightmost entry of a proxy chain (the one our proxy appended)', async () => {
     expect(await sourceIpSeenByApi(true, '1.2.3.4, 198.51.100.7')).toBe('198.51.100.7')
   })
+
+  it.each(['1.2.3.4, 198.51.100.7:5555', '1.2.3.4, unknown'])(
+    'never falls back to an earlier, client-supplied entry (%j)',
+    async (forwardedFor) => {
+      const seen = await sourceIpSeenByApi(true, forwardedFor)
+      expect(seen).not.toBe('1.2.3.4')
+      expect(seen).toMatch(/127\.0\.0\.1/)
+    },
+  )
 })
 
 describe('TRUST_PROXY parsing', () => {

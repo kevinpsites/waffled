@@ -49,7 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Forwarded headers trusted only with `TRUST_PROXY`.** Waffled used to believe
   `X-Forwarded-For`, `-Proto` and `-Host` from anyone; now it ignores them unless you set
   `TRUST_PROXY=true` behind a proxy you control, so clients cannot spoof their address past the
-  rate limiter. Set `PUBLIC_BASE_URL` to pin the origin used for sign-in redirects.
+  rate limiter. Even then, only the last `X-Forwarded-For` entry (the one your proxy added) is
+  used. Set `PUBLIC_BASE_URL` to pin the origin used for sign-in redirects.
 - **SSO no longer hands sessions to app deep links.** The `waffled://` sign-in callback for the
   removed native apps is gone, along with `OIDC_NATIVE_REDIRECT_URI`. Any app on a phone can claim
   a custom URL scheme, so a sign-in could otherwise be handed to the wrong app; SSO now returns
