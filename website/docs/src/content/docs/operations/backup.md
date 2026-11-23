@@ -99,7 +99,7 @@ and its matching media archive from the offsite destination and confirm they ope
 
 ## Restore
 
-Restore is destructive: it **overwrites the current database** with the dump.
+Restore is destructive: it **drops and replaces the whole database schema** with the dump.
 
 ```bash
 docker compose stop waffled
@@ -109,11 +109,12 @@ docker compose start waffled
 
 A bare filename is looked up in the backup folder. Keep `--no-deps`: without it, Compose
 starts the `waffled` app again as a dependency, and restore **refuses to run while any other
-session is connected to the database**. The restore itself runs the dump through
-`psql --single-transaction` (all-or-nothing).
+session is connected to the database**. The restore resets the schema and loads the dump in
+one `psql --single-transaction` run, so it is all-or-nothing: if any step fails, the database
+is left exactly as it was.
 
-When the app starts again it applies any migrations the dump is missing, so restoring an
-**older** dump automatically catches its schema up to the current version.
+Because the schema is replaced rather than merged, nothing newer than the dump is left behind.
+On the next start the app's migrations bring an **older** dump up to the current version.
 
 ## Monitoring
 
