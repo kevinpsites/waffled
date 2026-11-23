@@ -215,12 +215,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   [Rhythms plan](./rhythms-plan.md); how to use it:
   [docs → Rhythms](https://docs.waffled.app/features/rhythms/). Per-surface status lives in
   the [feature matrix](../../website/docs/src/content/docs/reference/features.md).
-  **Two pieces of UI shape are deliberately still open** — neither is a missing capability,
-  and both are recorded in the plan doc under *Still open*: the **iPad two-pane register**
-  (tracked in [`apps/ios/IPAD_ROADMAP.md`](../../apps/ios/IPAD_ROADMAP.md) § Backlog B), and
-  a **browsable completion history** — today the record and the real average appear when you
-  edit a rhythm, which is where you already go to ask about one, but it is not a record you
-  can page through.
+  **One piece of UI shape is deliberately still open** — not a missing capability, and
+  recorded in the plan doc under *Still open*: a **browsable completion history** — today the
+  record and the real average appear when you edit a rhythm, which is where you already go to
+  ask about one, but it is not a record you can page through.
 
 - **Weekly Planning** — a guided session that walks the family through deciding the week
   ahead in ten steps (loose ends · calendar · horizon scan · family night · connection ·
@@ -287,12 +285,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   audio (see below), OTA updates, TLS certificate validation for `https://` server
   addresses, and on-device photo capture — see `apps/waffled-bite-firmware/README.md` for
   the full list of open items.
-- **Offline scope (Web/Kiosk)** — PowerSync covers the **calendar** domain; other domains
-  are REST + live-refresh bus, plus a **cross-device refresh** for lists (foreground + ~20s
-  poll on the open list) so a family member's edit lands without a manual reload. The
-  replica-trust fallback (see the sync watchdog under **Done**) therefore only applies to
-  the calendar hooks today — every domain added to PowerSync later should adopt the same
-  rule.
+- **Offline scope (Web/Kiosk)** — there is no offline sync layer: every domain is REST plus
+  the same-tab refresh bus, with a **cross-device refresh** (on focus + ~20s poll) for lists
+  and the calendar so a family member's edit lands without a manual reload. Working offline
+  beyond the PWA's cached shell is not supported.
 - **Kiosk PWA** (7.1) — service worker + cached last-known state, to fully survive backend
   blips.
 - **Public ingress** (7.3) — configurable (Caddy auto-TLS / Cloudflare Tunnel), operator's

@@ -21,7 +21,14 @@ From the folder holding `compose.yaml`:
 docker compose pull && docker compose up -d
 ```
 
-1. `pull` fetches the newer `waffled` image (and `waffled-backup`, if you use it).
+If you run the optional backup service, add `--profile backup` to both commands, or it is
+neither updated nor restarted:
+
+```bash
+docker compose --profile backup pull && docker compose --profile backup up -d
+```
+
+1. `pull` fetches the newer `waffled` image (and `waffled-backup`, with the backup profile).
 2. `up -d` recreates the containers on the new image. On start, the app applies any new
    database migrations before it serves traffic. Migrations are **idempotent**: only the ones
    you don't have yet are applied, so it is safe to re-run.

@@ -51,8 +51,8 @@ TRUST_PROXY=true
 With `TRUST_PROXY` off, Waffled uses the connection's own address and the request's own
 protocol and host. With it on, it believes whatever the forwarded headers say, so a client that
 can reach port 8080 **directly** could spoof its address past the rate limiter. If you enable
-it, make sure only your proxy can reach the app (bind the published port to localhost with
-`HTTP_PORT=127.0.0.1:8080`-style mapping in your own compose override, or use a firewall).
+it, make sure only your proxy can reach the app: set `HTTP_PORT=127.0.0.1:8080` in `.env` to
+publish the port on localhost only (no compose override needed), or use a firewall.
 Leave it unset when you expose the port straight to your LAN.
 
 ## Redirect URLs for sign-in and calendars

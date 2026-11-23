@@ -205,8 +205,9 @@ Destructive commands (`reset-password`, `clear-calendar-error`, `prune-sessions`
 non-interactively (e.g. over plain SSH).
 
 > **Hard lockout, no admin at all?** If password login is off and SSO is broken, set
-> `AUTH_FORCE_PASSWORD=1` in the api env and restart — that forces the password form
-> back on regardless of the DB toggle — then `the `reset-password` command` to get in.
+> `AUTH_FORCE_PASSWORD=1` in `.env` (beside `compose.yaml`) and run `docker compose up -d`.
+> That forces the password form back on regardless of the DB toggle; then use
+> `reset-password` (above) to get in.
 
 ## Start here
 
