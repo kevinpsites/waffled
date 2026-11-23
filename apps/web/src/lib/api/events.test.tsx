@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
-import { useEventsRange, useEventsToday, eventsApi, type AgendaEvent } from './events'
+import { useEvent, useEventsRange, useEventsToday, eventsApi, type AgendaEvent } from './events'
 import { emit } from './bus'
 import { localToday } from './client'
 
@@ -14,14 +14,16 @@ function restEvent(id: string, startsAt = '2026-06-24T21:00:00Z'): AgendaEvent {
 let calls: Array<{ url: string; method: string }> = []
 let nextEvents: AgendaEvent[] = []
 let failNext = false
+let status = 200
 
 beforeEach(() => {
   calls = []
   nextEvents = []
   failNext = false
+  status = 200
   globalThis.fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     calls.push({ url: String(url), method: init?.method ?? 'GET' })
-    if (failNext) return { ok: false, status: 500, json: async () => ({}) } as Response
+    if (failNext) return { ok: false, status, json: async () => ({}) } as Response
     return { ok: true, status: 200, json: async () => ({ events: nextEvents, event: nextEvents[0], date: '', from: '', to: '' }) } as Response
   }) as unknown as typeof fetch
 })
@@ -86,5 +88,25 @@ describe('events writes over REST', () => {
       'DELETE /api/events/e1',
     ])
     expect(seen).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('useEvent', () => {
+  it('refetches on the events topic and keeps the event when that refetch 404s', async () => {
+    nextEvents = [restEvent('e1')]
+    const { result } = renderHook(() => useEvent('e1'))
+    await waitFor(() => expect(result.current.event?.title).toBe('rest e1'))
+    nextEvents = [{ ...restEvent('e1'), title: 'edited' }]
+    act(() => emit('events'))
+    await waitFor(() => expect(result.current.event?.title).toBe('edited'))
+
+    failNext = true
+    status = 404
+    act(() => emit('events'))
+    await waitFor(() => expect(gets()).toHaveLength(3))
+    await new Promise((r) => setTimeout(r, 10))
+    expect(result.current.event?.title).toBe('edited')
+    expect(result.current.notFound).toBe(false)
+    expect(result.current.loading).toBe(false)
   })
 })

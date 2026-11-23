@@ -150,22 +150,30 @@ export function useEvent(id: string): { event: AgendaEvent | null; loading: bool
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [nonce, setNonce] = useState(0)
+  // The id whose event is on screen: a refetch of it must not flash a spinner or
+  // surface a 404 (an `events` publish from this very delete lands before navigation).
+  const shownId = useRef<string | null>(null)
 
   useEffect(() => {
     let alive = true
-    setLoading(true)
-    setNotFound(false)
+    const refetching = shownId.current === id
+    if (!refetching) {
+      setLoading(true)
+      setNotFound(false)
+    }
     eventsApi
       .event(id)
       .then((d) => {
         if (!alive) return
+        shownId.current = id
         setEvent(d.event)
+        setNotFound(false)
         setLoading(false)
       })
       .catch((err: unknown) => {
         if (!alive) return
-        // 404 → gone; other errors (offline) keep what is already shown.
-        if (err instanceof Error && /->\s*404/.test(err.message)) setNotFound(true)
+        // 404 → gone, unless we're already showing it; other errors (offline) keep what is shown.
+        if (!refetching && err instanceof Error && /->\s*404/.test(err.message)) setNotFound(true)
         setLoading(false)
       })
     return () => {
@@ -173,7 +181,7 @@ export function useEvent(id: string): { event: AgendaEvent | null; loading: bool
     }
   }, [id, nonce])
 
-  useRefetchOn(['meals'], () => setNonce((n) => n + 1))
+  useRefetchOn(['meals', 'events'], () => setNonce((n) => n + 1))
 
   return { event, loading, notFound, refetch: () => setNonce((n) => n + 1) }
 }
