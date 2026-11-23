@@ -17,7 +17,7 @@ export default defineConfig({
 			customCss: ['./src/styles/docs.css'],
 			// Custom hero for the homepage action row.
 			components: { Hero: './src/components/Hero.astro' },
-			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/evan-ribbey/waffled-ng' }],
+			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/evan-ribbey/waffled-remix' }],
 			sidebar: [
 				{
 					label: 'Overview',

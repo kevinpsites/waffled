@@ -4,7 +4,7 @@ description: Every environment variable Waffled reads, what it does, and its def
 ---
 
 Every setting is optional: `docker compose up -d` works with no `.env` at all. To change one,
-copy [`.env.example`](https://github.com/evan-ribbey/waffled-ng/blob/main/.env.example) to
+copy [`.env.example`](https://github.com/evan-ribbey/waffled-remix/blob/main/.env.example) to
 **`.env` in the same folder as `compose.yaml`**, uncomment the line, and run
 `docker compose up -d` again. Settings must live in that file: variables exported in your shell
 do not reach the containers (this needs Docker Compose v2.24+). Defaults below come from the
@@ -140,7 +140,7 @@ service with `docker compose --profile backup up -d` and set `BACKUP_ENABLED=tru
 | Variable | Purpose | Default |
 |---|---|---|
 | `UPDATE_CHECK_ENABLED` | In-app "update available" check (`false` = no outbound call) | `true` |
-| `UPDATE_CHECK_REPO` | GitHub repo to check | `evan-ribbey/waffled-ng` |
+| `UPDATE_CHECK_REPO` | GitHub repo to check | `evan-ribbey/waffled-remix` |
 
 ## Observability (optional, off by default)
 

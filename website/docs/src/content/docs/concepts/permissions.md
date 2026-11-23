@@ -89,4 +89,4 @@ as a maybe so the rationale isn't lost, not as a commitment.
 ---
 
 See the [feature matrix](/reference/features/) for per-surface support and the
-[engineering plan](https://github.com/evan-ribbey/waffled-ng/blob/main/docs/engineering-plan.md) for the engineering history.
+[engineering plan](https://github.com/evan-ribbey/waffled-remix/blob/main/docs/engineering-plan.md) for the engineering history.

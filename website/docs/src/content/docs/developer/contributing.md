@@ -8,7 +8,7 @@ checks, and open a good PR. When in doubt, match the surrounding code.
 
 Waffled is licensed under the **GNU AGPL-3.0**, and by contributing you agree
 that your contributions will be licensed under the same
-[AGPL-3.0 license](https://github.com/evan-ribbey/waffled-ng/blob/main/LICENSE).
+[AGPL-3.0 license](https://github.com/evan-ribbey/waffled-remix/blob/main/LICENSE).
 
 ## Local setup
 

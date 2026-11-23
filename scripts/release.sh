@@ -3,7 +3,7 @@
 # Bumps apps/api + apps/web versions, dates the CHANGELOG, commits and tags. Never pushes.
 set -euo pipefail
 
-REPO_URL="https://github.com/evan-ribbey/waffled-ng"
+REPO_URL="https://github.com/evan-ribbey/waffled-remix"
 VERSION="${1:-}"
 if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "usage: scripts/release.sh X.Y.Z" >&2

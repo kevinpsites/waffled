@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **New home: `evan-ribbey/waffled-remix`.** The project moved to
+  github.com/evan-ribbey/waffled-remix. Install links, release downloads and the in-app update
+  check all point there now.
 - **Two-container install.** Waffled now runs as one `waffled` app container plus Postgres:
   download `compose.yaml`, run `docker compose up -d`, and open port 8080. The app serves the
   web app and uploaded media itself and creates its own secrets on first start, so there is no
@@ -3121,7 +3124,7 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/evan-ribbey/waffled-ng/compare/v0.15.3...HEAD
+[Unreleased]: https://github.com/evan-ribbey/waffled-remix/compare/v0.15.3...HEAD
 [0.15.3]: https://github.com/kevinpsites/waffled/compare/v0.15.2...v0.15.3
 [0.15.2]: https://github.com/kevinpsites/waffled/compare/v0.15.1...v0.15.2
 [0.15.1]: https://github.com/kevinpsites/waffled/compare/v0.15.0...v0.15.1

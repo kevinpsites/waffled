@@ -17,7 +17,7 @@
 - Host port `${HTTP_PORT:-8080}` → container `3000`.
 - Secrets file `/data/secrets.json` holds `LOCAL_JWT_SECRET` (base64 of 48 random bytes) and `TOKEN_ENCRYPTION_KEY` (base64 of 32 random bytes). Env values always win; never rotated.
 - `TRUST_PROXY` default off. `PUBLIC_BASE_URL` (existing) overrides the OAuth origin.
-- `BACKUP_ENABLED` default `false`. `UPDATE_CHECK_REPO` default `evan-ribbey/waffled-ng`. Release version 0.16.0 (cut later by `scripts/release.sh`, not in this branch).
+- `BACKUP_ENABLED` default `false`. `UPDATE_CHECK_REPO` default `evan-ribbey/waffled-remix`. Release version 0.16.0 (cut later by `scripts/release.sh`, not in this branch).
 - Next migration number: `0107`. Never edit applied migrations.
 - Repo rules: TDD (failing test first), integration tests preferred, comments ≤6 lines and no history narration, no backticks in SQL comments inside JS template literals, one commit per task, CHANGELOG `[Unreleased]` entry, docs in the same PR.
 
@@ -156,12 +156,12 @@
 
 **Files:**
 - Create: `scripts/release.sh`
-- Modify: `apps/api/src/modules/updates/updates.ts:30` (default `'evan-ribbey/waffled-ng'` when env unset), any hard-coded `kevinpsites/waffled` outside CHANGELOG history (grep)
+- Modify: `apps/api/src/modules/updates/updates.ts:30` (default `'evan-ribbey/waffled-remix'` when env unset), any hard-coded `kevinpsites/waffled` outside CHANGELOG history (grep)
 - Test: `apps/api/test/updates.integration.test.ts` (default repo used when env unset)
 
 **Interfaces:** `scripts/release.sh X.Y.Z`: requires clean tree on `main` and ≥1 entry under `## [Unreleased]`; sets `version` in `apps/api/package.json`, `apps/web/package.json` (+ their lockfiles via `npm version --no-git-tag-version`); rewrites `## [Unreleased]` → `## [Unreleased]\n\n## [X.Y.Z] - YYYY-MM-DD` and adds the compare link; commits `release: vX.Y.Z`; tags `vX.Y.Z`; prints the push command (does not push).
 
-- [ ] **Step 1:** Failing test: with `UPDATE_CHECK_REPO` unset, the update check requests `https://api.github.com/repos/evan-ribbey/waffled-ng/releases/latest` (stub server via the file's existing override). Run → FAIL; implement → PASS.
+- [ ] **Step 1:** Failing test: with `UPDATE_CHECK_REPO` unset, the update check requests `https://api.github.com/repos/evan-ribbey/waffled-remix/releases/latest` (stub server via the file's existing override). Run → FAIL; implement → PASS.
 - [ ] **Step 2:** Write `release.sh`; dry-run in a throwaway clone: `git clone . /tmp/rel && cd /tmp/rel && scripts/release.sh 9.9.9` → versions bumped, changelog dated, tag exists.
 - [ ] **Step 3:** Commit `chore: point update check at the fork and add release script`.
 

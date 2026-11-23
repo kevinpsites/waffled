@@ -20,7 +20,7 @@ running. Then open **Terminal** on macOS/Linux, or **Git Bash/WSL** on Windows.
 
 ```bash
 mkdir waffled && cd waffled
-curl -fsSLO https://raw.githubusercontent.com/evan-ribbey/waffled-ng/main/compose.yaml
+curl -fsSLO https://raw.githubusercontent.com/evan-ribbey/waffled-remix/main/compose.yaml
 docker compose up -d
 ```
 

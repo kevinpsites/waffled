@@ -14,7 +14,7 @@ hardware and drives two surfaces: an always-on kitchen **kiosk** and a full **we
 installs to a phone as a PWA). See the [overview](/getting-started/overview/).
 
 ### Is it really free? What's the catch?
-Yes — free and open source ([AGPL-3.0](https://github.com/evan-ribbey/waffled-ng/blob/main/LICENSE)).
+Yes — free and open source ([AGPL-3.0](https://github.com/evan-ribbey/waffled-remix/blob/main/LICENSE)).
 The "catch" is that **you host it**: you provide an always-on machine and own your backups.
 There's no subscription and no hosted version to sign up for. See the
 [comparison](/overview/comparison/).

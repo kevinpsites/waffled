@@ -13,7 +13,7 @@ You need Docker with **Compose v2.24 or newer**.
 
 ```bash
 mkdir waffled && cd waffled
-curl -fsSLO https://raw.githubusercontent.com/evan-ribbey/waffled-ng/main/compose.yaml
+curl -fsSLO https://raw.githubusercontent.com/evan-ribbey/waffled-remix/main/compose.yaml
 docker compose up -d
 ```
 
@@ -42,7 +42,7 @@ always wins, and is saved there too so removing it later keeps the same key.
 
 ## Changing settings
 
-Every setting is optional. Copy [`.env.example`](https://github.com/evan-ribbey/waffled-ng/blob/main/.env.example)
+Every setting is optional. Copy [`.env.example`](https://github.com/evan-ribbey/waffled-remix/blob/main/.env.example)
 to `.env` **in the same folder as `compose.yaml`**, uncomment what you need, then run
 `docker compose up -d` again. Settings must live in that file: variables exported in your
 shell do not reach the containers. Full list: [Environment variables](/install/environment-variables/).

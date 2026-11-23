@@ -27,7 +27,7 @@ Download the new `compose.yaml` into an empty folder (or replace the old checkou
 
 ```bash
 mkdir waffled && cd waffled
-curl -fsSLO https://raw.githubusercontent.com/evan-ribbey/waffled-ng/main/compose.yaml
+curl -fsSLO https://raw.githubusercontent.com/evan-ribbey/waffled-remix/main/compose.yaml
 ```
 
 Then copy these values from your old `infra/compose/.env` into a new `.env` **beside**

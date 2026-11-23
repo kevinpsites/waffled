@@ -43,7 +43,7 @@ Waffled checks GitHub for new releases and shows **"Update available — vX.Y.Z"
 | Env var | Default | Meaning |
 |---|---|---|
 | `UPDATE_CHECK_ENABLED` | on | Enable the release check |
-| `UPDATE_CHECK_REPO` | `evan-ribbey/waffled-ng` | Which repo to check |
+| `UPDATE_CHECK_REPO` | `evan-ribbey/waffled-remix` | Which repo to check |
 
 When one is offered, act on it with `docker compose pull && docker compose up -d` — see
 [Upgrading](/operations/upgrading/).

@@ -42,7 +42,7 @@ replication slots.
 
 ## Table conventions
 
-Every tenant-scoped table shares a common spine (see the [full schema reference](https://github.com/evan-ribbey/waffled-ng/blob/main/docs/DATA_MODEL.md)):
+Every tenant-scoped table shares a common spine (see the [full schema reference](https://github.com/evan-ribbey/waffled-remix/blob/main/docs/DATA_MODEL.md)):
 
 | Column | Purpose |
 |---|---|

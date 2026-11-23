@@ -1,7 +1,7 @@
 // Shared outbound links for the landing page. Docs live on their own subdomain
 // (deployed from ../docs); GitHub is the canonical repo.
 export const DOCS = 'https://docs.waffled.app';
-export const GITHUB = 'https://github.com/evan-ribbey/waffled-ng';
+export const GITHUB = 'https://github.com/evan-ribbey/waffled-remix';
 
 export const LINKS = {
 	docs: DOCS,

@@ -7,7 +7,7 @@ Every Waffled feature and whether it's supported on each surface.
 
 - **Web / Kiosk** — the React app (same build powers the desktop browser, the phone PWA
   and the kitchen tablet kiosk).
-- **Status** — where the feature sits on the [roadmap](https://github.com/evan-ribbey/waffled-ng/blob/main/docs/product/roadmap.md).
+- **Status** — where the feature sits on the [roadmap](https://github.com/evan-ribbey/waffled-remix/blob/main/docs/product/roadmap.md).
 
 Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 
@@ -368,4 +368,4 @@ web app shows only the enabled modules.
 
 ---
 
-See [roadmap status](https://github.com/evan-ribbey/waffled-ng/blob/main/docs/product/roadmap.md) for the cross-surface planned/partial items in context.
+See [roadmap status](https://github.com/evan-ribbey/waffled-remix/blob/main/docs/product/roadmap.md) for the cross-surface planned/partial items in context.

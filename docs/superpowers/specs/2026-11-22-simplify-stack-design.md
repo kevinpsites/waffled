@@ -173,7 +173,7 @@ iOS app, native install and Oracle Terraform are removed or rewritten.
   that refuses to run while the `waffled` container is up. No automatic backup before
   upgrades (user decision). `BACKUP_ENABLED` defaults to `false`, so System Health only
   warns about backups when the profile is on.
-- Update check: `UPDATE_CHECK_REPO` defaults to `evan-ribbey/waffled-ng`. This change ships
+- Update check: `UPDATE_CHECK_REPO` defaults to `evan-ribbey/waffled-remix`. This change ships
   as **0.16.0** (user decision).
 - The `observability` (Grafana LGTM) profile is dropped; OTel env vars still work for anyone
   pointing at their own collector (my call).

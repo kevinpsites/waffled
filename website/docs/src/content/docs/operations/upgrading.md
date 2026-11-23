@@ -41,11 +41,11 @@ sessions. See [Upgrade stuck on migrate](/operations/troubleshooting/#upgrade-st
 first (see [Before you upgrade](#before-you-upgrade)).
 
 If a newer `compose.yaml` shipped with the release (it is in the repo), download it again
-before pulling, and check [`CHANGELOG.md`](https://github.com/evan-ribbey/waffled-ng/blob/main/CHANGELOG.md)
+before pulling, and check [`CHANGELOG.md`](https://github.com/evan-ribbey/waffled-remix/blob/main/CHANGELOG.md)
 for new settings:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/evan-ribbey/waffled-ng/main/compose.yaml
+curl -fsSLO https://raw.githubusercontent.com/evan-ribbey/waffled-remix/main/compose.yaml
 ```
 
 ### You'll be told when there's an update
@@ -53,7 +53,7 @@ curl -fsSLO https://raw.githubusercontent.com/evan-ribbey/waffled-ng/main/compos
 Waffled checks GitHub for new releases and shows **Settings → System Health → "Update
 available — vX.Y.Z"** when you're behind (on by default; toggle per household there, or
 disable outbound checks entirely with `UPDATE_CHECK_ENABLED=false`). It checks
-`UPDATE_CHECK_REPO`, which defaults to `evan-ribbey/waffled-ng`.
+`UPDATE_CHECK_REPO`, which defaults to `evan-ribbey/waffled-remix`.
 
 ## Before you upgrade
 

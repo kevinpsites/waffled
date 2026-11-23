@@ -88,7 +88,7 @@ describe('GET/PUT /api/updates', () => {
     expect(b.updateAvailable).toBe(false)
     expect(b.error).toBe('GitHub 404')
     expect(fetchStub).toHaveBeenCalledWith(
-      'https://api.github.com/repos/evan-ribbey/waffled-ng/releases/latest',
+      'https://api.github.com/repos/evan-ribbey/waffled-remix/releases/latest',
       expect.anything()
     )
   })

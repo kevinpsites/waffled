@@ -54,4 +54,4 @@ matrix). There is no separate native client: the Mac and iOS apps were removed i
 - Ready to install? → [Quick start](/getting-started/quick-start/)
 - Want the full capability list? → [Feature matrix](/reference/features/)
 - Curious how it grows? → [Extensibility & modules](/concepts/extensibility/)
-- Tracking progress? → the [roadmap status](https://github.com/evan-ribbey/waffled-ng/blob/main/docs/product/roadmap.md)
+- Tracking progress? → the [roadmap status](https://github.com/evan-ribbey/waffled-remix/blob/main/docs/product/roadmap.md)

@@ -7,7 +7,7 @@
 <p align="center">
   <strong><a href="https://docs.waffled.app">📖 Documentation</a></strong>
   &nbsp;·&nbsp; <a href="#self-hosting-quickstart">Quickstart</a>
-  &nbsp;·&nbsp; <a href="https://github.com/evan-ribbey/waffled-ng/releases">Releases</a>
+  &nbsp;·&nbsp; <a href="https://github.com/evan-ribbey/waffled-remix/releases">Releases</a>
 </p>
 
 <p align="center">
@@ -47,7 +47,7 @@ Compose plugin). Then:
 
 ```bash
 mkdir waffled && cd waffled
-curl -fsSLO https://raw.githubusercontent.com/evan-ribbey/waffled-ng/main/compose.yaml
+curl -fsSLO https://raw.githubusercontent.com/evan-ribbey/waffled-remix/main/compose.yaml
 docker compose up -d
 ```
 

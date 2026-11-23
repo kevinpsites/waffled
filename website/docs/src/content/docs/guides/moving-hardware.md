@@ -40,7 +40,7 @@ Install Docker with Compose v2.24+, then:
 
 ```bash
 mkdir waffled && cd waffled
-curl -fsSLO https://raw.githubusercontent.com/evan-ribbey/waffled-ng/main/compose.yaml
+curl -fsSLO https://raw.githubusercontent.com/evan-ribbey/waffled-remix/main/compose.yaml
 ```
 
 Put your saved `.env` beside it (if you had one), and add the two keys from `secrets.json`:
