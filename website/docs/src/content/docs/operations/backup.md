@@ -109,9 +109,10 @@ docker compose start waffled
 
 A bare filename is looked up in the backup folder. Keep `--no-deps`: without it, Compose
 starts the `waffled` app again as a dependency, and restore **refuses to run while any other
-session is connected to the database**. The restore resets the schema and loads the dump in
-one `psql --single-transaction` run, so it is all-or-nothing: if any step fails, the database
-is left exactly as it was.
+session is connected to the database**. The restore first reads the whole backup file, and
+stops without touching the database if the file is corrupt, truncated or empty. It then resets
+the schema and loads the dump in one `psql --single-transaction` run, so it is all-or-nothing:
+if any step fails, the database is left exactly as it was.
 
 Because the schema is replaced rather than merged, nothing newer than the dump is left behind.
 On the next start the app's migrations bring an **older** dump up to the current version.

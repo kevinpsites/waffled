@@ -34,21 +34,20 @@ if [ "$OTHERS" != "0" ]; then
   die "${OTHERS} other session(s) are connected to the database. Stop the app first: docker compose stop waffled"
 fi
 
-# Emit the dump as plain SQL so both formats share one path.
-dump_sql() {
-  case "$FILE" in
-    *.sql.gz) gunzip -c "$FILE" ;;
-    *.dump) pg_restore --no-owner --no-privileges -f - "$FILE" ;;
-  esac
-}
+# Render the dump to plain SQL before touching the database: piping it straight into psql
+# would let a corrupt or truncated archive reach EOF and COMMIT a dropped schema.
+SQL="$(mktemp)"
+trap 'rm -f "$SQL"' EXIT
+case "$FILE" in
+  *.sql.gz) gunzip -c "$FILE" > "$SQL" || die "could not read $FILE; the database was not changed" ;;
+  *.dump) pg_restore --no-owner --no-privileges -f "$SQL" "$FILE" || die "could not read $FILE; the database was not changed" ;;
+esac
+[ -s "$SQL" ] || die "$FILE contains no SQL; the database was not changed"
 
 # Reset the whole schema first, in the same transaction as the load: tables newer than the
 # dump would otherwise survive with stale migration records. Extensions (pgcrypto) come back
 # from the dump; the app's migrations bring an older dump up to date on next start.
 log "restoring $FILE"
-{
-  echo 'DROP SCHEMA public CASCADE;'
-  echo 'CREATE SCHEMA public;'
-  dump_sql
-} | psql "$DATABASE_URL" -qX -v ON_ERROR_STOP=1 --single-transaction >/dev/null
+psql "$DATABASE_URL" -qX -v ON_ERROR_STOP=1 --single-transaction \
+  -c 'DROP SCHEMA public CASCADE;' -c 'CREATE SCHEMA public;' -f "$SQL" >/dev/null
 log "done. Start the app again: docker compose start waffled"
