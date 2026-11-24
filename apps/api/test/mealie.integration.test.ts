@@ -157,6 +157,13 @@ describe('mealie connection', () => {
     expect(JSON.parse(res.body).message).toBe('Mealie 2.0 or newer is required')
   })
 
+  it('rejects a v-prefixed pre-2.0 version', async () => {
+    fake.state.version = 'v1.12.0'
+    const res = await connect()
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).message).toBe('Mealie 2.0 or newer is required')
+  })
+
   it('accepts a nightly version string', async () => {
     fake.state.version = 'nightly'
     expect((await connect()).statusCode).toBe(200)

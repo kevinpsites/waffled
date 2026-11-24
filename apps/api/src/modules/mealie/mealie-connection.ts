@@ -86,7 +86,7 @@ export async function saveConnection(householdId: string, personId: string, inpu
 
   const about = await mealieFetch<{ version?: string }>({ baseUrl }, '/api/app/about')
   const version = about.version ?? null
-  const major = parseInt(version ?? '', 10)
+  const major = parseInt((version ?? '').replace(/^v/i, ''), 10)
   if (Number.isFinite(major) && major < 2) throw badRequest('Mealie 2.0 or newer is required')
 
   try {
