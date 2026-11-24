@@ -32,8 +32,8 @@ describe('reconcileLayout', () => {
   it('merges overflow columns (past the 3rd) into the last column', () => {
     const out = reconcileLayout([['agenda'], ['tonight'], ['week'], ['chores'], ['grocery']])
     // cols past the 3rd merge in; unplaced cards (countdowns, lists, pantry, familyNight,
-    // goals, rhythms — in TODAY_CARDS order) are appended to the last column.
-    expect(out.cols[2]).toEqual(['week', 'chores', 'grocery', 'countdowns', 'lists', 'pantry', 'familyNight', 'goals', 'rhythms'])
+    // goals, rhythms, trackers — in TODAY_CARDS order) are appended to the last column.
+    expect(out.cols[2]).toEqual(['week', 'chores', 'grocery', 'countdowns', 'lists', 'pantry', 'familyNight', 'goals', 'rhythms', 'trackers'])
   })
 
   // --- Hidden cards -------------------------------------------------------
@@ -99,5 +99,19 @@ describe('the rhythms card', () => {
     // entirely, while mobile keeps every card in `order` and flags it in `hidden`.
     expect(reconcileLayout({ cols: [[], [], []], hidden: ['rhythms'] }).cols.flat()).not.toContain('rhythms')
     expect(reconcileMobileLayout({ order: [], hidden: ['rhythms'] }).hidden).toContain('rhythms')
+  })
+})
+
+describe('the trackers card', () => {
+  it('is a canonical card on the kiosk grid', () => {
+    expect(TODAY_CARDS).toContain('trackers')
+  })
+
+  it('survives the reconciler instead of being dropped as an unknown key', () => {
+    expect(reconcileLayout([['trackers', 'agenda'], [], []]).cols[0]).toEqual(['trackers', 'agenda'])
+  })
+
+  it('stays hidden once hidden', () => {
+    expect(reconcileLayout({ cols: [[], [], []], hidden: ['trackers'] }).cols.flat()).not.toContain('trackers')
   })
 })
