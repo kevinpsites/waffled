@@ -110,8 +110,9 @@ export function Calendar() {
   // leaves the chips out.
   const { connected: mealieOn } = useMealie()
   const { data: plan } = useMealieQuery(
-    () => (mealieOn ? mealieApi.mealplan(from, to).catch(() => null) : Promise.resolve(null)),
-    [mealieOn, from, to]
+    () => mealieApi.mealplan(from, to).catch(() => null),
+    [from, to],
+    mealieOn
   )
   const events = useMemo(
     () => (mealieOn ? [...hideMealMirrors(rawEvents), ...mealieEntriesToEvents(plan?.entries ?? [], tz)] : rawEvents),

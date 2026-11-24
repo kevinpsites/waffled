@@ -99,18 +99,21 @@ export const mealieApi = {
 }
 
 // Shared by every Mealie-backed view: refetches on the bus and on a poll.
-export function useMealieQuery<T>(load: () => Promise<T>, deps: unknown[]): { data: T | null; error: unknown; retry: () => void } {
+// With enabled=false it neither loads nor reacts to the bus or the poll.
+export function useMealieQuery<T>(load: () => Promise<T>, deps: unknown[], enabled = true): { data: T | null; error: unknown; retry: () => void } {
   const [data, setData] = useState<T | null>(null)
   const [error, setError] = useState<unknown>(null)
   const [nonce, setNonce] = useState(0)
   const retry = useCallback(() => setNonce((n) => n + 1), [])
-  useRefetchOn(['mealie'], retry)
-  useLiveRefresh(retry)
+  const refetch = useCallback(() => { if (enabled) retry() }, [enabled, retry])
+  useRefetchOn(['mealie'], refetch)
+  useLiveRefresh(refetch)
   useEffect(() => {
+    if (!enabled) return
     let alive = true
     load().then((d) => { if (alive) { setData(d); setError(null) } }).catch((e) => { if (alive) setError(e) })
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nonce, ...deps])
+  }, [nonce, enabled, ...deps])
   return { data, error, retry }
 }

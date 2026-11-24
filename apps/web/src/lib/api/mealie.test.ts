@@ -3,7 +3,9 @@ import { ApiSendError } from './client'
 vi.mock('./client', async (orig) => ({ ...(await orig<typeof import('./client')>()), apiSend: vi.fn() }))
 
 import { apiSend } from './client'
-import { mealieApi, mealieErrorCode } from './mealie'
+import { act, renderHook, waitFor } from '@testing-library/react'
+import { emit } from './bus'
+import { mealieApi, mealieErrorCode, useMealieQuery } from './mealie'
 
 describe('mealieErrorCode', () => {
   it('reads ApiSendError.body.error', () => {
@@ -47,5 +49,20 @@ describe('mealieApi', () => {
     await mealieApi.disconnect()
     window.removeEventListener('waffled:mealie', seen)
     expect(seen).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('useMealieQuery enabled', () => {
+  it('does not load or react to the bus when disabled', async () => {
+    const load = vi.fn().mockResolvedValue(1)
+    const { result } = renderHook(() => useMealieQuery(load, [], false))
+    await act(async () => { emit('mealie') })
+    expect(load).not.toHaveBeenCalled()
+    expect(result.current.data).toBeNull()
+  })
+  it('loads when enabled', async () => {
+    const load = vi.fn().mockResolvedValue(1)
+    const { result } = renderHook(() => useMealieQuery(load, []))
+    await waitFor(() => expect(result.current.data).toBe(1))
   })
 })
