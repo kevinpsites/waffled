@@ -16,6 +16,7 @@ export function TrackersPanel() {
   const canManage = !!person && (person.isAdmin || person.memberType === 'adult')
   const [all, setAll] = useState<Tracker[] | null>(null)
   const [error, setError] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [nonce, setNonce] = useState(0)
   const [showArchived, setShowArchived] = useState(false)
   const [modal, setModal] = useState<{ tracker?: Tracker } | null>(null)
@@ -31,6 +32,15 @@ export function TrackersPanel() {
     return () => { alive = false }
   }, [nonce])
 
+  async function setArchived(t: Tracker, archived: boolean) {
+    try {
+      await trackersApi.update(t.id, { archived })
+      setActionError(null)
+    } catch {
+      setActionError(`Couldn't ${archived ? 'archive' : 'unarchive'} ${t.title} — try again.`)
+    }
+  }
+
   const active = (all ?? []).filter((t) => !t.archivedAt)
   const archived = (all ?? []).filter((t) => t.archivedAt)
   const viewing = all?.find((t) => t.id === historyId)
@@ -45,8 +55,8 @@ export function TrackersPanel() {
       </div>
       <button type="button" className="pill" onClick={() => setHistoryId(t.id)}>History</button>
       {canManage && !isArchived && <button type="button" className="pill" onClick={() => setModal({ tracker: t })}>Edit</button>}
-      {canManage && !isArchived && <button type="button" className="pill" onClick={() => void trackersApi.update(t.id, { archived: true })}>Archive</button>}
-      {canManage && isArchived && <button type="button" className="pill" onClick={() => void trackersApi.update(t.id, { archived: false })}>Unarchive</button>}
+      {canManage && !isArchived && <button type="button" className="pill" onClick={() => setArchived(t, true)}>Archive</button>}
+      {canManage && isArchived && <button type="button" className="pill" onClick={() => setArchived(t, false)}>Unarchive</button>}
     </div>
   )
 
@@ -55,6 +65,7 @@ export function TrackersPanel() {
       {canManage && (
         <button type="button" className="btn btn-primary" style={{ marginBottom: 12 }} onClick={() => setModal({})}>Add tracker</button>
       )}
+      {actionError && <div role="alert" className="tiny" style={{ color: 'var(--primary)', fontWeight: 700, marginBottom: 8 }}>{actionError}</div>}
       {error && <div className="muted">Couldn't load trackers — try reloading.</div>}
       {all === null && !error && <div className="muted">Loading…</div>}
       {all && active.length === 0 && <div className="muted">No trackers yet.</div>}

@@ -46,4 +46,10 @@ describe('zoned datetime-local conversion', () => {
   it('returns null for an empty or invalid input', () => {
     expect(zonedInputToIso('', 'America/Chicago')).toBeNull()
   })
+
+  it('resolves wall times after the spring-forward jump (CDT) and after fall-back (CST)', () => {
+    expect(zonedInputToIso('2026-03-08T03:30', 'America/Chicago')).toBe('2026-03-08T08:30:00.000Z')
+    expect(zonedInputToIso('2026-03-08T01:30', 'America/Chicago')).toBe('2026-03-08T07:30:00.000Z')
+    expect(zonedInputToIso('2026-11-01T03:00', 'America/Chicago')).toBe('2026-11-01T09:00:00.000Z')
+  })
 })

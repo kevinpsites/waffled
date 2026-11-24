@@ -113,4 +113,44 @@ describe('TrackersPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(h.api.updateEntry).toHaveBeenCalledWith('e1', { occurredAt: '2026-11-23T21:45:00.000Z' }))
   })
+
+  it('delete failure keeps the row and shows an error', async () => {
+    h.api.deleteEntry.mockRejectedValue(new Error('500'))
+    render(<TrackersPanel />)
+    fireEvent.click(await screen.findByText('History'))
+    await screen.findByText('Someone')
+    fireEvent.click(screen.getAllByLabelText('Delete entry')[0])
+    fireEvent.click(within(document.querySelector('.modal-card') as HTMLElement).getByRole('button', { name: 'Delete' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't delete/i)
+    expect(screen.getByText('Someone')).toBeInTheDocument()
+  })
+
+  it('edit failure keeps the modal open with an error', async () => {
+    h.api.updateEntry.mockRejectedValue(new Error('500'))
+    render(<TrackersPanel />)
+    fireEvent.click(await screen.findByText('History'))
+    await screen.findByText('Someone')
+    fireEvent.click(screen.getAllByLabelText('Edit entry time')[0])
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't save/i)
+    expect(screen.getByLabelText('When')).toBeInTheDocument()
+  })
+
+  it('an invalid edit value shows a message and does not call the API', async () => {
+    render(<TrackersPanel />)
+    fireEvent.click(await screen.findByText('History'))
+    await screen.findByText('Someone')
+    fireEvent.click(screen.getAllByLabelText('Edit entry time')[0])
+    fireEvent.change(screen.getByLabelText('When'), { target: { value: '' } })
+    fireEvent.submit(screen.getByLabelText('When').closest('form') as HTMLFormElement)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/valid date/i)
+    expect(h.api.updateEntry).not.toHaveBeenCalled()
+  })
+
+  it('archive failure shows an error instead of an unhandled rejection', async () => {
+    h.api.update.mockRejectedValue(new Error('403'))
+    render(<TrackersPanel />)
+    fireEvent.click(await screen.findByText('Archive'))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't archive/i)
+  })
 })

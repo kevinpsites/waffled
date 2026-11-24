@@ -11,6 +11,8 @@ export function TrackerHistory({ tracker, tz, onBack }: { tracker: Tracker; tz: 
   const [entries, setEntries] = useState<TrackerEntry[] | null>(null)
   const [next, setNext] = useState<string | null>(null)
   const [error, setError] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [editError, setEditError] = useState<string | null>(null)
   const [nonce, setNonce] = useState(0)
   const [editing, setEditing] = useState<{ entry: TrackerEntry; value: string } | null>(null)
   const [deleting, setDeleting] = useState<TrackerEntry | null>(null)
@@ -37,9 +39,23 @@ export function TrackerHistory({ tracker, tz, onBack }: { tracker: Tracker; tz: 
   async function saveEdit() {
     if (!editing) return
     const iso = zonedInputToIso(editing.value, tz)
-    if (!iso) return
-    await trackersApi.updateEntry(editing.entry.id, { occurredAt: iso }).catch(() => {})
-    setEditing(null)
+    if (!iso) { setEditError('Enter a valid date and time.'); return }
+    try {
+      await trackersApi.updateEntry(editing.entry.id, { occurredAt: iso })
+      setEditing(null)
+    } catch {
+      setEditError("Couldn't save that — try again.")
+    }
+  }
+
+  async function confirmDelete(entry: TrackerEntry) {
+    try {
+      await trackersApi.deleteEntry(entry.id)
+      setActionError(null)
+    } catch {
+      setActionError("Couldn't delete that entry — try again.")
+    }
+    setDeleting(null)
   }
 
   return (
@@ -54,6 +70,7 @@ export function TrackerHistory({ tracker, tz, onBack }: { tracker: Tracker; tz: 
           </select>
         )}
       </div>
+      {actionError && <div role="alert" className="tiny" style={{ color: 'var(--primary)', fontWeight: 700, marginBottom: 8 }}>{actionError}</div>}
       {error && <div className="muted">Couldn't load history — try again.</div>}
       {!error && entries === null && <div className="muted">Loading…</div>}
       {entries?.length === 0 && <div className="muted">Nothing logged yet.</div>}
@@ -63,7 +80,7 @@ export function TrackerHistory({ tracker, tz, onBack }: { tracker: Tracker; tz: 
           <span>{e.personName ?? 'Someone'}</span>
           {e.loggedByName && <span className="tiny muted">logged by {e.loggedByName}</span>}
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-            <button type="button" className="pill" aria-label="Edit entry time" onClick={() => setEditing({ entry: e, value: isoToZonedInput(e.occurredAt, tz) })}>Edit</button>
+            <button type="button" className="pill" aria-label="Edit entry time" onClick={() => { setEditError(null); setEditing({ entry: e, value: isoToZonedInput(e.occurredAt, tz) }) }}>Edit</button>
             <button type="button" className="pill" aria-label="Delete entry" onClick={() => setDeleting(e)}>Delete</button>
           </span>
         </div>
@@ -75,6 +92,7 @@ export function TrackerHistory({ tracker, tz, onBack }: { tracker: Tracker; tz: 
           <form className="modal-card" onClick={(ev) => ev.stopPropagation()} onSubmit={(ev) => { ev.preventDefault(); void saveEdit() }} style={{ maxWidth: 360 }}>
             <button type="button" className="modal-close" aria-label="Close" onClick={() => setEditing(null)}>×</button>
             <div className="wf-serif" style={{ fontSize: 22, fontWeight: 600, marginBottom: 14 }}>Edit time</div>
+            {editError && <div role="alert" className="tiny" style={{ color: 'var(--primary)', fontWeight: 700, marginBottom: 10 }}>{editError}</div>}
             <label className="field">
               <span>When</span>
               <input type="datetime-local" value={editing.value} onChange={(ev) => setEditing({ ...editing, value: ev.target.value })} />
@@ -92,7 +110,7 @@ export function TrackerHistory({ tracker, tz, onBack }: { tracker: Tracker; tz: 
           message={`${formatEntryTime(deleting.occurredAt, tz)} will be removed from ${tracker.title}.`}
           confirmLabel="Delete"
           danger
-          onConfirm={async () => { await trackersApi.deleteEntry(deleting.id).catch(() => {}); setDeleting(null) }}
+          onConfirm={() => confirmDelete(deleting)}
           onClose={() => setDeleting(null)}
         />
       )}
