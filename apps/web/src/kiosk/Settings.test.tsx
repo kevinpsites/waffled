@@ -521,3 +521,28 @@ describe('Settings screen', () => {
     expect(screen.queryByText(/No calendar provider is configured/)).toBeNull()
   })
 })
+
+describe('Settings → Modules → Pantry note', () => {
+  it('shows only while Mealie is connected', async () => {
+    const { MealieProvider } = await import('../lib/mealie-context')
+    const base = globalThis.fetch
+    mockApi()
+    const inner = globalThis.fetch as unknown as (u: string) => Promise<unknown>
+    const mod = (connected: boolean) => vi.fn(async (url: string) => {
+      if (String(url).includes('/api/mealie/connection')) return { ok: true, json: async () => ({ connected }) }
+      if (String(url).includes('/api/household') && !String(url).includes('settings')) return { ok: true, json: async () => ({ provisioned: true, household: { ...household, settings: { modules: { pantry: true } } }, person: members[0] }) }
+      return inner(url)
+    }) as unknown as typeof fetch
+    for (const connected of [false, true]) {
+      globalThis.fetch = mod(connected)
+      const { unmount } = render(<MemoryRouter><MealieProvider><Settings /></MealieProvider></MemoryRouter>)
+      fireEvent.click(await screen.findByRole('button', { name: /Modules/ }))
+      await screen.findByText('Pantry')
+      const note = /Pantry works with Waffled's built-in groceries/
+      if (connected) expect(await screen.findByText(note)).toBeInTheDocument()
+      else expect(screen.queryByText(note)).toBeNull()
+      unmount()
+    }
+    globalThis.fetch = base
+  })
+})

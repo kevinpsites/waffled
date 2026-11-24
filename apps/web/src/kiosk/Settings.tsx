@@ -9,6 +9,8 @@ import { familyColorHex } from '../lib/event-color'
 import { PersonModal } from './components/PersonModal'
 import { ColorPicker, COLOR_SWATCHES } from './components/ColorPicker'
 import { SettingCard } from './components/SettingCard'
+import { MealieSettings } from './components/MealieSettings'
+import { useMealie } from '../lib/mealie-context'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { Screensaver, screensaverPhotos } from './components/Screensaver'
 import '../styles/settings.css'
@@ -26,6 +28,7 @@ const NAV = [
   { key: 'calendars', icon: '📅', label: 'Calendars', admin: true, group: 'family' },
   { key: 'chores', icon: '⭐', label: 'Chores & Rewards', admin: true, group: 'family' },
   { key: 'meals', icon: '🍽️', label: 'Meals', admin: true, group: 'family' },
+  { key: 'mealie', icon: '🥘', label: 'Mealie', group: 'family' },
   { key: 'modules', icon: '🧩', label: 'Modules', admin: true, group: 'family' },
   { key: 'display', icon: '🖥️', label: 'Display & Kiosk', admin: true, group: 'family' },
   // System — the self-hosted deployment (admin/operator)
@@ -2288,6 +2291,7 @@ function Switch({ checked, disabled, onChange, ariaLabel }: { checked: boolean; 
 // Enable/disable optional modules; an available one reveals its own settings when on.
 function ModulesPanel() {
   const { household } = useHousehold()
+  const { connected: mealieConnected } = useMealie()
   const [saving, setSaving] = useState<string | null>(null)
 
   async function toggle(key: string, on: boolean) {
@@ -2326,6 +2330,9 @@ function ModulesPanel() {
                   <span className="set-module-soon">Coming soon</span>
                 )}
               </div>
+              {on && m.key === 'pantry' && mealieConnected && (
+                <div className="tiny muted" style={{ fontWeight: 600, marginTop: 8 }}>Pantry works with Waffled's built-in groceries and isn't connected to Mealie.</div>
+              )}
               {on && m.hasSettings && m.key === 'pantry' && <PantrySettings />}
               {on && m.hasSettings && m.key === 'chores' && <ChoresModuleSettings />}
               {on && m.hasSettings && m.key === 'familyNight' && <FamilyNightSettings />}
@@ -3413,7 +3420,7 @@ export function Settings() {
         </div>
       </div>
       <div className="set-content">
-        {activeTab === 'appearance' ? <AppearancePanel /> : activeTab === 'profile' ? <MyProfilePanel /> : activeTab === 'account' ? <MyAccountPanel /> : activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <><CalendarsPanel /><CountdownsSettings /></> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'modules' ? <ModulesPanel /> : activeTab === 'apikeys' ? <ApiKeysPanel /> : activeTab === 'households' ? <HouseholdsPanel /> : <AboutPanel />}
+        {activeTab === 'appearance' ? <AppearancePanel /> : activeTab === 'profile' ? <MyProfilePanel /> : activeTab === 'account' ? <MyAccountPanel /> : activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <><CalendarsPanel /><CountdownsSettings /></> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'mealie' ? <MealieSettings isAdmin={isAdmin} /> : activeTab === 'modules' ? <ModulesPanel /> : activeTab === 'apikeys' ? <ApiKeysPanel /> : activeTab === 'households' ? <HouseholdsPanel /> : <AboutPanel />}
       </div>
     </div>
   )
