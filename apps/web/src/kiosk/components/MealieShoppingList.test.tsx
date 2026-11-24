@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { ApiSendError } from '../../lib/api/client'
+import { emit } from '../../lib/api/bus'
 
 const shopping = vi.fn()
 const addItem = vi.fn()
@@ -74,5 +75,44 @@ describe('MealieShoppingList', () => {
     shopping.mockRejectedValue(new ApiSendError('GET', '/x', 409, { error: 'MealieNoShoppingList' }))
     render(<MealieShoppingList />)
     expect(await screen.findByText('Choose a shopping list in Settings → Mealie.')).toBeTruthy()
+  })
+
+  describe('optimistic overlay vs refetch', () => {
+    const withApples = (checked: boolean) => ({ ...data(), items: data().items.map((i) => (i.id === 'a' ? { ...i, checked } : i)) })
+    const openChecked = async () => {
+      render(<MealieShoppingList />)
+      fireEvent.click(await screen.findByRole('button', { name: 'Apples' }))
+    }
+    const refetch = async () => { await act(async () => { emit('mealie') }) }
+
+    it('keeps the item checked when stale data lands while the PATCH is pending', async () => {
+      setChecked.mockReturnValue(new Promise(() => {}))
+      await openChecked()
+      shopping.mockResolvedValue(withApples(false))
+      await refetch()
+      expect(screen.queryByText('Apples')).toBeNull()
+      expect(screen.getByRole('button', { name: /Checked \(2\)/ })).toBeTruthy()
+    })
+
+    it('stays checked after the PATCH resolves and confirmed data arrives', async () => {
+      setChecked.mockResolvedValue({ ok: true })
+      await openChecked()
+      await waitFor(() => expect(setChecked).toHaveBeenCalled())
+      shopping.mockResolvedValue(withApples(true))
+      await refetch()
+      expect(screen.getByRole('button', { name: /Checked \(2\)/ })).toBeTruthy()
+    })
+
+    it('follows the server when the item is toggled elsewhere after the write', async () => {
+      setChecked.mockResolvedValue({ ok: true })
+      await openChecked()
+      await waitFor(() => expect(setChecked).toHaveBeenCalled())
+      shopping.mockResolvedValue(withApples(true))
+      await refetch()
+      shopping.mockResolvedValue(withApples(false))
+      await refetch()
+      expect(await screen.findByText('Apples')).toBeTruthy()
+      expect(screen.getByRole('button', { name: /Checked \(1\)/ })).toBeTruthy()
+    })
   })
 })

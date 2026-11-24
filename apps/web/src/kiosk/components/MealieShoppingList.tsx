@@ -18,8 +18,9 @@ function groupByLabel(items: MealieShoppingItem[]) {
 
 export function MealieShoppingList({ onBack }: { onBack?: () => void }) {
   const { data, error, retry } = useMealieQuery(() => mealieApi.shopping(), [])
-  // Optimistic overlay: held until a refetch confirms it, so a stale refetch can't flip an item back.
-  const [overlay, setOverlay] = useState<Map<string, boolean>>(new Map())
+  // Optimistic overlay: holds while the PATCH is pending so a stale refetch can't flip the
+  // item back. Once it succeeds it is settled and yields to the next server data, whatever its value.
+  const [overlay, setOverlay] = useState<Map<string, { value: boolean; settled: boolean }>>(new Map())
   const inFlight = useRef<Set<string>>(new Set())
   const [failure, setFailure] = useState<string | null>(null)
   const [showChecked, setShowChecked] = useState(false)
@@ -36,18 +37,15 @@ export function MealieShoppingList({ onBack }: { onBack?: () => void }) {
   )
 
   useEffect(() => {
-    if (!data) return
     setOverlay((prev) => {
-      if (prev.size === 0) return prev
-      const next = new Map(prev)
-      for (const i of data.items) if (next.get(i.id) === i.checked && !inFlight.current.has(i.id)) next.delete(i.id)
+      const next = new Map([...prev].filter(([, o]) => !o.settled))
       return next.size === prev.size ? prev : next
     })
   }, [data])
 
   if (!data) return error ? <MealieError error={error} onRetry={retry} /> : null
 
-  const items = data.items.map((i) => ({ ...i, checked: overlay.has(i.id) ? overlay.get(i.id)! : i.checked }))
+  const items = data.items.map((i) => ({ ...i, checked: overlay.get(i.id)?.value ?? i.checked }))
   const open = items.filter((i) => !i.checked)
   const done = items.filter((i) => i.checked)
 
@@ -55,9 +53,10 @@ export function MealieShoppingList({ onBack }: { onBack?: () => void }) {
     if (inFlight.current.has(i.id)) return
     inFlight.current.add(i.id)
     setFailure(null)
-    setOverlay((m) => new Map(m).set(i.id, !i.checked))
+    setOverlay((m) => new Map(m).set(i.id, { value: !i.checked, settled: false }))
     try {
       await mealieApi.setChecked(i.id, !i.checked)
+      setOverlay((m) => (m.has(i.id) ? new Map(m).set(i.id, { value: !i.checked, settled: true }) : m))
     } catch {
       setOverlay((m) => { const n = new Map(m); n.delete(i.id); return n })
       setFailure(`Couldn't update “${i.display}”. Try again.`)
