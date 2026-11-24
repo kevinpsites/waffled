@@ -13,6 +13,7 @@ export function MealieSettings({ isAdmin }: { isAdmin: boolean }) {
   const [publicUrl, setPublicUrl] = useState('')
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState(false)
+  const [listsErr, setListsErr] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
   const adopt = useCallback((c: MealieConnection) => {
@@ -23,7 +24,9 @@ export function MealieSettings({ isAdmin }: { isAdmin: boolean }) {
   }, [])
 
   const loadLists = useCallback(() => {
-    mealieApi.shoppingLists().then(setLists).catch(() => setLists([]))
+    mealieApi.shoppingLists()
+      .then((l) => { setLists(l); setListsErr(false) })
+      .catch(() => { setLists([]); setListsErr(true) })
   }, [])
 
   useEffect(() => {
@@ -91,6 +94,7 @@ export function MealieSettings({ isAdmin }: { isAdmin: boolean }) {
           </label>
           <label className="field">
             <span>API token</span>
+            <span className="tiny muted">Create one in Mealie under your profile → API Tokens.</span>
             <input aria-label="API token" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder={connected ? '••• saved' : 'Paste a Mealie API token'} />
           </label>
           {connected && lists.length > 0 && (
@@ -106,6 +110,7 @@ export function MealieSettings({ isAdmin }: { isAdmin: boolean }) {
             <button type="button" className="btn btn-primary" onClick={save} disabled={busy || !baseUrl.trim()}>{connected ? 'Save' : 'Connect'}</button>
             {connected && <button type="button" className="btn btn-ghost" onClick={disconnect} disabled={busy}>Disconnect</button>}
           </div>
+          {listsErr && <div className="tiny" role="alert" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 10 }}>Couldn't load your Mealie shopping lists. Try again.</div>}
           {err && <div className="tiny" role="alert" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 10 }}>{err}</div>}
         </SettingCard>
       )}

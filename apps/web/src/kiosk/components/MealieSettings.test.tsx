@@ -65,6 +65,18 @@ describe('MealieSettings (admin)', () => {
 })
 
 describe('MealieSettings (non-admin)', () => {
+  it('shows an inline error when the shopping lists fail to load', async () => {
+    api.connection.mockResolvedValue(connected as never)
+    api.shoppingLists.mockRejectedValue(new Error('x'))
+    render(<MealieSettings isAdmin />)
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Couldn't load your Mealie shopping lists/)
+  })
+
+  it('tells admins where to create the API token', async () => {
+    render(<MealieSettings isAdmin />)
+    expect(await screen.findByText(/profile → API Tokens/i)).toBeInTheDocument()
+  })
+
   it('shows a read-only connected line', async () => {
     api.connection.mockResolvedValue(connected as never)
     render(<MealieSettings isAdmin={false} />)
