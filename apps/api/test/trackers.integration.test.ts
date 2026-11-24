@@ -226,3 +226,152 @@ describe('trackers api', () => {
     expect((await call('GET', '/api/trackers', kevin)).statusCode).toBe(200)
   })
 })
+
+describe('tracker entries api', () => {
+  const kid = mint('dev|kid')
+  let kidId = ''
+
+  const mk = async (body: Record<string, unknown>): Promise<string> =>
+    JSON.parse((await call('POST', '/api/trackers', kevin, body)).body).tracker.id
+  const log = (trackerId: string, body: Record<string, unknown> = {}, token = kevin) =>
+    call('POST', `/api/trackers/${trackerId}/entries`, token, body)
+  const trackerOf = async (id: string) =>
+    (JSON.parse((await call('GET', '/api/trackers', kevin)).body).trackers as { id: string; lastEntry: Record<string, unknown> | null }[]).find(
+      (t) => t.id === id
+    )!
+
+  beforeAll(async () => {
+    kidId = await withClient(async (c) => (await c.query<{ id: string }>(`select id from persons where household_id = $1 and name = 'Kiddo'`, [householdId])).rows[0].id)
+  })
+
+  it('log without person on a plain tracker: 201, lastEntry updates', async () => {
+    const id = await mk({ title: 'Vitamin D' })
+    const res = await log(id, { note: 'with breakfast' })
+    expect(res.statusCode).toBe(201)
+    const entry = JSON.parse(res.body).entry
+    expect(entry).toMatchObject({ trackerId: id, personId: null, personName: null, loggedBy: kevinId, loggedByName: 'Kevin', note: 'with breakfast' })
+    expect((await trackerOf(id)).lastEntry).toMatchObject({ id: entry.id, occurredAt: entry.occurredAt })
+  })
+
+  it('askPerson tracker: no personId is 422 PersonRequired; with personId is 201 and lastEntry.personName', async () => {
+    const id = await mk({ title: 'Tylenol', askPerson: true })
+    const missing = await log(id)
+    expect(missing.statusCode).toBe(422)
+    expect(JSON.parse(missing.body).error).toBe('PersonRequired')
+    expect((await log(id, { personId: kidId })).statusCode).toBe(201)
+    const last = (await trackerOf(id)).lastEntry
+    expect(last).toMatchObject({ personId: kidId, personName: 'Kiddo' })
+    expect(typeof last!.occurredAt).toBe('string')
+  })
+
+  it('personId from another household is 400', async () => {
+    const id = await mk({ title: 'Cross' })
+    const foreign = await withClient(async (c) => {
+      const h = await c.query<{ id: string }>(`insert into households (name, timezone) values ('Foreign', 'UTC') returning id`)
+      const p = await c.query<{ id: string }>(
+        `insert into persons (household_id, name, member_type) values ($1, 'Stranger', 'adult') returning id`,
+        [h.rows[0].id]
+      )
+      return p.rows[0].id
+    })
+    expect((await log(id, { personId: foreign })).statusCode).toBe(400)
+    expect((await log(id, { personId: 'not-a-uuid' })).statusCode).toBe(400)
+  })
+
+  it('archived tracker is 409 Archived', async () => {
+    const id = await mk({ title: 'Retired' })
+    await call('PATCH', `/api/trackers/${id}`, kevin, { archived: true })
+    const res = await log(id)
+    expect(res.statusCode).toBe(409)
+    expect(JSON.parse(res.body).error).toBe('Archived')
+  })
+
+  it('occurredAt in the future is 400 beyond 5 minutes of skew', async () => {
+    const id = await mk({ title: 'Future' })
+    const far = new Date(Date.now() + 60 * 60_000).toISOString()
+    const near = new Date(Date.now() + 2 * 60_000).toISOString()
+    expect((await log(id, { occurredAt: far })).statusCode).toBe(400)
+    expect((await log(id, { occurredAt: near })).statusCode).toBe(201)
+    expect((await log(id, { occurredAt: 'garbage' })).statusCode).toBe(400)
+  })
+
+  it('history: newest first, personId filter, before/limit paging with nextBefore', async () => {
+    const id = await mk({ title: 'History' })
+    const base = Date.now() - 10 * 60_000
+    const stamps = [0, 1, 2, 3, 4].map((i) => new Date(base + i * 60_000).toISOString())
+    for (let i = 0; i < stamps.length; i++) {
+      expect((await log(id, { occurredAt: stamps[i], personId: i % 2 === 0 ? kidId : undefined })).statusCode).toBe(201)
+    }
+    const list = async (qs: string) => JSON.parse((await call('GET', `/api/trackers/${id}/entries${qs}`, kevin)).body)
+    const all = await list('')
+    expect(all.entries.map((e: { occurredAt: string }) => e.occurredAt)).toEqual([...stamps].reverse())
+    expect(all.nextBefore).toBeNull()
+
+    const p1 = await list('?limit=2')
+    expect(p1.entries).toHaveLength(2)
+    expect(p1.nextBefore).toBeTruthy()
+    const p2 = await list(`?limit=2&before=${encodeURIComponent(p1.nextBefore)}`)
+    expect(p2.entries.map((e: { occurredAt: string }) => e.occurredAt)).toEqual([stamps[2], stamps[1]])
+    const p3 = await list(`?limit=2&before=${encodeURIComponent(p2.nextBefore)}`)
+    expect(p3.entries.map((e: { occurredAt: string }) => e.occurredAt)).toEqual([stamps[0]])
+    expect(p3.nextBefore).toBeNull()
+
+    const mine = await list(`?personId=${kidId}`)
+    expect(mine.entries).toHaveLength(3)
+    expect(mine.entries.every((e: { personId: string }) => e.personId === kidId)).toBe(true)
+  })
+
+  it('paging is stable across entries with identical occurredAt', async () => {
+    const id = await mk({ title: 'Ties' })
+    const at = new Date(Date.now() - 60_000).toISOString()
+    for (let i = 0; i < 3; i++) await log(id, { occurredAt: at })
+    const seen: string[] = []
+    let before = ''
+    for (let guard = 0; guard < 5; guard++) {
+      const page = JSON.parse((await call('GET', `/api/trackers/${id}/entries?limit=1${before}`, kevin)).body)
+      seen.push(...page.entries.map((e: { id: string }) => e.id))
+      if (!page.nextBefore) break
+      before = `&before=${encodeURIComponent(page.nextBefore)}`
+    }
+    expect(new Set(seen).size).toBe(3)
+  })
+
+  it('kid can log, edit time, and delete', async () => {
+    const id = await mk({ title: 'Kid access' })
+    const made = await log(id, {}, kid)
+    expect(made.statusCode).toBe(201)
+    const entry = JSON.parse(made.body).entry
+    expect(entry.loggedBy).toBe(kidId)
+    const when = new Date(Date.now() - 3600_000).toISOString()
+    const patched = await call('PATCH', `/api/tracker-entries/${entry.id}`, kid, { occurredAt: when, personId: kidId, note: 'oops' })
+    expect(patched.statusCode).toBe(200)
+    expect(JSON.parse(patched.body).entry).toMatchObject({ occurredAt: when, personId: kidId, personName: 'Kiddo', note: 'oops' })
+    const cleared = await call('PATCH', `/api/tracker-entries/${entry.id}`, kid, { personId: null })
+    expect(JSON.parse(cleared.body).entry.personId).toBeNull()
+    expect((await call('PATCH', `/api/tracker-entries/${entry.id}`, kid, { occurredAt: new Date(Date.now() + 3600_000).toISOString() })).statusCode).toBe(400)
+    expect((await call('DELETE', `/api/tracker-entries/${entry.id}`, kid)).statusCode).toBe(204)
+    expect((await call('DELETE', `/api/tracker-entries/${entry.id}`, kid)).statusCode).toBe(404)
+  })
+
+  it('turning askPerson on keeps old personless entries listed', async () => {
+    const id = await mk({ title: 'Later strict' })
+    await log(id)
+    await call('PATCH', `/api/trackers/${id}`, kevin, { askPerson: true })
+    const list = JSON.parse((await call('GET', `/api/trackers/${id}/entries`, kevin)).body)
+    expect(list.entries).toHaveLength(1)
+    expect(list.entries[0].personId).toBeNull()
+  })
+
+  it("404s on another household's entry and tracker", async () => {
+    const { entryId, trackerId } = await withClient(async (c) => {
+      const h = await c.query<{ id: string }>(`insert into households (name, timezone) values ('Third', 'UTC') returning id`)
+      const t = await c.query<{ id: string }>(`insert into trackers (household_id, title) values ($1, 'Theirs') returning id`, [h.rows[0].id])
+      const e = await c.query<{ id: string }>(`insert into tracker_entries (household_id, tracker_id) values ($1, $2) returning id`, [h.rows[0].id, t.rows[0].id])
+      return { entryId: e.rows[0].id, trackerId: t.rows[0].id }
+    })
+    expect((await call('DELETE', `/api/tracker-entries/${entryId}`, kevin)).statusCode).toBe(404)
+    expect((await call('PATCH', `/api/tracker-entries/${entryId}`, kevin, { note: 'x' })).statusCode).toBe(404)
+    expect((await log(trackerId)).statusCode).toBe(404)
+    expect((await call('GET', `/api/trackers/${trackerId}/entries`, kevin)).statusCode).toBe(404)
+  })
+})

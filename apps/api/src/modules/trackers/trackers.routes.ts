@@ -2,7 +2,10 @@
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { moduleRoutes } from '../../platform/route-guards'
 import { InvalidReferenceError } from '../../platform/household-refs'
-import { listTrackers, createTracker, updateTracker, deleteTracker, TrackerValidationError } from './trackers'
+import {
+  listTrackers, createTracker, updateTracker, deleteTracker, TrackerValidationError,
+  logEntry, listEntries, updateEntry, deleteEntry, TrackerArchivedError, PersonRequiredError,
+} from './trackers'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -15,10 +18,12 @@ function badRequest(res: Response, message: string) {
 
 function mapError(res: Response, e: unknown) {
   if (e instanceof InvalidReferenceError || e instanceof TrackerValidationError) return badRequest(res, e.message)
+  if (e instanceof TrackerArchivedError) return res.status(409).json({ error: 'Archived', message: e.message })
+  if (e instanceof PersonRequiredError) return res.status(422).json({ error: 'PersonRequired', message: e.message })
   throw e
 }
 
-const notFound = (res: Response) => res.status(404).json({ error: 'NotFound', message: 'tracker not found' })
+const notFound = (res: Response, what = 'tracker') => res.status(404).json({ error: 'NotFound', message: `${what} not found` })
 
 export function registerTrackerRoutes(api: Api): void {
   api.get('/api/trackers', tenantRoute(async (tenant, req: Request) => {
@@ -47,6 +52,47 @@ export function registerTrackerRoutes(api: Api): void {
 
   api.delete('/api/trackers/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     if (!(await deleteTracker(tenant, req.params.id!))) return notFound(res)
+    return res.status(204).send('')
+  }))
+
+  // Entries are open to any member, unlike tracker management.
+  api.post('/api/trackers/:id/entries', tenantRoute(async (tenant, req: Request, res: Response) => {
+    try {
+      const entry = await logEntry(tenant, req.params.id!, (req.body ?? {}) as Record<string, unknown>)
+      if (!entry) return notFound(res)
+      return res.status(201).json({ entry })
+    } catch (e) {
+      return mapError(res, e)
+    }
+  }))
+
+  api.get('/api/trackers/:id/entries', tenantRoute(async (tenant, req: Request, res: Response) => {
+    try {
+      const q = req.query ?? {}
+      const page = await listEntries(tenant.householdId, req.params.id!, {
+        personId: q.personId,
+        before: q.before,
+        limit: q.limit,
+      })
+      if (!page) return notFound(res)
+      return page
+    } catch (e) {
+      return mapError(res, e)
+    }
+  }))
+
+  api.patch('/api/tracker-entries/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
+    try {
+      const entry = await updateEntry(tenant, req.params.id!, (req.body ?? {}) as Record<string, unknown>)
+      if (!entry) return notFound(res, 'entry')
+      return { entry }
+    } catch (e) {
+      return mapError(res, e)
+    }
+  }))
+
+  api.delete('/api/tracker-entries/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
+    if (!(await deleteEntry(tenant, req.params.id!))) return notFound(res, 'entry')
     return res.status(204).send('')
   }))
 }
