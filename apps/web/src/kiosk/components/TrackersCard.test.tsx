@@ -37,13 +37,50 @@ describe('TrackersCard', () => {
     expect(h.del).toHaveBeenCalledWith('new1')
   })
 
-  it('Undo with a rejected delete just dismisses', async () => {
-    h.del.mockRejectedValue(new Error('404'))
+  it('Undo of an already-deleted entry (404) dismisses quietly', async () => {
+    h.del.mockRejectedValue(Object.assign(new Error('gone'), { status: 404 }))
     render(<TrackersCard />)
     fireEvent.click(screen.getByText('Tylenol'))
     fireEvent.click(await screen.findByText('Undo'))
     await waitFor(() => expect(screen.queryByText('Logged Tylenol')).not.toBeInTheDocument())
-    expect(screen.queryByText(/didn't go through/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Undo didn't go through/)).not.toBeInTheDocument()
+  })
+
+  it('Undo that fails for any other reason says so', async () => {
+    h.del.mockRejectedValue(Object.assign(new Error('boom'), { status: 500 }))
+    render(<TrackersCard />)
+    fireEvent.click(screen.getByText('Tylenol'))
+    fireEvent.click(await screen.findByText('Undo'))
+    expect(await screen.findByText(/Undo didn't go through/)).toBeInTheDocument()
+  })
+
+  it('Undo that fails on the network says so', async () => {
+    h.del.mockRejectedValue(new TypeError('network'))
+    render(<TrackersCard />)
+    fireEvent.click(screen.getByText('Tylenol'))
+    fireEvent.click(await screen.findByText('Undo'))
+    expect(await screen.findByText(/Undo didn't go through/)).toBeInTheDocument()
+  })
+
+  it('ignores taps on a tile while its log is in flight, then logs again once it returns', async () => {
+    let resolve!: (v: unknown) => void
+    h.log.mockReturnValueOnce(new Promise((r) => { resolve = r }))
+    render(<TrackersCard />)
+    fireEvent.click(screen.getByText('Tylenol'))
+    fireEvent.click(screen.getByText('Tylenol'))
+    expect(h.log).toHaveBeenCalledTimes(1)
+    resolve({ entry: { id: 'a' } })
+    await screen.findByText('Logged Tylenol')
+    fireEvent.click(screen.getByText('Tylenol'))
+    await waitFor(() => expect(h.log).toHaveBeenCalledTimes(2))
+  })
+
+  it('an open picker counts as in flight until cancelled', () => {
+    render(<TrackersCard />)
+    fireEvent.click(screen.getByText('Vitamin'))
+    fireEvent.click(screen.getByText('Cancel'))
+    fireEvent.click(screen.getByText('Vitamin'))
+    expect(screen.getByText('Ana')).toBeInTheDocument()
   })
 
   it('double tap logs twice and Undo deletes only the latest', async () => {
