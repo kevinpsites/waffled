@@ -1,10 +1,14 @@
 import { mealieErrorCode } from '../../lib/api/mealie'
+import { ApiSendError } from '../../lib/api/client'
 
 export function mealieErrorMessage(e: unknown): string {
   switch (mealieErrorCode(e)) {
     case 'MealieAuthFailed': return "Mealie stopped accepting Waffled's token. An admin can reconnect it in Settings → Mealie."
     case 'MealieNoShoppingList': return 'Choose a shopping list in Settings → Mealie.'
-    default: return "Can't reach Mealie right now."
+    case 'MealieNotConnected': return "Mealie isn't connected. An admin can connect it in Settings → Mealie."
+    default:
+      if (e instanceof ApiSendError && e.status === 404) return "That recipe isn't in Mealie anymore."
+      return "Can't reach Mealie right now."
   }
 }
 
