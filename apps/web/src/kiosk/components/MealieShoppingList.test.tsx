@@ -115,4 +115,16 @@ describe('MealieShoppingList', () => {
       expect(screen.getByRole('button', { name: /Checked \(1\)/ })).toBeTruthy()
     })
   })
+
+  it('shows the error with Retry while keeping the list when a refetch fails', async () => {
+    render(<MealieShoppingList />)
+    await screen.findByText('Apples')
+    shopping.mockRejectedValue(new ApiSendError('GET', '/x', 502, { error: 'MealieUnavailable', message: 'x' }))
+    await act(async () => { emit('mealie') })
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Can't reach Mealie/)
+    expect(screen.getByText('Apples')).toBeTruthy()
+    shopping.mockResolvedValue(data())
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(screen.queryByText(/Can't reach Mealie/)).toBeNull())
+  })
 })

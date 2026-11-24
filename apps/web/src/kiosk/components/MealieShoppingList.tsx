@@ -45,6 +45,7 @@ export function MealieShoppingList({ onBack }: { onBack?: () => void }) {
 
   if (!data) return error ? <MealieError error={error} onRetry={retry} /> : null
 
+
   const items = data.items.map((i) => ({ ...i, checked: overlay.get(i.id)?.value ?? i.checked }))
   const open = items.filter((i) => !i.checked)
   const done = items.filter((i) => i.checked)
@@ -92,6 +93,7 @@ export function MealieShoppingList({ onBack }: { onBack?: () => void }) {
   return (
     <div className="lists-home" style={{ display: 'block', padding: 16 }}>
       <h2 style={{ marginBottom: 12 }}>{data.listName}</h2>
+      {error != null && <MealieError error={error} onRetry={retry} />}
       <form className="ai-bar grocery-add" onSubmit={onAdd}>
         <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add to shopping list…" aria-label="Add to shopping list" />
       </form>
