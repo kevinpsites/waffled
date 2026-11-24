@@ -133,7 +133,11 @@ export async function fetchImage(conn: MealieConn, recipeId: string, size: strin
   const res = await mealieFetchRaw({ baseUrl: conn.baseUrl }, `/api/media/recipes/${recipeId}/images/${file}`)
   if (res.status === 404) throw new MealieError('NotFound', 'Image not found', 404)
   if (!res.ok) throw new MealieError('MealieUnavailable', "Can't reach Mealie right now.", 502)
-  return { bytes: Buffer.from(await res.arrayBuffer()), contentType: res.headers.get('content-type') ?? 'image/webp' }
+  try {
+    return { bytes: Buffer.from(await res.arrayBuffer()), contentType: res.headers.get('content-type') ?? 'image/webp' }
+  } catch {
+    throw new MealieError('MealieUnavailable', "Can't reach Mealie right now.", 502)
+  }
 }
 
 export interface ShoppingItem {
