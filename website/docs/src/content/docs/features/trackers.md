@@ -13,15 +13,13 @@ deleted.
 
 ## Create a tracker
 
-Adults and admins can add trackers. Open **Tasks → Trackers** and choose **Add tracker**:
+Adults and admins can add trackers. Open **Tasks → Trackers** (the Tasks page shows if **Chores** or **Trackers** is on, so it is there even with Chores off) and choose **Add tracker**:
 
 - **Title** and **Emoji** — for example *Tylenol* and 💊.
 - **Ask who it was for** — see below.
 
-Use **Edit** to change either later. **Archive** removes a tracker from Today without losing
+Use **Edit** to change any of these later. **Archive** removes a tracker from Today without losing
 its history; **Unarchive** brings it back. Kids can't add, edit or archive trackers.
-
-The Tasks page shows if **Chores** or **Trackers** is on, so it is there even with Chores off.
 
 ## Log it
 
