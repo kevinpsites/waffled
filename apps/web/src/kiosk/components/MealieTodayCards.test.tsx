@@ -4,6 +4,7 @@ import { ApiSendError } from '../../lib/api/client'
 
 const mealplan = vi.fn()
 const shopping = vi.fn()
+const tzState = { tz: 'UTC' }
 const mealieState = { connected: true, hasShoppingList: true, loading: false, refresh: () => {} }
 
 vi.mock('../../lib/api/mealie', async (orig) => ({
@@ -13,7 +14,7 @@ vi.mock('../../lib/api/mealie', async (orig) => ({
 vi.mock('../../lib/mealie-context', () => ({ useMealie: () => mealieState }))
 vi.mock('../../lib/api', async (orig) => ({
   ...(await orig<typeof import('../../lib/api')>()),
-  useHousehold: () => ({ household: { timezone: 'UTC' }, person: null, memberships: [], pendingInvites: [] }),
+  useHousehold: () => ({ household: { timezone: tzState.tz }, person: null, memberships: [], pendingInvites: [] }),
   useMealsWeek: () => ({ entries: [], loading: false, error: null }),
   useGrocery: () => ({ items: [], loading: false, error: null, add: vi.fn(), toggle: vi.fn(), remove: vi.fn() }),
 }))
@@ -25,7 +26,8 @@ const Where = () => <div data-testid="where">{useLocation().pathname}</div>
 const wrap = (ui: React.ReactElement) =>
   render(<MemoryRouter><Routes><Route path="*" element={<>{ui}<Where /></>} /></Routes></MemoryRouter>)
 
-const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC' }).format(new Date())
+const NOW = new Date('2026-11-24T12:00:00Z')
+const today = '2026-11-24'
 const entry = (id: number, entryType: string, title: string, slug: string | null, date = today) => ({
   id, date, entryType, title,
   recipe: slug ? { id: `r${id}`, slug, name: title, imageUrl: slug ? `/img/${slug}.webp` : null } : null,
@@ -33,11 +35,16 @@ const entry = (id: number, entryType: string, title: string, slug: string | null
 const unavailable = new ApiSendError('GET', '/x', 502, { error: 'MealieUnavailable', message: 'x' })
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(NOW)
+  tzState.tz = 'UTC'
   mealieState.connected = true
   mealieState.loading = false
   mealplan.mockReset()
   shopping.mockReset()
 })
+
+afterEach(() => { vi.useRealTimers() })
 
 describe('MealieTonightCard', () => {
   it("shows today's dinner with image and name, and navigates to the cook view", async () => {
@@ -85,9 +92,21 @@ describe('MealieTonightCard', () => {
   })
 })
 
+describe('household timezone', () => {
+  it('uses the household date, not UTC, for the window and Tonight', async () => {
+    tzState.tz = 'America/Chicago'
+    vi.setSystemTime(new Date('2026-11-25T05:30:00Z'))
+    mealplan.mockResolvedValue({ entries: [entry(1, 'dinner', 'Chicago Night', 'cn', '2026-11-24'), entry(2, 'dinner', 'UTC Night', 'un', '2026-11-25')] })
+    wrap(<TonightCardSlot />)
+    expect(await screen.findByText('Chicago Night')).toBeTruthy()
+    expect(screen.queryByText('UTC Night')).toBeNull()
+    expect(mealplan.mock.calls[0][0]).toBe('2026-11-24')
+  })
+})
+
 describe('MealieWeekCard', () => {
   it('lists 7 days from household today with their entries', async () => {
-    const d2 = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10)
+    const d2 = '2026-11-26'
     mealplan.mockResolvedValue({ entries: [entry(1, 'dinner', 'Lasagna', 'lasagna'), entry(2, 'dinner', 'Tacos', 'tacos', d2)] })
     const { container } = wrap(<WeekDinnersCard />)
     await screen.findByText('Lasagna')
