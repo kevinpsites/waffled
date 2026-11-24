@@ -210,7 +210,9 @@ describe('trackers api', () => {
     const set = (v: string) =>
       withClient((c) =>
         c.query(
-          `update households set settings = jsonb_set(coalesce(settings,'{}'::jsonb), '{modules,trackers}', $2::jsonb, true) where id = $1`,
+          `update households set settings = coalesce(settings,'{}'::jsonb)
+             || jsonb_build_object('modules', coalesce(settings->'modules','{}'::jsonb) || jsonb_build_object('trackers', $2::boolean))
+           where id = $1`,
           [householdId, v]
         )
       )
