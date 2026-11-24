@@ -80,6 +80,17 @@ describe('MealieMeals — This week', () => {
     await waitFor(() => expect(unplan).toHaveBeenCalledWith(7))
   })
 
+  it('shows an alert and closes the dialog when a remove fails', async () => {
+    mealplan.mockResolvedValue({ entries: [{ id: 7, date: '2026-11-25', entryType: 'dinner', title: 'Tacos', recipe: null }] })
+    unplan.mockRejectedValue(unavailable())
+    wrap()
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Tacos' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Can't reach Mealie/)
+    expect(screen.queryByText('Remove from the plan?')).toBeNull()
+    expect(screen.getByText('Tacos')).toBeTruthy()
+  })
+
   it('refetches and drops the entry after a confirmed remove', async () => {
     const e = { id: 7, date: '2026-11-25', entryType: 'dinner', title: 'Tacos', recipe: null }
     mealplan.mockResolvedValueOnce({ entries: [e] }).mockResolvedValue({ entries: [] })

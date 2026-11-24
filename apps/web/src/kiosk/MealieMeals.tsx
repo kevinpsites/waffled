@@ -6,7 +6,7 @@ import { mealieApi, useMealieQuery, type MealieRecipeCard } from '../lib/api/mea
 import { addDaysYmd, householdToday } from '../lib/household-date'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { MealieImage } from './components/MealieImage'
-import { MealieError } from './components/MealieError'
+import { MealieError, mealieErrorMessage } from './components/MealieError'
 import { MealiePlanModal } from './components/MealiePlanModal'
 
 const dayLabel = (ymd: string) => new Date(`${ymd}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
@@ -21,6 +21,7 @@ function Photo({ src, height }: { src: string | null | undefined; height: number
 function WeekTab({ tz, firstDay }: { tz: string; firstDay: number }) {
   const [offset, setOffset] = useState(0)
   const [planning, setPlanning] = useState(false)
+  const [removeError, setRemoveError] = useState<string | null>(null)
   const [removing, setRemoving] = useState<{ id: number; title: string } | null>(null)
   const today = householdToday(tz)
   const dow = new Date(`${today}T00:00:00Z`).getUTCDay()
@@ -38,6 +39,7 @@ function WeekTab({ tz, firstDay }: { tz: string; firstDay: number }) {
         <button type="button" className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setPlanning(true)}>Plan a meal</button>
       </div>
       {error != null && <MealieError error={error} onRetry={retry} />}
+      {removeError && <div role="alert" className="muted" style={{ padding: '8px 2px' }}>{removeError}</div>}
       {!error && !data && <div className="muted" style={{ padding: 16 }}>Loading…</div>}
       {!error && data && days.map((d) => {
         const entries = data.entries.filter((e) => e.date === d).sort((a, b) => rank(a.entryType) - rank(b.entryType) || a.entryType.localeCompare(b.entryType))
@@ -57,7 +59,7 @@ function WeekTab({ tz, firstDay }: { tz: string; firstDay: number }) {
                         ? <Link to={`/meals/mealie/${e.recipe.slug}`} style={{ fontWeight: 600, color: 'inherit' }}>{name}</Link>
                         : <div style={{ fontWeight: 600 }}>{name}</div>}
                     </div>
-                    <button type="button" className="btn btn-ghost" aria-label={`Remove ${name}`} onClick={() => setRemoving({ id: e.id, title: name })}>×</button>
+                    <button type="button" className="btn btn-ghost" aria-label={`Remove ${name}`} onClick={() => { setRemoveError(null); setRemoving({ id: e.id, title: name }) }}>×</button>
                   </div>
                 )
               })}
@@ -72,7 +74,10 @@ function WeekTab({ tz, firstDay }: { tz: string; firstDay: number }) {
           message={`${removing.title} will be removed from Mealie's meal plan.`}
           confirmLabel="Remove"
           danger
-          onConfirm={async () => { await mealieApi.unplan(removing.id); setRemoving(null) }}
+          onConfirm={async () => {
+            try { await mealieApi.unplan(removing.id) } catch (e) { setRemoveError(mealieErrorMessage(e)) }
+            setRemoving(null)
+          }}
           onClose={() => setRemoving(null)}
         />
       )}
