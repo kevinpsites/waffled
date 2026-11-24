@@ -20,14 +20,16 @@ export function MealiePlanModal({ recipe, onClose }: { recipe?: { id: string; na
   const [results, setResults] = useState<MealieRecipeCard[]>([])
   const [title, setTitle] = useState('')
   const [saving, setSaving] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const q = query.trim()
+    setSearchError(null)
     if (!q) { setResults([]); return }
     let alive = true
     const t = setTimeout(() => {
-      mealieApi.recipes({ search: q }).then((r) => alive && setResults(r.items)).catch(() => alive && setResults([]))
+      mealieApi.recipes({ search: q }).then((r) => alive && setResults(r.items)).catch((e) => { if (alive) { setResults([]); setSearchError(mealieErrorMessage(e)) } })
     }, 300)
     return () => { alive = false; clearTimeout(t) }
   }, [query])
@@ -69,6 +71,7 @@ export function MealiePlanModal({ recipe, onClose }: { recipe?: { id: string; na
               <span>Recipe</span>
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search Mealie recipes" />
             </label>
+            {searchError && <div role="alert" className="tiny" style={{ color: 'var(--danger)', marginBottom: 10 }}>{searchError}</div>}
             {results.length > 0 && (
               <div className="mealie-plan-results">
                 {results.slice(0, 6).map((r) => (

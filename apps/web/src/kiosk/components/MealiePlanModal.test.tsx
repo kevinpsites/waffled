@@ -58,6 +58,13 @@ describe('MealiePlanModal', () => {
     await waitFor(() => expect(plan).toHaveBeenCalledWith({ date: '2026-11-24', entryType: 'dinner', recipeId: 'r9' }))
   })
 
+  it('shows a Mealie outage in recipe search instead of empty results', async () => {
+    recipes.mockRejectedValue(new ApiSendError('GET', '/x', 502, { error: 'MealieUnavailable', message: 'x' }))
+    render(<MealiePlanModal onClose={() => {}} />)
+    fireEvent.change(screen.getByPlaceholderText('Search Mealie recipes'), { target: { value: 'soup' } })
+    expect((await screen.findByRole('alert')).textContent).toContain("Can't reach Mealie right now.")
+  })
+
   it('disables Save with neither a recipe nor a title', () => {
     render(<MealiePlanModal onClose={() => {}} />)
     expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true)

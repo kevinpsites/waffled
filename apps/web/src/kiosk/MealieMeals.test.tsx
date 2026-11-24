@@ -1,10 +1,12 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { ApiSendError } from '../lib/api/client'
+import { emit } from '../lib/api/bus'
 
 const mealplan = vi.fn()
 const recipes = vi.fn()
 const unplan = vi.fn()
+const plan = vi.fn()
 const hh = { weekStart: 'sunday' as string, timezone: 'UTC' }
 vi.mock('../lib/api/mealie', async (orig) => ({
   ...(await orig<typeof import('../lib/api/mealie')>()),
@@ -12,7 +14,7 @@ vi.mock('../lib/api/mealie', async (orig) => ({
     mealplan: (...a: unknown[]) => mealplan(...a),
     recipes: (...a: unknown[]) => recipes(...a),
     unplan: (...a: unknown[]) => unplan(...a),
-    plan: vi.fn(),
+    plan: (...a: unknown[]) => plan(...a),
   },
 }))
 vi.mock('../lib/api', async (orig) => ({
@@ -33,7 +35,9 @@ beforeEach(() => {
   hh.weekStart = 'sunday'
   mealplan.mockReset().mockResolvedValue({ entries: [] })
   recipes.mockReset().mockResolvedValue({ items: [], page: 1, totalPages: 1 })
-  unplan.mockReset().mockResolvedValue(undefined)
+  // The real client emits 'mealie' after a write; the mocked client must too.
+  unplan.mockReset().mockImplementation(async () => { emit('mealie') })
+  plan.mockReset().mockImplementation(async () => { emit('mealie') })
 })
 afterEach(() => { vi.useRealTimers() })
 
@@ -68,6 +72,28 @@ describe('MealieMeals — This week', () => {
     expect(unplan).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
     await waitFor(() => expect(unplan).toHaveBeenCalledWith(7))
+  })
+
+  it('refetches and drops the entry after a confirmed remove', async () => {
+    const e = { id: 7, date: '2026-11-25', entryType: 'dinner', title: 'Tacos', recipe: null }
+    mealplan.mockResolvedValueOnce({ entries: [e] }).mockResolvedValue({ entries: [] })
+    wrap()
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Tacos' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
+    await waitFor(() => expect(mealplan).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByText('Tacos')).toBeNull())
+  })
+
+  it('refetches and shows the new entry after planning from the modal', async () => {
+    mealplan.mockResolvedValueOnce({ entries: [] }).mockResolvedValue({ entries: [{ id: 9, date: '2026-11-25', entryType: 'dinner', title: 'Pizza', recipe: null }] })
+    wrap()
+    await waitFor(() => expect(mealplan).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByRole('button', { name: 'Plan a meal' }))
+    fireEvent.change(screen.getByPlaceholderText('Or type a title'), { target: { value: 'Pizza' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(plan).toHaveBeenCalled())
+    await waitFor(() => expect(mealplan).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText('Pizza')).toBeTruthy()
   })
 
   it('does not remove when the confirmation is cancelled', async () => {
