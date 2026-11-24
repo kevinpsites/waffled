@@ -1,5 +1,7 @@
 import { Link, useNavigate } from 'react-router'
 import { useMealsWeek, localToday, type WeekEntry } from '../../lib/api'
+import { useMealie } from '../../lib/mealie-context'
+import { MealieTonightCard, MealieWeekCard } from './MealieTodayCards'
 
 function dayAbbrev(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short' })
@@ -97,6 +99,12 @@ function TonightCard({ entry }: { entry: WeekEntry }) {
 // Tonight's dinner as a standalone Today card (self-fetching). Renders nothing
 // when nothing is planned for today, so it can sit in the draggable board.
 export function TonightCardSlot() {
+  const { connected, loading } = useMealie()
+  if (loading) return null
+  return connected ? <MealieTonightCard /> : <BuiltinTonightSlot />
+}
+
+function BuiltinTonightSlot() {
   const { entries } = useMealsWeek()
   const tonight = entries.find((e) => e.mealType === 'dinner' && e.date === localToday()) ?? null
   if (!tonight) return null
@@ -105,6 +113,12 @@ export function TonightCardSlot() {
 
 // "This week's dinners" as a standalone Today card (self-fetching).
 export function WeekDinnersCard() {
+  const { connected, loading } = useMealie()
+  if (loading) return null
+  return connected ? <MealieWeekCard /> : <BuiltinWeekDinnersCard />
+}
+
+function BuiltinWeekDinnersCard() {
   const navigate = useNavigate()
   const { entries, loading, error } = useMealsWeek()
   const dinners = entries.filter((e) => e.mealType === 'dinner')
