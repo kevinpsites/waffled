@@ -1,0 +1,14 @@
+/* Today "Trackers" card — big touch targets for the kiosk. */
+.trk-card { padding: 18px 20px 14px; display: flex; flex-direction: column; }
+.trk-h { font-size: 17px; margin-bottom: 10px; }
+.trk-list { display: flex; flex-direction: column; gap: 8px; }
+.trk-tile {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 64px;
+  padding: 10px 14px; border: 1px solid var(--hair); border-radius: var(--r-md);
+  background: var(--panel); color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.trk-tile:active { background: var(--hair); }
+.trk-emoji { font-size: 26px; flex: none; line-height: 1; }
+.trk-main { display: flex; flex-direction: column; min-width: 0; }
+.trk-title { font-weight: 600; font-size: 16px; }
+.trk-failed { margin-top: 4px; font-size: 13px; color: var(--danger); }
