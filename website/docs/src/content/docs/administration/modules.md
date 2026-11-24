@@ -20,6 +20,7 @@ gated**.
 | Meals | ON | Recipes & planning |
 | Lists | ON | Lists & groceries |
 | Family Night | OFF | Recurring gathering |
+| Trackers | ON | Tap-to-log items like a medicine dose — [details](/features/trackers/) |
 | Rhythms | **OFF** | The things that should keep happening — [details](/features/rhythms/) |
 | Weekly Planning | **OFF** | A guided session for deciding the week ahead — [details](/features/weekly-planning/) |
 | Waffled-Bites | **OFF** | Kid companion device pairing + control panel — 🚧 running on the real board, not yet something you can buy, [details](/features/waffled-bites/) |

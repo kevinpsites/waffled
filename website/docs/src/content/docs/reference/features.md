@@ -163,6 +163,20 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Recurring-event goal counting | ✅ | ✅ Done |
 | **Capability gating** — `goal.manage` for others' / shared goals; own progress stays open | ✅ | ✅ Done |
 
+## Trackers
+
+Tap-to-log items like a medicine dose. Every tap is kept, and each tracker shows when it last
+happened. See [Trackers](/features/trackers/).
+
+| Feature | Web / Kiosk | Status |
+| --- | :---: | --- |
+| **Trackers module** (`trackers`, default **ON** — Settings → Modules) | ✅ | ✅ Done — gates the Today card, the Tasks → Trackers tab and every `/api/trackers*` route |
+| **Today card** — one tile per tracker, one tap logs it, "Last time: 11/23 2:15 PM" in the household timezone | ✅ | ✅ Done — hidden when there are no trackers, and can be hidden in Customize; an **Undo** toast stays for a few seconds |
+| **Ask who** — optional per tracker; a tap opens a member picker and the name shows after the time | ✅ | ✅ Done — the server refuses an untagged entry on an Ask-who tracker |
+| **Tasks → Trackers tab** — add, edit, archive and unarchive | ✅ | ✅ Done — adults and admins only |
+| **History** — per-person filter, Load more, edit an entry's time, delete an entry | ✅ | ✅ Done — any member, kids included |
+| Dose limits / "too soon" warnings, reminders, charts | — | Not built |
+
 ## Rhythms
 
 The things that should keep happening — the air filter, trash night, a temple visit each
