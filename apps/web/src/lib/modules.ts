@@ -97,10 +97,10 @@ export const MODULES: ModuleDef[] = [
   {
     key: 'trackers',
     name: 'Trackers',
-    icon: '📋',
-    description: 'Tap to log the things you want a history of — a dose of Tylenol, a plant watered — and see when it last happened.',
+    icon: '⏱️',
+    description: 'Tap-to-log items like a medicine dose — every tap is kept, and each shows when it last happened.',
     status: 'available',
-    defaultOn: false,
+    defaultOn: true,
   },
   {
     key: 'weeklyPlanning',

@@ -80,7 +80,6 @@ afterAll(async () => {
   await pg?.stop()
 })
 
-
 describe('trackers schema', () => {
   it('creates trackers and tracker_entries', async () => {
     const res = await withClient((c) =>
@@ -94,7 +93,7 @@ describe('trackers schema', () => {
 
   it('rejects a blank title', async () => {
     await withClient(async (c) => {
-      await expect(c.query(`insert into trackers (household_id, title) values ($1, '  ')`, [householdId])).rejects.toThrow()
+      await expect(c.query(`insert into trackers (household_id, title) values ($1, '  ')`, [householdId])).rejects.toThrow(/check constraint/)
     })
   })
 
