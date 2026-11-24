@@ -47,6 +47,13 @@ describe('TrackersPanel', () => {
     expect(screen.queryByText('Archive')).toBeNull()
   })
 
+  it('emoji field leaves room for multi-codepoint emoji', async () => {
+    render(<TrackersPanel />)
+    fireEvent.click(await screen.findByText('Add tracker'))
+    const max = Number(screen.getByLabelText('Emoji').getAttribute('maxlength'))
+    expect(max).toBeGreaterThanOrEqual('👨‍👩‍👧‍👦'.length) // 11 UTF-16 units
+  })
+
   it('creates a tracker through the modal', async () => {
     render(<TrackersPanel />)
     fireEvent.click(await screen.findByText('Add tracker'))

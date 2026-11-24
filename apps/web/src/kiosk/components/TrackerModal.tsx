@@ -40,7 +40,7 @@ export function TrackerModal({ tracker, onClose, onSaved }: { tracker?: Tracker;
           </label>
           <label className="field" style={{ flex: 1 }}>
             <span>Emoji</span>
-            <input value={emoji} onChange={(e) => setEmoji(e.target.value)} placeholder="💊" maxLength={4} />
+            <input value={emoji} onChange={(e) => setEmoji(e.target.value)} placeholder="💊" maxLength={16} />
           </label>
         </div>
         <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
