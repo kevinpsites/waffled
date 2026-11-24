@@ -1,0 +1,224 @@
+// Mealie integration — connection, client error mapping. Shares one Postgres container + a fake Mealie.
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
+import { randomBytes } from 'node:crypto'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
+import { startFakeMealie, type FakeMealie } from './helpers/fake-mealie'
+import { Client } from 'pg'
+import jwt from 'jsonwebtoken'
+import { runMigrations } from '../src/migrate'
+
+const SECRET = 'waffled-local-dev-secret-change-me'
+
+let pg: StartedPostgreSqlContainer
+let url: string
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let app: any
+let closePool: () => Promise<void>
+let fake: FakeMealie
+let kevinId = ''
+let householdId = ''
+
+function mint(sub: string): string {
+  return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
+}
+
+interface RunResult {
+  statusCode: number
+  body: string
+}
+
+function call(method: string, path: string, token?: string, body?: unknown) {
+  const headers: Record<string, string> = {}
+  if (token) headers.authorization = `Bearer ${token}`
+  if (body !== undefined) headers['content-type'] = 'application/json'
+  const [rawPath, qs] = path.split('?')
+  const queryStringParameters: Record<string, string> = {}
+  if (qs) for (const pair of qs.split('&')) {
+    const [k, v] = pair.split('=')
+    queryStringParameters[k] = decodeURIComponent(v ?? '')
+  }
+  return app.run(
+    { httpMethod: method, path: rawPath, headers, queryStringParameters, body: body !== undefined ? JSON.stringify(body) : null, isBase64Encoded: false },
+    {}
+  ) as Promise<RunResult>
+}
+
+const kevin = mint('dev|kevin')
+const kid = mint('dev|kid')
+
+async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
+  const client = new Client({ connectionString: url })
+  await client.connect()
+  try {
+    return await fn(client)
+  } finally {
+    await client.end()
+  }
+}
+
+const connect = (extra: Record<string, unknown> = {}) =>
+  call('PUT', '/api/mealie/connection', kevin, { baseUrl: fake.url + '/', token: fake.token, ...extra })
+
+const disconnect = () => call('DELETE', '/api/mealie/connection', kevin)
+
+beforeAll(async () => {
+  pg = await new PostgreSqlContainer('postgres:16').start()
+  url = pg.getConnectionUri()
+  await runMigrations(url)
+  process.env.DATABASE_URL = url
+  process.env.TOKEN_ENCRYPTION_KEY = randomBytes(32).toString('base64')
+  delete process.env.AUTH0_DOMAIN
+  fake = await startFakeMealie()
+  app = (await import('../src/app')).default
+  closePool = (await import('../src/platform/db')).closePool
+  const setup = await call('POST', '/api/auth/setup', undefined, {
+    household: { name: 'Sites', timezone: 'America/Chicago' },
+    admin: { name: 'Kevin', email: 'kevin@example.com', password: 'ownerpass1' },
+  })
+  expect(setup.statusCode).toBe(201)
+  kevinId = JSON.parse(setup.body).person.id
+  householdId = JSON.parse(setup.body).household.id
+  await withClient(async (c) => {
+    await c.query(
+      `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1,$2,'password','dev|kevin',true)`,
+      [householdId, kevinId]
+    )
+    const p = await c.query<{ id: string }>(
+      `insert into persons (household_id, name, member_type, is_admin) values ($1, 'Kiddo', 'kid', false) returning id`,
+      [householdId]
+    )
+    await c.query(
+      `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1,$2,'password','dev|kid',true)`,
+      [householdId, p.rows[0].id]
+    )
+  })
+})
+
+afterAll(async () => {
+  await fake?.close()
+  await closePool?.()
+  await pg?.stop()
+})
+
+beforeEach(async () => {
+  fake.state.down = false
+  fake.state.version = '3.29.0'
+  fake.token = 'fake-mealie-api-token'
+  fake.state.requests.length = 0
+  await disconnect()
+})
+
+describe('mealie schema', () => {
+  it('creates mealie_connections', async () => {
+    const res = await withClient((c) => c.query(`select 1 from information_schema.tables where table_schema='public' and table_name='mealie_connections'`))
+    expect(res.rowCount).toBe(1)
+  })
+
+  it('nulls connected_by when the person is deleted, keeping the row', async () => {
+    await withClient(async (c) => {
+      const p = await c.query<{ id: string }>(
+        `insert into persons (household_id, name, member_type) values ($1, 'Temp', 'adult') returning id`,
+        [householdId]
+      )
+      await c.query(
+        `insert into mealie_connections (household_id, base_url, token_encrypted, connected_by) values ($1,'http://x','enc',$2)`,
+        [householdId, p.rows[0].id]
+      )
+      await c.query(`delete from persons where id = $1`, [p.rows[0].id])
+      const after = await c.query<{ connected_by: string | null }>(`select connected_by from mealie_connections where household_id = $1`, [householdId])
+      expect(after.rowCount).toBe(1)
+      expect(after.rows[0].connected_by).toBeNull()
+    })
+  })
+})
+
+describe('mealie connection', () => {
+  it('connects, hides the token and stores it encrypted', async () => {
+    const res = await connect()
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body)).toMatchObject({ connected: true, baseUrl: fake.url, mealieVersion: '3.29.0', shoppingListId: null })
+    expect(res.body).not.toContain(fake.token)
+    const row = await withClient((c) => c.query<{ token_encrypted: string }>(`select token_encrypted from mealie_connections where household_id = $1`, [householdId]))
+    expect(row.rows[0].token_encrypted).not.toBe(fake.token)
+    expect(row.rows[0].token_encrypted).not.toContain(fake.token)
+  })
+
+  it('rejects Mealie older than 2.0', async () => {
+    fake.state.version = '1.12.0'
+    const res = await connect()
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).message).toBe('Mealie 2.0 or newer is required')
+  })
+
+  it('accepts a nightly version string', async () => {
+    fake.state.version = 'nightly'
+    expect((await connect()).statusCode).toBe(200)
+  })
+
+  it('rejects a bad token and stores nothing', async () => {
+    const res = await connect({ token: 'wrong' })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).message).toBe('Mealie rejected that token')
+    const rows = await withClient((c) => c.query(`select 1 from mealie_connections where household_id = $1`, [householdId]))
+    expect(rows.rowCount).toBe(0)
+  })
+
+  it.each(['ftp://x', 'http://u:p@x', 'not a url'])('rejects the URL %s', async (baseUrl) => {
+    expect((await connect({ baseUrl })).statusCode).toBe(400)
+  })
+
+  it('keeps the stored token when re-saved without one', async () => {
+    await connect()
+    const res = await call('PUT', '/api/mealie/connection', kevin, { baseUrl: fake.url })
+    expect(res.statusCode).toBe(200)
+    expect((await call('GET', '/api/mealie/shopping-lists', kevin)).statusCode).toBe(200)
+    const auths = fake.state.requests.filter((r) => r.path.startsWith('/api/users/self')).map((r) => r.auth)
+    expect(auths).toEqual([`Bearer ${fake.token}`, `Bearer ${fake.token}`])
+  })
+
+  it('lets a kid read status but not change it', async () => {
+    await connect()
+    const get = await call('GET', '/api/mealie/connection', kid)
+    expect(get.statusCode).toBe(200)
+    expect(JSON.parse(get.body)).toMatchObject({ connected: true })
+    expect(get.body).not.toContain(fake.token)
+    expect((await call('PUT', '/api/mealie/connection', kid, { baseUrl: fake.url, token: fake.token })).statusCode).toBe(403)
+    expect((await call('DELETE', '/api/mealie/connection', kid)).statusCode).toBe(403)
+  })
+
+  it('lists shopping lists and stores the chosen list id and name', async () => {
+    await connect()
+    const lists = await call('GET', '/api/mealie/shopping-lists', kevin)
+    expect(JSON.parse(lists.body)).toEqual([{ id: 'list-1', name: 'Groceries' }, { id: 'list-2', name: 'Costco' }])
+    const put = await call('PUT', '/api/mealie/connection', kevin, { baseUrl: fake.url, shoppingListId: 'list-2' })
+    expect(JSON.parse(put.body)).toMatchObject({ shoppingListId: 'list-2', shoppingListName: 'Costco' })
+    const row = await withClient((c) => c.query(`select shopping_list_id, shopping_list_name from mealie_connections where household_id = $1`, [householdId]))
+    expect(row.rows[0]).toEqual({ shopping_list_id: 'list-2', shopping_list_name: 'Costco' })
+  })
+
+  it('disconnects', async () => {
+    await connect()
+    expect((await disconnect()).statusCode).toBe(204)
+    expect(JSON.parse((await call('GET', '/api/mealie/connection', kevin)).body)).toEqual({ connected: false })
+  })
+})
+
+describe('mealie client errors', () => {
+  it('maps an unreachable Mealie to 502 MealieUnavailable', async () => {
+    await connect()
+    fake.state.down = true
+    const res = await call('GET', '/api/mealie/shopping-lists', kevin)
+    expect(res.statusCode).toBe(502)
+    expect(JSON.parse(res.body).error).toBe('MealieUnavailable')
+  })
+
+  it('maps a revoked token to 502 MealieAuthFailed without leaking it', async () => {
+    await connect()
+    const old = fake.token
+    fake.token = 'rotated-token'
+    const res = await call('GET', '/api/mealie/shopping-lists', kevin)
+    expect(res.statusCode).toBe(502)
+    expect(JSON.parse(res.body).error).toBe('MealieAuthFailed')
+    expect(res.body).not.toContain(old)
+  })
+})
