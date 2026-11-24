@@ -4,6 +4,8 @@ import { ListsModal } from './components/ListsModal'
 import { ListItemModal } from './components/ListItemModal'
 import { PriorityFlag } from './components/priority'
 import { GroceryBoard } from './components/GroceryBoard'
+import { MealieShoppingList } from './components/MealieShoppingList'
+import { useMealie } from '../lib/mealie-context'
 import { ShareListModal } from './components/ShareListModal'
 import type { ShareListItem } from './components/share-list'
 import { filterListItems } from './components/list-search'
@@ -370,6 +372,7 @@ export function Lists() {
   // "Share list" — the same phone handoff the grocery board offers, for any list.
   const [sharing, setSharing] = useState(false)
   const [groceryOpen, setGroceryOpen] = useState(false)
+  const mealie = useMealie()
   // Just-checked items lingering in place during the undo grace window.
   const [recent, setRecent] = useState<Set<string>>(new Set())
   // Completed section is collapsed by default (checked items tuck away).
@@ -677,7 +680,8 @@ export function Lists() {
 
   // The grocery list opens its dedicated auto-built board (takes over the screen).
   if (groceryOpen) {
-    return <GroceryBoard onBack={closeGrocery} />
+    if (mealie.loading) return null
+    return mealie.connected ? <MealieShoppingList onBack={closeGrocery} /> : <GroceryBoard onBack={closeGrocery} />
   }
 
   // Person filter and search stack: both narrow what's on screen, and the search
@@ -727,7 +731,7 @@ export function Lists() {
                 <span className="lemo">{l.emoji ?? '📝'}</span>
                 {l.name}
                 <span className={`lct ${auto ? 'auto' : ''}`}>
-                  {auto ? `✦ ${l.itemCount}` : l.itemCount}
+                  {auto ? (mealie.connected ? '' : `✦ ${l.itemCount}`) : l.itemCount}
                 </span>
               </button>
             )
