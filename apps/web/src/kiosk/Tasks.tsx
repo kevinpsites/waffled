@@ -3,9 +3,10 @@ import { useSearchParams } from 'react-router'
 import { Icon, Check } from './icons'
 import { ChoreModal, type ChoreDraft } from './components/ChoreModal'
 import { RewardsPanel } from './components/RewardsPanel'
+import { TrackersPanel } from './components/TrackersPanel'
 import { ChoreApprovalsCard, ChoreProofModal } from './components/Approvals'
 import { choresApi, usePersons, useHousehold, can, useDayInstances, useAwaitingChores, useCurrencies, localToday, uploadImage, type ChoreInstance } from '../lib/api'
-import { rewardsEnabled } from '../lib/modules'
+import { rewardsEnabled, moduleEnabled } from '../lib/modules'
 
 // Shift a YYYY-MM-DD by N days (local), and describe a day relative to today.
 function shiftDate(d: string, days: number): string {
@@ -94,9 +95,34 @@ function draftFrom(i: ChoreInstance): ChoreDraft {
   return { id: i.choreId, instanceId: i.id, title: i.choreTitle, emoji: i.emoji, personId: i.personId, rewardAmount: i.rewardAmount, rewardCurrency: i.rewardCurrency, rrule: i.rrule, dueOn: i.dueOn, dueTime: i.dueTime, requiresApproval: i.requiresApproval, requiresPhoto: i.requiresPhoto, status: i.status }
 }
 
+type TasksTab = 'chores' | 'rewards' | 'trackers'
+
+// Thin shell: with chores off the chore body (and its fetchers) is never mounted.
+export function Tasks() {
+  const { household } = useHousehold()
+  const [searchParams] = useSearchParams()
+  const [tab, setTab] = useState<TasksTab>(() => {
+    const t = searchParams.get('tab')
+    return t === 'rewards' || t === 'trackers' ? t : 'chores'
+  })
+  if (!household) return null
+  const trackersOn = moduleEnabled(household, 'trackers')
+  if (!moduleEnabled(household, 'chores')) {
+    return (
+      <div className="tasks-page">
+        <div className="tasks-head">
+          <div className="card-h wf-serif" style={{ fontSize: 26, fontWeight: 600 }}>Trackers</div>
+        </div>
+        <TrackersPanel />
+      </div>
+    )
+  }
+  return <ChoresTasks tab={tab === 'trackers' && !trackersOn ? 'chores' : tab} setTab={setTab} trackersOn={trackersOn} />
+}
+
 // The Tasks screen: today's chores per person. Tick to complete/uncomplete;
 // click a chore to edit; add chores per person or via New.
-export function Tasks() {
+function ChoresTasks({ tab: tabState, setTab, trackersOn }: { tab: TasksTab; setTab: (t: TasksTab) => void; trackersOn: boolean }) {
   const [date, setDate] = useState(() => localToday())
   const { instances, loading, error, setDone, assign, refetch } = useDayInstances(date)
   const { persons } = usePersons()
@@ -111,10 +137,8 @@ export function Tasks() {
   const awaiting = useAwaitingChores()
   const groups = buildColumns(instances, persons)
   const [modal, setModal] = useState<{ chore?: ChoreDraft; personId?: string | null } | null>(null)
-  const [searchParams] = useSearchParams()
-  const [tabState, setTab] = useState<'chores' | 'rewards'>(searchParams.get('tab') === 'rewards' ? 'rewards' : 'chores')
   // Pin to chores whenever rewards is off, so a stale ?tab=rewards can't strand us.
-  const tab = rewardsOn ? tabState : 'chores'
+  const tab = tabState === 'rewards' && !rewardsOn ? 'chores' : tabState
   const [claimId, setClaimId] = useState<string | null>(null)
   // Photo-proof capture: a hidden file input, the instance (and optional person to
   // claim first) we're capturing for, and any upload/guard error to surface.
@@ -225,12 +249,13 @@ export function Tasks() {
     <div className="tasks-page">
       <div className="tasks-head">
         <div className="card-h wf-serif" style={{ fontSize: 26, fontWeight: 600 }}>
-          {tab === 'chores' ? `${Math.abs(meta.diff) <= 1 ? meta.rel : meta.weekday}’s chores` : 'Reward Shop'}
+          {tab === 'chores' ? `${Math.abs(meta.diff) <= 1 ? meta.rel : meta.weekday}’s chores` : tab === 'rewards' ? 'Reward Shop' : 'Trackers'}
         </div>
-        {rewardsOn && (
+        {(rewardsOn || trackersOn) && (
           <div className="seg" style={{ marginLeft: 'auto' }}>
             <button className={tab === 'chores' ? 'on' : ''} style={{ cursor: 'pointer' }} onClick={() => setTab('chores')}>Chores</button>
-            <button className={tab === 'rewards' ? 'on' : ''} style={{ cursor: 'pointer' }} onClick={() => setTab('rewards')}>Rewards</button>
+            {rewardsOn && <button className={tab === 'rewards' ? 'on' : ''} style={{ cursor: 'pointer' }} onClick={() => setTab('rewards')}>Rewards</button>}
+            {trackersOn && <button className={tab === 'trackers' ? 'on' : ''} style={{ cursor: 'pointer' }} onClick={() => setTab('trackers')}>Trackers</button>}
           </div>
         )}
         {tab === 'chores' && (
@@ -271,6 +296,7 @@ export function Tasks() {
       )}
 
       {tab === 'rewards' && <RewardsPanel />}
+      {tab === 'trackers' && <TrackersPanel />}
 
       {tab === 'chores' && (
       <div className="tasks-screen">

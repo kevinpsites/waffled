@@ -22,6 +22,13 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Done ✅
 
+- **Trackers — tap-to-log items.** A module (`trackers`, default **on**) for things like a
+  medicine dose: every tap is kept, each tracker shows "Last time: MM/DD h:mm AM/PM" in the
+  household timezone, and an optional "Ask who" ties an entry to a member. A Today card logs
+  with one tap and an Undo toast; Tasks → Trackers manages them (adults/admins) and holds the
+  history (anyone can fix a time or delete an entry). Not included: dose / "too soon"
+  warnings, reminders, charts. How to use it:
+  [docs → Trackers](https://docs.waffled.app/features/trackers/).
 - **iPhone calendar: Month → Week → Day** — the phone Calendar tab rebuilt from the design
   handoff: a full-height month grid with ISO week numbers and up to four titles a day, a
   horizontal week card rail (tap an event to edit it), and a pushed Day timeline with overlap

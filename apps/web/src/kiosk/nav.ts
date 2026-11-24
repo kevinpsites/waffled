@@ -2,18 +2,18 @@ import type { IconName } from './icons'
 import type { ModuleKey } from '../lib/modules'
 
 // The rail's primary nav. `path` drives both the route and the active state.
-// `module` (optional) gates the entry behind an enabled optional module.
+// `module` (optional) gates the entry behind an enabled optional module (any-of when a list).
 export interface Screen {
   path: string
   label: string
   icon: IconName
-  module?: ModuleKey
+  module?: ModuleKey | ModuleKey[]
 }
 
 export const SCREENS: Screen[] = [
   { path: '/', label: 'Today', icon: 'home' },
   { path: '/calendar', label: 'Calendar', icon: 'calendar' },
-  { path: '/tasks', label: 'Tasks', icon: 'tasks', module: 'chores' },
+  { path: '/tasks', label: 'Tasks', icon: 'tasks', module: ['chores', 'trackers'] },
   { path: '/goals', label: 'Goals', icon: 'goals', module: 'goals' },
   { path: '/family', label: 'Family', icon: 'family' },
   { path: '/meals', label: 'Meals', icon: 'meals', module: 'meals' },

@@ -26,8 +26,9 @@ goals & rewards, meals & recipes, lists, photos, and an AI "Add anything" captur
 ## How this fork differs from upstream Waffled
 
 Waffled Remix is a fork of [kevinpsites/waffled](https://github.com/kevinpsites/waffled),
-reshaped to install like a typical self-hosted app. The features are the same, but you
-install and run it differently:
+reshaped to install like a typical self-hosted app. It adds
+[Trackers](website/docs/src/content/docs/features/trackers.md) (tap-to-log items) on top of
+upstream's features, and you install and run it differently:
 
 | | Upstream Waffled | Waffled Remix |
 | --- | --- | --- |

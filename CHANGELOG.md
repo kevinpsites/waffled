@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Trackers.** Tap-to-log items like a medicine dose: every tap is kept, each shows "Last time: 11/23 2:15 PM", and an optional "Ask who" links an entry to a family member. On Today and under Tasks → Trackers.
+
 ### Changed
 
 - **New home: `evan-ribbey/waffled-remix`.** The project moved to

@@ -3,7 +3,7 @@
 // docs/product/extensibility.md.
 import type { Household } from './api'
 
-export type ModuleKey = 'pantry' | 'chores' | 'goals' | 'meals' | 'lists' | 'familyNight' | 'quotes' | 'waffledBites' | 'rhythms' | 'weeklyPlanning'
+export type ModuleKey = 'pantry' | 'chores' | 'goals' | 'meals' | 'lists' | 'familyNight' | 'quotes' | 'waffledBites' | 'rhythms' | 'trackers' | 'weeklyPlanning'
 
 export interface ModuleDef {
   key: ModuleKey
@@ -95,6 +95,14 @@ export const MODULES: ModuleDef[] = [
     defaultOn: false,
   },
   {
+    key: 'trackers',
+    name: 'Trackers',
+    icon: '⏱️',
+    description: 'Tap-to-log items like a medicine dose — every tap is kept, and each shows when it last happened.',
+    status: 'available',
+    defaultOn: true,
+  },
+  {
     key: 'weeklyPlanning',
     name: 'Weekly Planning',
     icon: '🗓️',
@@ -112,6 +120,12 @@ export function moduleEnabled(household: Household | null | undefined, key: Modu
   if (!def || def.status !== 'available') return false
   const v = household?.settings?.modules?.[key]
   return typeof v === 'boolean' ? v : def.defaultOn
+}
+
+// Any-of check for entries (nav items, route gates) that stay reachable while at least one
+// of several modules is on — e.g. Tasks hosts both chores and trackers.
+export function anyModuleEnabled(household: Household | null | undefined, keys: ModuleKey | ModuleKey[]): boolean {
+  return (Array.isArray(keys) ? keys : [keys]).some((k) => moduleEnabled(household, k))
 }
 
 // Rewards is the spend half of the chores economy, not its own module: a sub-toggle
