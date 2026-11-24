@@ -38,7 +38,7 @@ const SELECT_TRACKER = `
       select e.id, e.occurred_at, e.person_id
         from tracker_entries e
        where e.tracker_id = t.id
-       order by e.occurred_at desc, e.created_at desc
+       order by e.occurred_at desc, e.id desc
        limit 1
     ) le on true
     left join persons p on p.id = le.person_id and p.household_id = t.household_id`

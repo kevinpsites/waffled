@@ -85,6 +85,8 @@ const EXPECTED: Array<{ table: string; col: string; onDelete: 'a' | 'c' | 'n' }>
   { table: 'rhythm_completions', col: 'person_id', onDelete: 'n' },
   { table: 'rhythm_skips', col: 'skipped_by', onDelete: 'n' },
   { table: 'rhythms', col: 'person_id', onDelete: 'n' },
+  { table: 'tracker_entries', col: 'logged_by', onDelete: 'n' },
+  { table: 'tracker_entries', col: 'person_id', onDelete: 'n' },
   { table: 'waffled_bite_devices', col: 'created_by_person_id', onDelete: 'a' },
   { table: 'waffled_bite_devices', col: 'person_id', onDelete: 'a' },
   { table: 'waffled_bite_pairing_codes', col: 'created_by', onDelete: 'a' },

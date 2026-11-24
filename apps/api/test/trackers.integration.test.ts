@@ -108,7 +108,7 @@ describe('trackers schema', () => {
       )
       await expect(
         c.query(`insert into tracker_entries (household_id, tracker_id) values ($1, $2)`, [other.rows[0].id, t.rows[0].id])
-      ).rejects.toThrow()
+      ).rejects.toMatchObject({ code: '23503' })
     })
   })
 
