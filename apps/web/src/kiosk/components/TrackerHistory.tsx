@@ -77,7 +77,7 @@ export function TrackerHistory({ tracker, tz, onBack }: { tracker: Tracker; tz: 
       {entries?.map((e) => (
         <div key={e.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', marginBottom: 8 }}>
           <span style={{ fontWeight: 600 }}>{formatEntryTime(e.occurredAt, tz)}</span>
-          <span>{e.personName ?? 'Someone'}</span>
+          {e.personId && <span>{e.personName ?? 'Someone'}</span>}
           {e.loggedByName && <span className="tiny muted">logged by {e.loggedByName}</span>}
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
             <button type="button" className="pill" aria-label="Edit entry time" onClick={() => { setEditError(null); setEditing({ entry: e, value: isoToZonedInput(e.occurredAt, tz) }) }}>Edit</button>

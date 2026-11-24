@@ -64,10 +64,11 @@ describe('TrackersPanel', () => {
     await waitFor(() => expect(h.api.update).toHaveBeenCalledWith('t9', { archived: false }))
   })
 
-  it('history lists entries with Someone for a null person', async () => {
+  it('history shows the person only on entries that have one', async () => {
     render(<TrackersPanel />)
     fireEvent.click(await screen.findByText('History'))
-    expect(await screen.findByText('Someone')).toBeInTheDocument()
+    expect((await screen.findAllByText('Ana')).length).toBeGreaterThan(0)
+    expect(screen.queryByText('Someone')).not.toBeInTheDocument()
     expect(screen.getAllByText('Ana').length).toBeGreaterThan(0)
     expect(screen.getAllByText('11/23 2:15 PM').length).toBe(2)
   })
@@ -87,7 +88,7 @@ describe('TrackersPanel', () => {
   it('filters history by person', async () => {
     render(<TrackersPanel />)
     fireEvent.click(await screen.findByText('History'))
-    await screen.findByText('Someone')
+    await screen.findAllByLabelText('Delete entry')
     fireEvent.change(screen.getByLabelText('Filter by person'), { target: { value: 'p1' } })
     await waitFor(() => expect(h.api.entries).toHaveBeenLastCalledWith('t1', { personId: 'p1', before: undefined }))
   })
@@ -95,7 +96,7 @@ describe('TrackersPanel', () => {
   it('deleting an entry asks first, then calls deleteEntry', async () => {
     render(<TrackersPanel />)
     fireEvent.click(await screen.findByText('History'))
-    await screen.findByText('Someone')
+    await screen.findAllByLabelText('Delete entry')
     fireEvent.click(screen.getAllByLabelText('Delete entry')[0])
     expect(h.api.deleteEntry).not.toHaveBeenCalled()
     fireEvent.click(within(document.querySelector('.modal-card') as HTMLElement).getByRole('button', { name: 'Delete' }))
@@ -105,7 +106,7 @@ describe('TrackersPanel', () => {
   it('editing the time sends an ISO string, converting from household wall time', async () => {
     render(<TrackersPanel />)
     fireEvent.click(await screen.findByText('History'))
-    await screen.findByText('Someone')
+    await screen.findAllByLabelText('Delete entry')
     fireEvent.click(screen.getAllByLabelText('Edit entry time')[0])
     const input = screen.getByLabelText('When') as HTMLInputElement
     expect(input.value).toBe('2026-11-23T14:15')
@@ -118,18 +119,18 @@ describe('TrackersPanel', () => {
     h.api.deleteEntry.mockRejectedValue(new Error('500'))
     render(<TrackersPanel />)
     fireEvent.click(await screen.findByText('History'))
-    await screen.findByText('Someone')
+    await screen.findAllByLabelText('Delete entry')
     fireEvent.click(screen.getAllByLabelText('Delete entry')[0])
     fireEvent.click(within(document.querySelector('.modal-card') as HTMLElement).getByRole('button', { name: 'Delete' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't delete/i)
-    expect(screen.getByText('Someone')).toBeInTheDocument()
+    expect(screen.getAllByLabelText('Delete entry')).toHaveLength(2)
   })
 
   it('edit failure keeps the modal open with an error', async () => {
     h.api.updateEntry.mockRejectedValue(new Error('500'))
     render(<TrackersPanel />)
     fireEvent.click(await screen.findByText('History'))
-    await screen.findByText('Someone')
+    await screen.findAllByLabelText('Delete entry')
     fireEvent.click(screen.getAllByLabelText('Edit entry time')[0])
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't save/i)
@@ -139,7 +140,7 @@ describe('TrackersPanel', () => {
   it('an invalid edit value shows a message and does not call the API', async () => {
     render(<TrackersPanel />)
     fireEvent.click(await screen.findByText('History'))
-    await screen.findByText('Someone')
+    await screen.findAllByLabelText('Delete entry')
     fireEvent.click(screen.getAllByLabelText('Edit entry time')[0])
     fireEvent.change(screen.getByLabelText('When'), { target: { value: '' } })
     fireEvent.submit(screen.getByLabelText('When').closest('form') as HTMLFormElement)
