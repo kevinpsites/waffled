@@ -6,6 +6,7 @@ import { startFakeMealie, type FakeMealie } from './helpers/fake-mealie'
 import { Client } from 'pg'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
+import { __resetMealieCache } from '../src/modules/mealie/mealie-cache'
 
 const SECRET = 'waffled-local-dev-secret-change-me'
 
@@ -105,6 +106,10 @@ beforeEach(async () => {
   fake.state.version = '3.29.0'
   fake.token = 'fake-mealie-api-token'
   fake.state.requests.length = 0
+  fake.state.mealplans = []
+  fake.state.recipes = []
+  fake.state.images = {}
+  __resetMealieCache()
   await disconnect()
 })
 
@@ -220,5 +225,153 @@ describe('mealie client errors', () => {
     expect(res.statusCode).toBe(502)
     expect(JSON.parse(res.body).error).toBe('MealieAuthFailed')
     expect(res.body).not.toContain(old)
+  })
+})
+
+const RID = '3f2b8a52-9d3e-4c1a-8f6e-0a1b2c3d4e5f'
+const RID2 = '4a2b8a52-9d3e-4c1a-8f6e-0a1b2c3d4e5f'
+const planPaths = () => fake.state.requests.filter((r) => r.path.startsWith('/api/households/mealplans'))
+
+describe('mealie meal plan read', () => {
+  it('sorts by date then meal order, falls back to the recipe name, and forwards the range', async () => {
+    await connect()
+    const recipe = { id: RID, slug: 'soup', name: 'Soup', image: 'abc' }
+    fake.state.mealplans = [
+      { id: 3, date: '2026-05-04', entryType: 'side', title: 'Rolls', recipe: null },
+      { id: 1, date: '2026-05-04', entryType: 'dinner', title: '', recipe },
+      { id: 2, date: '2026-05-04', entryType: 'breakfast', title: 'Eggs', recipe: null },
+      { id: 4, date: '2026-05-04', entryType: 'snack', title: 'Chips', recipe: null },
+    ]
+    const res = await call('GET', '/api/mealie/mealplan?start=2026-05-01&end=2026-05-07', kid)
+    expect(res.statusCode).toBe(200)
+    const { entries } = JSON.parse(res.body)
+    expect(entries.map((e: { id: number }) => e.id)).toEqual([2, 1, 3, 4])
+    expect(entries[1]).toMatchObject({ title: 'Soup', recipe: { id: RID, slug: 'soup', name: 'Soup', imageUrl: `/api/mealie/images/${RID}/min` } })
+    expect(entries[0].recipe).toBeNull()
+    const seen = planPaths()[0].path
+    expect(seen).toContain('start_date=2026-05-01')
+    expect(seen).toContain('end_date=2026-05-07')
+  })
+
+  it('gives a null imageUrl when the recipe has no image', async () => {
+    await connect()
+    fake.state.mealplans = [{ id: 1, date: '2026-05-04', entryType: 'dinner', title: 'X', recipe: { id: RID, slug: 's', name: 'S', image: null } }]
+    const { entries } = JSON.parse((await call('GET', '/api/mealie/mealplan?start=2026-05-01&end=2026-05-07', kid)).body)
+    expect(entries[0].recipe.imageUrl).toBeNull()
+  })
+
+  it('rejects a range over 62 days and a bad date', async () => {
+    await connect()
+    expect((await call('GET', '/api/mealie/mealplan?start=2026-01-01&end=2026-03-05', kid)).statusCode).toBe(400)
+    expect((await call('GET', '/api/mealie/mealplan?start=2026-01-01&end=2026-03-03', kid)).statusCode).toBe(200)
+    expect((await call('GET', '/api/mealie/mealplan?start=05/01/2026&end=2026-05-07', kid)).statusCode).toBe(400)
+    expect((await call('GET', '/api/mealie/mealplan?end=2026-05-07', kid)).statusCode).toBe(400)
+  })
+
+  it('returns 409 MealieNotConnected without a connection', async () => {
+    const res = await call('GET', '/api/mealie/mealplan?start=2026-05-01&end=2026-05-07', kid)
+    expect(res.statusCode).toBe(409)
+    expect(JSON.parse(res.body).error).toBe('MealieNotConnected')
+  })
+
+  it('serves a second read within the TTL from the cache', async () => {
+    await connect()
+    const path = '/api/mealie/mealplan?start=2026-05-01&end=2026-05-07'
+    await call('GET', path, kid)
+    await call('GET', path, kid)
+    expect(planPaths()).toHaveLength(1)
+  })
+
+  it('drops the cache when the connection is deleted', async () => {
+    await connect()
+    const path = '/api/mealie/mealplan?start=2026-05-01&end=2026-05-07'
+    await call('GET', path, kid)
+    await disconnect()
+    await connect()
+    await call('GET', path, kid)
+    expect(planPaths()).toHaveLength(2)
+  })
+})
+
+describe('mealie recipes read', () => {
+  const recipe = (n: number, extra: Record<string, unknown> = {}) => ({
+    id: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`, slug: `r-${n}`, name: `Recipe ${n}`, image: 'x', description: 'd', totalTime: '30 min', ...extra,
+  })
+
+  it('forwards search, page and perPage, and maps the page', async () => {
+    await connect()
+    fake.state.recipes = [recipe(1, { name: 'Tomato soup' }), recipe(2, { name: 'Pasta', image: null })]
+    const res = await call('GET', '/api/mealie/recipes?search=soup&page=2', kid)
+    expect(res.statusCode).toBe(200)
+    const sent = fake.state.requests.find((r) => r.path.startsWith('/api/recipes?'))!.path
+    expect(sent).toContain('search=soup')
+    expect(sent).toContain('page=2')
+    expect(sent).toContain('perPage=24')
+    expect(sent).not.toContain('orderBy')
+    const all = JSON.parse((await call('GET', '/api/mealie/recipes', kid)).body)
+    expect(fake.state.requests.filter((r) => r.path.startsWith('/api/recipes?')).at(-1)!.path).toContain('orderBy=name')
+    expect(all).toMatchObject({ page: 1, totalPages: 1 })
+    expect(all.items[0]).toEqual({ id: recipe(1).id, slug: 'r-1', name: 'Tomato soup', imageUrl: `/api/mealie/images/${recipe(1).id}/min`, totalTime: '30 min', description: 'd' })
+    expect(all.items[1].imageUrl).toBeNull()
+  })
+
+  it('maps recipe detail and builds mealieUrl from publicUrl when set', async () => {
+    await connect({ publicUrl: 'https://mealie.example.com' })
+    fake.state.recipes = [recipe(1, {
+      recipeServings: 4, recipeYield: '4 servings',
+      recipeIngredient: [{ title: 'Sauce', display: '1 cup tomatoes', note: 'x' }, { title: null, display: '2 onions' }],
+      recipeInstructions: [{ title: '', text: 'Chop.' }, { title: 'Cook', text: 'Simmer.' }],
+    })]
+    const res = await call('GET', '/api/mealie/recipes/r-1', kid)
+    expect(res.statusCode).toBe(200)
+    const { recipe: r } = JSON.parse(res.body)
+    expect(r).toMatchObject({ slug: 'r-1', recipeYield: '4 servings', mealieUrl: 'https://mealie.example.com/r/r-1' })
+    expect(r.ingredients).toEqual([{ title: 'Sauce', display: '1 cup tomatoes' }, { title: null, display: '2 onions' }])
+    expect(r.steps).toEqual([{ title: null, text: 'Chop.' }, { title: 'Cook', text: 'Simmer.' }])
+  })
+
+  it('falls back to the base URL for mealieUrl', async () => {
+    await connect()
+    fake.state.recipes = [recipe(1)]
+    const { recipe: r } = JSON.parse((await call('GET', '/api/mealie/recipes/r-1', kid)).body)
+    expect(r.mealieUrl).toBe(`${fake.url}/r/r-1`)
+  })
+
+  it('returns 404 for a missing slug', async () => {
+    await connect()
+    expect((await call('GET', '/api/mealie/recipes/nope', kid)).statusCode).toBe(404)
+  })
+})
+
+describe('mealie image proxy', () => {
+  it('fetches the fixed file, returns the bytes with content-type and cache headers', async () => {
+    await connect()
+    const bytes = Buffer.from([0x52, 0x49, 0x46, 0x46, 1, 2, 3, 250, 251])
+    fake.state.images[RID] = bytes
+    const res = await call('GET', `/api/mealie/images/${RID}/min`, kid)
+    expect(res.statusCode).toBe(200)
+    const r = res as unknown as { headers: Record<string, string>; isBase64Encoded: boolean }
+    expect(r.isBase64Encoded).toBe(true)
+    expect(Buffer.from(res.body, 'base64').equals(bytes)).toBe(true)
+    expect(r.headers['content-type']).toBe('image/webp')
+    expect(r.headers['cache-control']).toBe('private, max-age=3600')
+    expect(fake.state.requests.some((q) => q.path === `/api/media/recipes/${RID}/images/min-original.webp`)).toBe(true)
+  })
+
+  it('maps original and tiny sizes', async () => {
+    await connect()
+    fake.state.images[RID] = Buffer.from([1])
+    await call('GET', `/api/mealie/images/${RID}/original`, kid)
+    await call('GET', `/api/mealie/images/${RID}/tiny`, kid)
+    const paths = fake.state.requests.map((q) => q.path)
+    expect(paths).toContain(`/api/media/recipes/${RID}/images/original.webp`)
+    expect(paths).toContain(`/api/media/recipes/${RID}/images/tiny-original.webp`)
+  })
+
+  it('rejects an unknown size and a non-uuid id, and 404s an unknown image', async () => {
+    await connect()
+    expect((await call('GET', `/api/mealie/images/${RID}/huge`, kid)).statusCode).toBe(400)
+    expect((await call('GET', '/api/mealie/images/not-a-uuid/min', kid)).statusCode).toBe(400)
+    expect((await call('GET', `/api/mealie/images/${RID2}/min`, kid)).statusCode).toBe(404)
   })
 })

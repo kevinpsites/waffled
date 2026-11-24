@@ -1,6 +1,7 @@
 // Per-household Mealie connection: storage, validation and the public status shape.
 import { query } from '../../platform/db'
 import { encryptSecret, decryptSecret, encryptionAvailable } from '../../platform/crypto'
+import { cacheClear } from './mealie-cache'
 import { mealieFetch, mealieNotConnected, normalizeBaseUrl, MealieError, type MealieTarget } from './mealie-client'
 
 export interface MealieConn {
@@ -115,9 +116,11 @@ export async function saveConnection(householdId: string, personId: string, inpu
        connected_by = excluded.connected_by, updated_at = now()`,
     [householdId, baseUrl, encryptSecret(token), listId, listName, publicUrl, version, personId]
   )
+  cacheClear(householdId)
   return { baseUrl, publicUrl, token, shoppingListId: listId, shoppingListName: listName, mealieVersion: version }
 }
 
 export async function deleteConnection(householdId: string): Promise<void> {
   await query('delete from mealie_connections where household_id = $1', [householdId])
+  cacheClear(householdId)
 }
