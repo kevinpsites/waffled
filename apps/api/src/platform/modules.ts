@@ -2,7 +2,7 @@
 // them on/off in Settings → Modules (stored in households.settings.modules). See
 // docs/product/extensibility.md for the A/B/C pattern model.
 
-export type ModuleKey = 'pantry' | 'chores' | 'goals' | 'meals' | 'lists' | 'familyNight' | 'quotes' | 'waffledBites' | 'rhythms' | 'weeklyPlanning'
+export type ModuleKey = 'pantry' | 'chores' | 'goals' | 'meals' | 'lists' | 'familyNight' | 'quotes' | 'waffledBites' | 'rhythms' | 'trackers' | 'weeklyPlanning'
 
 export interface ModuleDef {
   key: ModuleKey
@@ -90,6 +90,14 @@ export const MODULES: ModuleDef[] = [
     name: 'Rhythms',
     icon: '🔁',
     description: 'The things that should keep happening — the air filter, trash night, a quarterly self-care day — with a place to confirm each one is actually handled.',
+    status: 'available',
+    defaultOn: false,
+  },
+  {
+    key: 'trackers',
+    name: 'Trackers',
+    icon: '📋',
+    description: 'Tap to log the things you want a history of — a dose of Tylenol, a plant watered — and see when it last happened.',
     status: 'available',
     defaultOn: false,
   },
