@@ -1,7 +1,7 @@
 import { useMemo, type CSSProperties, type MouseEvent } from 'react'
 import type { AgendaEvent, Countdown } from '../../lib/api'
 import { evVars, useEventColor } from '../../lib/event-color'
-import { DOW, dowFrom, monthGridStart, ymd } from './cal-utils'
+import { isMealOrigin, DOW, dowFrom, monthGridStart, ymd } from './cal-utils'
 import { eventsByDay, weekSpans } from './month-spans'
 import { MonthDayPanel } from './MonthDayPanel'
 import { RhythmMark } from './RhythmMark'
@@ -114,7 +114,7 @@ export function MonthView({
               {spans.lanes > 0 && <div className="cal-span-gap" style={{ '--lanes': spans.lanes } as CSSProperties} />}
               {dayEvents.slice(0, shown).map((e) => {
                 const color = colorOf(e)
-                const isMeal = e.origin === 'meal_plan'
+                const isMeal = isMealOrigin(e)
                 return (
                   <div
                     key={e.id}

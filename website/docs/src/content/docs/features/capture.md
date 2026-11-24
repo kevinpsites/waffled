@@ -54,3 +54,5 @@ The capture bar is **core — never gated**. It routes into whichever surfaces e
 - 🛟 **Creates always work** — with no provider configured (or on a timeout) the route signals fallback and clients use the on-device heuristic, so *creating* keeps working. Changing an existing thing needs a connection to your server, because the server does the matching.
 - 🧠 **The on-device fallback handles simple phrasings** ("mark the dishes done") — for reliable "do anything" parsing of the trickier ones, add an AI provider in **Settings → AI & Capture**. Either way, the parse never leaves your infrastructure unless you point it at a hosted provider.
 - 🚧 **Server-side fuzzy person resolution** (nicknames / aliases) is planned — for now, name matching resolves the family names it knows.
+
+> **When Mealie is connected**, "add milk" goes to your Mealie shopping list and the Meal chip is hidden. See [Mealie](/features/mealie/).

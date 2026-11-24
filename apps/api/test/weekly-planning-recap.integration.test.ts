@@ -506,3 +506,21 @@ describe('planning · recap · the saved record', () => {
     expect(group(after, 'tasks')!.count).toBe(group(before, 'tasks')!.count + 1)
   })
 })
+
+describe('planning · recap · while Mealie owns the meals', () => {
+  it('has no meal lines and no grocery count, and gets them back on disconnect', async () => {
+    const { query } = await import('../src/platform/db')
+    expect(group(await recap(), 'meals')).toBeDefined()
+    await query(`insert into mealie_connections (household_id, base_url, token_encrypted) values ($1,'http://mealie.invalid','enc')`, [householdId])
+    try {
+      const r = await recap()
+      expect(group(r, 'meals')).toBeUndefined()
+      expect(r.days.every((d) => d.meal === null && d.cook === null)).toBe(true)
+      expect(JSON.stringify(r)).not.toMatch(/grocer/i)
+      expect(r.leftAlone.some((l) => l.key === 'none:meals')).toBe(false)
+    } finally {
+      await query(`delete from mealie_connections where household_id = $1`, [householdId])
+    }
+    expect(group(await recap(), 'meals')).toBeDefined()
+  })
+})

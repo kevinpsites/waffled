@@ -16,6 +16,7 @@ interface RunResult {
   statusCode: number
   headers?: Record<string, string>
   body?: string
+  isBase64Encoded?: boolean
 }
 
 interface ApiRunner {
@@ -110,7 +111,7 @@ export function createHttpServer(
       try {
         const result = (await api.run(event, {})) as RunResult
         res.writeHead(result.statusCode, result.headers ?? {})
-        res.end(result.body)
+        res.end(result.isBase64Encoded && result.body ? Buffer.from(result.body, 'base64') : result.body)
       } catch (err) {
         log.error('server adapter error', { err })
         res.writeHead(500, { 'content-type': 'application/json' })

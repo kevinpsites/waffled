@@ -57,6 +57,7 @@ export default defineConfig({
 						{ label: 'Family Night', slug: 'features/family-night' },
 						{ label: 'Rhythms', slug: 'features/rhythms' },
 						{ label: 'Trackers', slug: 'features/trackers' },
+						{ label: 'Mealie', slug: 'features/mealie' },
 						{ label: 'Weekly Planning', slug: 'features/weekly-planning' },
 						{ label: 'AI capture bar', slug: 'features/capture' },
 						{ label: 'Kiosk & display', slug: 'features/kiosk' },

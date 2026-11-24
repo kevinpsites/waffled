@@ -5,6 +5,7 @@
 // planned, where the driver is, what each step answered and when it finished. Config
 // lives in households.settings.weeklyPlanning. See docs/product/weekly-planning-plan.md.
 import { query } from '../../platform/db'
+import { mealieConnected } from '../mealie/mealie-connection'
 import { moduleEnabled, type ModuleKey } from '../../platform/modules'
 import { householdWeekStart, snapToWeekStart, parseWeekStartParam, type FirstDayOfWeek } from '../lists/lists.service'
 import type { Tenant } from '../households/households'
@@ -238,6 +239,8 @@ export async function resolveSteps(householdId: string, sessionId: string | null
     parkedByStep(householdId),
   ])
   const byKey = new Map(decisions.map((d) => [d.step_key, d]))
+  // Mealie owns meal planning and groceries while connected, so the meals step has nothing to read.
+  const connected = await mealieConnected(householdId)
   return STEPS.map((s, i) => {
     const moduleOn = s.requiresModule ? moduleEnabled(settingsRow, s.requiresModule) : true
     const turnedOff = config.steps[s.key] === false
@@ -245,7 +248,7 @@ export async function resolveSteps(householdId: string, sessionId: string | null
     return {
       ...s,
       number: i + 1,
-      available: moduleOn && !turnedOff,
+      available: moduleOn && !turnedOff && !(s.key === 'meals' && connected),
       status: d ? (d.status as SessionStep['status']) : 'pending',
       data: d?.data ?? {},
       decidedAt: d ? d.decided_at.toISOString() : null,

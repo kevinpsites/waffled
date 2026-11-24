@@ -108,6 +108,39 @@ function postDeclaring(path: string, declaredLength: number) {
   })
 }
 
+async function respond(result: Record<string, unknown>): Promise<{ status: number; bytes: Buffer }> {
+  const server = createHttpServer({ run: async () => result })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = (server.address() as AddressInfo).port
+  try {
+    return await new Promise((resolve, reject) => {
+      const req = request({ hostname: '127.0.0.1', port, path: '/x', method: 'GET' }, (res) => {
+        const chunks: Buffer[] = []
+        res.on('data', (c: Buffer) => chunks.push(c))
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, bytes: Buffer.concat(chunks) }))
+      })
+      req.on('error', reject)
+      req.end()
+    })
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+}
+
+describe('Node HTTP response encoding', () => {
+  it('writes decoded bytes for an isBase64Encoded result', async () => {
+    const raw = Buffer.from([0xff, 0x00, 0x80, 0x52, 0x49, 0x46, 0x46])
+    const out = await respond({ statusCode: 200, headers: { 'content-type': 'image/webp' }, body: raw.toString('base64'), isBase64Encoded: true })
+    expect(out.status).toBe(200)
+    expect(out.bytes.equals(raw)).toBe(true)
+  })
+
+  it('leaves text bodies unchanged', async () => {
+    const out = await respond({ statusCode: 200, body: 'aGVsbG8=' })
+    expect(out.bytes.toString('utf8')).toBe('aGVsbG8=')
+  })
+})
+
 describe('Node HTTP request body limits', () => {
   it('rejects an oversized ordinary JSON body before route handling', async () => {
     const result = await postDeclaring('/api/auth/login', DEFAULT_BODY_LIMIT_BYTES + 1)

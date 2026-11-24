@@ -251,3 +251,5 @@ Permissions** — see [Permissions & roles](/concepts/permissions/).
 - [Goals](/features/goals/) — what the Goals step features
 - [Family Night](/features/family-night/) — the rotation the Family night step reads
 - [Modules](/administration/modules/) — turning it on
+
+> **When Mealie is connected**, the Meals step is skipped and the recap leaves out meals and the grocery count. See [Mealie](/features/mealie/).

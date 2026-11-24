@@ -5,7 +5,7 @@
 import { useEffect, useRef } from 'react'
 import { SERVER_REACHABLE_EVENT } from './reachability'
 
-export type Topic = 'grocery' | 'meals' | 'chores' | 'rewards' | 'goals' | 'currencies' | 'recipes' | 'countdowns' | 'familyNight' | 'waffledBites' | 'rhythms' | 'weeklyPlanning' | 'events' | 'trackers'
+export type Topic = 'grocery' | 'meals' | 'chores' | 'rewards' | 'goals' | 'currencies' | 'recipes' | 'countdowns' | 'familyNight' | 'waffledBites' | 'rhythms' | 'weeklyPlanning' | 'events' | 'trackers' | 'mealie'
 
 export function emit(topic: Topic): void {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(`waffled:${topic}`))

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { type AgendaEvent, type Countdown } from '../../lib/api'
 import { evVars, useEventColor } from '../../lib/event-color'
-import { DOW_FULL, MONTHS, ymd, fmtHour, fmtTime, minutesOfDay, durationMin, packLanes } from './cal-utils'
+import { isMealOrigin, DOW_FULL, MONTHS, ymd, fmtHour, fmtTime, minutesOfDay, durationMin, packLanes } from './cal-utils'
 import { CountdownChip } from './CountdownChip'
 import { RhythmMark } from './RhythmMark'
 import { eventCoversDay } from './month-spans'
@@ -109,7 +109,7 @@ export function DayView({
               const top = Math.max(0, (startMin / 60) * HOUR_PX)
               const height = Math.max(26, (durationMin(e) / 60) * HOUR_PX - 3)
               const color = colorOf(e)
-              const isMeal = e.origin === 'meal_plan'
+              const isMeal = isMealOrigin(e)
               const lane = lanes.get(e.id) ?? { lane: 0, lanes: 1 }
               const width = `calc((100% - 8px) / ${lane.lanes})`
               const left = `calc((100% - 8px) / ${lane.lanes} * ${lane.lane} + 4px)`

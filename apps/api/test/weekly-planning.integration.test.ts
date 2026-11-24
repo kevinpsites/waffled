@@ -562,3 +562,21 @@ describe('planning · editing a note after it has been parked', () => {
     })).statusCode).toBe(404)
   })
 })
+
+describe('weekly planning · Mealie owns the meals', () => {
+  const stepOf = async (key: string) => json(await call('GET', '/api/weekly-planning', kevin)).steps.find((s: { key: string }) => s.key === key)
+
+  it('keeps the meals step available while Mealie is not connected', async () => {
+    await call('PATCH', '/api/household/modules', kevin, { meals: true })
+    expect((await stepOf('meals')).available).toBe(true)
+  })
+
+  it('marks the meals step unavailable while connected, and available again after', async () => {
+    const { query } = await import('../src/platform/db')
+    await query(`insert into mealie_connections (household_id, base_url, token_encrypted) values ($1,'http://mealie.invalid','enc')`, [householdId])
+    expect((await stepOf('meals')).available).toBe(false)
+    expect((await stepOf('calendar')).available).toBe(true)
+    await query(`delete from mealie_connections where household_id = $1`, [householdId])
+    expect((await stepOf('meals')).available).toBe(true)
+  })
+})

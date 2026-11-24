@@ -22,6 +22,11 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Done ✅
 
+- **Mealie integration.** Admins connect a Mealie 2.0+ server in Settings → Mealie (base URL,
+  optional public URL, API token, shopping-list picker). While connected, Today, Meals, Lists →
+  Grocery, the Calendar and the capture bar use Mealie's meal plan, recipes and shopping list;
+  Weekly Planning skips Meals; Pantry is not connected. Built-in data returns on disconnect.
+  How to use it: [docs → Mealie](https://docs.waffled.app/features/mealie/).
 - **Trackers — tap-to-log items.** A module (`trackers`, default **on**) for things like a
   medicine dose: every tap is kept, each tracker shows "Last time: MM/DD h:mm AM/PM" in the
   household timezone, and an optional "Ask who" ties an entry to a member. A Today card logs
@@ -121,7 +126,7 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   consistency calendar) matched to goal type + timeframe. The Log sheet's **note chips
   now suggest a goal's own most-logged notes** (scoped per participant, blended with the
   defaults) instead of a fixed list — **Tier 1**; smarter ranking is Tier 2 under *Planned*.
-- **Lists & groceries** — multi-lists, auto-built aisle board, quantity merge, pantry
+- **Lists & groceries** — multi-lists, auto-built aisle board (households connected to Mealie use Mealie's shopping list instead), quantity merge, pantry
   staples, live cross-surface refresh **plus cross-device refresh** (foreground + ~20s poll,
   since lists aren't on PowerSync), **item attribution** ("added by …" / from a meal plan
   or recipe), **add any recipe's ingredients from its page** — now with a **pick-specific

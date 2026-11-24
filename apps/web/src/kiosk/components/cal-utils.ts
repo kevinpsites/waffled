@@ -35,6 +35,9 @@ export const MONTHS = [
 ]
 export const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
+// Waffled's own meal mirror or Mealie's planned meal: styled as a meal chip.
+export const isMealOrigin = (e: Pick<AgendaEvent, 'origin'>): boolean => e.origin === 'meal_plan' || e.origin === 'mealie_plan'
+
 // The detail-page path for an event. A recurring occurrence has no `events` row of
 // its own, so it opens its series (master) id with the occurrence's slot in `?on=`
 // — the detail page uses that to show the right date and scope edits to this one.

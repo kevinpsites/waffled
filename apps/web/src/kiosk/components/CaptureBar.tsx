@@ -5,6 +5,8 @@ import { usePersons, useHousehold, api, countdownsApi, pantryApi, can, localToda
 import { parseCapture, intentSummary, looksConfident, memberTypeLabel, MEMBER_TYPES, goalTypeLabel, GOAL_TYPES, mutateTargetLabel, type ParsedIntent } from '../../lib/capture/parse'
 import { moduleEnabled, rewardsEnabled } from '../../lib/modules'
 import { describeRrule } from './recurrence'
+import { useMealie } from '../../lib/mealie-context'
+import { mealieApi } from '../../lib/api/mealie'
 
 const BYDAY = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
 const freqOf = (r: string | null): string =>
@@ -21,6 +23,7 @@ const VIA_LABEL: Record<string, string> = {
   openai: 'OpenAI',
   ollama: 'local LLM',
 }
+const MEALIE_MEAL_HINT = 'Plan meals from the Meals page while Mealie is connected.'
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack']
 const KINDS: Array<{ k: ParsedIntent['kind']; label: string }> = [
   { k: 'event', label: '📅 Event' },
@@ -575,6 +578,7 @@ export function CaptureBar() {
   const taRef = useRef<HTMLTextAreaElement>(null)
 
   const names = useMemo(() => persons.map((p) => p.name), [persons])
+  const mealie = useMealie()
   const customLists = useMemo(() => lists.filter((l) => l.listType !== 'grocery'), [lists])
   const listNames = useMemo(() => customLists.map((l) => l.name), [customLists])
   const localIntent = useMemo<ParsedIntent | null>(() => parseCapture(text, names, new Date(), listNames), [text, names, listNames])
@@ -713,6 +717,10 @@ export function CaptureBar() {
       return `Added “${i.title}”${i.rrule ? ' (repeating)' : ''} to the calendar`
     }
     if (i.kind === 'grocery') {
+      if (mealie.connected) {
+        await mealieApi.addItem(i.quantity ? `${i.quantity} ${i.name}` : i.name)
+        return `Added “${i.name}” to the grocery list`
+      }
       const label = i.quantity ? `${i.name} (${i.quantity})` : i.name
       await api.addGroceryItem(label)
       return `Added “${i.name}” to the grocery list`
@@ -828,6 +836,10 @@ export function CaptureBar() {
 
   async function performCommit(toCommit: ParsedIntent) {
     if (busy) return
+    if (toCommit.kind === 'meal' && mealie.connected) {
+      setFlash({ ok: false, msg: MEALIE_MEAL_HINT })
+      return
+    }
     setBusy(true)
     try {
       const msg = await commit(toCommit)
@@ -964,7 +976,7 @@ export function CaptureBar() {
                         <input className="cap-edit-input" value={primaryOf(intent)} onChange={(e) => setDraft(withPrimary(intent, e.target.value))} aria-label="Edit" autoFocus />
                         <DraftFields intent={intent} persons={persons} lists={customLists} set={setDraft} today={localToday()} viewer={viewer ?? null} canManageGoals={canManageGoals} />
                         <div className="cap-kind-chips">
-                          {KINDS.map(({ k, label }) => (
+                          {KINDS.filter(({ k }) => !(mealie.connected && k === 'meal')).map(({ k, label }) => (
                             <button key={k} type="button" className={`cap-kind-chip ${intent.kind === k ? 'on' : ''}`} onClick={() => setDraft(rerouteKind(intent, k, localToday()))}>
                               {label}
                             </button>

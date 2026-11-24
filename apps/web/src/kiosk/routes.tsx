@@ -1,8 +1,9 @@
-import { lazy } from 'react'
+import { lazy, type ReactNode } from 'react'
 import { Routes, Route, Navigate, Outlet } from 'react-router'
 import { useHousehold } from '../lib/api'
 import { anyModuleEnabled, type ModuleKey } from '../lib/modules'
 import { KioskLayout } from './KioskLayout'
+import { useMealie } from '../lib/mealie-context'
 
 // Every screen is loaded on demand. Statically imported, all twenty landed in the
 // entry bundle, so opening the kiosk to Today downloaded Settings, the recipe
@@ -27,6 +28,7 @@ const RecipeEditor = lazy(() => import('./RecipeEditor').then((m) => ({ default:
 const CookMode = lazy(() => import('./CookMode').then((m) => ({ default: m.CookMode })))
 const RecipesLibrary = lazy(() => import('./RecipesLibrary').then((m) => ({ default: m.RecipesLibrary })))
 const MealBuilder = lazy(() => import('./MealBuilder').then((m) => ({ default: m.MealBuilder })))
+const MealieRecipe = lazy(() => import('./MealieRecipe').then((m) => ({ default: m.MealieRecipe })))
 const Lists = lazy(() => import('./Lists').then((m) => ({ default: m.Lists })))
 const Pantry = lazy(() => import('./Pantry').then((m) => ({ default: m.Pantry })))
 const Rhythms = lazy(() => import('./Rhythms').then((m) => ({ default: m.Rhythms })))
@@ -45,6 +47,13 @@ function ModuleGate({ module }: { module: ModuleKey | ModuleKey[] }) {
   if (!household) return null
   if (!anyModuleEnabled(household, module)) return <Navigate to="/" replace />
   return <Outlet />
+}
+
+// Built-in recipe/builder screens have no data while Mealie owns recipes, so send them home.
+export function NotWhenMealie({ children }: { children: ReactNode }) {
+  const { connected, loading } = useMealie()
+  if (loading) return null
+  return connected ? <Navigate to="/meals" replace /> : <>{children}</>
 }
 
 // Every rail destination has a real component (some still stubs, owned by the
@@ -73,20 +82,21 @@ export function KioskRoutes() {
         <Route path="person/:id/waffled-bite" element={<WaffledBiteDevice />} />
         <Route element={<ModuleGate module="meals" />}>
           <Route path="meals" element={<Meals />} />
-          <Route path="meals/recipes" element={<RecipesLibrary />} />
+          <Route path="meals/mealie/:slug" element={<MealieRecipe />} />
+          <Route path="meals/recipes" element={<NotWhenMealie><RecipesLibrary /></NotWhenMealie>} />
           {/* Meal Builder. /meals/build starts an empty plate; /meals/build/:id edits
               an existing one. Gated with the rest of meals — a plate is meaningless
               without recipes. */}
-          <Route path="meals/build" element={<MealBuilder />} />
-          <Route path="meals/build/:id" element={<MealBuilder />} />
-          <Route path="meals/recipe/new" element={<RecipeEditor />} />
-          <Route path="meals/recipe/:id" element={<RecipeDetail />} />
-          <Route path="meals/recipe/:id/edit" element={<RecipeEditor />} />
-          <Route path="meals/recipe/:id/cook" element={<CookMode />} />
+          <Route path="meals/build" element={<NotWhenMealie><MealBuilder /></NotWhenMealie>} />
+          <Route path="meals/build/:id" element={<NotWhenMealie><MealBuilder /></NotWhenMealie>} />
+          <Route path="meals/recipe/new" element={<NotWhenMealie><RecipeEditor /></NotWhenMealie>} />
+          <Route path="meals/recipe/:id" element={<NotWhenMealie><RecipeDetail /></NotWhenMealie>} />
+          <Route path="meals/recipe/:id/edit" element={<NotWhenMealie><RecipeEditor /></NotWhenMealie>} />
+          <Route path="meals/recipe/:id/cook" element={<NotWhenMealie><CookMode /></NotWhenMealie>} />
           {/* Cooking a whole plate: the same screen, but tabbed across the meal's
               dishes with independent step progress per dish. Registered here so the
               Cook Mode work never has to edit this router. */}
-          <Route path="meals/meal/:id/cook" element={<CookMode />} />
+          <Route path="meals/meal/:id/cook" element={<NotWhenMealie><CookMode /></NotWhenMealie>} />
         </Route>
         <Route element={<ModuleGate module="lists" />}>
           <Route path="lists" element={<Lists />} />

@@ -5,6 +5,8 @@ import { PlanWeek } from './components/PlanWeek'
 import { PlanMonth } from './components/PlanMonth'
 import { RecipeBrowser, MEALS, MEAL_LABEL, type MealType } from './components/RecipeBrowser'
 import { useTopbarFull } from './topbar-slot'
+import { useMealie } from '../lib/mealie-context'
+import { MealieMeals } from './MealieMeals'
 import {
   api,
   mealBuilderApi,
@@ -161,7 +163,7 @@ function monthStartOf(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1)
 }
 
-export function Meals() {
+function BuiltinMeals() {
   const navigate = useNavigate()
   // Which day the household starts its week on. Sunday until the household resolves —
   // that's what this screen always assumed, so a Sunday household never sees a shift
@@ -641,4 +643,10 @@ function Row({
       })}
     </>
   )
+}
+
+export function Meals() {
+  const mealie = useMealie()
+  if (mealie.loading) return null
+  return mealie.connected ? <MealieMeals /> : <BuiltinMeals />
 }

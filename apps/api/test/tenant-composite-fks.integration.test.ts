@@ -72,6 +72,7 @@ const EXPECTED: Array<{ table: string; col: string; onDelete: 'a' | 'c' | 'n' }>
   { table: 'lists', col: 'created_by', onDelete: 'a' },
   { table: 'meal_plan_entries', col: 'cook_person_id', onDelete: 'a' },
   { table: 'meal_plans', col: 'created_by', onDelete: 'a' },
+  { table: 'mealie_connections', col: 'connected_by', onDelete: 'n' },
   { table: 'meals', col: 'created_by', onDelete: 'a' },
   { table: 'photos', col: 'created_by', onDelete: 'a' },
   { table: 'photos', col: 'uploaded_by', onDelete: 'a' },

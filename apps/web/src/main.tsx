@@ -7,6 +7,7 @@ import './styles/calendar.css'
 import { KioskRoutes } from './kiosk/routes'
 import { AuthGate } from './kiosk/AuthGate'
 import { KioskDisplay } from './kiosk/KioskDisplay'
+import { MealieProvider } from './lib/mealie-context'
 import { ServerUnreachableBanner } from './kiosk/components/ServerUnreachableBanner'
 import { registerServiceWorker } from './lib/pwa'
 import { initTheme } from './lib/theme'
@@ -26,7 +27,9 @@ createRoot(document.getElementById('root')!).render(
         {/* Above AuthGate so the login / setup / picker screens get it too. */}
         <ServerUnreachableBanner />
         <AuthGate>
-          <KioskRoutes />
+          <MealieProvider>
+            <KioskRoutes />
+          </MealieProvider>
         </AuthGate>
       </KioskDisplay>
     </BrowserRouter>

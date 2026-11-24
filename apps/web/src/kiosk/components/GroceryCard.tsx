@@ -1,10 +1,18 @@
 import { useState, type FormEvent } from 'react'
 import { Icon } from '../icons'
 import { useGrocery } from '../../lib/api'
+import { useMealie } from '../../lib/mealie-context'
+import { MealieGroceryCard } from './MealieTodayCards'
 
 // Real, interactive grocery list: tap to check off, type to add. Backed by
 // /api/lists/grocery.
 export function GroceryCard() {
+  const { connected, loading } = useMealie()
+  if (loading) return null
+  return connected ? <MealieGroceryCard /> : <BuiltinGroceryCard />
+}
+
+function BuiltinGroceryCard() {
   const { items, loading, error, add, toggle, remove } = useGrocery()
   const [draft, setDraft] = useState('')
 

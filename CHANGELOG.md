@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Mealie integration.** Connect a Mealie 2.0+ server in Settings → Mealie and Today, Meals, Lists → Grocery, the Calendar and the capture bar use Mealie's meal plan, recipes and shopping list instead of Waffled's built-ins, which come back when you disconnect.
 - **Trackers.** Tap-to-log items like a medicine dose: every tap is kept, each shows "Last time: 11/23 2:15 PM", and an optional "Ask who" links an entry to a family member. On Today and under Tasks → Trackers.
 
 ### Changed

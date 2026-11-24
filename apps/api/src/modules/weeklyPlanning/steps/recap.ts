@@ -15,6 +15,7 @@ import { getTasksBoard } from './tasks'
 import { getGoalsStepView, weekTargetsReadBack, type WeekTargetReadBack } from './goals'
 import { getFamilyNightBoard } from './familyNight'
 import { listParked } from './looseEnds'
+import { mealieConnected } from '../../mealie/mealie-connection'
 
 // Capped because an uncapped column grows past its grid box and paints over the card
 // under it.
@@ -234,6 +235,8 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
   // No session ⇒ every provenance window is empty. The week strip still reads, which is
   // what makes the step renderable before a session exists.
   const since = session?.startedAt ?? null
+  // Mealie owns the meal plan and groceries while connected: no meal lines, no grocery count.
+  const mealsOn = on('meals') && !(await mealieConnected(householdId))
 
   const steps = await resolveSteps(householdId, session?.id ?? null)
   const byKey = new Map(steps.map((s) => [s.key, s]))
@@ -254,12 +257,11 @@ export async function getRecap(tenant: Tenant, weekStart: string, session: Sessi
   const [addedEvents, plannedNights, rhythms] = since
     ? await Promise.all([
         eventsAddedSince(householdId, since, weekStart, tenant.personId ?? null, tz),
-        on('meals') ? dinnersPlannedSince(householdId, since, weekStart) : Promise.resolve([]),
+        mealsOn ? dinnersPlannedSince(householdId, since, weekStart) : Promise.resolve([]),
         on('rhythms') ? rhythmsSettledSince(householdId, since) : Promise.resolve([]),
       ])
     : [[], [], []]
 
-  const mealsOn = on('meals')
   const days: RecapDay[] = week.nights.map((n) => {
     const rows: RecapEvent[] = n.events.map((e) => ({
       id: e.id,
