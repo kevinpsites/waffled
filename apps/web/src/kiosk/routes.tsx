@@ -1,7 +1,7 @@
 import { lazy } from 'react'
 import { Routes, Route, Navigate, Outlet } from 'react-router'
 import { useHousehold } from '../lib/api'
-import { moduleEnabled, type ModuleKey } from '../lib/modules'
+import { anyModuleEnabled, type ModuleKey } from '../lib/modules'
 import { KioskLayout } from './KioskLayout'
 
 // Every screen is loaded on demand. Statically imported, all twenty landed in the
@@ -36,14 +36,14 @@ const Settings = lazy(() => import('./Settings').then((m) => ({ default: m.Setti
 
 // Layout route that redirects to Today when an optional module is off, so a
 // bookmark/direct URL to a disabled page doesn't render a dead (403-ing) screen.
-// While the household is still loading it's null → moduleEnabled falls back to the
+// While the household is still loading it's null → anyModuleEnabled falls back to the
 // catalog default (on), so the common case never flashes a redirect.
-function ModuleGate({ module }: { module: ModuleKey }) {
+function ModuleGate({ module }: { module: ModuleKey | ModuleKey[] }) {
   const { household } = useHousehold()
   // Wait for settings to load before deciding — otherwise a default-off module
   // (pantry) would flash-redirect on the null household during the initial fetch.
   if (!household) return null
-  if (!moduleEnabled(household, module)) return <Navigate to="/" replace />
+  if (!anyModuleEnabled(household, module)) return <Navigate to="/" replace />
   return <Outlet />
 }
 
@@ -59,7 +59,7 @@ export function KioskRoutes() {
         <Route index element={<Today />} />
         <Route path="calendar" element={<Calendar />} />
         <Route path="calendar/event/:id" element={<EventDetail />} />
-        <Route element={<ModuleGate module="chores" />}>
+        <Route element={<ModuleGate module={['chores', 'trackers']} />}>
           <Route path="tasks" element={<Tasks />} />
         </Route>
         <Route element={<ModuleGate module="goals" />}>

@@ -71,3 +71,32 @@ describe('kiosk navigation', () => {
     }
   })
 })
+
+describe('Tasks gating on chores OR trackers', () => {
+  function mockHousehold(modules: Record<string, boolean>) {
+    const ok = (body: unknown) => ({ ok: true, json: async () => body })
+    globalThis.fetch = vi.fn(async (url: string) => {
+      if (String(url).includes('/api/household')) {
+        return ok({ provisioned: true, household: { id: 'h', name: 'Home', timezone: 'UTC', weekStart: 'sunday', settings: { modules } }, person: { id: 'me', name: 'Me', memberType: 'adult', isAdmin: true, capabilities: [] } })
+      }
+      if (String(url).includes('/api/trackers')) return ok({ trackers: [{ id: 't1', title: 'Tylenol', emoji: null, askPerson: false, sortOrder: 0, archivedAt: null, lastEntry: null }] })
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+  }
+
+  it('keeps Tasks in the rail and routable with chores off but trackers on', async () => {
+    mockHousehold({ chores: false, trackers: true })
+    renderAt('/tasks')
+    expect(await within(rail()).findByText('Tasks')).toBeInTheDocument()
+    expect(await screen.findByText('Tylenol')).toBeInTheDocument()
+  })
+
+  it('redirects /tasks to Today when both are off', async () => {
+    mockHousehold({ chores: false, trackers: false })
+    renderAt('/tasks')
+    await screen.findByText('Family Chores').catch(() => {})
+    await act(async () => {})
+    expect(within(rail()).queryByText('Tasks')).toBeNull()
+    expect(screen.queryByText('Tylenol')).toBeNull()
+  })
+})

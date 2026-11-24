@@ -2,7 +2,7 @@ import { NavLink, Link } from 'react-router'
 import { Icon } from '../icons'
 import { SCREENS, SETTINGS, type Screen } from '../nav'
 import { isKioskMode, authApi, useHousehold } from '../../lib/api'
-import { moduleEnabled } from '../../lib/modules'
+import { anyModuleEnabled } from '../../lib/modules'
 
 function railClass({ isActive }: { isActive: boolean }) {
   return `rail-item ${isActive ? 'on' : ''}`
@@ -53,7 +53,7 @@ function RailLink({ screen, onNavigate }: { screen: Screen; onNavigate?: () => v
 export function Rail({ mobileOpen = false, onNavigate }: { mobileOpen?: boolean; onNavigate?: () => void }) {
   const { household } = useHousehold()
   // Hide nav entries for optional modules the household hasn't enabled.
-  const screens = SCREENS.filter((s) => !s.module || moduleEnabled(household, s.module))
+  const screens = SCREENS.filter((s) => !s.module || anyModuleEnabled(household, s.module))
   return (
     <nav id="primary-navigation" className={`rail${mobileOpen ? ' mobile-open' : ''}`} aria-label="Primary navigation">
       <Link to="/" className="rail-logo" aria-label="Home" onClick={onNavigate}><img src="/logo.png" alt="Waffled" /></Link>

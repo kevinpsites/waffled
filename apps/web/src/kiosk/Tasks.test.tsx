@@ -187,3 +187,45 @@ describe('Tasks screen', () => {
     await waitFor(() => expect(approved).toEqual(['7']))
   })
 })
+
+describe('Tasks tabs with the trackers module', () => {
+  function mockModules(modules: Record<string, boolean>, url = '') {
+    const calls: string[] = []
+    globalThis.fetch = vi.fn(async (u: string) => {
+      const s = String(u)
+      calls.push(s)
+      if (s.includes('/api/household')) {
+        return ok({ provisioned: true, household: { id: 'h', name: 'Home', timezone: 'UTC', weekStart: 'sunday', settings: { modules } }, person: { id: 'me', name: 'Me', memberType: 'adult', isAdmin: true, capabilities: ALL_CAPS } })
+      }
+      if (s.includes('/api/trackers')) return ok({ trackers: [{ id: 't1', title: 'Tylenol', emoji: '💊', askPerson: false, sortOrder: 0, archivedAt: null, lastEntry: null }] })
+      return ok({ persons: [], instances: [], date: 'x', chores: [] })
+    }) as unknown as typeof fetch
+    return { calls, url }
+  }
+
+  it('chores off + trackers on: only Trackers, and no chore/reward fetches', async () => {
+    const { calls } = mockModules({ chores: false, trackers: true })
+    renderTasks(<Tasks />)
+    expect(await screen.findByText('Tylenol')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Chores' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Rewards' })).toBeNull()
+    expect(calls.some((c) => /chore|reward|currenc/.test(c))).toBe(false)
+  })
+
+  it('chores on + trackers off: no Trackers tab', async () => {
+    mockModules({ chores: true, trackers: false })
+    renderTasks(<Tasks />)
+    expect(await screen.findByRole('button', { name: 'Chores' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Trackers' })).toBeNull()
+  })
+
+  it('both on: Trackers tab switches the view; ?tab=trackers is honoured', async () => {
+    mockModules({ chores: true, trackers: true })
+    const { unmount } = renderTasks(<Tasks />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Trackers' }))
+    expect(await screen.findByText('Tylenol')).toBeInTheDocument()
+    unmount()
+    render(<MemoryRouter initialEntries={['/tasks?tab=trackers']}><Tasks /></MemoryRouter>)
+    expect(await screen.findByText('Tylenol')).toBeInTheDocument()
+  })
+})

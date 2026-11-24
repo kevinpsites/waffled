@@ -122,6 +122,12 @@ export function moduleEnabled(household: Household | null | undefined, key: Modu
   return typeof v === 'boolean' ? v : def.defaultOn
 }
 
+// Any-of check for entries (nav items, route gates) that stay reachable while at least one
+// of several modules is on — e.g. Tasks hosts both chores and trackers.
+export function anyModuleEnabled(household: Household | null | undefined, keys: ModuleKey | ModuleKey[]): boolean {
+  return (Array.isArray(keys) ? keys : [keys]).some((k) => moduleEnabled(household, k))
+}
+
 // Rewards is the spend half of the chores economy, not its own module: a sub-toggle
 // (settings.chores.rewards, default on) that can never be on without chores. Mirror
 // of rewardsEnabled() in apps/api/src/platform/modules.ts.

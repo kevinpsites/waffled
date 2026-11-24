@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { MODULES, moduleEnabled, rewardsEnabled, type ModuleKey } from './modules'
+import { MODULES, moduleEnabled, anyModuleEnabled, rewardsEnabled, type ModuleKey } from './modules'
 import { SCREENS } from '../kiosk/nav'
 import type { Household } from './api'
 
@@ -51,7 +51,7 @@ describe('rewards (nested under chores)', () => {
 
 describe('rail nav gating', () => {
   const visible = (household: Household | null) =>
-    SCREENS.filter((s) => !s.module || moduleEnabled(household, s.module)).map((s) => s.path)
+    SCREENS.filter((s) => !s.module || anyModuleEnabled(household, s.module)).map((s) => s.path)
 
   it('Today + Calendar are never module-gated', () => {
     expect(SCREENS.find((s) => s.path === '/')?.module).toBeUndefined()
@@ -59,7 +59,7 @@ describe('rail nav gating', () => {
   })
 
   it('the core pages carry their module flag', () => {
-    expect(SCREENS.find((s) => s.path === '/tasks')?.module).toBe('chores')
+    expect(SCREENS.find((s) => s.path === '/tasks')?.module).toEqual(['chores', 'trackers'])
     expect(SCREENS.find((s) => s.path === '/goals')?.module).toBe('goals')
     expect(SCREENS.find((s) => s.path === '/meals')?.module).toBe('meals')
     expect(SCREENS.find((s) => s.path === '/lists')?.module).toBe('lists')
@@ -73,5 +73,21 @@ describe('rail nav gating', () => {
     expect(paths).toContain('/calendar')
     expect(paths).toContain('/family')
     expect(paths).toContain('/tasks')
+  })
+})
+
+describe('anyModuleEnabled', () => {
+  it('accepts a single key or any-of a list', () => {
+    expect(anyModuleEnabled(hh({ modules: { chores: false } }), 'chores')).toBe(false)
+    expect(anyModuleEnabled(hh({ modules: { chores: false } }), ['chores', 'trackers'])).toBe(true)
+    expect(anyModuleEnabled(hh({ modules: { chores: false, trackers: false } }), ['chores', 'trackers'])).toBe(false)
+  })
+
+  it('Tasks stays in the rail when only one of chores/trackers is on', () => {
+    const visible = (household: Household) =>
+      SCREENS.filter((s) => !s.module || anyModuleEnabled(household, s.module)).map((s) => s.path)
+    expect(visible(hh({ modules: { chores: false } }))).toContain('/tasks')
+    expect(visible(hh({ modules: { trackers: false } }))).toContain('/tasks')
+    expect(visible(hh({ modules: { chores: false, trackers: false } }))).not.toContain('/tasks')
   })
 })
