@@ -5,6 +5,7 @@ import { useHousehold } from '../lib/api'
 import { mealieApi, useMealieQuery, type MealieRecipeCard } from '../lib/api/mealie'
 import { addDaysYmd, householdToday } from '../lib/household-date'
 import { ConfirmDialog } from './components/ConfirmDialog'
+import { MealieImage } from './components/MealieImage'
 import { MealieError } from './components/MealieError'
 import { MealiePlanModal } from './components/MealiePlanModal'
 
@@ -14,9 +15,7 @@ const rank = (t: string) => (ORDER.includes(t) ? ORDER.indexOf(t) : ORDER.length
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 function Photo({ src, height }: { src: string | null | undefined; height: number }) {
-  return src
-    ? <img src={src} alt="" className="mealie-photo" style={{ height }} />
-    : <div className="mealie-photo mealie-photo-ph" data-testid="recipe-placeholder" style={{ height }} />
+  return <MealieImage src={src} className="mealie-photo" placeholderClassName="mealie-photo mealie-photo-ph" style={{ height }} />
 }
 
 function WeekTab({ tz, firstDay }: { tz: string; firstDay: number }) {

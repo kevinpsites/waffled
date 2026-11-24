@@ -7,6 +7,12 @@ const shopping = vi.fn()
 const tzState = { tz: 'UTC' }
 const mealieState = { connected: true, hasShoppingList: true, loading: false, refresh: () => {} }
 
+vi.mock('../../lib/api/client', async (orig) => ({
+  ...(await orig<typeof import('../../lib/api/client')>()),
+  authFetch: vi.fn(async () => new Response(new Blob(['x']))),
+}))
+URL.createObjectURL = vi.fn(() => 'blob:img')
+URL.revokeObjectURL = vi.fn()
 vi.mock('../../lib/api/mealie', async (orig) => ({
   ...(await orig<typeof import('../../lib/api/mealie')>()),
   mealieApi: { mealplan: (...a: unknown[]) => mealplan(...a), shopping: () => shopping() },
@@ -52,7 +58,7 @@ describe('MealieTonightCard', () => {
     const { container } = wrap(<TonightCardSlot />)
     fireEvent.click(await screen.findByText('Lasagna'))
     expect(screen.queryByText('Soup')).toBeNull()
-    expect(container.querySelector('img')?.getAttribute('src')).toBe('/img/lasagna.webp')
+    await waitFor(() => expect(container.querySelector('img')?.getAttribute('src')).toBe('blob:img'))
     expect(screen.getByTestId('where').textContent).toBe('/meals/mealie/lasagna')
   })
 

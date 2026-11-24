@@ -219,7 +219,8 @@ async function householdIsGone(res: Response): Promise<boolean> {
 }
 
 // fetch with the bearer token + one transparent refresh-and-retry on 401.
-async function authFetch(path: string, init: RequestInit): Promise<Response> {
+// Exported so blob consumers (Mealie images) reuse the bearer + refresh-and-retry path.
+export async function authFetch(path: string, init: RequestInit): Promise<Response> {
   const withAuth = (tok?: string): RequestInit => ({
     ...init,
     headers: { ...(init.headers as Record<string, string>), ...(tok ? { authorization: `Bearer ${tok}` } : {}) },

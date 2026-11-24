@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router'
 import { useHousehold } from '../../lib/api'
 import { mealieApi, useMealieQuery, type MealieEntry } from '../../lib/api/mealie'
 import { addDaysYmd, householdToday } from '../../lib/household-date'
+import { MealieImage } from './MealieImage'
 import { MealieError } from './MealieError'
 
 function useHouseholdTz(): string {
@@ -45,7 +46,7 @@ export function MealieTonightCard() {
             style={{ cursor: slug ? 'pointer' : 'default' }}
           >
             <div style={{ height: 112, background: 'linear-gradient(135deg,#f6d9c6,#e9b596)', position: 'relative' }}>
-              {img && <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
+              {img && <MealieImage src={img} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} placeholderStyle={{ display: 'none' }} />}
             </div>
             <div style={{ padding: '14px 16px 15px' }}>
               <div className="tiny" style={{ color: 'var(--person-4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>

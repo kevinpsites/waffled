@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { mealieApi, useMealieQuery } from '../lib/api/mealie'
+import { MealieImage } from './components/MealieImage'
 import { MealieError } from './components/MealieError'
 import { MealiePlanModal } from './components/MealiePlanModal'
 
@@ -18,7 +19,7 @@ export function MealieRecipe() {
       {!error && r && (
         <>
           <div className="mealie-cook-head">
-            {r.imageUrl && <img src={r.imageUrl} alt="" className="mealie-cook-img" />}
+            {r.imageUrl && <MealieImage src={r.imageUrl} className="mealie-cook-img" />}
             <div style={{ flex: 1, minWidth: 0 }}>
               <h1 className="wf-serif" style={{ fontSize: 34, margin: '0 0 6px' }}>{r.name}</h1>
               <div className="muted" style={{ marginBottom: 10 }}>

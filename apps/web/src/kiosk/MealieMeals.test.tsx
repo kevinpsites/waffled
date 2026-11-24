@@ -8,6 +8,12 @@ const recipes = vi.fn()
 const unplan = vi.fn()
 const plan = vi.fn()
 const hh = { weekStart: 'sunday' as string, timezone: 'UTC' }
+vi.mock('../lib/api/client', async (orig) => ({
+  ...(await orig<typeof import('../lib/api/client')>()),
+  authFetch: vi.fn(async () => new Response(new Blob(['x']))),
+}))
+URL.createObjectURL = vi.fn(() => 'blob:img')
+URL.revokeObjectURL = vi.fn()
 vi.mock('../lib/api/mealie', async (orig) => ({
   ...(await orig<typeof import('../lib/api/mealie')>()),
   mealieApi: {
@@ -148,8 +154,8 @@ describe('MealieMeals — Recipes', () => {
     recipes.mockResolvedValue({ items: [card('a', 'Alpha'), card('b', 'Beta', '/img/b.webp')], page: 1, totalPages: 1 })
     open()
     await screen.findByText('Alpha')
+    await waitFor(() => expect(document.querySelectorAll('img')).toHaveLength(1))
     expect(document.querySelectorAll('[data-testid="recipe-placeholder"]')).toHaveLength(1)
-    expect(document.querySelectorAll('img')).toHaveLength(1)
   })
 
   it('shows MealieError with Retry when unavailable', async () => {
