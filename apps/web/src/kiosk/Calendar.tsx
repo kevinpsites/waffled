@@ -10,6 +10,9 @@ import { AgendaView } from './components/AgendaView'
 import { PeopleView } from './components/PeopleView'
 import { useTopbarRight } from './topbar-slot'
 import { useEventsRange, useHousehold, useCountdowns, usePersons, type AgendaEvent, type Countdown } from '../lib/api'
+import { useMealie } from '../lib/mealie-context'
+import { mealieApi, useMealieQuery } from '../lib/api/mealie'
+import { mealieEntriesToEvents, hideMealMirrors } from '../lib/mealie-calendar'
 import { MONTHS, MONTHS_SHORT, DOW_FULL, ymd, addDays, startOfWeek, monthGridStart, eventDetailPath } from './components/cal-utils'
 
 type View = 'month' | 'week' | 'day' | 'people' | 'agenda'
@@ -101,7 +104,19 @@ export function Calendar() {
   const tz = household?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
   const { from, to } = useMemo(() => rangeFor(view, anchor, firstDay), [view, anchor, firstDay])
-  const { events, refetch } = useEventsRange(from, to)
+  const { events: rawEvents, refetch } = useEventsRange(from, to)
+
+  // Connected: Mealie's plan replaces Waffled's own meal mirrors. A Mealie failure just
+  // leaves the chips out.
+  const { connected: mealieOn } = useMealie()
+  const { data: plan } = useMealieQuery(
+    () => (mealieOn ? mealieApi.mealplan(from, to).catch(() => null) : Promise.resolve(null)),
+    [mealieOn, from, to]
+  )
+  const events = useMemo(
+    () => (mealieOn ? [...hideMealMirrors(rawEvents), ...mealieEntriesToEvents(plan?.entries ?? [], tz)] : rawEvents),
+    [mealieOn, rawEvents, plan, tz]
+  )
 
   // The roster drives the People view's columns (one per person, in roster order).
   const { persons, loading: personsLoading } = usePersons()
@@ -131,7 +146,13 @@ export function Calendar() {
     setAnchor(now)
     if (view === 'month') setSelectedDay(ymd(now))
   }
-  const openEvent = (e: AgendaEvent) => navigate(eventDetailPath(e))
+  const openEvent = (e: AgendaEvent) => {
+    if (e.origin === 'mealie_plan') {
+      if (e.originRefId) navigate(`/meals/mealie/${encodeURIComponent(e.originRefId)}`)
+      return
+    }
+    navigate(eventDetailPath(e))
+  }
   // Tapping a countdown routes by source: an event-sourced one deep-links to that
   // event's detail page (rename + a "Show a countdown" toggle); a standalone one opens
   // the inline editor (rename/move/remove); a birthday or a rhythm has no editing surface

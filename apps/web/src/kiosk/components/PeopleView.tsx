@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { type AgendaEvent } from '../../lib/api'
 import { evVars, useEventColor } from '../../lib/event-color'
-import { ymd, localDate, fmtHour, fmtTime, minutesOfDay, durationMin } from './cal-utils'
+import { isMealOrigin, ymd, localDate, fmtHour, fmtTime, minutesOfDay, durationMin } from './cal-utils'
 import { peopleColumns, UNASSIGNED_COLUMN, type ColumnPerson } from './cal-people'
 import { RhythmMark } from './RhythmMark'
 
@@ -151,7 +151,7 @@ export function PeopleView({
                     return (
                       <div
                         key={`${c.id}:${e.id}`}
-                        className={`wk-ev ev-tint ${e.origin === 'meal_plan' ? 'ev-meal' : ''} ${tight ? 'tight' : ''}`}
+                        className={`wk-ev ev-tint ${isMealOrigin(e) ? 'ev-meal' : ''} ${tight ? 'tight' : ''}`}
                         style={{ top, height, left, width, ...evVars(color), borderLeft: `3px solid ${color}` }}
                         title={`${fmtTime(e)} · ${e.title}`}
                         onClick={(ev) => { ev.stopPropagation(); onOpenEvent(e) }}

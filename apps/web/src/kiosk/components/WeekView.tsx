@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { usePersons, type AgendaEvent, type Countdown } from '../../lib/api'
 import { evVars, useEventColor } from '../../lib/event-color'
-import { DOW, ymd, addDays, fmtHour, fmtTime, minutesOfDay, durationMin, eventPeople, packLanes } from './cal-utils'
+import { isMealOrigin, DOW, ymd, addDays, fmtHour, fmtTime, minutesOfDay, durationMin, eventPeople, packLanes } from './cal-utils'
 import { CountdownChip } from './CountdownChip'
 import { RhythmMark } from './RhythmMark'
 import { eventsByDay, weekSpans } from './month-spans'
@@ -200,7 +200,7 @@ export function WeekView({
                     const top = Math.max(0, (startMin / 60) * HOUR_PX)
                     const height = Math.max(22, (durationMin(e) / 60) * HOUR_PX - 3)
                     const color = colorOf(e)
-                    const isMeal = e.origin === 'meal_plan'
+                    const isMeal = isMealOrigin(e)
                     const lane = lanes.get(e.id) ?? { lane: 0, lanes: 1 }
                     const width = `calc((100% - 6px) / ${lane.lanes})`
                     const left = `calc((100% - 6px) / ${lane.lanes} * ${lane.lane} + 3px)`
