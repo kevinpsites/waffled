@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
+import { emit } from './api/bus'
 
 vi.mock('./api/mealie', async (orig) => ({ ...(await orig<typeof import('./api/mealie')>()), mealieApi: { connection: vi.fn() } }))
 
@@ -21,6 +22,16 @@ describe('MealieProvider', () => {
     vi.mocked(mealieApi.connection).mockRejectedValue(new Error('x'))
     render(<MealieProvider><Probe /></MealieProvider>)
     await waitFor(() => expect(screen.getByText('loading=false connected=false list=false')).toBeInTheDocument())
+  })
+  it('keeps the last good state when a later poll fails', async () => {
+    vi.mocked(mealieApi.connection).mockResolvedValueOnce({ connected: true, baseUrl: 'http://m', publicUrl: null, shoppingListId: 'l1', shoppingListName: 'L', mealieVersion: '2.0.0' })
+    render(<MealieProvider><Probe /></MealieProvider>)
+    await waitFor(() => expect(screen.getByText('loading=false connected=true list=true')).toBeInTheDocument())
+    const before = vi.mocked(mealieApi.connection).mock.calls.length
+    vi.mocked(mealieApi.connection).mockRejectedValue(new Error('blip'))
+    await act(async () => { emit('mealie') })
+    await waitFor(() => expect(vi.mocked(mealieApi.connection).mock.calls.length).toBeGreaterThan(before))
+    expect(screen.getByText('loading=false connected=true list=true')).toBeInTheDocument()
   })
   it('defaults to not connected without a provider', () => {
     render(<Probe />)

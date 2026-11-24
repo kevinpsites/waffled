@@ -1,6 +1,6 @@
 // Whether this household is connected to Mealie. Mounted inside AuthGate so it never
-// fires for signed-out screens. Reports connected:false while loading or on error so the
-// built-in screens show by default.
+// fires for signed-out screens. Reports connected:false while loading or when it never
+// loaded, so the built-in screens show by default; a failed refresh keeps the last state.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { mealieApi } from './api/mealie'
 import { useRefetchOn, useLiveRefresh } from './api/bus'
@@ -25,7 +25,7 @@ export function MealieProvider({ children }: { children: ReactNode }) {
     let alive = true
     mealieApi.connection()
       .then((c) => alive && setConn({ connected: !!c.connected, hasShoppingList: !!c.connected && !!c.shoppingListId }))
-      .catch(() => alive && setConn({ connected: false, hasShoppingList: false }))
+      .catch(() => alive && setConn((prev) => prev ?? { connected: false, hasShoppingList: false }))
     return () => { alive = false }
   }, [nonce])
   const value = useMemo<MealieState>(
