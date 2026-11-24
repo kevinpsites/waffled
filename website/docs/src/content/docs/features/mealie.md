@@ -15,12 +15,12 @@ Mealie **2.0 or newer** is required.
 Only admins can connect. In Mealie, open your profile → **API Tokens** and create a token. Then in
 Waffled open **Settings → Mealie** and fill in:
 
-- **Base URL** — where the Waffled server reaches Mealie.
+- **Mealie URL** — where the Waffled server reaches Mealie.
 - **Public URL** (optional) — the address you open Mealie at in a browser, if different. It is
   used for the **Open in Mealie** links.
 - **API token** — pasted once, stored encrypted, and never shown again.
 
-**Docker tip:** if Mealie runs on the same Docker network as Waffled, the base URL can be the
+**Docker tip:** if Mealie runs on the same Docker network as Waffled, the Mealie URL can be the
 internal one (for example `http://mealie:9000`) while the public URL is the one you browse to.
 
 ## Choose the shopping list
@@ -42,8 +42,9 @@ read-only **Connected to Mealie** line in Settings.
 - **Capture bar** — "add milk" goes to the Mealie list, and the Meal chip is hidden.
 - **Weekly Planning** — skips its Meals step, and the recap leaves out meals and the grocery count.
 
-Changes made in Mealie's own app show up in Waffled within about a minute (the shopping list
-refreshes every 10 seconds, the meal plan every 30, and recipe details within 5 minutes).
+Waffled re-checks Mealie about every 20 seconds while a screen is open. Behind that, it caches
+the shopping list for up to 10 seconds, the meal plan for 30 seconds, and recipe details for up
+to 5 minutes, so changes made in Mealie's own app can take that long to appear.
 
 ## Pantry
 

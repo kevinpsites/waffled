@@ -126,7 +126,7 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   consistency calendar) matched to goal type + timeframe. The Log sheet's **note chips
   now suggest a goal's own most-logged notes** (scoped per participant, blended with the
   defaults) instead of a fixed list — **Tier 1**; smarter ranking is Tier 2 under *Planned*.
-- **Lists & groceries** — multi-lists, auto-built aisle board, quantity merge, pantry
+- **Lists & groceries** — multi-lists, auto-built aisle board (households connected to Mealie use Mealie's shopping list instead), quantity merge, pantry
   staples, live cross-surface refresh **plus cross-device refresh** (foreground + ~20s poll,
   since lists aren't on PowerSync), **item attribution** ("added by …" / from a meal plan
   or recipe), **add any recipe's ingredients from its page** — now with a **pick-specific
