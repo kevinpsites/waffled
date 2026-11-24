@@ -133,3 +133,94 @@ describe('trackers schema', () => {
     })
   })
 })
+
+describe('trackers api', () => {
+  let kid = ''
+  let adult = ''
+
+  beforeAll(async () => {
+    await withClient(async (c) => {
+      for (const [name, type, sub] of [['Kiddo', 'kid', 'dev|kid'], ['Adele', 'adult', 'dev|adele']] as const) {
+        const p = await c.query<{ id: string }>(
+          `insert into persons (household_id, name, member_type, is_admin) values ($1, $2, $3, false) returning id`,
+          [householdId, name, type]
+        )
+        await c.query(
+          `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1,$2,'password',$3,true)`,
+          [householdId, p.rows[0].id, sub]
+        )
+      }
+    })
+    kid = mint('dev|kid')
+    adult = mint('dev|adele')
+  })
+
+  it('create then list shows it with lastEntry null', async () => {
+    const created = await call('POST', '/api/trackers', kevin, { title: 'Ibuprofen', emoji: '💊', askPerson: true })
+    expect(created.statusCode).toBe(201)
+    const t = JSON.parse(created.body).tracker
+    expect(t).toMatchObject({ title: 'Ibuprofen', emoji: '💊', askPerson: true, archivedAt: null, lastEntry: null })
+    const list = JSON.parse((await call('GET', '/api/trackers', kevin)).body).trackers
+    expect(list.find((x: { id: string }) => x.id === t.id)).toMatchObject({ lastEntry: null })
+  })
+
+  it('rejects a blank title with 400', async () => {
+    expect((await call('POST', '/api/trackers', kevin, { title: '   ' })).statusCode).toBe(400)
+  })
+
+  it('kid cannot create, patch or delete; a non-admin adult can', async () => {
+    const t = JSON.parse((await call('POST', '/api/trackers', kevin, { title: 'Perms' })).body).tracker
+    expect((await call('POST', '/api/trackers', kid, { title: 'Nope' })).statusCode).toBe(403)
+    expect((await call('PATCH', `/api/trackers/${t.id}`, kid, { title: 'Nope' })).statusCode).toBe(403)
+    expect((await call('DELETE', `/api/trackers/${t.id}`, kid)).statusCode).toBe(403)
+    expect((await call('GET', '/api/trackers', kid)).statusCode).toBe(200)
+    const made = await call('POST', '/api/trackers', adult, { title: 'By adult' })
+    expect(made.statusCode).toBe(201)
+    const id = JSON.parse(made.body).tracker.id
+    expect((await call('PATCH', `/api/trackers/${id}`, adult, { title: 'Renamed' })).statusCode).toBe(200)
+    expect((await call('DELETE', `/api/trackers/${id}`, adult)).statusCode).toBe(204)
+  })
+
+  it('hides archived trackers unless includeArchived=1', async () => {
+    const t = JSON.parse((await call('POST', '/api/trackers', kevin, { title: 'Old one' })).body).tracker
+    const patched = await call('PATCH', `/api/trackers/${t.id}`, kevin, { archived: true })
+    expect(JSON.parse(patched.body).tracker.archivedAt).toBeTruthy()
+    const ids = async (qs: string) =>
+      (JSON.parse((await call('GET', `/api/trackers${qs}`, kevin)).body).trackers as { id: string }[]).map((x) => x.id)
+    expect(await ids('')).not.toContain(t.id)
+    expect(await ids('?includeArchived=1')).toContain(t.id)
+    const restored = await call('PATCH', `/api/trackers/${t.id}`, kevin, { archived: false })
+    expect(JSON.parse(restored.body).tracker.archivedAt).toBeNull()
+  })
+
+  it("404s on another household's tracker id", async () => {
+    const id = await withClient(async (c) => {
+      const h = await c.query<{ id: string }>(`insert into households (name, timezone) values ('Elsewhere', 'UTC') returning id`)
+      const t = await c.query<{ id: string }>(
+        `insert into trackers (household_id, title) values ($1, 'Theirs') returning id`,
+        [h.rows[0].id]
+      )
+      return t.rows[0].id
+    })
+    expect((await call('PATCH', `/api/trackers/${id}`, kevin, { title: 'Mine now' })).statusCode).toBe(404)
+    expect((await call('DELETE', `/api/trackers/${id}`, kevin)).statusCode).toBe(404)
+  })
+
+  it('returns 403 on every route when the module is off, and recovers after', async () => {
+    const set = (v: string) =>
+      withClient((c) =>
+        c.query(
+          `update households set settings = jsonb_set(coalesce(settings,'{}'::jsonb), '{modules,trackers}', $2::jsonb, true) where id = $1`,
+          [householdId, v]
+        )
+      )
+    await set('false')
+    try {
+      expect((await call('GET', '/api/trackers', kevin)).statusCode).toBe(403)
+      expect((await call('POST', '/api/trackers', kevin, { title: 'x' })).statusCode).toBe(403)
+    } finally {
+      await set('true')
+    }
+    expect((await call('GET', '/api/trackers', kevin)).statusCode).toBe(200)
+  })
+})

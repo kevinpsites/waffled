@@ -33,6 +33,7 @@ import { registerCountdownRoutes } from './modules/countdowns/countdowns'
 import { registerFamilyNightRoutes } from './modules/familyNight/familyNight.routes'
 import { registerWeeklyPlanningRoutes } from './modules/weeklyPlanning/weeklyPlanning.routes'
 import { registerRhythmRoutes } from './modules/rhythms/rhythms.routes'
+import { registerTrackerRoutes } from './modules/trackers/trackers.routes'
 import { registerCalendarAiRoutes } from './modules/calendar/calendar-ai'
 import { registerCalendarRoutes } from './modules/calendar/calendars'
 import { registerCalendarSyncRoutes } from './modules/calendar/calendar-sync.routes'
@@ -230,6 +231,9 @@ registerWeeklyPlanningRoutes(api)
 
 // Rhythms (/api/rhythms…) — optional module
 registerRhythmRoutes(api)
+
+// Trackers (/api/trackers…) — optional module
+registerTrackerRoutes(api)
 
 registerCalendarAiRoutes(api)
 
