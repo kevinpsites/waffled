@@ -7,6 +7,8 @@ description: A recipe library plus weekly and monthly meal planning that auto-bu
 
 Meals is your recipe library and your planner in one — pick what's for dinner on a weekly or monthly grid, and Waffled turns the plan into an aisle-sorted grocery list and a hands-free, step-by-step cook. It answers "what's for dinner" and then carries you all the way from the plan to the pan. 🍽️
 
+> **When Mealie is connected**, this page's recipes, planner and groceries come from Mealie instead; your built-in data returns on disconnect. See [Mealie](/features/mealie/).
+
 ## Highlights
 
 - 🗓️ **Weekly and Month planners** — a grid with a recipe picker; drag-to-swap meals on either grid.

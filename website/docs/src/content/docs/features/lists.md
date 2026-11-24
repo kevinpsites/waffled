@@ -7,6 +7,8 @@ description: Shared custom lists plus the auto-built grocery board that turns th
 
 Lists is where "things to buy or do" live — shared custom lists you build by hand, plus a grocery board that assembles itself from the week's dinners and sorts by aisle so a shopping run is one clean sweep. It consolidates the scattered notes-app lists and takes manual grocery entry off your plate. 🧺
 
+> **When Mealie is connected**, Lists → Grocery shows your chosen Mealie shopping list instead of the auto-built board; custom lists are unchanged. See [Mealie](/features/mealie/).
+
 ## Highlights
 
 - 📝 **Custom multi-lists** — sectioned items with quantities and assignees; create, rename, and delete (deletes cascade), each with its own emoji.

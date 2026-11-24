@@ -177,6 +177,16 @@ happened. See [Trackers](/features/trackers/).
 | **History** — per-person filter, Load more, edit an entry's time, delete an entry | ✅ | ✅ Done — any member, kids included |
 | Dose limits / "too soon" warnings, reminders, charts | — | Not built |
 
+## Mealie
+
+Optional connection to a Mealie server. See [Mealie](/features/mealie/).
+
+| Feature | Web / Kiosk | Status |
+| --- | :---: | --- |
+| **Settings → Mealie** — base URL, optional public URL, API token, shopping-list picker, Disconnect | ✅ | ✅ Done — admins only; Mealie 2.0+; token stored encrypted |
+| **Meals, Today, Lists → Grocery, Calendar, capture bar** read and write Mealie while connected | ✅ | ✅ Done — built-in data is untouched and returns on disconnect |
+| Weekly Planning skips Meals; Pantry stays separate | ✅ | ✅ Done |
+
 ## Rhythms
 
 The things that should keep happening — the air filter, trash night, a temple visit each

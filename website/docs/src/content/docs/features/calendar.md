@@ -177,3 +177,5 @@ for what can be toggled.
   connection up.
 - Every domain (events, chores, lists, rewards, goals, meals, photos) is REST-backed and
   needs a connection to the server; there is no offline mode.
+
+> **When Mealie is connected**, Mealie meals show as all-day chips (tap to open the recipe) and Waffled's own older meal events are hidden. See [Mealie](/features/mealie/).

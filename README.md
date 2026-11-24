@@ -27,7 +27,8 @@ goals & rewards, meals & recipes, lists, photos, and an AI "Add anything" captur
 
 Waffled Remix is a fork of [kevinpsites/waffled](https://github.com/kevinpsites/waffled),
 reshaped to install like a typical self-hosted app. It adds
-[Trackers](website/docs/src/content/docs/features/trackers.md) (tap-to-log items) on top of
+[Trackers](website/docs/src/content/docs/features/trackers.md) (tap-to-log items) and an optional
+[Mealie](website/docs/src/content/docs/features/mealie.md) integration on top of
 upstream's features, and you install and run it differently:
 
 | | Upstream Waffled | Waffled Remix |
@@ -38,6 +39,7 @@ upstream's features, and you install and run it differently:
 | **HTTPS / proxy** | Bundled Caddy | Bring your own reverse proxy; set `PUBLIC_BASE_URL` and `TRUST_PROXY` |
 | **Apps** | Web/PWA, native iOS/iPadOS app, Mac menu-bar app | Web app and installable PWA only (the Waffled-Bite firmware still works) |
 | **Offline sync** | PowerSync local-first calendar | Removed; the web app reads and writes over the REST API |
+| **Meals & groceries** | Built-in recipes, meal plans and grocery board | Same, plus an optional [Mealie](website/docs/src/content/docs/features/mealie.md) connection that uses Mealie's recipes, meal plan and shopping list instead |
 | **Images & updates** | `ghcr.io/kevinpsites/*`, update check against upstream | `ghcr.io/evan-ribbey/waffled`, update check against this repo |
 
 The upstream docs site (docs.waffled.app) describes the upstream install. For this fork,
