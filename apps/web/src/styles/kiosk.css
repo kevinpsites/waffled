@@ -1376,3 +1376,28 @@ button.tick {
   background: none; border: 0; color: inherit; font: inherit; font-weight: 700;
   text-decoration: underline; cursor: pointer; min-height: 44px; padding: 0 12px;
 }
+
+/* Mealie meals page + cook view */
+.mealie-meals, .mealie-cook { padding: 16px 24px 32px; }
+.mealie-tabs, .mealie-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.mealie-photo { width: 100%; object-fit: cover; display: block; border-radius: 10px; }
+.mealie-photo-ph { background: linear-gradient(135deg, #f6d9c6, #e9b596); }
+.mealie-day { display: flex; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--hair-2); }
+.mealie-day-h { width: 110px; font-weight: 700; color: var(--ink-2); }
+.mealie-entry { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.mealie-entry .mealie-photo { width: 64px; flex: none; }
+.mealie-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; margin-top: 14px; }
+.mealie-card { overflow: hidden; padding: 0; text-decoration: none; color: inherit; }
+.mealie-card .mealie-photo { border-radius: 0; }
+.mealie-cook-head { display: flex; gap: 24px; margin: 10px 0 22px; }
+.mealie-cook-img { width: 280px; height: 200px; object-fit: cover; border-radius: 14px; flex: none; }
+.mealie-cook-body { display: grid; grid-template-columns: minmax(240px, 1fr) 2fr; gap: 32px; font-size: 20px; line-height: 1.45; }
+.mealie-cook-sub { font-size: 16px; margin: 14px 0 4px; color: var(--ink-2); }
+.mealie-cook-ing { padding: 5px 0; }
+.mealie-steps { padding-left: 28px; margin: 0; }
+.mealie-steps li { margin-bottom: 16px; }
+.mealie-plan-chips, .mealie-plan-results { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+@media (max-width: 800px) {
+  .mealie-cook-head, .mealie-cook-body { display: block; }
+  .mealie-cook-img { width: 100%; margin-bottom: 14px; }
+}
