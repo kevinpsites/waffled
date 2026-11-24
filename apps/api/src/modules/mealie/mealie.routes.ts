@@ -3,7 +3,8 @@
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { tenantRoute, adminRoute } from '../../platform/route-guards'
 import { getConnection, requireConnection, presentConnection, saveConnection, deleteConnection, listShoppingLists } from './mealie-connection'
-import { parseRange, readMealplan, readRecipes, readRecipe, fetchImage } from './mealie-reads'
+import { addShoppingItem, setShoppingItemChecked, createPlanEntry, deletePlanEntry } from './mealie-writes'
+import { parseRange, readShopping, readMealplan, readRecipes, readRecipe, fetchImage } from './mealie-reads'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -48,5 +49,31 @@ export function registerMealieRoutes(api: Api): void {
     const { bytes, contentType } = await fetchImage(conn, String(req.params.recipeId ?? ''), String(req.params.size ?? ''))
     res.type(contentType)
     await res.sendFile(bytes, { cacheControl: 'private, max-age=3600', lastModified: false })
+  }))
+
+  api.get('/api/mealie/shopping', tenantRoute(async (tenant) => readShopping(tenant.householdId, await requireConnection(tenant.householdId))))
+
+  api.post('/api/mealie/shopping/items', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const conn = await requireConnection(tenant.householdId)
+    await addShoppingItem(tenant.householdId, conn, (req.body as { text?: unknown } | undefined)?.text)
+    return res.status(201).send({ ok: true })
+  }))
+
+  api.patch('/api/mealie/shopping/items/:id', tenantRoute(async (tenant, req: Request) => {
+    const conn = await requireConnection(tenant.householdId)
+    await setShoppingItemChecked(tenant.householdId, conn, String(req.params.id ?? ''), (req.body as { checked?: unknown } | undefined)?.checked)
+    return { ok: true }
+  }))
+
+  api.post('/api/mealie/mealplan', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const conn = await requireConnection(tenant.householdId)
+    await createPlanEntry(tenant.householdId, conn, (req.body ?? {}) as Record<string, unknown>)
+    return res.status(201).send({ ok: true })
+  }))
+
+  api.delete('/api/mealie/mealplan/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const conn = await requireConnection(tenant.householdId)
+    await deletePlanEntry(tenant.householdId, conn, String(req.params.id ?? ''))
+    return res.status(204).send('')
   }))
 }

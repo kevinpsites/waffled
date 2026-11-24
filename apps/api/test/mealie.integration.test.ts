@@ -107,6 +107,8 @@ beforeEach(async () => {
   fake.token = 'fake-mealie-api-token'
   fake.state.requests.length = 0
   fake.state.mealplans = []
+  fake.state.items = []
+  fake.state.failItemPut = false
   fake.state.recipes = []
   fake.state.images = {}
   __resetMealieCache()
@@ -373,5 +375,158 @@ describe('mealie image proxy', () => {
     expect((await call('GET', `/api/mealie/images/${RID}/huge`, kid)).statusCode).toBe(400)
     expect((await call('GET', '/api/mealie/images/not-a-uuid/min', kid)).statusCode).toBe(400)
     expect((await call('GET', `/api/mealie/images/${RID2}/min`, kid)).statusCode).toBe(404)
+  })
+})
+
+const shopReqs = (method?: string) =>
+  fake.state.requests.filter((r) => r.path.startsWith('/api/households/shopping') && (!method || r.method === method))
+const shopGets = () => shopReqs('GET').filter((r) => r.path.startsWith('/api/households/shopping/lists/'))
+const item = (id: string, over: Record<string, unknown> = {}) => ({
+  id, shoppingListId: 'list-1', note: id, display: id, quantity: 1, checked: false, position: 0, label: null, ...over,
+})
+
+describe('mealie shopping list', () => {
+  it('sorts unchecked first, then label name (nulls last), then position', async () => {
+    await connect({ shoppingListId: 'list-1' })
+    fake.state.items = [
+      item('done', { checked: true, position: 0 }),
+      item('nolabel', { position: 0 }),
+      item('dairy2', { position: 2, label: { name: 'Dairy', color: '#fff' } }),
+      item('produce', { position: 0, label: { name: 'Produce', color: '#0f0' } }),
+      item('dairy1', { position: 1, label: { name: 'Dairy', color: '#fff' } }),
+      item('other-list', { shoppingListId: 'list-2' }),
+    ]
+    const res = await call('GET', '/api/mealie/shopping', kid)
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.listId).toBe('list-1')
+    expect(body.listName).toBe('Groceries')
+    expect(body.items.map((i: { id: string }) => i.id)).toEqual(['dairy1', 'dairy2', 'produce', 'nolabel', 'done'])
+    expect(body.items[0]).toEqual({ id: 'dairy1', display: 'dairy1', checked: false, label: { name: 'Dairy', color: '#fff' }, position: 1 })
+  })
+
+  it('409s MealieNoShoppingList when no list is chosen', async () => {
+    await connect()
+    const res = await call('GET', '/api/mealie/shopping', kid)
+    expect(res.statusCode).toBe(409)
+    expect(JSON.parse(res.body).error).toBe('MealieNoShoppingList')
+  })
+
+  it('409s MealieNotConnected with no connection', async () => {
+    const res = await call('GET', '/api/mealie/shopping', kid)
+    expect(res.statusCode).toBe(409)
+    expect(JSON.parse(res.body).error).toBe('MealieNotConnected')
+  })
+
+  it('adds an item as a note on the chosen list, and clears the cache', async () => {
+    await connect({ shoppingListId: 'list-1' })
+    await call('GET', '/api/mealie/shopping', kid)
+    const res = await call('POST', '/api/mealie/shopping/items', kid, { text: '  milk ' })
+    expect(res.statusCode).toBe(201)
+    expect(JSON.parse(res.body)).toEqual({ ok: true })
+    const post = shopReqs('POST')[0]
+    expect(post.path).toBe('/api/households/shopping/items')
+    expect(post.body).toEqual({ shoppingListId: 'list-1', note: 'milk' })
+    const before = shopGets().length
+    const after = JSON.parse((await call('GET', '/api/mealie/shopping', kid)).body)
+    expect(shopGets().length).toBe(before + 1)
+    expect(after.items.map((i: { display: string }) => i.display)).toEqual(['milk'])
+  })
+
+  it('rejects blank and over-long text', async () => {
+    await connect({ shoppingListId: 'list-1' })
+    expect((await call('POST', '/api/mealie/shopping/items', kid, { text: '  ' })).statusCode).toBe(400)
+    expect((await call('POST', '/api/mealie/shopping/items', kid, { text: 'x'.repeat(201) })).statusCode).toBe(400)
+    expect((await call('POST', '/api/mealie/shopping/items', kid, {})).statusCode).toBe(400)
+    expect((await call('POST', '/api/mealie/shopping/items', kid, { text: 'x'.repeat(200) })).statusCode).toBe(201)
+  })
+
+  it('409s on add when no list is chosen', async () => {
+    await connect()
+    expect((await call('POST', '/api/mealie/shopping/items', kid, { text: 'milk' })).statusCode).toBe(409)
+  })
+
+  it('checks an item by GET then a PUT of the full item, and clears the cache', async () => {
+    await connect({ shoppingListId: 'list-1' })
+    const original = item('i1', { note: 'eggs', quantity: 12, label: { name: 'Dairy', color: '#fff' }, labelId: 'l1' })
+    fake.state.items = [original]
+    await call('GET', '/api/mealie/shopping', kid)
+    fake.state.requests.length = 0
+    const res = await call('PATCH', '/api/mealie/shopping/items/i1', kid, { checked: true })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body)).toEqual({ ok: true })
+    expect(shopReqs().map((r) => r.method)).toEqual(['GET', 'PUT'])
+    const put = shopReqs('PUT')[0]
+    expect(put.path).toBe('/api/households/shopping/items/i1')
+    expect(put.body).toEqual({ ...original, checked: true })
+    expect(fake.state.items[0]).toEqual({ ...original, checked: true })
+    fake.state.requests.length = 0
+    await call('GET', '/api/mealie/shopping', kid)
+    expect(shopGets().length).toBe(1)
+  })
+
+  it('maps a Mealie 422 on check to 400, and rejects a non-boolean checked', async () => {
+    await connect({ shoppingListId: 'list-1' })
+    fake.state.items = [item('i1')]
+    fake.state.failItemPut = true
+    const res = await call('PATCH', '/api/mealie/shopping/items/i1', kid, { checked: true })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).message).toBe('Unprocessable item')
+    expect((await call('PATCH', '/api/mealie/shopping/items/i1', kid, { checked: 'yes' })).statusCode).toBe(400)
+  })
+
+  it('404s checking an unknown item', async () => {
+    await connect({ shoppingListId: 'list-1' })
+    expect((await call('PATCH', '/api/mealie/shopping/items/nope', kid, { checked: true })).statusCode).toBe(404)
+  })
+})
+
+describe('mealie meal plan writes', () => {
+  const RECIPE = '11111111-2222-3333-4444-555555555555'
+
+  it('creates an entry from a recipe id, and from a title', async () => {
+    await connect()
+    const a = await call('POST', '/api/mealie/mealplan', kid, { date: '2026-05-04', entryType: 'dinner', recipeId: RECIPE })
+    expect(a.statusCode).toBe(201)
+    expect(JSON.parse(a.body)).toEqual({ ok: true })
+    const b = await call('POST', '/api/mealie/mealplan', kid, { date: '2026-05-05', entryType: 'lunch', title: ' Leftovers ' })
+    expect(b.statusCode).toBe(201)
+    const posts = planPaths().filter((r) => r.method === 'POST')
+    expect(posts[0].body).toEqual({ date: '2026-05-04', entryType: 'dinner', recipeId: RECIPE })
+    expect(posts[1].body).toEqual({ date: '2026-05-05', entryType: 'lunch', title: 'Leftovers' })
+  })
+
+  it('rejects neither recipeId nor title, a bad entryType, a bad date and a non-uuid recipe', async () => {
+    await connect()
+    const bad = (body: Record<string, unknown>) => call('POST', '/api/mealie/mealplan', kid, body)
+    expect((await bad({ date: '2026-05-04', entryType: 'dinner' })).statusCode).toBe(400)
+    expect((await bad({ date: '2026-05-04', entryType: 'snack', title: 'x' })).statusCode).toBe(400)
+    expect((await bad({ date: '05/04/2026', entryType: 'dinner', title: 'x' })).statusCode).toBe(400)
+    expect((await bad({ date: '2026-05-04', entryType: 'dinner', recipeId: 'nope' })).statusCode).toBe(400)
+    expect(planPaths().filter((r) => r.method === 'POST')).toHaveLength(0)
+  })
+
+  it('clears the plan cache after creating and after deleting', async () => {
+    await connect()
+    const path = '/api/mealie/mealplan?start=2026-05-01&end=2026-05-07'
+    const gets = () => planPaths().filter((r) => r.method === 'GET').length
+    await call('GET', path, kid)
+    await call('POST', '/api/mealie/mealplan', kid, { date: '2026-05-04', entryType: 'dinner', title: 'Soup' })
+    const created = JSON.parse((await call('GET', path, kid)).body)
+    expect(gets()).toBe(2)
+    expect(created.entries.map((e: { title: string }) => e.title)).toEqual(['Soup'])
+    const id = fake.state.mealplans[0].id
+    expect((await call('DELETE', `/api/mealie/mealplan/${id}`, kid)).statusCode).toBe(204)
+    await call('GET', path, kid)
+    expect(gets()).toBe(3)
+  })
+
+  it('deletes by integer id, and rejects a non-integer one', async () => {
+    await connect()
+    fake.state.mealplans = [{ id: 12, date: '2026-05-04', entryType: 'dinner', title: 'X', recipe: null }]
+    expect((await call('DELETE', '/api/mealie/mealplan/12', kid)).statusCode).toBe(204)
+    expect(planPaths().some((r) => r.method === 'DELETE' && r.path === '/api/households/mealplans/12')).toBe(true)
+    expect((await call('DELETE', '/api/mealie/mealplan/abc', kid)).statusCode).toBe(400)
+    expect((await call('DELETE', '/api/mealie/mealplan/1.5', kid)).statusCode).toBe(400)
   })
 })

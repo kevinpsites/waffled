@@ -19,6 +19,10 @@ export interface FakeMealieState {
   /** Image bytes by recipe id; an unknown id answers 404. */
   images: Record<string, Buffer>
   requests: FakeRequest[]
+  /** When true, PUT /shopping/items/{id} answers 422. */
+  failItemPut: boolean
+  /** Next id handed to a created meal plan entry or shopping item. */
+  nextId: number
   /** When true every connection is destroyed, simulating an unreachable Mealie. */
   down: boolean
 }
@@ -63,6 +67,79 @@ const routes: Route[] = [
       status: 200,
       body: { page: 1, per_page: 50, total: fake.state.lists.length, total_pages: 1, items: fake.state.lists },
     }),
+  },
+  {
+    method: 'GET',
+    pattern: /^\/api\/households\/shopping\/lists\/([^/]+)$/,
+    auth: true,
+    handler: ({ fake, match }) => {
+      const list = fake.state.lists.find((l) => l.id === match[1])
+      if (!list) return { status: 404, body: { detail: 'Not Found' } }
+      const listItems = fake.state.items.filter((i) => i.shoppingListId === list.id)
+      return { status: 200, body: { id: list.id, name: list.name, listItems } }
+    },
+  },
+  {
+    method: 'GET',
+    pattern: /^\/api\/households\/shopping\/items\/([^/]+)$/,
+    auth: true,
+    handler: ({ fake, match }) => {
+      const it = fake.state.items.find((i) => i.id === match[1])
+      return it ? { status: 200, body: it } : { status: 404, body: { detail: 'Not Found' } }
+    },
+  },
+  {
+    method: 'PUT',
+    pattern: /^\/api\/households\/shopping\/items\/([^/]+)$/,
+    auth: true,
+    handler: ({ fake, match, body }) => {
+      if (fake.state.failItemPut) return { status: 422, body: { detail: 'Unprocessable item' } }
+      const i = fake.state.items.findIndex((x) => x.id === match[1])
+      if (i === -1) return { status: 404, body: { detail: 'Not Found' } }
+      fake.state.items[i] = body as Record<string, unknown>
+      return { status: 200, body: { createdItems: [], updatedItems: [body], deletedItems: [] } }
+    },
+  },
+  {
+    method: 'POST',
+    pattern: /^\/api\/households\/shopping\/items$/,
+    auth: true,
+    handler: ({ fake, body }) => {
+      const b = body as { shoppingListId: string; note: string }
+      const item = {
+        id: `item-${fake.state.nextId++}`,
+        shoppingListId: b.shoppingListId,
+        note: b.note,
+        display: b.note,
+        quantity: 1,
+        checked: false,
+        position: fake.state.items.length,
+        label: null,
+      }
+      fake.state.items.push(item)
+      return { status: 201, body: { createdItems: [item], updatedItems: [], deletedItems: [] } }
+    },
+  },
+  {
+    method: 'POST',
+    pattern: /^\/api\/households\/mealplans$/,
+    auth: true,
+    handler: ({ fake, body }) => {
+      const b = body as { date: string; entryType: string; title?: string; recipeId?: string }
+      const entry = { id: fake.state.nextId++, date: b.date, entryType: b.entryType, title: b.title ?? '', text: '', recipeId: b.recipeId ?? null, recipe: null }
+      fake.state.mealplans.push(entry)
+      return { status: 201, body: entry }
+    },
+  },
+  {
+    method: 'DELETE',
+    pattern: /^\/api\/households\/mealplans\/(\d+)$/,
+    auth: true,
+    handler: ({ fake, match }) => {
+      const before = fake.state.mealplans.length
+      fake.state.mealplans = fake.state.mealplans.filter((m) => String(m.id) !== match[1])
+      return before === fake.state.mealplans.length ? { status: 404, body: { detail: 'Not Found' } } : { status: 200, body: {} }
+    },
   },
   {
     method: 'GET',
@@ -124,6 +201,8 @@ export async function startFakeMealie(): Promise<FakeMealie> {
       items: [],
       images: {},
       requests: [],
+      failItemPut: false,
+      nextId: 100,
       down: false,
     },
     close: () =>

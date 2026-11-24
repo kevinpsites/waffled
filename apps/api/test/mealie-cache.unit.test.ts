@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { cacheGet, cacheClear, __resetMealieCache } from '../src/modules/mealie/mealie-cache'
+import { cacheGet, cacheClear, __resetMealieCache, __mealieCacheSize } from '../src/modules/mealie/mealie-cache'
 
 describe('mealie cache', () => {
   beforeEach(() => {
@@ -51,5 +51,16 @@ describe('mealie cache', () => {
     const load = vi.fn().mockRejectedValueOnce(new Error('x')).mockResolvedValueOnce('ok')
     await expect(cacheGet('h', 'plan', 'k', load)).rejects.toThrow('x')
     expect(await cacheGet('h', 'plan', 'k', load)).toBe('ok')
+  })
+
+  it('evicts expired entries instead of letting the map grow', async () => {
+    await cacheGet('h', 'plan', 'a', async () => 1)
+    await cacheGet('h', 'plan', 'b', async () => 2)
+    vi.advanceTimersByTime(30_001)
+    await cacheGet('h', 'plan', 'c', async () => 3)
+    expect(__mealieCacheSize()).toBe(1)
+    vi.advanceTimersByTime(30_001)
+    await cacheGet('h', 'plan', 'c', async () => 4)
+    expect(__mealieCacheSize()).toBe(1)
   })
 })

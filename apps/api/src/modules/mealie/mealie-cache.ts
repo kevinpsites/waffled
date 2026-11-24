@@ -11,11 +11,20 @@ interface Entry {
 const store = new Map<string, Entry>()
 const keyOf = (householdId: string, kind: CacheKind, key: string) => `${householdId}|${kind}|${key}`
 
+// Keys embed search/page/range, so without a sweep the map only ever grows.
+function sweepExpired(householdId: string): void {
+  const now = Date.now()
+  const prefix = `${householdId}|`
+  for (const [k, e] of store) if (e.expires <= now && k.startsWith(prefix)) store.delete(k)
+}
+
 export async function cacheGet<T>(householdId: string, kind: CacheKind, key: string, load: () => Promise<T>): Promise<T> {
   const k = keyOf(householdId, kind, key)
   const hit = store.get(k)
   if (hit && hit.expires > Date.now()) return hit.value as T
+  if (hit) store.delete(k)
   const value = await load()
+  sweepExpired(householdId)
   store.set(k, { expires: Date.now() + TTL_MS[kind], value })
   return value
 }
@@ -28,3 +37,5 @@ export function cacheClear(householdId: string, kind?: CacheKind): void {
 export function __resetMealieCache(): void {
   store.clear()
 }
+
+export const __mealieCacheSize = (): number => store.size

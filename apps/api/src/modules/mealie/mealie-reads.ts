@@ -1,5 +1,5 @@
 // Read-only Mealie views: meal plan, recipe library, recipe detail and the image proxy.
-import { mealieFetch, mealieFetchRaw, MealieError } from './mealie-client'
+import { mealieFetch, mealieFetchRaw, mealieNoShoppingList, MealieError } from './mealie-client'
 import { cacheGet } from './mealie-cache'
 import type { MealieConn } from './mealie-connection'
 
@@ -134,4 +134,45 @@ export async function fetchImage(conn: MealieConn, recipeId: string, size: strin
   if (res.status === 404) throw new MealieError('NotFound', 'Image not found', 404)
   if (!res.ok) throw new MealieError('MealieUnavailable', "Can't reach Mealie right now.", 502)
   return { bytes: Buffer.from(await res.arrayBuffer()), contentType: res.headers.get('content-type') ?? 'image/webp' }
+}
+
+export interface ShoppingItem {
+  id: string
+  display: string
+  checked: boolean
+  label: { name: string; color: string | null } | null
+  position: number
+}
+
+interface RawShoppingItem {
+  id: string
+  display?: string | null
+  note?: string | null
+  checked?: boolean
+  position?: number
+  label?: { name?: string | null; color?: string | null } | null
+}
+
+// Unchecked first, then label name (unlabelled last), then Mealie's own position.
+export async function readShopping(householdId: string, conn: MealieConn) {
+  if (!conn.shoppingListId) throw mealieNoShoppingList()
+  const listId = conn.shoppingListId
+  return cacheGet(householdId, 'shopping', listId, async () => {
+    const list = await mealieFetch<{ name?: string; listItems?: RawShoppingItem[] }>(conn, `/api/households/shopping/lists/${encodeURIComponent(listId)}`)
+    const items: ShoppingItem[] = (list.listItems ?? []).map((i) => ({
+      id: i.id,
+      display: i.display || i.note || '',
+      checked: !!i.checked,
+      label: i.label?.name ? { name: i.label.name, color: i.label.color ?? null } : null,
+      position: i.position ?? 0,
+    }))
+    items.sort(
+      (a, b) =>
+        Number(a.checked) - Number(b.checked) ||
+        Number(!a.label) - Number(!b.label) ||
+        (a.label && b.label ? a.label.name.localeCompare(b.label.name) : 0) ||
+        a.position - b.position
+    )
+    return { listId, listName: conn.shoppingListName ?? list.name ?? '', items }
+  })
 }

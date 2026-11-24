@@ -36,6 +36,11 @@ export async function getConnection(householdId: string): Promise<MealieConn | n
   }
 }
 
+export async function mealieConnected(householdId: string): Promise<boolean> {
+  const { rows } = await query('select 1 from mealie_connections where household_id = $1', [householdId])
+  return rows.length > 0
+}
+
 export async function requireConnection(householdId: string): Promise<MealieConn> {
   const c = await getConnection(householdId)
   if (!c) throw mealieNotConnected()
