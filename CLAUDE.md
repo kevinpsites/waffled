@@ -1,4 +1,4 @@
-# Waffled — repo conventions & gotchas
+# Waffled Remix — repo conventions & gotchas
 
 High-signal notes for anyone (human or AI) working in this repo. This file is
 auto-loaded by Claude Code in every session. Add a bullet when a mistake bites
@@ -7,6 +7,12 @@ more than once; keep it terse.
 **Folder-scoped conventions load lazily** — app-specific gotchas live next to the
 code and load only when you work under that folder: `apps/api/CLAUDE.md` (database
 migrations) and `apps/web/CLAUDE.md` (design-system reuse). The rules below are repo-wide.
+
+**This is a fork** (`evan-ribbey/waffled-remix`) of `kevinpsites/waffled`. It is web/PWA
+only: the iOS app, the Mac app, the Go runtime, PowerSync, Caddy and the `./waffled` CLI are
+gone, so don't reintroduce them or follow upstream docs that assume them. Images publish to
+`ghcr.io/evan-ribbey/*`. The README's "How this fork differs" table is the source of truth
+for the differences; update it when they change.
 
 ## How we start any new work — isolate first (repo-wide)
 
@@ -54,7 +60,7 @@ most of the excess was one category: source files re-narrating a user report or 
 - **No historical narration in source.** "Reported as…", "this used to…", "my first
   diagnosis was wrong…", "lost once already in a merge…" — that is what commit messages and
   plan docs are for, and they already hold it. A comment describes the code as it *is*.
-- **One rationale lives in one place.** Cross-reference it (`see PlanningShellView.sessionScreen`);
+- **One rationale lives in one place.** Cross-reference it (`see <file>:<symbol>`);
   don't restate the same paragraph in three files.
 - **Never put a backtick in a SQL or CSS comment that lives inside a JS template literal.**
   It terminates the string and the error surfaces far away. This cost three separate
@@ -69,14 +75,13 @@ hand-rolled an avatar chip while the design system already exported `Avatar`,
 which did the identical job. Before writing a view/component, grep the design system and the
 feature that owns the concept (`apps/web/src/kiosk/components/`).
 
-- If something close exists, use it. If it exists but is `private`/`fileprivate`, **widen it
+- If something close exists, use it. If it exists but isn't exported, **export it
   rather than copy it** — and say in a comment why it is internal, or the next merge that
   takes the file from `main` will silently narrow it again.
 - If nothing fits and the piece is generic, put it in the DESIGN SYSTEM, not in your feature —
   so the next feature finds it instead of writing a third one.
 - If you must copy, say so in the file header with the constraint that forced it, and open a
-  follow-up to extract. (Weekly Planning's Horizon scan copied the iPhone month grid until the
-  Calendar tab's grid became the shared `PhoneMonthGrid`; it now draws that one.)
+  follow-up to extract.
 
 ## Git & pull requests (repo-wide)
 
