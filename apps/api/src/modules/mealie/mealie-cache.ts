@@ -9,6 +9,10 @@ interface Entry {
 }
 
 const store = new Map<string, Entry>()
+// Bumped by cacheClear so a load that began before a write can't store its pre-write result.
+const generations = new Map<string, number>()
+const genKey = (householdId: string, kind: CacheKind) => `${householdId}|${kind}`
+const KINDS: CacheKind[] = ['plan', 'recipes', 'recipe', 'shopping']
 const keyOf = (householdId: string, kind: CacheKind, key: string) => `${householdId}|${kind}|${key}`
 
 // Keys embed search/page/range, so without a sweep the map only ever grows.
@@ -23,19 +27,23 @@ export async function cacheGet<T>(householdId: string, kind: CacheKind, key: str
   const hit = store.get(k)
   if (hit && hit.expires > Date.now()) return hit.value as T
   if (hit) store.delete(k)
+  const gen = generations.get(genKey(householdId, kind)) ?? 0
   const value = await load()
+  if ((generations.get(genKey(householdId, kind)) ?? 0) !== gen) return value
   sweepExpired(householdId)
   store.set(k, { expires: Date.now() + TTL_MS[kind], value })
   return value
 }
 
 export function cacheClear(householdId: string, kind?: CacheKind): void {
+  for (const kd of kind ? [kind] : KINDS) generations.set(genKey(householdId, kd), (generations.get(genKey(householdId, kd)) ?? 0) + 1)
   const prefix = kind ? `${householdId}|${kind}|` : `${householdId}|`
   for (const k of store.keys()) if (k.startsWith(prefix)) store.delete(k)
 }
 
 export function __resetMealieCache(): void {
   store.clear()
+  generations.clear()
 }
 
 export const __mealieCacheSize = (): number => store.size

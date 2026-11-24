@@ -63,4 +63,39 @@ describe('mealie cache', () => {
     await cacheGet('h', 'plan', 'c', async () => 4)
     expect(__mealieCacheSize()).toBe(1)
   })
+
+  it('does not store a load that began before a clear of its kind', async () => {
+    let finish!: (v: string) => void
+    const slow = new Promise<string>((r) => { finish = r })
+    const inflight = cacheGet('h', 'shopping', 'k', () => slow)
+    cacheClear('h', 'shopping')
+    finish('stale')
+    expect(await inflight).toBe('stale')
+    const fresh = vi.fn(async () => 'fresh')
+    expect(await cacheGet('h', 'shopping', 'k', fresh)).toBe('fresh')
+    expect(fresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('still stores a load when only another kind was cleared', async () => {
+    let finish!: (v: string) => void
+    const slow = new Promise<string>((r) => { finish = r })
+    const inflight = cacheGet('h', 'shopping', 'k', () => slow)
+    cacheClear('h', 'plan')
+    finish('v')
+    await inflight
+    const again = vi.fn(async () => 'x')
+    expect(await cacheGet('h', 'shopping', 'k', again)).toBe('v')
+    expect(again).not.toHaveBeenCalled()
+  })
+
+  it('a household-wide clear invalidates in-flight loads of every kind', async () => {
+    let finish!: (v: string) => void
+    const slow = new Promise<string>((r) => { finish = r })
+    const inflight = cacheGet('h', 'plan', 'k', () => slow)
+    cacheClear('h')
+    finish('stale')
+    await inflight
+    const fresh = vi.fn(async () => 'fresh')
+    expect(await cacheGet('h', 'plan', 'k', fresh)).toBe('fresh')
+  })
 })
