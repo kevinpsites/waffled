@@ -84,6 +84,7 @@ export const NEVER_KEY_REACHABLE: NeverReachable[] = [
   { why: 'integrations surface — documented as always 403 for a key', prefixes: ['/api/countdowns', '/api/family-night', '/api/goal-calendar', '/api/calendar'] },
   { why: 'per-viewer UI layout, not household data', prefixes: ['/api/today-layout'] },
   { why: 'operator surfaces (deep health report, update channel)', prefixes: ['/api/health', '/api/updates'] },
+  { why: 'acts on a third-party Mealie account with the household’s stored token — a key goes to Mealie directly', prefixes: ['/api/mealie'] },
 ]
 
 export const UNSCOPED_YET: UnscopedYet[] = [
@@ -95,6 +96,7 @@ export const UNSCOPED_YET: UnscopedYet[] = [
   // THROUGH to other modules, so with one scope per prefix a `weeklyPlanning` scope would be
   // a skeleton key past `chores:write` and the rest. Per-route, each asks for what it needs.
   { why: 'no correct scope exists under one-scope-per-prefix — a session writes through to chores/goals/events/meals', prefixes: ['/api/weekly-planning'], tracked: 'docs/product/api-key-scopes-plan.md' },
+  { why: 'trackers want their own scope resource; none is designed yet', prefixes: ['/api/trackers', '/api/tracker-entries'], tracked: 'docs/product/api-key-scopes-plan.md' },
 ]
 
 export const NOT_KEY_REACHABLE: (NeverReachable | UnscopedYet)[] = [...NEVER_KEY_REACHABLE, ...UNSCOPED_YET]

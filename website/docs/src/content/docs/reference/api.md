@@ -73,7 +73,7 @@ part of the grocery board and the route sits behind the `lists` module gate.
 Everything else always 403s for a key — auth and self-service account, household creation and
 invites, api-keys, `/api/kiosk`, `/api/waffled-bites`, permissions,
 capture, media, countdowns, family-night, goal-calendar, the rest of `/api/calendar`
-(Google, Outlook and ICS feeds), today-layout, rhythms, weekly-planning, health and updates. Writes under a read-only
+(Google, Outlook and ICS feeds), today-layout, rhythms, weekly-planning, trackers, mealie, health and updates. Writes under a read-only
 resource are refused too, so `POST /api/persons/:id/award` and
 `/saving-toward` stay session-only even though they belong to the rewards feature. In-route
 capability **and** module checks still apply on top of the scope, so a key can never do more
