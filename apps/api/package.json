@@ -50,6 +50,7 @@
   },
   "overrides": {
     "brace-expansion": "5.0.12",
-    "minimatch": "10.2.5"
+    "minimatch": "^11.0.9",
+    "glob": "^14.0.6"
   }
 }

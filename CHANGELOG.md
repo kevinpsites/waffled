@@ -60,6 +60,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   removed native apps is gone, along with `OIDC_NATIVE_REDIRECT_URI`. Any app on a phone can claim
   a custom URL scheme, so a sign-in could otherwise be handed to the wrong app; SSO now returns
   only to the Waffled web origin.
+- **Patched server dependencies.** Updated `systeminformation` (a high-severity Windows command
+  injection advisory) and pinned the `glob` and `minimatch` libraries to their fixed releases, so
+  the server image passes a production dependency audit with no known advisories.
 
 ## [0.15.3] - 2026-10-07
 
