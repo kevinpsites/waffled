@@ -44,8 +44,15 @@ const addDays = (iso: string, n: number): string =>
   new Date(new Date(`${iso}T00:00:00Z`).getTime() + n * 86400000).toISOString().slice(0, 10)
 
 // The household is America/Chicago; spelling the offset out keeps a fixture on the day it
-// says it is on however the test machine is set.
-const at = (day: string, time: string) => `${day}T${time}:00-05:00`
+// says it is on however the test machine is set. The offset is read for that day (noon,
+// clear of the 2am DST switch) because a fixed -05:00 is only right in summer.
+const chicagoOffset = (day: string): string => {
+  const name = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', timeZoneName: 'longOffset' })
+    .formatToParts(new Date(`${day}T12:00:00Z`))
+    .find((p) => p.type === 'timeZoneName')!.value
+  return name.replace('GMT', '')
+}
+const at = (day: string, time: string) => `${day}T${time}:00${chicagoOffset(day)}`
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const titles = (events: any[]) => events.map((e: { title: string }) => e.title)
