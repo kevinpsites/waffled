@@ -25,7 +25,8 @@ async function post(
       return { statusCode: 200, body: JSON.stringify({ ok: true }) }
     }),
   }
-  const server = createHttpServer(app)
+  // Behind a trusted proxy, so the forwarded-address cases below are meaningful.
+  const server = createHttpServer(app, { trustProxy: true })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const port = (server.address() as AddressInfo).port
 
